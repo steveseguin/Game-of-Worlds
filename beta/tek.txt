@@ -1,0 +1,56 @@
+Nuclear Fission:::
+:Reactive Armor:::
+:Rocketry 1:::
+:Nuclear Fission Power Plants:Nuclear Fission::
+:Nuclear Fusion:Nuclear Fission::
+:Atomic Warhead 1:Nuclear Fission::
+:Atomic Warhead 2:Atomic Warhead 1:Nuclear Fusion:
+:Thermosystic Steel:Nuclear Fusion:Nuclear Fission Power Plants:
+:Anti_Gravitron Field:Thermosystic Steel::
+:Nuclear Fusion Power Plants:Thermosystic Steel:Nuclear Fission Power Plants:
+:Laser Weapons 1:Nuclear Fusion Power Plants::
+:Laser Weapons 2:Laser Weapons 1:Cold Fusion:
+:Laser Weapons 3:Laser Weapons 2:Cold Fusion Batteries:
+:Laser Weapons 4:Laser Weapons 3::
+:Cold Fusion:Nuclear Fusion Power Plants:Anti_Gravitron Field:
+:Cold Fusion Batteries:Cold Fusion::
+:Railgun 1:Anti_Gravitron Field::
+:Railgun 2:Cold Fusion Batteries::
+:Plasma Manipulation:Matter Deflectors:Laser Weapons 3:
+:Plasma Cannon:Plasma Manipulation::
+:Enhanced Armor:Thermosystic Steel::
+:Matter Deflectors:Anti_Gravitron Field::
+:Enhanced Reactive Armor:Enhanced Armor:Reactive Armor:
+:Anti-Matter Manipulation:Matter Deflectors::
+:Worm Hole Travel:Anti-Matter Manipulation::
+:Anti-Matter Warheads:Anti-Matter Manipulation::
+:Rocketry 2:Rocketry 1::
+:Rocketry 3:Rocketry 2::
+:Rocketry 4:Rocketry 3::
+:Rocketry 5:Rocketry 4::
+:Warp Drive 1:Anti_Gravitron Field:Enhanced Armor:Rocketry 3
+:Warp Drive 2:Matter Deflectors:Warp Drive 1:
+:Wraith Missles:Warp Drive 2:Rocketry 4:
+:Photon Torpedos:Rocketry 5:Warp Drive 2:Laser Weapons 4
+:Orbital Tech1:Rocketry 2::
+:Orbital Tech 2:Orbital Tech1:Rocketry 3:
+:Space Shuttle:Orbital Tech1::
+:Space Dock:Space Shuttle:Orbital Tech 2:
+:Orbital Defence 1:Space Shuttle::
+:Orbital Defence 2:Orbital Defence 1:Space Dock:
+:Destroyer:Space Dock::
+:Battleship:Destroyer::
+:Carrier:Destroyer::
+:Mothership:Carrier:Battleship:
+:Interceptors:Carrier::
+:Intruders:Interceptors::
+:Terraform 1:Colony Ship::
+:Terraform 2:Terraform 1::
+:Terraform 3:Terraform 2::
+:Terraform 4:Terraform 3::
+:Terraform 5:Terraform 4::
+:Nova Bomb:Terraform 5:Photon Torpedos:
+:SRMs:Rocketry 1::
+:LRMs:SRMs:Rocketry 2:
+:HyperV Missles:LRMs:Rocketry 3:
+:Colony Ship:Space Dock::
