@@ -1,133 +1,11 @@
-<!-- rewrite/game.html -->
+<!-- rewrite/game.html - Complete implementation -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Galaxy Conquest</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: #222 url('spacebak.jpg');
-            color: white;
-            font-family: Verdana, sans-serif;
-        }
-        
-        button {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-        }
-        
-        td {
-            font-size: 70%;
-        }
-        
-        .hidden {
-            display: none;
-        }
-        
-        #minimapid {
-            position: absolute;
-            right: 0px;
-            bottom: 0px;
-            width: 500px;
-            height: 356px;
-            background-color: #5C605A;
-        }
-        
-        #avatarbox {
-            position: absolute;
-            right: 0;
-            bottom: 359px;
-            width: 200px;
-            height: 180px;
-        }
-        
-        #empireupdates {
-            padding: 5px 15px;
-            position: absolute;
-            right: 180px;
-            bottom: 62px;
-            width: 320px;
-            background-color: #C2B49E;
-            border-radius: 15px;
-        }
-        
-        #resourceBar {
-            background-color: #333;
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 495px;
-            border-bottom: 5px solid #444;
-            border-right: 5px solid #444;
-            height: 30px;
-            border-radius: 0 0 15px 0;
-        }
-        
-        #turnTimeBar {
-            background-color: #333;
-            position: absolute;
-            right: 0;
-            top: 0;
-            width: 300px;
-            border-bottom: 5px solid #222;
-            border-left: 5px solid #444;
-            height: 90px;
-        }
-        
-        .tab-button {
-            padding: 8px 15px;
-            margin: 0 5px;
-            cursor: pointer;
-            border: 1px solid #666;
-            background: #444;
-            color: white;
-        }
-        
-        .tab-button.active {
-            background: #666;
-            border-bottom: none;
-        }
-        
-        .tab-panel {
-            border: 1px solid #666;
-            padding: 15px;
-            background: rgba(30, 30, 30, 0.8);
-        }
-        
-        .hex-tile {
-            width: 40px;
-            height: 46px;
-        }
-        
-        #multiMove {
-            z-index: 10;
-            position: absolute;
-            display: none;
-            left: 10px;
-            bottom: 10px;
-            width: 500px;
-            height: 400px;
-            background-color: #555;
-            border: 5px solid #111;
-        }
-        
-        #battleGround {
-            position: absolute;
-            display: none;
-            left: 10%;
-            top: 10%;
-            width: 80%;
-            height: 80%;
-            background-color: #000;
-            background-image: url('spacebak.jpg');
-            z-index: 1000;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <!-- Resource Bar -->
@@ -139,11 +17,14 @@
     
     <!-- Turn Time Bar -->
     <div id="turnTimeBar">
-        <center>
-            <br />
-            Game mode: <i>Large Conquest</i>
-            <button style="padding:5px;margin:5px" id="nextTurnBtn"><b id="nextTurnText">Game Start</b></button>begins in <b id='turnRedFlashWhenLow'> ...</b>
-        </center>
+        <br />
+        Game mode: <i>Large Conquest</i>
+        <button style="padding:5px;margin:5px" id="nextTurnBtn"><b id="nextTurnText">Game Start</b></button>begins in <b id='turnRedFlashWhenLow'> ...</b>
+    </div>
+    
+    <!-- Connection Info -->
+    <div style="position:absolute;top:0;left:550px;">
+        <span id="status">Not connected</span>, Users connected: <span id="connected">-</span>
     </div>
     
     <!-- Sector Display -->
@@ -210,22 +91,17 @@
             </font>
             <font color="#555" size="1"><i><p id="timeSince" style="position:absolute;right:25px;bottom:-8px;">Have Fun!</p></i></font>
         </div>
-        <img style="z-index:-1;position:absolute;right:37px;top:0px;" src="avatar1.jpg" /><br />
+        <img style="z-index:-1;position:absolute;right:37px;top:0px;" src="avatar1.jpg" />
         <img style="z-index:-1;position:absolute;right:0;top:126px;width:525px;height:59px;" src="topofmap.png" />
         <img style="z-index:-1;position:absolute;right:500px;top:184px;width:40px;" src="mapleftside.png" />
         <img style="z-index:-1;position:absolute;right:40px;top:140px;" src="waveform.gif" />
-    </div>
-    
-    <!-- Connection Info -->
-    <div style="position:absolute;top:0;left:550px;">
-        <span id="status">Not connected</span>, Users connected: <span id="connected">-</span>
     </div>
     
     <!-- Control Pad -->
     <div id="controlPadGUI" style="position:absolute;left:0;bottom:0;width:500px;height:360px;">
         <!-- Tab Buttons -->
         <div style="display:flex;margin-bottom:-1px;">
-            <button id="buildtab" class="tab-button">Build</button>
+            <button id="buildtab" class="tab-button active">Build</button>
             <button id="fleettab" class="tab-button">Fleet</button>
             <button id="techtab" class="tab-button">Research</button>
             <button id="colonizetab" class="tab-button">Colonize</button>
@@ -233,17 +109,17 @@
         
         <!-- Build Tab -->
         <div id="build" class="tab-panel">
-            <!-- Building buttons will be dynamically inserted here -->
+            <!-- Building buttons -->
         </div>
         
         <!-- Fleet Tab -->
         <div id="fleet" class="tab-panel hidden">
-            <!-- Fleet management UI will be dynamically inserted here -->
+            <!-- Fleet management UI -->
         </div>
         
         <!-- Tech Tab -->
         <div id="techtree" class="tab-panel hidden">
-            <!-- Tech tree UI will be dynamically inserted here -->
+            <!-- Tech tree UI -->
         </div>
         
         <!-- Colonize Tab -->
@@ -271,15 +147,23 @@
     
     <!-- Chat Input -->
     <div style="position:absolute;bottom:0;left:0;width:500px;height:30px;z-index:100;">
-        <form id="chatForm" onsubmit="sendChat(event)">
+        <form id="chatForm">
             <input id="chat" type="text" style="width:480px;" placeholder="Type and press enter to chat" />
         </form>
     </div>
     
+    <!-- Reconnection Window -->
+    <div id="lobbyWindow" style="display:none;">
+        <center><br /><br /><h1>THE CONNECTION WAS LOST</h1><br />Please refresh the page to reconnect.<br /><br /><button onclick="location.reload(true)" style="padding:20px;">Refresh this page</button></center>
+    </div>
+    
     <!-- Scripts -->
+    <script src="ui.js"></script>
     <script src="minimap.js"></script>
+    <script src="chat.js"></script>
+    <script src="battle.js"></script>
     <script src="controlpad.js"></script>
     <script src="connect.js"></script>
-    <script src="main.js"></script>
+    <script src="game.js"></script>
 </body>
 </html>

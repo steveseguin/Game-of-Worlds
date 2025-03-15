@@ -1,4 +1,4 @@
-// Create file: rewrite/chat.js
+// rewrite/chat.js - Complete implementation
 
 const ChatSystem = (function() {
     let chatHistory = [];
@@ -10,7 +10,7 @@ const ChatSystem = (function() {
     let chatfadevalue = 100;
     
     function initialize() {
-        // Set up event handlers
+        // Set up chat form event handler
         document.getElementById('chatForm')?.addEventListener('submit', sendChat);
         document.getElementById('chatHistoryUp')?.addEventListener('click', showChatHistory);
         document.getElementById('chatHistoryDown')?.addEventListener('click', function() {

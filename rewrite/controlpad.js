@@ -1,4 +1,4 @@
-// Create file: rewrite/controlpad.js
+// rewrite/controlpad.js - Complete implementation
 
 const ControlPad = (function() {
     const TABS = {
@@ -23,13 +23,7 @@ const ControlPad = (function() {
         }
         
         // Set up ship buttons
-        for (let i = 1; i <= 9; i++) {
-            const shipBtn = document.querySelector(`button[onclick="buyShip(${i});"]`);
-            if (shipBtn) {
-                shipBtn.removeAttribute('onclick');
-                shipBtn.addEventListener('click', () => buyShip(i));
-            }
-        }
+        setupShipButtons();
         
         // Set up tech buttons
         for (let i = 1; i <= 9; i++) {
@@ -41,6 +35,16 @@ const ControlPad = (function() {
         
         // Default to build tab
         switchTab(TABS.BUILD);
+    }
+    
+    function setupShipButtons() {
+        for (let i = 1; i <= 9; i++) {
+            const shipBtn = document.querySelector(`button[onclick="buyShip(${i});"]`);
+            if (shipBtn) {
+                shipBtn.removeAttribute('onclick');
+                shipBtn.addEventListener('click', () => buyShip(i));
+            }
+        }
     }
     
     function setupFleetUI() {
@@ -84,7 +88,9 @@ const ControlPad = (function() {
         
         if (!fromSelect || !toSelect) return;
         
-        Array.from(fromSelect.selectedOptions).forEach(option => {
+        const selectedOptions = Array.from(fromSelect.selectedOptions);
+        
+        selectedOptions.forEach(option => {
             const newOption = document.createElement('option');
             newOption.value = option.value;
             newOption.text = option.text;
@@ -92,8 +98,10 @@ const ControlPad = (function() {
         });
         
         // Remove selected options from source
-        while (fromSelect.selectedOptions.length) {
-            fromSelect.remove(fromSelect.selectedOptions[0].index);
+        for (let i = fromSelect.options.length - 1; i >= 0; i--) {
+            if (fromSelect.options[i].selected) {
+                fromSelect.remove(i);
+            }
         }
     }
     
@@ -102,5 +110,3 @@ const ControlPad = (function() {
         switchTab
     };
 })();
-
-document.addEventListener('DOMContentLoaded', ControlPad.initialize);

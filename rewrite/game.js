@@ -1,7 +1,6 @@
-// Create file: rewrite/game.js
-// This file brings together all game components
+// rewrite/game.js - Complete implementation
 
-ocument.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function() {
     // Initialize UI components
     if (window.GameUI) {
         GameUI.initialize();
@@ -62,7 +61,6 @@ function adjustViewport() {
     document.body.style.height = window.screen.availHeight;
 }
 
-// Disable text selection
 function disableSelection(element) {
     if (!element) return;
     
