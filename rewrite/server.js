@@ -1430,3 +1430,19 @@ function buyTech(message, connection) {
         }
     );
 }
+
+// Export utility functions for use in other modules
+module.exports = {
+    updateAllSectors,
+    updateSector2,
+    updateResources,
+    broadcastToGame,
+    colonizePlanet,
+    buyTech,
+    buyShip,
+    buyBuilding,
+    probeSector,
+    moveFleet,
+    handleGameStart,
+    nextTurn
+};

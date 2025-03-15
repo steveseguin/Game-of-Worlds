@@ -176,6 +176,27 @@ const MiniMap = (function() {
     };
 })();
 
+function fade(from, to, element) {
+    if (!element) return;
+    
+    const fromColor = parseInt(from, 16);
+    const toColor = parseInt(to, 16);
+    const diff = (toColor - fromColor) / 10;
+    
+    let currentValue = fromColor;
+    const fadeInterval = setInterval(() => {
+        currentValue += diff;
+        if ((diff > 0 && currentValue >= toColor) || 
+            (diff < 0 && currentValue <= toColor)) {
+            clearInterval(fadeInterval);
+            currentValue = toColor;
+        }
+        
+        const hexColor = Math.round(currentValue).toString(16).padStart(6, '0');
+        element.setAttribute("fill", `#${hexColor}`);
+    }, 50);
+}
+
 // Initialize when document is loaded
 document.addEventListener('DOMContentLoaded', function() {
     const minimapContainer = document.getElementById('minimapid');
@@ -183,3 +204,12 @@ document.addEventListener('DOMContentLoaded', function() {
         MiniMap.initialize('minimapid');
     }
 });
+
+// Export the module
+if (typeof window !== 'undefined') {
+    // For browser environment
+    window.MiniMap = MiniMap;
+} else {
+    // For Node.js environment
+    module.exports = MiniMap;
+}

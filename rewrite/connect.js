@@ -7,6 +7,9 @@ let chatID = 1;
 let chatHistory = [];
 let chatHistoryTime = [];
 let timeSinceCounter;
+let chatfadetimer;
+let chatfadebegin;
+let chatfadevalue = 100;
 
 // Game state object to track player data
 const GAME_STATE = {
@@ -58,14 +61,13 @@ function sendChat(event) {
     }
 }
 
-// Time since and chat history functions
 function pushLog() {
     const d = new Date();
     document.getElementById('timeSince').innerHTML = "0 seconds ago.";
     chatHistoryTime.push(d.getTime());
     chatHistory.push(document.getElementById("log").innerHTML);
     clearInterval(timeSinceCounter);
-    timeSinceCounter = setInterval("timelogupdate(1)", 1000);
+    timeSinceCounter = setInterval(timelogupdate, 1000);
     chatID = 1;
 }
 
