@@ -161,3 +161,5 @@ const BattleSystem = (function() {
         createBattleVisualization
     };
 })();
+
+window.BattleSystem = BattleSystem;

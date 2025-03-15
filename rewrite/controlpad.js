@@ -110,3 +110,5 @@ const ControlPad = (function() {
         switchTab
     };
 })();
+
+window.ControlPad = ControlPad;

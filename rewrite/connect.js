@@ -581,11 +581,11 @@ function updateBuilds(message) {
 }
 
 // Handle battle visualization and processing
-function battle(message) {
-    createBattleVisualization(message);
+function createBattleVisualization(message) {
+    if (window.BattleSystem) {
+        BattleSystem.createBattleVisualization(message);
+    }
 }
-
-
 
 // Animate a battle round
 function animateBattleRound(battleData, round, container) {
@@ -1764,7 +1764,156 @@ function gameMechanics(gameId) {
             );
         }
     });
+}function gameMechanics(gameId) {
+    // Process resource production for all colonized sectors
+    const sectors = getColonizedSectors(gameId);
+    
+    // Group sectors by owner
+    const ownerSectors = {};
+    sectors.forEach(sector => {
+        if (!ownerSectors[sector.ownerid]) {
+            ownerSectors[sector.ownerid] = [];
+        }
+        ownerSectors[sector.ownerid].push(sector);
+    });
+    
+    // Process each player's resources
+    Object.entries(ownerSectors).forEach(([ownerId, sectors]) => {
+        // Calculate production
+        let totalMetal = 0;
+        let totalCrystal = 0;
+        let totalResearch = 0;
+        
+        sectors.forEach(sector => {
+            // Base production from buildings
+            const metalProduction = sector.metallvl * 100 * (sector.metalbonus / 100);
+            const crystalProduction = sector.crystallvl * 100 * (sector.crystalbonus / 100);
+            const researchProduction = sector.academylvl * 100;
+            
+            totalMetal += metalProduction;
+            totalCrystal += crystalProduction;
+            totalResearch += researchProduction;
+        });
+        
+        // Update player's resources
+        // This uses websocket due to the incomplete database implementation
+        const player = clientMap[ownerId];
+        if (player) {
+            // This would normally be a database update
+            updateResources(player);
+            updateAllSectors(gameId, player);
+            player.sendUTF(`Resource production: ${Math.round(totalMetal)} Metal, ${Math.round(totalCrystal)} Crystal, ${Math.round(totalResearch)} Research`);
+        }
+    });
+    
+    // Process ship construction
+    processShipConstruction(gameId);
 }
+
+// Helper function to get colonized sectors
+function getColonizedSectors(gameId) {
+    // Create a results array to hold colonized sectors
+    const colonizedSectors = [];
+    
+    // This would normally be a database query
+    // For now we'll iterate through current connections to find player sectors
+    clients.forEach(client => {
+        if (client.gameid === gameId) {
+            // Query database for player's colonized sectors
+            db.query(`SELECT * FROM map${gameId} WHERE ownerid = ? AND colonized = 1`, 
+                [client.name], (err, results) => {
+                    if (err) {
+                        console.error("Error retrieving colonized sectors:", err);
+                        return;
+                    }
+                    
+                    // Add found sectors to the results array
+                    results.forEach(sector => {
+                        colonizedSectors.push(sector);
+                    });
+                }
+            );
+        }
+    });
+    
+    return colonizedSectors;
+}
+
+// Helper function to process ship construction
+function processShipConstruction(gameId) {
+    // Get all sectors with ongoing ship production
+    db.query(`SELECT * FROM map${gameId} WHERE 
+              totship1build > 0 OR totship2build > 0 OR totship3build > 0 OR 
+              totship4build > 0 OR totship5build > 0 OR totship6build > 0 OR 
+              totship7build > 0 OR totship8build > 0 OR totship9build > 0`, 
+        (err, sectors) => {
+            if (err) {
+                console.error("Error retrieving sectors with ship production:", err);
+                return;
+            }
+            
+            // Process each sector's ship construction
+            sectors.forEach(sector => {
+                // Check each ship type
+                for (let i = 1; i <= 9; i++) {
+                    const buildingShips = sector[`totship${i}build`] || 0;
+                    
+                    if (buildingShips > 0) {
+                        // Complete one ship of this type
+                        db.query(`UPDATE map${gameId} SET 
+                            totalship${i} = totalship${i} + 1, 
+                            totship${i}build = totship${i}build - 1 
+                            WHERE sectorid = ?`, 
+                            [sector.sectorid], (err) => {
+                                if (err) {
+                                    console.error(`Error updating ship construction for sector ${sector.sectorid}:`, err);
+                                    return;
+                                }
+                                
+                                // Notify player if they're online
+                                const client = clientMap[sector.ownerid];
+                                if (client) {
+                                    client.sendUTF(`A new ship has been completed in sector ${sector.sectorid.toString(16).toUpperCase()}`);
+                                    
+                                    // Update player's view
+                                    updateSector2(sector.sectorid, client);
+                                }
+                            }
+                        );
+                    }
+                }
+            });
+        }
+    );
+}
+
+function sendmmf() {
+    const sectorId = document.getElementById('sectorofattack').innerHTML;
+    const shipList = document.getElementById('shipsFromNearBy');
+    
+    if (!sectorId || !shipList) return;
+    
+    let message = sectorId;
+    let totalShips = 0;
+    
+    // Gather selected ships
+    for (let i = 0; i < shipList.options.length; i++) {
+        if (shipList.options[i].selected) {
+            message += ":" + shipList.options[i].value;
+            totalShips++;
+        }
+    }
+    
+    if (totalShips === 0) {
+        alert("No ships selected");
+        return;
+    }
+    
+    // Send command to server
+    websocket.send("//sendmmf:" + message);
+    document.getElementById('multiMove').style.display = 'none';
+}
+
 // Initialize WebSocket when the page loads
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize WebSocket connection
@@ -1785,3 +1934,5 @@ document.addEventListener('DOMContentLoaded', function() {
     // Disable selection on game elements
     disableSelection(document);
 });
+
+window.initializeGame = initializeGame;

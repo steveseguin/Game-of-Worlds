@@ -101,5 +101,10 @@ function initializeGame() {
     console.log('Galaxy Conquest initialized');
 }
 
+document.getElementById('chatForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    sendChat(e);
+});
+
 // Add this at the end of the file
 document.addEventListener('DOMContentLoaded', initializeGame);

@@ -126,3 +126,6 @@ const ChatSystem = (function() {
         showChatHistory
     };
 })();
+
+ChatSystem.initialize();
+window.ChatSystem = ChatSystem;
