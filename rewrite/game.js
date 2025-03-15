@@ -1,8 +1,8 @@
 // Create file: rewrite/game.js
 // This file brings together all game components
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize UI
+ocument.addEventListener('DOMContentLoaded', function() {
+    // Initialize UI components
     if (window.GameUI) {
         GameUI.initialize();
     }
@@ -15,6 +15,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize galaxy map
     if (window.GalaxyMap) {
         GalaxyMap.initialize(14, 8, 'minimapid');
+    }
+    
+    // Initialize chat system
+    if (window.ChatSystem) {
+        ChatSystem.initialize();
     }
     
     // Initialize websocket connection
@@ -38,9 +43,6 @@ function setupEventListeners() {
     // Next turn button
     document.getElementById('nextTurnBtn')?.addEventListener('click', nextTurn);
     
-    // Chat form
-    document.getElementById('chatForm')?.addEventListener('submit', sendChat);
-    
     // Multi-move controls
     document.getElementById('closeMultiMove')?.addEventListener('click', function() {
         document.getElementById('multiMove').style.display = 'none';
@@ -58,4 +60,17 @@ function adjustViewport() {
     }
     document.body.style.width = window.screen.availWidth;
     document.body.style.height = window.screen.availHeight;
+}
+
+// Disable text selection
+function disableSelection(element) {
+    if (!element) return;
+    
+    element.onselectstart = function() { return false; };
+    element.style.userSelect = "none";
+    
+    const children = element.getElementsByTagName('*');
+    for (let i = 0; i < children.length; i++) {
+        disableSelection(children[i]);
+    }
 }

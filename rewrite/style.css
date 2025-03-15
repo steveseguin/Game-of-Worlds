@@ -1,0 +1,212 @@
+
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #222 url('spacebak.jpg');
+    color: white;
+    font-family: Verdana, sans-serif;
+}
+
+button {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+td {
+    font-size: 70%;
+}
+
+.hidden {
+    display: none;
+}
+
+#minimapid {
+    position: absolute;
+    right: 0px;
+    bottom: 0px;
+    width: 500px;
+    height: 356px;
+    background-color: #5C605A;
+}
+
+#avatarbox {
+    position: absolute;
+    right: 0;
+    bottom: 359px;
+    width: 200px;
+    height: 180px;
+}
+
+#empireupdates {
+    padding: 5px 15px;
+    position: absolute;
+    right: 180px;
+    bottom: 62px;
+    width: 320px;
+    background-color: #C2B49E;
+    border-radius: 15px;
+}
+
+#resourceBar {
+    background-color: #333;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 495px;
+    border-bottom: 5px solid #444;
+    border-right: 5px solid #444;
+    height: 30px;
+    border-radius: 0 0 15px 0;
+}
+
+#turnTimeBar {
+    background-color: #333;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 300px;
+    border-bottom: 5px solid #222;
+    border-left: 5px solid #444;
+    height: 90px;
+    text-align: center;
+}
+
+.tab-button {
+    padding: 8px 15px;
+    background: #444;
+    color: white;
+    border: 1px solid #666;
+    cursor: pointer;
+    border-radius: 4px 4px 0 0;
+    margin: 0 2px;
+}
+
+.tab-button.active {
+    background: #666;
+    border-bottom: none;
+}
+
+.tab-panel {
+    border: 1px solid #666;
+    padding: 15px;
+    background: rgba(30, 30, 30, 0.8);
+    border-radius: 0 4px 4px 4px;
+}
+
+.hex-tile {
+    width: 40px;
+    height: 46px;
+}
+
+/* Fleet management */
+.fleet-selectors {
+    display: flex;
+    justify-content: space-between;
+    margin: 15px 0;
+}
+
+.fleet-move-buttons {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 10px;
+}
+
+.fleet-move-buttons button {
+    margin: 5px;
+    padding: 5px 10px;
+    width: 40px;
+}
+
+/* Building buttons */
+.building-row {
+    display: flex;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.building-info {
+    flex: 2;
+}
+
+.building-cost {
+    flex: 1;
+    text-align: right;
+}
+
+.building-button {
+    margin-left: 10px;
+    padding: 5px 10px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+}
+
+.building-button:hover {
+    background-color: #45a049;
+}
+
+.tech-button {
+    background-color: #2196F3;
+    color: white;
+    padding: 10px;
+    margin: 5px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.tech-button.unavailable {
+    background-color: #9E9E9E;
+    opacity: 0.7;
+}
+
+.tech-button:hover {
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+/* Battle system */
+#battleGround {
+    position: absolute;
+    display: none;
+    left: 10%;
+    top: 10%;
+    width: 80%;
+    height: 80%;
+    background-color: #000;
+    background-image: url('spacebak.jpg');
+    z-index: 1000;
+}
+
+/* Multi-move dialog */
+#multiMove {
+    z-index: 10;
+    position: absolute;
+    display: none;
+    left: 10px;
+    bottom: 10px;
+    width: 500px;
+    height: 400px;
+    background-color: #555;
+    border: 5px solid #111;
+    padding: 10px;
+}
+
+/* Reconnection Window */
+#lobbyWindow {
+    display: none;
+    position: absolute;
+    left: 10%;
+    top: 10%;
+    width: 80%;
+    height: 80%;
+    background-color: #333;
+    border: 5px solid #444;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}

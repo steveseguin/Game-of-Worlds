@@ -153,11 +153,18 @@ function handleWebSocketMessage(message) {
     }
     // Battle information
     else if (message.indexOf("battle:") === 0) {
-        handleBattle(message);
+        if (window.BattleSystem) {
+            window.BattleSystem.createBattleVisualization(message);
+        } else {
+            createBattleVisualization(message);
+        }
     }
     // Lobby information
     else if (message.indexOf("lobby::") === 0) {
-        // Game not started yet, no special handling needed
+        // Game not started yet
+        if (window.ChatSystem) {
+            window.ChatSystem.displayMessage("Waiting for game to start...");
+        }
     }
     // Max build notification
     else if (message.indexOf("maxbuild::") === 0) {
@@ -169,15 +176,7 @@ function handleWebSocketMessage(message) {
     }
     // Player list
     else if (message.indexOf("pl:") === 0) {
-        const players = message.split(":");
-        for (let i = 1; i < players.length; i++) {
-            if (players[i]) {
-                const playerNameElement = document.getElementById(`player${i}name`);
-                if (playerNameElement) {
-                    playerNameElement.textContent = "Player " + players[i];
-                }
-            }
-        }
+        updatePlayerList(message);
     }
     // Probe only notification
     else if (message.indexOf("probeonly:") === 0) {
@@ -200,7 +199,7 @@ function handleWebSocketMessage(message) {
     }
     // Owned sector information
     else if (message.indexOf("ownsector:") === 0) {
-        colorSector(message);
+        updateOwnedSector(message);
     }
     // Fleet information
     else if (message.indexOf("fleet:") === 0) {
@@ -236,10 +235,13 @@ function handleWebSocketMessage(message) {
     }
     // Chat or other messages
     else {
-        displayChatMessage(message);
+        if (window.ChatSystem) {
+            window.ChatSystem.displayMessage(message);
+        } else {
+            displayChatMessage(message);
+        }
     }
 }
-
 
 function updateBuildings(message) {
     const parts = message.split(':');
