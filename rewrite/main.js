@@ -1250,6 +1250,100 @@ function setalpha(element, opacity) {
     element.style.opacity = opacity / 100;
 }
 
+// Game initialization
+(function() {
+    // Store modules
+    const modules = {};
+    
+    // Initialize the game
+    function initialize() {
+        console.log('Galaxy Conquest initialization');
+        
+        // Register modules
+        registerModules();
+        
+        // Initialize each module
+        initializeModules();
+        
+        // Set up global event listeners
+        setupGlobalEventListeners();
+        
+        console.log('Galaxy Conquest initialized successfully');
+    }
+    
+    // Register all game modules
+    function registerModules() {
+        // Core modules
+        modules.gameUI = window.GameUI;
+        modules.galaxyMap = window.GalaxyMap;
+        modules.controlPad = window.ControlPad;
+        
+        // Check for module availability
+        if (!modules.gameUI) console.warn('GameUI module not found');
+        if (!modules.galaxyMap) console.warn('GalaxyMap module not found');
+        if (!modules.controlPad) console.warn('ControlPad module not found');
+    }
+    
+    // Initialize registered modules
+    function initializeModules() {
+        // Initialize UI components
+        if (modules.gameUI) modules.gameUI.initialize();
+        
+        // Initialize minimap
+        if (modules.galaxyMap) {
+            const minimapContainer = document.getElementById('minimapid');
+            if (minimapContainer) {
+                modules.galaxyMap.initialize(14, 8, 'minimapid');
+            }
+        }
+        
+        // Initialize control pad
+        if (modules.controlPad) modules.controlPad.initialize();
+    }
+    
+    // Set up global event listeners
+    function setupGlobalEventListeners() {
+        // Listen for window resize
+        window.addEventListener('resize', handleWindowResize);
+        
+        // Listen for visibility change
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        // Prevent context menu on right-click
+        document.addEventListener('contextmenu', e => e.preventDefault());
+    }
+    
+    // Window resize handler
+    function handleWindowResize() {
+        // Adjust game viewport scaling
+        if (window.screen.availHeight < window.screen.availWidth) {
+            document.body.style.zoom = window.screen.availHeight / 700;
+        } else {
+            document.body.style.zoom = window.screen.availWidth / 700;
+        }
+    }
+    
+    // Visibility change handler (pause/resume game timers)
+    function handleVisibilityChange() {
+        if (document.hidden) {
+            // Pause game timers when tab is not visible
+            if (window.turnInterval) {
+                window.turnIntervalPaused = window.turnInterval;
+                clearInterval(window.turnInterval);
+            }
+        } else {
+            // Resume game timers when tab becomes visible
+            if (window.turnIntervalPaused) {
+                window.turnInterval = setInterval(updateTimer, 1000);
+                window.turnIntervalPaused = null;
+            }
+        }
+    }
+    
+    // Initialize the game when document is ready
+    document.addEventListener('DOMContentLoaded', initialize);
+})();
+
 // Update owned sector on map
 function updateOwnedSector(message) {
     // Parse message
