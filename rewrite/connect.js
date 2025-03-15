@@ -12,12 +12,6 @@ let chatfadebegin;
 let chatfadevalue = 100;
 
 
-// Chat fade effects
-let chatfadetimer;
-let chatfadebegin;
-let chatfadevalue = 100;
-
-
 
 const GAME_STATE = {
     player: {
@@ -1422,6 +1416,355 @@ function disableSelection(element) {
     }
 }
 
+// In rewrite/connect.js - Add the missing moveFleet function
+
+function moveFleet(message, connection) {
+    const parts = message.split(":");
+    if (parts.length < 3) return;
+    
+    const targetSector = parseInt(parts[1], 16);
+    const ships = parts[2].split(",");
+    
+    // Get player's current sector
+    if (!connection.sectorid) {
+        connection.sendUTF('You need to select a sector first');
+        return;
+    }
+    
+    // Get player's resources
+    db.query(`SELECT * FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, 
+        [connection.name], (err, playerResults) => {
+            if (err || playerResults.length === 0) {
+                console.error("Error retrieving player data:", err);
+                connection.sendUTF('Error: Player data not found');
+                return;
+            }
+            
+            const player = playerResults[0];
+            
+            // Get source sector data
+            db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, 
+                [connection.sectorid], (err, sourceResults) => {
+                    if (err || sourceResults.length === 0) {
+                        console.error("Error retrieving source sector data:", err);
+                        connection.sendUTF('Error: Source sector not found');
+                        return;
+                    }
+                    
+                    const sourceSector = sourceResults[0];
+                    
+                    // Calculate movement cost
+                    let movementCost = 0;
+                    let fleetToMove = {
+                        ship1: 0, ship2: 0, ship3: 0, ship4: 0, ship5: 0,
+                        ship6: 0, ship7: 0, ship8: 0, ship9: 0
+                    };
+                    
+                    // Parse requested ships to move
+                    for (const ship of ships) {
+                        const [type, count] = ship.split("=");
+                        const shipType = parseInt(type);
+                        const shipCount = parseInt(count);
+                        
+                        if (isNaN(shipType) || isNaN(shipCount) || shipType < 1 || shipType > 9) {
+                            continue;
+                        }
+                        
+                        // Check if player has enough ships
+                        const availableShips = sourceSector[`totalship${shipType}`] || 0;
+                        if (shipCount > availableShips) {
+                            connection.sendUTF(`Not enough ships of type ${shipType}`);
+                            return;
+                        }
+                        
+                        fleetToMove[`ship${shipType}`] = shipCount;
+                        
+                        // Add movement cost
+                        switch (shipType) {
+                            case 1: movementCost += shipCount * 200; break; // Frigate
+                            case 2: movementCost += shipCount * 300; break; // Destroyer
+                            case 3: movementCost += shipCount * 100; break; // Scout
+                            case 4: movementCost += shipCount * 200; break; // Cruiser
+                            case 5: movementCost += shipCount * 300; break; // Battleship
+                            case 6: movementCost += shipCount * 200; break; // Colony Ship
+                            case 7: movementCost += shipCount * 500; break; // Dreadnought
+                            case 8: movementCost += shipCount * 200; break; // Intruder
+                            case 9: movementCost += shipCount * 300; break; // Carrier
+                        }
+                    }
+                    
+                    // Check if player has enough crystal
+                    if (player.crystal < movementCost) {
+                        connection.sendUTF(`Not enough crystal. Movement requires ${movementCost}`);
+                        return;
+                    }
+                    
+                    // Update player's crystal
+                    db.query(`UPDATE players${connection.gameid} SET crystal = crystal - ? WHERE playerid = ?`, 
+                        [movementCost, connection.name]);
+                    
+                    // Update source sector ships
+                    let updateQuery = `UPDATE map${connection.gameid} SET `;
+                    for (let i = 1; i <= 9; i++) {
+                        updateQuery += `totalship${i} = totalship${i} - ${fleetToMove[`ship${i}`]}`;
+                        if (i < 9) updateQuery += ', ';
+                    }
+                    updateQuery += ` WHERE sectorid = ?`;
+                    
+                    db.query(updateQuery, [connection.sectorid]);
+                    
+                    // Schedule fleet arrival
+                    setTimeout(() => {
+                        endTravel(
+                            fleetToMove.ship1, fleetToMove.ship2, fleetToMove.ship3,
+                            fleetToMove.ship4, fleetToMove.ship5, fleetToMove.ship6,
+                            fleetToMove.ship7, fleetToMove.ship8, fleetToMove.ship9,
+                            connection.name, connection.gameid, targetSector, 
+                            player, targetSector, connection
+                        );
+                    }, 10000);
+                    
+                    connection.sendUTF(`Fleet dispatched to sector ${targetSector.toString(16).toUpperCase()}. Cost: ${movementCost} crystal`);
+                    updateAllSectors(connection.gameid, connection);
+                }
+            );
+        }
+    );
+}
+
+function probeSector(message, connection) {
+    const sectorId = parseInt(message.split(":")[1], 16);
+    
+    // Check if player has enough crystal
+    db.query(`SELECT * FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, 
+        [connection.name], (err, playerResults) => {
+            if (err || playerResults.length === 0) {
+                console.error("Error retrieving player data:", err);
+                connection.sendUTF('Error: Player data not found');
+                return;
+            }
+            
+            const player = playerResults[0];
+            
+            // Probe costs 300 crystal
+            if (player.crystal < 300) {
+                connection.sendUTF('Not enough crystal. Probing requires 300 crystal');
+                return;
+            }
+            
+            // Deduct crystal
+            db.query(`UPDATE players${connection.gameid} SET crystal = crystal - 300 WHERE playerid = ?`, 
+                [connection.name]);
+            
+            // Get sector data
+            db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, 
+                [sectorId], (err, sectorResults) => {
+                    if (err || sectorResults.length === 0) {
+                        console.error("Error retrieving sector data:", err);
+                        connection.sendUTF('Error: Sector not found');
+                        return;
+                    }
+                    
+                    const sector = sectorResults[0];
+                    
+                    // Send basic sector data to client
+                    connection.sendUTF(`sector:${sectorId.toString(16).toUpperCase()}:owner:${sector.ownerid}:type:${sector.sectortype}:artifact:${sector.artifact}:metalbonus:${sector.metalbonus}:crystalbonus:${sector.crystalbonus}:terraform:${sector.terraformlvl}`);
+                    
+                    // If player has advanced probe tech, send more information
+                    db.query(`SELECT tech8 FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, 
+                        [connection.name], (err, techResults) => {
+                            if (!err && techResults.length > 0) {
+                                const probeTech = techResults[0].tech8 || 0;
+                                
+                                // Higher probe tech gives more information
+                                if (probeTech >= 3) {
+                                    // Send building levels
+                                    connection.sendUTF(`ub:${sector.metallvl}:${sector.crystallvl}:${sector.academylvl}:${sector.shipyardlvl}:${sector.orbitalturret}:${sector.warpgate}`);
+                                }
+                                
+                                if (probeTech >= 5) {
+                                    // Send fleet information
+                                    connection.sendUTF(`fleet:${sector.totalship1}:${sector.totalship2}:${sector.totalship3}:${sector.totalship4}:${sector.totalship5}:${sector.totalship6}:${sector.totalship7}:${sector.totalship8}:${sector.totalship9}:${sector.totship1build}:${sector.totship2build}:${sector.totship3build}:${sector.totship4build}:${sector.totship5build}:${sector.totship6build}:${sector.totship7build}:${sector.totship8build}:${sector.totship9build}`);
+                                }
+                            }
+                        }
+                    );
+                    
+                    connection.sendUTF(`Probe sent to sector ${sectorId.toString(16).toUpperCase()}`);
+                }
+            );
+        }
+    );
+}
+
+function colonizePlanet(connection) {
+    if (!connection.sectorid) {
+        connection.sendUTF('You need to select a sector first');
+        return;
+    }
+    
+    // Get sector data
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, 
+        [connection.sectorid], (err, sectorResults) => {
+            if (err || sectorResults.length === 0) {
+                console.error("Error retrieving sector data:", err);
+                connection.sendUTF('Error: Sector not found');
+                return;
+            }
+            
+            const sector = sectorResults[0];
+            
+            // Get player's terraform tech level
+            db.query(`SELECT tech7 FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, 
+                [connection.name], (err, techResults) => {
+                    if (err || techResults.length === 0) {
+                        console.error("Error retrieving tech data:", err);
+                        connection.sendUTF('Error: Tech data not found');
+                        return;
+                    }
+                    
+                    const terraformLevel = techResults[0].tech7 || 0;
+                    
+                    // Check colonization requirements
+                    if (sector.ownerid != connection.name) {
+                        connection.sendUTF('You must control this sector to colonize it');
+                        return;
+                    }
+                    
+                    if (sector.colonized === 1) {
+                        connection.sendUTF('This sector is already colonized');
+                        return;
+                    }
+                    
+                    if (sector.sectortype <= 5) {
+                        connection.sendUTF('This sector has no planet to colonize');
+                        return;
+                    }
+                    
+                    if (terraformLevel < sector.terraformlvl) {
+                        connection.sendUTF(`This planet requires terraform level ${sector.terraformlvl} to colonize`);
+                        return;
+                    }
+                    
+                    if (sector.totalship6 <= 0) {
+                        connection.sendUTF('You need at least one colony ship in this sector to colonize');
+                        return;
+                    }
+                    
+                    // All requirements met, colonize the planet
+                    db.query(`UPDATE map${connection.gameid} SET 
+                        colonized = 1, 
+                        totalship6 = totalship6 - 1
+                        WHERE sectorid = ?`, 
+                        [connection.sectorid], (err) => {
+                            if (err) {
+                                console.error("Error colonizing planet:", err);
+                                connection.sendUTF('Error during colonization');
+                                return;
+                            }
+                            
+                            connection.sendUTF(`Sector ${connection.sectorid.toString(16).toUpperCase()} has been successfully colonized!`);
+                            updateSector2(connection.sectorid, connection);
+                            updateAllSectors(connection.gameid, connection);
+                        }
+                    );
+                }
+            );
+        }
+    );
+}
+
+function gameMechanics(gameId) {
+    // Process resource production
+    db.query(`SELECT * FROM map${gameId} WHERE colonized = 1`, (err, sectors) => {
+        if (err) {
+            console.error("Error retrieving colonized sectors:", err);
+            return;
+        }
+        
+        // Group sectors by owner
+        const ownerSectors = {};
+        
+        sectors.forEach(sector => {
+            if (!ownerSectors[sector.ownerid]) {
+                ownerSectors[sector.ownerid] = [];
+            }
+            ownerSectors[sector.ownerid].push(sector);
+        });
+        
+        // Process each player's sectors
+        for (const [ownerId, playerSectors] of Object.entries(ownerSectors)) {
+            // Get player's tech levels
+            db.query(`SELECT * FROM players${gameId} WHERE playerid = ? LIMIT 1`, 
+                [ownerId], (err, playerResults) => {
+                    if (err || playerResults.length === 0) {
+                        console.error(`Error retrieving player ${ownerId} data:`, err);
+                        return;
+                    }
+                    
+                    const player = playerResults[0];
+                    
+                    // Calculate resource production for each sector
+                    let totalMetal = 0;
+                    let totalCrystal = 0;
+                    let totalResearch = 0;
+                    
+                    playerSectors.forEach(sector => {
+                        // Base production per level
+                        const metalBase = sector.metallvl * 100;
+                        const crystalBase = sector.crystallvl * 100;
+                        const researchBase = sector.academylvl * 100;
+                        
+                        // Apply sector bonuses
+                        const metalBonus = metalBase * (sector.metalbonus / 100);
+                        const crystalBonus = crystalBase * (sector.crystalbonus / 100);
+                        
+                        // Apply tech bonuses
+                        const metalProduction = Math.round(metalBonus * (1 + (player.tech1 * 0.1 || 0)));
+                        const crystalProduction = Math.round(crystalBonus * (1 + (player.tech2 * 0.1 || 0)));
+                        const researchProduction = Math.round(researchBase * (1 + (player.tech3 * 0.1 || 0)));
+                        
+                        totalMetal += metalProduction;
+                        totalCrystal += crystalProduction;
+                        totalResearch += researchProduction;
+                    });
+                    
+                    // Update player's resources
+                    db.query(`UPDATE players${gameId} SET 
+                        metal = metal + ?, 
+                        crystal = crystal + ?, 
+                        research = research + ? 
+                        WHERE playerid = ?`, 
+                        [totalMetal, totalCrystal, totalResearch, ownerId]
+                    );
+                    
+                    // Process ship construction
+                    playerSectors.forEach(sector => {
+                        for (let i = 1; i <= 9; i++) {
+                            const buildingShips = sector[`totship${i}build`] || 0;
+                            if (buildingShips > 0) {
+                                db.query(`UPDATE map${gameId} SET 
+                                    totalship${i} = totalship${i} + 1, 
+                                    totship${i}build = totship${i}build - 1 
+                                    WHERE sectorid = ?`, 
+                                    [sector.sectorid]
+                                );
+                            }
+                        }
+                    });
+                    
+                    // Notify player if they're online
+                    const client = clientMap[ownerId];
+                    if (client) {
+                        updateResources(client);
+                        updateAllSectors(gameId, client);
+                        client.sendUTF(`Resource production: ${totalMetal} Metal, ${totalCrystal} Crystal, ${totalResearch} Research`);
+                    }
+                }
+            );
+        }
+    });
+}
 // Initialize WebSocket when the page loads
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize WebSocket connection

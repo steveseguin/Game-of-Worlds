@@ -72,3 +72,34 @@ function disableSelection(element) {
         disableSelection(children[i]);
     }
 }
+
+
+function initializeGame() {
+    // Initialize UI components
+    if (window.GameUI) {
+        GameUI.initialize();
+    }
+    
+    // Initialize control pad
+    if (window.ControlPad) {
+        ControlPad.initialize();
+    }
+    
+    // Initialize galaxy map
+    if (window.GalaxyMap) {
+        GalaxyMap.initialize(14, 8, 'minimapid');
+    }
+    
+    // Initialize chat system
+    if (window.ChatSystem) {
+        ChatSystem.initialize();
+    }
+    
+    // Initialize WebSocket connection
+    initializeWebSocket();
+    
+    console.log('Galaxy Conquest initialized');
+}
+
+// Add this at the end of the file
+document.addEventListener('DOMContentLoaded', initializeGame);
