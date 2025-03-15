@@ -72,24 +72,24 @@ function sendChat(event) {
         chatInput.value = "";
     }
 }
-
-
 function fade(from, to, element) {
     if (!element) return;
     
-    let opacity = parseFloat(from);
-    const targetOpacity = parseFloat(to);
+    let opacity = parseInt(from, 16);
+    const targetOpacity = parseInt(to, 16);
     const diff = (targetOpacity - opacity) / 10;
     
+    let currentValue = opacity;
     const fadeInterval = setInterval(() => {
-        opacity += diff;
-        if ((diff > 0 && opacity >= targetOpacity) || 
-            (diff < 0 && opacity <= targetOpacity)) {
+        currentValue += diff;
+        if ((diff > 0 && currentValue >= targetOpacity) || 
+            (diff < 0 && currentValue <= targetOpacity)) {
             clearInterval(fadeInterval);
-            opacity = targetOpacity;
+            currentValue = targetOpacity;
         }
         
-        element.style.opacity = opacity;
+        const hexColor = Math.round(currentValue).toString(16).padStart(2, '0');
+        element.setAttribute("fill", `#${hexColor}${hexColor}${hexColor}`);
     }, 50);
 }
 
@@ -114,10 +114,11 @@ function initializeWebSocket() {
     }
 
     // Create new WebSocket connection
+    const server = "ws://127.0.0.1:1337";
     websocket = new WebSocket(server);
     
     // Connection established
-    websocket.onopen = function(evt) {
+    websocket.onopen = function() {
         const authUserID = authUser();
         document.getElementById("chat").style.visibility = 'visible';
         document.getElementById("status").innerHTML = "Connected" + (authUserID ? " (" + authUserID + ")" : "");
@@ -136,15 +137,10 @@ function initializeWebSocket() {
     };
     
     // Connection closed
-    websocket.onclose = function(evt) {
+    websocket.onclose = function() {
         document.getElementById("status").innerHTML = "Connection closed";
+        document.getElementById("lobbyWindow").style.display = "block";
         console.log("WebSocket connection closed");
-        
-        // Attempt to reconnect after 5 seconds
-        setTimeout(function() {
-            console.log("Attempting to reconnect...");
-            initializeWebSocket();
-        }, 5000);
     };
 }
 
@@ -1107,7 +1103,7 @@ function showChatHistory() {
     }
     const d = new Date();
     document.getElementById("log").innerHTML = chatHistory[chatHistory.length - chatID];
-    document.getElementById('timeSince').innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistory.length - chatID]) / 1000) + " seconds ago.";
+    document.getElementById('timeSince').innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago.";
     startchatfade();
 }
 
@@ -1116,7 +1112,6 @@ function timelogupdate() {
     document.getElementById('timeSince').innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - parseInt(chatID)]) / 1000) + " seconds ago.";
 }
 
-// Chat fade functions
 function startchatfade() {
     clearTimeout(chatfadetimer);
     clearTimeout(chatfadebegin);
@@ -1137,7 +1132,6 @@ function setalpha(element, opacity) {
     if (!element) return;
     element.style.opacity = opacity / 100;
 }
-
 // Update timer display
 function updateTimer() {
     if (turnTimer <= 0) {
@@ -1406,7 +1400,6 @@ function authUser() {
     return null;
 }
 
-// Helper to get cookies
 function getCookie(name) {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
