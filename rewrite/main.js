@@ -1160,6 +1160,61 @@ function startCountdown(seconds) {
     }, 1000);
 }
 
+function sendChat(event) {
+    event.preventDefault();
+    const chatInput = document.getElementById("chat");
+    if (chatInput.value.trim().length > 0) {
+        websocket.send(chatInput.value);
+        chatInput.value = "";
+    }
+}
+
+function pushLog() {
+    const d = new Date();
+    document.getElementById('timeSince').innerHTML = "0 seconds ago.";
+    chatHistoryTime.push(d.getTime());
+    chatHistory.push(document.getElementById("log").innerHTML);
+    clearInterval(timeSinceCounter);
+    timeSinceCounter = setInterval(() => timelogupdate(), 1000);
+    chatID = 1;
+}
+
+function showChatHistory() {
+    chatID++;
+    if (chatID > chatHistoryTime.length) {
+        chatID = chatHistoryTime.length;
+    }
+    const d = new Date();
+    document.getElementById("log").innerHTML = chatHistory[chatHistory.length - chatID];
+    document.getElementById('timeSince').innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago.";
+    startchatfade();
+}
+
+function timelogupdate() {
+    const d = new Date();
+    document.getElementById('timeSince').innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - parseInt(chatID)]) / 1000) + " seconds ago.";
+}
+
+function startchatfade() {
+    clearTimeout(chatfadetimer);
+    clearTimeout(chatfadebegin);
+    setalpha(document.getElementById("empireupdates"), 100);
+    chatfadevalue = 100;
+    chatfadebegin = setTimeout(() => chatfade(document.getElementById("empireupdates")), 16000);
+}
+
+function chatfade(logid) {
+    if (chatfadevalue > 0) {
+        chatfadevalue -= 2;
+        setalpha(logid, chatfadevalue);
+        chatfadetimer = setTimeout(() => chatfade(logid), 60);
+    }
+}
+
+function setalpha(element, opacity) {
+    element.style.opacity = opacity / 100;
+}
+
 // Update owned sector on map
 function updateOwnedSector(message) {
     // Parse message

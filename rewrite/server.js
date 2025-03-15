@@ -3,7 +3,7 @@ const http = require('http');
 const mysql = require('mysql');
 const fs = require('fs');
 const url = require('url');
-
+const path = require('path');
 // Import game mechanics modules
 const MapSystem = require('./lib/map');
 const CombatSystem = require('./lib/combat');
@@ -135,6 +135,62 @@ wsServer.on('connect', connection => {
             broadcastPlayerList(connection.gameid, connection.name);
         }
     });
+});
+
+server.on('request', (request, response) => {
+    console.log(`${new Date()} Received request for ${request.url}`);
+    
+    // Parse the URL
+    const urlPath = url.parse(request.url).pathname;
+    
+    if (urlPath === '/' || urlPath === '/index.html') {
+        // Serve index page
+        fs.readFile(path.join(__dirname, 'game.html'), (err, data) => {
+            if (err) {
+                response.writeHead(404);
+                response.end('File not found');
+                return;
+            }
+            response.writeHead(200, {'Content-Type': 'text/html'});
+            response.end(data);
+        });
+        return;
+    }
+    
+    // Check for JS files
+    if (urlPath.endsWith('.js')) {
+        fs.readFile(path.join(__dirname, urlPath), (err, data) => {
+            if (err) {
+                response.writeHead(404);
+                response.end('File not found');
+                return;
+            }
+            response.writeHead(200, {'Content-Type': 'application/javascript'});
+            response.end(data);
+        });
+        return;
+    }
+    
+    // Check for image files
+    if (['.jpg', '.png', '.gif'].some(ext => urlPath.endsWith(ext))) {
+        const contentType = urlPath.endsWith('.jpg') ? 'image/jpeg' :
+                           urlPath.endsWith('.png') ? 'image/png' : 'image/gif';
+        
+        fs.readFile(path.join(__dirname, '..', urlPath), (err, data) => {
+            if (err) {
+                response.writeHead(404);
+                response.end('File not found');
+                return;
+            }
+            response.writeHead(200, {'Content-Type': contentType});
+            response.end(data);
+        });
+        return;
+    }
+    
+    // Default 404 response
+    response.writeHead(404);
+    response.end();
 });
 
 // Helper Functions
@@ -1344,4 +1400,33 @@ function buyTech(message, connection) {
             
             const player = results[0];
             
-            //
+            // Calculate tech cost based on current level
+            let techCost = 0;
+            const techField = `tech${techId}`;
+            const currentLevel = player[techField] || 0;
+            
+            // Special calculation for terraforming (tech7)
+            if (techId === 7) {
+                techCost = Math.round(Math.pow(8, currentLevel + 2) + 36);
+            } else {
+                techCost = Math.round(Math.pow(1.5, currentLevel + 13) + 5);
+            }
+            
+            // Check if player has enough research
+            if (player.research >= techCost) {
+                // Purchase tech
+                db.query(`UPDATE players${connection.gameid} SET 
+                    research = research - ?, 
+                    ${techField} = ${techField} + 1
+                    WHERE playerid = ?`, 
+                    [techCost, connection.name]
+                );
+                
+                connection.sendUTF("Tech purchased.");
+                updateResources(connection);
+            } else {
+                connection.sendUTF(`You do not have enough research to get this tech. Needed: ${techCost}`);
+            }
+        }
+    );
+}
