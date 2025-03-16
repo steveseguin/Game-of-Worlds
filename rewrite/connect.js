@@ -100,41 +100,43 @@ function authUser() {
     return null;
 }
 
-// Initialize WebSocket connection
 function initializeWebSocket() {
-    // Support for Firefox
-    if (window.MozWebSocket) {
-        window.WebSocket = window.MozWebSocket;
-    }
-
-    // Create new WebSocket connection
-    const serverUrl = "ws://" + window.location.hostname + ":1337";
+    // Use the current host for connection
+    const serverUrl = `ws://${window.location.hostname}:1337`;
     websocket = new WebSocket(serverUrl);
     
-    // Connection established
     websocket.onopen = function() {
-        const authUserID = authUser();
-        document.getElementById("chat").style.visibility = 'visible';
-        document.getElementById("status").innerHTML = "Connected" + (authUserID ? " (" + authUserID + ")" : "");
-        console.log("WebSocket connection established");
+        console.log("Connection established");
+        document.getElementById("status").innerHTML = "Connected";
+        
+        // Auto-authenticate if credentials exist
+        const userId = getCookie("userId");
+        const tempKey = getCookie("tempKey");
+        if (userId && tempKey) {
+            websocket.send(`//auth:${userId}:${tempKey}`);
+        }
     };
     
-    // Message received
     websocket.onmessage = function(evt) {
         handleWebSocketMessage(evt.data);
     };
     
-    // Connection error
     websocket.onerror = function(evt) {
-        document.getElementById("status").innerHTML = "ERROR: " + evt.data;
         console.error("WebSocket error:", evt);
+        document.getElementById("status").innerHTML = "Connection error";
     };
     
-    // Connection closed
     websocket.onclose = function() {
-        document.getElementById("status").innerHTML = "Connection closed";
+        console.log("Connection closed");
+        document.getElementById("status").innerHTML = "Disconnected";
         document.getElementById("lobbyWindow").style.display = "block";
-        console.log("WebSocket connection closed");
+        
+        // Auto-reconnect after delay
+        setTimeout(function() {
+            if (window.WebSocket && document.getElementById("lobbyWindow").style.display === "block") {
+                initializeWebSocket();
+            }
+        }, 5000);
     };
 }
 

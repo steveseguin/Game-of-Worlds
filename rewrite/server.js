@@ -1,9 +1,17 @@
 const WebSocketServer = require('websocket').server;
 const http = require('http');
-const mysql = require('mysql');
 const fs = require('fs');
-const url = require('url');
 const path = require('path');
+const mysql = require('mysql');
+const url = require('url');
+
+
+const clients = [];
+const clientMap = {};
+const gameTimer = {};
+const turns = {};
+const activeGames = {};
+
 // Import game mechanics modules
 const MapSystem = require('./lib/map');
 const CombatSystem = require('./lib/combat');
@@ -272,7 +280,30 @@ server.on('request', (request, response) => {
     response.end();
 });
 
-// Helper Functions
+function checkWinConditions(gameId) {
+    db.query(`SELECT ownerid, COUNT(*) as sectorCount 
+              FROM map${gameId} 
+              GROUP BY ownerid 
+              ORDER BY sectorCount DESC`, (err, results) => {
+        if (err) return;
+        
+        // Check if one player has 80% of colonizable sectors
+        db.query(`SELECT COUNT(*) as total FROM map${gameId} WHERE sectortype > 5`, 
+            (err, totalResults) => {
+                if (err || !totalResults.length) return;
+                
+                const totalColonizable = totalResults[0].total;
+                
+                // If a player has 80% of colonizable sectors, they win
+                if (results.length > 0 && results[0].ownerid !== '0') {
+                    const percentage = (results[0].sectorCount / totalColonizable) * 100;
+                    if (percentage >= 80) {
+                        endGame(gameId, results[0].ownerid, "conquest");
+                    }
+                }
+            });
+    });
+}
 
 function colonizePlanet(connection) {
     if (!connection.sectorid) {
@@ -564,6 +595,27 @@ function handleGameStart(connection) {
         console.log("Game is in starting phase, can't start next round yet.");
     }
 }
+function checkAllPlayersReady(gameId) {
+    let allReady = true;
+    let playerCount = 0;
+    
+    clients.forEach(client => {
+        if (client.gameid === gameId) {
+            playerCount++;
+            if (!client.ready) allReady = false;
+        }
+    });
+    
+    if (allReady && playerCount > 0) {
+        // Reset ready status
+        clients.forEach(client => {
+            if (client.gameid === gameId) client.ready = false;
+        });
+        
+        // Start next turn
+        nextTurn(gameId);
+    }
+}
 
 function handlePlayerReady(connection) {
     // Mark player as ready for next turn
@@ -777,6 +829,19 @@ function gameMechanics(gameId) {
                         WHERE playerid = ?`, 
                         [totalMetal, totalCrystal, totalResearch, ownerId]
                     );
+					
+					checkWinConditions(gameId);
+    
+					// Check for player elimination
+					db.query(`SELECT DISTINCT ownerid FROM map${gameId} WHERE ownerid != '0'`, 
+						(err, results) => {
+							if (err) return;
+							
+							// If only one player remains with sectors, they win
+							if (results.length === 1) {
+								endGame(gameId, results[0].ownerid, "elimination");
+							}
+						});
                     
                     // Process ship construction
                     playerSectors.forEach(sector => {
@@ -1315,56 +1380,6 @@ function endTravel(s1, s2, s3, s4, s5, s6, s7, s8, s9, playerId, gameId, targetS
             );
         }
     );
-}
-
-function checkWinConditions(gameId) {
-    // Get all sectors
-    db.query(`SELECT ownerid, COUNT(*) as sectorCount 
-              FROM map${gameId} 
-              GROUP BY ownerid 
-              ORDER BY sectorCount DESC`, (err, results) => {
-        if (err) {
-            console.error("Error checking win conditions:", err);
-            return;
-        }
-        
-        // Get active players
-        db.query(`SELECT playerid FROM players${gameId}`, (err, playerResults) => {
-            if (err) {
-                console.error("Error retrieving players:", err);
-                return;
-            }
-            
-            const activePlayers = playerResults.map(r => r.playerid);
-            
-            // If only one player remains, they win
-            if (activePlayers.length === 1) {
-                const winnerId = activePlayers[0];
-                endGame(gameId, winnerId, "last player standing");
-                return;
-            }
-            
-            // Check if game has a clear winner (owns >80% of colonizable sectors)
-            if (results.length > 0 && results[0].ownerid !== '0') {
-                // Get total colonizable sector count
-                db.query(`SELECT COUNT(*) as totalSectors FROM map${gameId} WHERE sectortype > 5`, 
-                    (err, totalResults) => {
-                        if (err || totalResults.length === 0) return;
-                        
-                        const totalSectors = totalResults[0].totalSectors;
-                        const winnerSectors = results[0].sectorCount;
-                        const percentage = (winnerSectors / totalSectors) * 100;
-                        
-                        if (percentage >= 80) {
-                            // We have a winner!
-                            const winnerId = results[0].ownerid;
-                            endGame(gameId, winnerId, "conquest");
-                        }
-                    }
-                );
-            }
-        });
-    });
 }
 
 function endGame(gameId, winnerId, reason) {

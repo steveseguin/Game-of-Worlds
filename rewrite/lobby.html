@@ -1,0 +1,80 @@
+<!-- Create a new file: lobby.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy Conquest - Game Lobby</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .lobby-container {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .game-list {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .game-list th, .game-list td {
+            padding: 10px;
+            border: 1px solid #444;
+            text-align: left;
+        }
+        
+        .game-list th {
+            background-color: #333;
+        }
+        
+        .game-controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .game-controls input, .game-controls select, .game-controls button {
+            padding: 8px;
+            background: #333;
+            border: 1px solid #666;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="lobby-container">
+        <h1>Galaxy Conquest - Game Lobby</h1>
+        
+        <div class="game-controls">
+            <input type="text" id="gameName" placeholder="Game Name">
+            <select id="maxPlayers">
+                <option value="2">2 Players</option>
+                <option value="3">3 Players</option>
+                <option value="4" selected>4 Players</option>
+                <option value="6">6 Players</option>
+                <option value="8">8 Players</option>
+            </select>
+            <button id="createGameBtn">Create Game</button>
+            <button id="refreshGamesBtn">Refresh Games</button>
+        </div>
+        
+        <h2>Available Games</h2>
+        <table id="gameList" class="game-list">
+            <tr>
+                <th>Game ID</th>
+                <th>Name</th>
+                <th>Players</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+            <tr>
+                <td colspan="5">Loading games...</td>
+            </tr>
+        </table>
+    </div>
+    
+    <script src="lobby.js"></script>
+</body>
+</html>

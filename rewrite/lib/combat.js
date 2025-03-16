@@ -474,92 +474,73 @@ function countShipsByType(ships) {
  * @param {number} sectorId - ID of sector where battle took place
  * @param {number} gameId - ID of the game
  */
+// Fix the combat calculation in processBattleResult function
 function processBattleResult(battleLog, gameData, attackerId, defenderId, sectorId, gameId) {
     const { db, clients, clientMap } = gameData;
-    const battleMessage = formatBattleMessage(battleLog);
     
-    // Update database based on battle result
+    // Send battle notification to both players
+    const battleMessage = formatBattleMessage(battleLog);
+    if (clientMap[attackerId]) clientMap[attackerId].sendUTF(battleMessage);
+    if (clientMap[defenderId]) clientMap[defenderId].sendUTF(battleMessage);
+    
+    // Process outcome based on victor
     if (battleLog.result === "attackerVictory") {
-        // Get remaining ship counts
+        // Attacker takes control of sector
         const remainingShips = battleLog.final.attackers;
         
-        // Update database - attacker takes control
-        db.query(`UPDATE map${gameId} SET 
-            totalship1 = ?, totalship2 = ?, totalship3 = ?, 
-            totalship4 = ?, totalship5 = ?, totalship6 = ?,
-            totalship7 = ?, totalship8 = ?, totalship9 = ?,
-            ownerid = ?, colonized = 0, groundturret = 0,
-            orbitalturret = 0, warpgate = 0, academylvl = 0, 
-            shipyardlvl = 0, metallvl = 0, crystallvl = 0,
-            totship1build = 0, totship2build = 0, totship3build = 0,
-            totship4build = 0, totship5build = 0, totship6build = 0,
-            totship7build = 0, totship8build = 0, totship9build = 0
-            WHERE sectorid = ?`, 
-            [
-                remainingShips[1] || 0, remainingShips[2] || 0, remainingShips[3] || 0,
-                remainingShips[4] || 0, remainingShips[5] || 0, remainingShips[6] || 0,
-                remainingShips[7] || 0, remainingShips[8] || 0, remainingShips[9] || 0,
-                attackerId, sectorId
-            ]
-        );
+        // Update sector ownership
+        let updateQuery = `UPDATE map${gameId} SET `;
         
-        // Notify attacker of victory
-        if (clientMap[attackerId]) {
-            clientMap[attackerId].sendUTF('We captured the sector.');
-            clientMap[attackerId].sendUTF(battleMessage);
-            
-            // Update attacker's view
-            updateClientSectors(clientMap[attackerId], gameId);
+        // Update ship counts
+        for (let i = 1; i <= 9; i++) {
+            updateQuery += `totalship${i} = ${remainingShips[i] || 0}, `;
         }
         
-        // Notify defender of defeat
+        // Change ownership
+        updateQuery += `ownerid = '${attackerId}', `;
+        updateQuery += `colonized = 0, `;
+        updateQuery += `orbitalturret = 0, groundturret = 0 `;
+        updateQuery += `WHERE sectorid = ${sectorId}`;
+        
+        db.query(updateQuery);
+        
+        // Notify players
+        if (clientMap[attackerId]) {
+            clientMap[attackerId].sendUTF(`Victory! You captured sector ${sectorId.toString(16).toUpperCase()}`);
+        }
+        
         if (clientMap[defenderId]) {
-            clientMap[defenderId].sendUTF(`We were just attacked in sector ${sectorId.toString(16).toUpperCase()} and we lost the battle.`);
-            clientMap[defenderId].sendUTF(battleMessage);
-            
-            // Update defender's view
-            updateClientSectors(clientMap[defenderId], gameId);
+            clientMap[defenderId].sendUTF(`Defeat! You lost control of sector ${sectorId.toString(16).toUpperCase()}`);
         }
     } else {
-        // Defender victory - update defender's ships
+        // Defender maintains control
         const remainingShips = battleLog.final.defenders;
         
-        db.query(`UPDATE map${gameId} SET 
-            totalship1 = ?, totalship2 = ?, totalship3 = ?, 
-            totalship4 = ?, totalship5 = ?, totalship6 = ?,
-            totalship7 = ?, totalship8 = ?, totalship9 = ?,
-            groundturret = ?, orbitalturret = ?
-            WHERE sectorid = ?`, 
-            [
-                remainingShips[1] || 0, remainingShips[2] || 0, remainingShips[3] || 0,
-                remainingShips[4] || 0, remainingShips[5] || 0, remainingShips[6] || 0,
-                remainingShips[7] || 0, remainingShips[8] || 0, remainingShips[9] || 0,
-                battleLog.final.groundTurrets, battleLog.final.orbitalTurrets,
-                sectorId
-            ]
-        );
+        // Update sector with remaining ships
+        let updateQuery = `UPDATE map${gameId} SET `;
         
-        // Notify attacker of defeat
-        if (clientMap[attackerId]) {
-            clientMap[attackerId].sendUTF('All our ships were destroyed. We lost the battle.');
-            clientMap[attackerId].sendUTF(battleMessage);
+        // Update ship counts
+        for (let i = 1; i <= 9; i++) {
+            updateQuery += `totalship${i} = ${remainingShips[i] || 0}, `;
         }
         
-        // Notify defender of victory
+        // Update defenses
+        updateQuery += `orbitalturret = ${battleLog.final.orbitalTurrets || 0}, `;
+        updateQuery += `groundturret = 0 `;
+        updateQuery += `WHERE sectorid = ${sectorId}`;
+        
+        db.query(updateQuery);
+        
+        // Notify players
+        if (clientMap[attackerId]) {
+            clientMap[attackerId].sendUTF(`Defeat! Your attack on sector ${sectorId.toString(16).toUpperCase()} was repelled`);
+        }
+        
         if (clientMap[defenderId]) {
-            clientMap[defenderId].sendUTF(`We were just attacked in sector ${sectorId.toString(16).toUpperCase()}, yet we won the battle.`);
-            clientMap[defenderId].sendUTF(battleMessage);
+            clientMap[defenderId].sendUTF(`Victory! You successfully defended sector ${sectorId.toString(16).toUpperCase()}`);
         }
     }
-    
-    // Notify other players about the battle
-    clients.forEach(client => {
-        if (client.gameid === gameId && client.name !== attackerId && client.name !== defenderId) {
-            client.sendUTF("Somewhere in the universe, a great battle just took place.");
-        }
-    });
 }
-
 /**
  * Helper function to update client's sector view
  */

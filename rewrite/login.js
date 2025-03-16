@@ -51,10 +51,10 @@ const LoginSystem = (function() {
             if (data.success) {
                 // Store auth tokens in cookies
                 document.cookie = `userId=${data.userId}; path=/; max-age=86400`;
-                document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
+				document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
                 
                 // Redirect to game
-                window.location.href = '/game.html';
+                window.location.href = '/lobby.html';
             } else {
                 document.getElementById('loginError').textContent = data.message;
             }

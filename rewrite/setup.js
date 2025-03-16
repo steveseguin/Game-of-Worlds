@@ -304,6 +304,47 @@ function generateMap(gameId) {
     });
 }
 
+function assignPlayersToHomeworlds(gameId, playerIds) {
+    // Get available homeworlds
+    db.query(`SELECT sectorid FROM map${gameId} WHERE sectortype = 10 ORDER BY RAND()`, 
+        (err, sectors) => {
+            if (err || sectors.length < playerIds.length) {
+                console.error("Not enough homeworlds for players");
+                return;
+            }
+            
+            // Assign players to homeworlds with starting resources
+            playerIds.forEach((playerId, index) => {
+                if (index >= sectors.length) return;
+                
+                const homeworldId = sectors[index].sectorid;
+                
+                // Assign homeworld
+                db.query(`UPDATE map${gameId} SET 
+                    ownerid = ?, 
+                    colonized = 1,
+                    metallvl = 1,
+                    crystallvl = 1,
+                    academylvl = 1,
+                    shipyardlvl = 2,
+                    totalship1 = 5,
+                    totalship3 = 2
+                    WHERE sectorid = ?`, [playerId, homeworldId]);
+                
+                // Add player to game
+                db.query(`INSERT INTO players${gameId} 
+                    (playerid, metal, crystal, research) 
+                    VALUES (?, 1000, 500, 0)`, [playerId]);
+                
+                // Update user's current game
+                db.query(`UPDATE users SET currentgame = ? WHERE id = ?`, 
+                    [gameId, playerId]);
+            });
+            
+            console.log(`Players assigned to homeworlds in game ${gameId}`);
+        });
+}
+
 // Function to set up homeworlds
 function setupHomeworlds(gameId, playerCount, mapWidth, mapHeight) {
     console.log(`Setting up ${playerCount} homeworlds`);
