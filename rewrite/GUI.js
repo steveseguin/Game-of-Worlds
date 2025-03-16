@@ -60,13 +60,6 @@ const GameUI = (function() {
         document.getElementById('fleettab')?.addEventListener('click', () => switchTab('fleet'));
         document.getElementById('techtab')?.addEventListener('click', () => switchTab('techtree'));
         document.getElementById('colonizetab')?.addEventListener('click', () => switchTab('colonize'));
-        
-        // Chat history navigation
-        document.getElementById('chatHistoryUp')?.addEventListener('click', showChatHistory);
-        document.getElementById('chatHistoryDown')?.addEventListener('click', () => {
-            chatID = 1;
-            showChatHistory();
-        });
     }
     
     // Switch tabs

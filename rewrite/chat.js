@@ -134,9 +134,16 @@ const ChatSystem = (function() {
         initialize,
         sendChat,
         displayMessage,
-        showChatHistory
+        showChatHistory,
+        pushLog,
+        updateTimeLog,
+        startChatFade
     };
 })();
 
-ChatSystem.initialize();
+// Initialize when document is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    ChatSystem.initialize();
+});
+
 window.ChatSystem = ChatSystem;

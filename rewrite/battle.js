@@ -11,8 +11,15 @@
  * - None, but is used by connect.js to visualize battle data
  */
 const BattleSystem = (function() {
+    // Array to store animation timers for cleanup
+    let battleAnimationTimers = [];
+    
     function createBattleVisualization(message) {
         console.log("Creating battle visualization", message);
+        
+        // Clear any existing animation timers
+        battleAnimationTimers.forEach(timer => clearTimeout(timer));
+        battleAnimationTimers = [];
         
         // Parse battle data
         const parts = message.split(':');
@@ -114,11 +121,13 @@ const BattleSystem = (function() {
         }
         
         // Automatically close after 20 seconds
-        setTimeout(() => {
+        const closeTimer = setTimeout(() => {
             if (document.getElementById('battleGround')) {
                 document.body.removeChild(document.getElementById('battleGround'));
             }
         }, 20000);
+        
+        battleAnimationTimers.push(closeTimer);
     }
     
     function createShipImage(container, id, side, shipType) {
@@ -142,7 +151,7 @@ const BattleSystem = (function() {
     function animateBattleRound(battleData, round, container) {
         const delay = 5000 * round;
         
-        setTimeout(() => {
+        const roundTimer = setTimeout(() => {
             // For each ship type (9 attacker types + 9 defender types)
             for (let i = 0; i < 18; i++) {
                 const beforeCount = parseInt(battleData[i + 1]) || 0;
@@ -158,7 +167,7 @@ const BattleSystem = (function() {
                     const shipId = prefix + j + shipType;
                     
                     // Randomly time the explosions
-                    setTimeout(() => {
+                    const explosionTimer = setTimeout(() => {
                         const ship = document.getElementById(shipId);
                         if (ship) {
                             ship.src = 'boom.gif';
@@ -173,21 +182,52 @@ const BattleSystem = (function() {
                             }
                             
                             // Remove ship after explosion animation
-                            setTimeout(() => {
+                            const removeTimer = setTimeout(() => {
                                 if (ship && ship.parentNode) {
                                     ship.parentNode.removeChild(ship);
                                 }
                             }, 1000);
+                            
+                            battleAnimationTimers.push(removeTimer);
                         }
                     }, Math.random() * 2000);
+                    
+                    battleAnimationTimers.push(explosionTimer);
                 }
             }
         }, delay);
+        
+        battleAnimationTimers.push(roundTimer);
+    }
+    
+    // Clean up all animation timers and elements
+    function cleanupBattleVisualization() {
+        // Clear all animation timers
+        battleAnimationTimers.forEach(timer => clearTimeout(timer));
+        battleAnimationTimers = [];
+        
+        // Remove battle DOM element if it exists
+        const battleGround = document.getElementById('battleGround');
+        if (battleGround && battleGround.parentNode) {
+            battleGround.parentNode.removeChild(battleGround);
+        }
     }
     
     return {
-        createBattleVisualization
+        createBattleVisualization,
+        cleanupBattleVisualization
     };
 })();
+
+// Add cleanup on page hide/unload
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        BattleSystem.cleanupBattleVisualization();
+    }
+});
+
+document.addEventListener('beforeunload', () => {
+    BattleSystem.cleanupBattleVisualization();
+});
 
 window.BattleSystem = BattleSystem;

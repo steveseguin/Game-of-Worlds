@@ -16,14 +16,8 @@ let server = "ws://127.0.0.1:1337";
 let websocket;
 let turnTimer = 180; // 3 minutes per turn
 let turnInterval;
-let chatID = 1;
-let chatHistory = [];
-let chatHistoryTime = [];
-let timeSinceCounter;
-let chatfadetimer;
-let chatfadebegin;
-let chatfadevalue = 100;
 
+// Game state
 const GAME_STATE = {
     player: {
         resources: {
@@ -67,36 +61,6 @@ function buyShip(shipId) {
 
 function buyBuilding(buildingId) {
     websocket.send("//buybuilding:" + buildingId);
-}
-
-function sendChat(event) {
-    if (event) event.preventDefault();
-    const chatInput = document.getElementById("chat");
-    if (chatInput && chatInput.value.trim() !== "") {
-        websocket.send(chatInput.value);
-        chatInput.value = "";
-    }
-}
-
-function fade(from, to, element) {
-    if (!element) return;
-    
-    let opacity = parseInt(from, 16);
-    const targetOpacity = parseInt(to, 16);
-    const diff = (targetOpacity - opacity) / 10;
-    
-    let currentValue = opacity;
-    const fadeInterval = setInterval(() => {
-        currentValue += diff;
-        if ((diff > 0 && currentValue >= targetOpacity) || 
-            (diff < 0 && currentValue <= targetOpacity)) {
-            clearInterval(fadeInterval);
-            currentValue = targetOpacity;
-        }
-        
-        const hexColor = Math.round(currentValue).toString(16).padStart(2, '0');
-        element.setAttribute("fill", `#${hexColor}${hexColor}${hexColor}`);
-    }, 50);
 }
 
 // Authentication function
@@ -190,7 +154,12 @@ function handleWebSocketMessage(message) {
     }
     // Multiple move options
     else if (message.indexOf("mmoptions:") === 0) {
-        showMultiMoveOptions(message);
+        if (window.GameUI && window.GameUI.showMultiMoveOptions) {
+            const parts = message.split(':');
+            const targetSector = parts[1];
+            const shipsData = message.substring(message.indexOf(targetSector) + targetSector.length);
+            window.GameUI.showMultiMoveOptions(targetSector, shipsData);
+        }
     }
     // New round
     else if (message === "newround:") {
@@ -240,8 +209,6 @@ function handleWebSocketMessage(message) {
     else {
         if (window.ChatSystem) {
             window.ChatSystem.displayMessage(message);
-        } else {
-            displayChatMessage(message);
         }
     }
 }
@@ -387,84 +354,9 @@ function updateOwnedSector(message) {
     const fleetSize = parseInt(parts[2]) || 0;
     const indicator = parts[3] || '';
     
-    if (window.GalaxyMap) {
-        let status = window.GalaxyMap.SECTOR_STATUS.OWNED;
-        
-        if (indicator === 'A') {
-            status = window.GalaxyMap.SECTOR_STATUS.HAZARD;
-        } else if (indicator === 'BH') {
-            status = window.GalaxyMap.SECTOR_STATUS.BLACKHOLE;
-        } else if (indicator === 'C') {
-            status = window.GalaxyMap.SECTOR_STATUS.COLONIZED;
-        } else if (indicator === 'H') {
-            status = window.GalaxyMap.SECTOR_STATUS.HOMEWORLD;
-        } else if (indicator === 'W') {
-            status = window.GalaxyMap.SECTOR_STATUS.WARPGATE;
-        }
-        
-        window.GalaxyMap.updateSectorStatus(sectorId, status, {
-            fleetSize: fleetSize,
-            indicator: indicator
-        });
+    if (window.GameUI && window.GameUI.updateOwnedSector) {
+        window.GameUI.updateOwnedSector(sectorId, fleetSize, indicator);
     }
-}
-
-function showMultiMoveOptions(message) {
-    const parts = message.split(':');
-    if (parts.length < 2) return;
-    
-    const targetSector = parts[1];
-    const multiMoveDiv = document.getElementById('multiMove');
-    if (!multiMoveDiv) return;
-    
-    // Update sector display
-    const sectorDisplay = document.getElementById('sectorofattack');
-    if (sectorDisplay) {
-        sectorDisplay.textContent = targetSector;
-    }
-    
-    // Clear existing options
-    const shipList = document.getElementById('shipsFromNearBy');
-    if (shipList) {
-        while (shipList.options.length > 0) {
-            shipList.remove(0);
-        }
-        
-        // Add ships from nearby sectors
-        let i = 2;
-        while (i < parts.length) {
-            const sectorId = parts[i++];
-            if (!sectorId) break;
-            
-            // Next 9 values are ship counts for the sector
-            const ships = [];
-            for (let j = 0; j < 9; j++) {
-                ships.push(parseInt(parts[i++]) || 0);
-            }
-            
-            // Ship type names
-            const shipNames = [
-                "Frigate", "Destroyer", "Scout", "Cruiser", 
-                "Battleship", "Colony Ship", "Dreadnought", 
-                "Intruder", "Carrier"
-            ];
-            
-            // Add options for each ship type
-            ships.forEach((count, idx) => {
-                if (count > 0) {
-                    for (let k = 1; k <= count; k++) {
-                        const option = document.createElement('option');
-                        option.value = `${sectorId}:${idx + 1}:${k}`;
-                        option.text = `${shipNames[idx]} ${k} in sector ${sectorId}`;
-                        shipList.add(option);
-                    }
-                }
-            });
-        }
-    }
-    
-    // Show dialog
-    multiMoveDiv.style.display = 'block';
 }
 
 function updatePlayerList(message) {
@@ -479,98 +371,7 @@ function updatePlayerList(message) {
     }
 }
 
-function displayChatMessage(message) {
-    // Update chat display
-    const logElement = document.getElementById('log');
-    if (logElement) {
-        logElement.innerHTML = message + "<br>";
-        
-        // Trim log if it gets too long
-        if (logElement.innerHTML.length > 1500) {
-            logElement.innerHTML = "..." + logElement.innerHTML.substring(
-                logElement.innerHTML.length - 1500,
-                logElement.innerHTML.length
-            );
-        }
-        
-        // Save message to history
-        pushLog();
-        
-        // Scroll to bottom
-        logElement.scrollTop = logElement.scrollHeight;
-    }
-    
-    // Add fade effect
-    startchatfade();
-}
-
-function pushLog() {
-    const d = new Date();
-    const timeSince = document.getElementById('timeSince');
-    if (timeSince) timeSince.innerHTML = "0 seconds ago";
-    
-    chatHistoryTime.push(d.getTime());
-    chatHistory.push(document.getElementById("log").innerHTML);
-    
-    clearInterval(timeSinceCounter);
-    timeSinceCounter = setInterval(updateTimeLog, 1000);
-    chatID = 1;
-}
-
-function showChatHistory() {
-    chatID++;
-    if (chatID > chatHistoryTime.length) {
-        chatID = chatHistoryTime.length;
-    }
-    
-    const d = new Date();
-    const logElement = document.getElementById("log");
-    const timeSince = document.getElementById('timeSince');
-    
-    if (logElement && chatHistory.length >= chatID) {
-        logElement.innerHTML = chatHistory[chatHistory.length - chatID];
-    }
-    
-    if (timeSince && chatHistoryTime.length >= chatID) {
-        timeSince.innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
-    }
-    
-    startchatfade();
-}
-
-function updateTimeLog() {
-    const d = new Date();
-    const timeSince = document.getElementById('timeSince');
-    if (timeSince && chatHistoryTime.length >= chatID) {
-        timeSince.innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
-    }
-}
-
-function startchatfade() {
-    clearTimeout(chatfadetimer);
-    clearTimeout(chatfadebegin);
-    
-    const updates = document.getElementById("empireupdates");
-    if (!updates) return;
-    
-    setalpha(updates, 100);
-    chatfadevalue = 100;
-    chatfadebegin = setTimeout(() => chatFade(updates), 16000);
-}
-
-function chatFade(element) {
-    if (chatfadevalue > 0) {
-        chatfadevalue -= 2;
-        setalpha(element, chatfadevalue);
-        chatfadetimer = setTimeout(() => chatFade(element), 60);
-    }
-}
-
-function setalpha(element, opacity) {
-    if (!element) return;
-    element.style.opacity = opacity / 100;
-}
-
+// Send multiple move fleet command
 function sendmmf() {
     const sectorId = document.getElementById('sectorofattack').innerHTML;
     const shipList = document.getElementById('shipsFromNearBy');
@@ -621,6 +422,5 @@ window.nextTurn = nextTurn;
 window.buyTech = buyTech;
 window.buyShip = buyShip;
 window.buyBuilding = buyBuilding;
-window.sendChat = sendChat;
 window.sendmmf = sendmmf;
 window.changeSector = changeSector;
