@@ -12,6 +12,14 @@ const mapSystem = require('./lib/map');
 const combatSystem = require('./lib/combat');
 const techSystem = require('./lib/tech');
 
+
+// Game state
+const clients = [];
+const gameTimer = {};
+const clientMap = {};
+const turns = {};
+const activeGames = {};
+
 // Configuration
 const PORT = process.env.PORT || 1337;
 const DB_CONFIG = {
@@ -21,8 +29,31 @@ const DB_CONFIG = {
     database: 'game'
 };
 
-// Create database connection
-const db = mysql.createConnection(DB_CONFIG);
+function connectToDatabase() {
+    const db = mysql.createConnection(DB_CONFIG);
+    
+    db.connect(err => {
+        if (err) {
+            console.error('Error connecting to database:', err);
+            setTimeout(connectToDatabase, 5000); // Try to reconnect after 5 seconds
+            return;
+        }
+        console.log('Connected to database');
+    });
+    
+    db.on('error', err => {
+        console.error('Database error:', err);
+        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+            connectToDatabase();
+        } else {
+            throw err;
+        }
+    });
+    
+    return db;
+}
+
+const db = connectToDatabase();
 
 // Connect to database
 db.connect(err => {
@@ -100,12 +131,51 @@ const wsServer = new WebSocketServer({
     autoAcceptConnections: false
 });
 
-// Game state
-const clients = [];
-const gameTimer = {};
-const clientMap = {};
-const turns = {};
-const activeGames = {};
+
+server.on('request', (request, response) => {
+    // Parse URL
+    const parsedUrl = url.parse(request.url);
+    let pathname = parsedUrl.pathname;
+    
+    // Default to index.html for root path
+    if (pathname === '/') {
+        pathname = '/index.html';
+    }
+    
+    // Get file extension
+    const ext = path.parse(pathname).ext || '.html';
+    
+    // Content type map
+    const contentTypeMap = {
+        '.html': 'text/html',
+        '.js': 'application/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.gif': 'image/gif'
+    };
+    
+    const contentType = contentTypeMap[ext] || 'text/plain';
+    
+    // Try to read from rewrite directory first, then from parent directory
+    fs.readFile(path.join(__dirname, pathname.substr(1)), (err, data) => {
+        if (err) {
+            fs.readFile(path.join(__dirname, '..', pathname.substr(1)), (err2, data2) => {
+                if (err2) {
+                    response.writeHead(404);
+                    response.end('File not found');
+                    return;
+                }
+                response.writeHead(200, {'Content-Type': contentType});
+                response.end(data2);
+            });
+            return;
+        }
+        response.writeHead(200, {'Content-Type': contentType});
+        response.end(data);
+    });
+});
 
 // WebSocket connection handler
 wsServer.on('request', request => {

@@ -46,15 +46,16 @@ connection.connect(err => {
             
             // Create users table
             connection.query(`
-                CREATE TABLE IF NOT EXISTS users (
-                    id VARCHAR(32) PRIMARY KEY,
-                    password VARCHAR(255) NOT NULL,
-                    username VARCHAR(64) NOT NULL,
-                    currentgame INT,
-                    tempkey VARCHAR(64),
-                    created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            `, err => {
+				CREATE TABLE IF NOT EXISTS users (
+					id VARCHAR(32) PRIMARY KEY,
+					password VARCHAR(255) NOT NULL,
+					salt VARCHAR(64) NOT NULL,
+					username VARCHAR(64) NOT NULL,
+					currentgame INT,
+					tempkey VARCHAR(64),
+					created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+				)
+			`, err => {
                 if (err) {
                     console.error('Error creating users table:', err);
                     process.exit(1);
@@ -80,16 +81,53 @@ connection.connect(err => {
                     }
                     
                     console.log('Games table created or already exists');
-                    
-                    // Ask if user wants to create a new game
-                    rl.question('Do you want to create a new game? (y/n): ', answer => {
-                        if (answer.toLowerCase() === 'y') {
-                            createNewGame();
-                        } else {
-                            rl.close();
-                            connection.end();
-                        }
-                    });
+					
+					
+					// Add game_history table
+					connection.query(`
+						CREATE TABLE IF NOT EXISTS game_history (
+							id INT AUTO_INCREMENT PRIMARY KEY,
+							game_id INT,
+							winner_id VARCHAR(32),
+							end_reason VARCHAR(32),
+							duration INT,
+							player_count INT,
+							end_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+							FOREIGN KEY (game_id) REFERENCES games(id)
+						)
+						`, err => {
+							if (err) {
+								console.error('Error creating games table:', err);
+								process.exit(1);
+							}
+							
+							// Add user_stats  table
+							connection.query(`
+								CREATE TABLE IF NOT EXISTS user_stats (
+									user_id VARCHAR(32) PRIMARY KEY,
+									games_played INT DEFAULT 0,
+									wins INT DEFAULT 0,
+									losses INT DEFAULT 0,
+									last_active TIMESTAMP,
+									FOREIGN KEY (user_id) REFERENCES users(id)
+								)
+								`, err => {
+									if (err) {
+										console.error('Error creating games table:', err);
+										process.exit(1);
+									}
+							
+									// Ask if user wants to create a new game
+									rl.question('Do you want to create a new game? (y/n): ', answer => {
+										if (answer.toLowerCase() === 'y') {
+											createNewGame();
+										} else {
+											rl.close();
+											connection.end();
+										}
+									});
+							});
+					});
                 });
             });
         });

@@ -5,7 +5,6 @@ const path = require('path');
 const mysql = require('mysql');
 const url = require('url');
 
-
 const clients = [];
 const clientMap = {};
 const gameTimer = {};
@@ -16,23 +15,40 @@ const activeGames = {};
 const MapSystem = require('./lib/map');
 const CombatSystem = require('./lib/combat');
 const TechSystem = require('./lib/tech');
+const crypto = require('crypto');
 
-// Create MySQL connection
-const db = mysql.createConnection({
+const DB_CONFIG = {
     host: '127.0.0.1',
     user: 'root',
     password: 'bitnami',
     database: 'game'
-});
+}
 
-// Connect to database
-db.connect(err => {
-    if (err) {
-        console.error('Error connecting to database:', err);
-        process.exit(1);
-    }
-    console.log('Connected to database');
-});
+function connectToDatabase() {
+    const db = mysql.createConnection(DB_CONFIG);
+    
+    db.connect(err => {
+        if (err) {
+            console.error('Error connecting to database:', err);
+            setTimeout(connectToDatabase, 5000); // Try to reconnect after 5 seconds
+            return;
+        }
+        console.log('Connected to database');
+    });
+    
+    db.on('error', err => {
+        console.error('Database error:', err);
+        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+            connectToDatabase();
+        } else {
+            throw err;
+        }
+    });
+    
+    return db;
+}
+
+const db = connectToDatabase();
 
 // Create HTTP server
 const server = http.createServer((request, response) => {
@@ -57,13 +73,6 @@ const wsServer = new WebSocketServer({
     disableNagleAlgorithm: false,
     autoAcceptConnections: true
 });
-
-// Game state
-const clients = [];
-const gameTimer = {};
-const clientMap = {};
-const turns = {};
-const activeGames = {};
 
 // WebSocket connection handler
 wsServer.on('connect', connection => {
@@ -281,20 +290,21 @@ server.on('request', (request, response) => {
 });
 
 function checkWinConditions(gameId) {
+    // Check conquest condition (80% of sectors)
     db.query(`SELECT ownerid, COUNT(*) as sectorCount 
               FROM map${gameId} 
               GROUP BY ownerid 
               ORDER BY sectorCount DESC`, (err, results) => {
         if (err) return;
         
-        // Check if one player has 80% of colonizable sectors
+        // Get total colonizable sectors
         db.query(`SELECT COUNT(*) as total FROM map${gameId} WHERE sectortype > 5`, 
             (err, totalResults) => {
                 if (err || !totalResults.length) return;
                 
                 const totalColonizable = totalResults[0].total;
                 
-                // If a player has 80% of colonizable sectors, they win
+                // Check conquest condition
                 if (results.length > 0 && results[0].ownerid !== '0') {
                     const percentage = (results[0].sectorCount / totalColonizable) * 100;
                     if (percentage >= 80) {
@@ -303,6 +313,31 @@ function checkWinConditions(gameId) {
                 }
             });
     });
+    
+    // Check elimination condition
+    db.query(`SELECT DISTINCT ownerid FROM map${gameId} WHERE ownerid != '0'`, 
+        (err, results) => {
+            if (err) return;
+            
+            // If only one player remains with sectors, they win
+            if (results.length === 1) {
+                endGame(gameId, results[0].ownerid, "elimination");
+            }
+        });
+    
+    // Check technology victory condition
+    db.query(`SELECT playerid, 
+             (tech1 + tech2 + tech3 + tech4 + tech5 + tech6 + tech7 + tech8 + tech9) as techSum 
+             FROM players${gameId}
+             ORDER BY techSum DESC LIMIT 1`, 
+        (err, results) => {
+            if (err || !results.length) return;
+            
+            // If a player has achieved high technology (total of 50+), they win
+            if (results[0].techSum >= 50) {
+                endGame(gameId, results[0].playerid, "technology");
+            }
+        });
 }
 
 function colonizePlanet(connection) {
@@ -504,6 +539,106 @@ function handleJoinGame(message, connection) {
 }
 
 // Authentication and Game Management Functions
+
+function hashPassword(password, salt) {
+    if (!salt) {
+        salt = crypto.randomBytes(16).toString('hex');
+    }
+    const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+    return { hash, salt };
+}
+
+function verifyPassword(password, hash, salt) {
+    const verify = hashPassword(password, salt);
+    return verify.hash === hash;
+}
+
+// Modify the login handler
+function handleLogin(request, response) {
+    // Parse request body
+    let body = '';
+    request.on('data', chunk => {
+        body += chunk.toString();
+    });
+    
+    request.on('end', () => {
+        const data = JSON.parse(body);
+        
+        db.query('SELECT * FROM users WHERE username = ? LIMIT 1', [data.username], (err, results) => {
+            if (err || results.length === 0) {
+                response.writeHead(200, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({success: false, message: 'Invalid username or password'}));
+                return;
+            }
+            
+            const user = results[0];
+            
+            // Verify password
+            if (verifyPassword(data.password, user.password, user.salt)) {
+                // Generate temp key
+                const tempKey = crypto.randomBytes(32).toString('hex');
+                
+                // Update user's temp key
+                db.query('UPDATE users SET tempkey = ? WHERE id = ?', [tempKey, user.id]);
+                
+                response.writeHead(200, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({
+                    success: true, 
+                    userId: user.id, 
+                    tempKey: tempKey
+                }));
+            } else {
+                response.writeHead(200, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({success: false, message: 'Invalid username or password'}));
+            }
+        });
+    });
+}
+
+// Update the registration handler
+function handleRegistration(request, response) {
+    let body = '';
+    request.on('data', chunk => {
+        body += chunk.toString();
+    });
+    
+    request.on('end', () => {
+        const data = JSON.parse(body);
+        
+        // Check if username exists
+        db.query('SELECT * FROM users WHERE username = ? LIMIT 1', [data.username], (err, results) => {
+            if (err) {
+                response.writeHead(200, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({success: false, message: 'Database error'}));
+                return;
+            }
+            
+            if (results.length > 0) {
+                response.writeHead(200, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({success: false, message: 'Username already exists'}));
+                return;
+            }
+            
+            // Hash password
+            const { hash, salt } = hashPassword(data.password);
+            
+            // Create new user
+            const userId = crypto.randomBytes(8).toString('hex');
+            db.query('INSERT INTO users (id, username, password, salt) VALUES (?, ?, ?, ?)', 
+                [userId, data.username, hash, salt], (err) => {
+                    if (err) {
+                        response.writeHead(200, {'Content-Type': 'application/json'});
+                        response.end(JSON.stringify({success: false, message: 'Error creating user'}));
+                        return;
+                    }
+                    
+                    response.writeHead(200, {'Content-Type': 'application/json'});
+                    response.end(JSON.stringify({success: true}));
+                }
+            );
+        });
+    });
+}
 
 function authUser(message, connection) {
     const parts = message.split(":");
@@ -983,6 +1118,155 @@ function surroundShips(message, connection) {
         } else {
             connection.sendUTF(`mmoptions:${msid.toString(16).toUpperCase()}${sendchunk}`);
         }
+    });
+}
+
+function moveFleet(message, connection) {
+    const parts = message.split(":");
+    if (parts.length < 3) return;
+    
+    const targetSector = parseInt(parts[1], 16);
+    const ships = parts[2].split(",");
+    
+    // Begin transaction
+    db.beginTransaction(err => {
+        if (err) {
+            console.error("Transaction error:", err);
+            connection.sendUTF("Database error occurred");
+            return;
+        }
+        
+        // Get player resources
+        db.query('SELECT * FROM players' + connection.gameid + ' WHERE playerid = ? LIMIT 1', 
+            [connection.name], (err, playerResults) => {
+                if (err || playerResults.length === 0) {
+                    return db.rollback(() => {
+                        connection.sendUTF('Error: Player data not found');
+                    });
+                }
+                
+                const player = playerResults[0];
+                
+                // Calculate movement cost and validate ships
+                let movementCost = 0;
+                let shipCommands = [];
+                
+                // Process ship movements
+                let invalidMove = false;
+                for (const shipData of ships) {
+                    const [type, count] = shipData.split("=");
+                    const shipType = parseInt(type);
+                    const shipCount = parseInt(count);
+                    
+                    if (isNaN(shipType) || isNaN(shipCount) || shipCount <= 0) {
+                        invalidMove = true;
+                        break;
+                    }
+                    
+                    // Ship movement costs
+                    switch (shipType) {
+                        case 1: movementCost += shipCount * 200; break; // Frigate
+                        case 2: movementCost += shipCount * 300; break; // Destroyer
+                        case 3: movementCost += shipCount * 100; break; // Scout
+                        case 4: movementCost += shipCount * 200; break; // Cruiser
+                        case 5: movementCost += shipCount * 300; break; // Battleship
+                        case 6: movementCost += shipCount * 200; break; // Colony Ship
+                        case 7: movementCost += shipCount * 500; break; // Dreadnought
+                        case 8: movementCost += shipCount * 200; break; // Intruder
+                        case 9: movementCost += shipCount * 300; break; // Carrier
+                    }
+                    
+                    shipCommands.push({ type: shipType, count: shipCount });
+                }
+                
+                if (invalidMove) {
+                    return db.rollback(() => {
+                        connection.sendUTF('Invalid ship selection');
+                    });
+                }
+                
+                // Check if player has enough crystal
+                if (player.crystal < movementCost) {
+                    return db.rollback(() => {
+                        connection.sendUTF(`Not enough crystal. This movement requires ${movementCost} crystal.`);
+                    });
+                }
+                
+                // Verify source sector has the ships
+                db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? AND ownerid = ?`, 
+                    [connection.sectorid, connection.name], (err, sectorResults) => {
+                        if (err || sectorResults.length === 0) {
+                            return db.rollback(() => {
+                                connection.sendUTF('Error: Source sector not found or not owned by you');
+                            });
+                        }
+                        
+                        const sector = sectorResults[0];
+                        
+                        // Verify ship counts
+                        let insufficientShips = false;
+                        for (const command of shipCommands) {
+                            const availableShips = sector[`totalship${command.type}`] || 0;
+                            if (availableShips < command.count) {
+                                insufficientShips = true;
+                                break;
+                            }
+                        }
+                        
+                        if (insufficientShips) {
+                            return db.rollback(() => {
+                                connection.sendUTF('Not enough ships of requested type available');
+                            });
+                        }
+                        
+                        // Deduct resources
+                        db.query(`UPDATE players${connection.gameid} SET crystal = crystal - ? WHERE playerid = ?`, 
+                            [movementCost, connection.name], (err) => {
+                                if (err) {
+                                    return db.rollback(() => {
+                                        connection.sendUTF('Error updating resources');
+                                    });
+                                }
+                                
+                                // Remove ships from source sector
+                                let updateSource = `UPDATE map${connection.gameid} SET `;
+                                shipCommands.forEach((command, index) => {
+                                    updateSource += `totalship${command.type} = totalship${command.type} - ${command.count}`;
+                                    if (index < shipCommands.length - 1) {
+                                        updateSource += ', ';
+                                    }
+                                });
+                                updateSource += ` WHERE sectorid = ?`;
+                                
+                                db.query(updateSource, [connection.sectorid], (err) => {
+                                    if (err) {
+                                        return db.rollback(() => {
+                                            connection.sendUTF('Error updating fleet');
+                                        });
+                                    }
+                                    
+                                    // Schedule arrival
+                                    db.commit(err => {
+                                        if (err) {
+                                            return db.rollback(() => {
+                                                connection.sendUTF('Transaction failed');
+                                            });
+                                        }
+                                        
+                                        // Add to arrival queue
+                                        setTimeout(() => {
+                                            processFleetArrival(shipCommands, connection.name, 
+                                                              connection.gameid, targetSector);
+                                        }, 10000);
+                                        
+                                        connection.sendUTF(`Fleet dispatched to sector ${targetSector.toString(16).toUpperCase()}. Arrival in 10 seconds.`);
+                                        updateResources(connection);
+                                        updateSector2(connection.sectorid, connection);
+                                    });
+                                });
+                            });
+                    });
+            });
     });
 }
 

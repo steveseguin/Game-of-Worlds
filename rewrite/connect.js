@@ -11,7 +11,7 @@ let chatfadetimer;
 let chatfadebegin;
 let chatfadevalue = 100;
 
-const ServerFunctions = require('./server.js');
+const ServerFunctions = require('./server.js'); 
 
 const GAME_STATE = {
     player: {
