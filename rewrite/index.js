@@ -284,4 +284,4 @@ function authUser(message, connection) {
             connection.gameid = user.currentgame;
             clientMap[playerId] = connection;
             
-            console
+            /// THIS NEEDS TO BE COMPLETED.

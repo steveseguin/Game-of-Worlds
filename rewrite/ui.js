@@ -94,6 +94,27 @@ window.GalaxyMap = (function() {
         
         return true;
     }
+	
+	function fade(from, to, element) {
+		if (!element) return;
+		
+		const fromColor = parseInt(from, 16);
+		const toColor = parseInt(to, 16);
+		const diff = (toColor - fromColor) / 10;
+		
+		let currentValue = fromColor;
+		const fadeInterval = setInterval(() => {
+			currentValue += diff;
+			if ((diff > 0 && currentValue >= toColor) || 
+				(diff < 0 && currentValue <= toColor)) {
+				clearInterval(fadeInterval);
+				currentValue = toColor;
+			}
+			
+			const hexColor = Math.round(currentValue).toString(16).padStart(2, '0');
+			element.setAttribute("fill", `#${hexColor}${hexColor}${hexColor}`);
+		}, 50);
+	}
     
     // Create a hexagon
     function createHexagon(id, gridX, gridY, hexSize) {

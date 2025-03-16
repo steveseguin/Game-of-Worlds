@@ -1597,6 +1597,7 @@ function probeSector(message, connection) {
     );
 }
 
+// Add to connect.js
 function colonizePlanet(connection) {
     if (!connection.sectorid) {
         connection.sendUTF('You need to select a sector first');
@@ -1604,22 +1605,20 @@ function colonizePlanet(connection) {
     }
     
     // Get sector data
-    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, 
-        [connection.sectorid], (err, sectorResults) => {
-            if (err || sectorResults.length === 0) {
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, [connection.sectorid], 
+        (err, results) => {
+            if (err || results.length === 0) {
                 console.error("Error retrieving sector data:", err);
-                connection.sendUTF('Error: Sector not found');
                 return;
             }
             
-            const sector = sectorResults[0];
+            const sector = results[0];
             
             // Get player's terraform tech level
             db.query(`SELECT tech7 FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, 
                 [connection.name], (err, techResults) => {
                     if (err || techResults.length === 0) {
                         console.error("Error retrieving tech data:", err);
-                        connection.sendUTF('Error: Tech data not found');
                         return;
                     }
                     
@@ -1659,7 +1658,6 @@ function colonizePlanet(connection) {
                         [connection.sectorid], (err) => {
                             if (err) {
                                 console.error("Error colonizing planet:", err);
-                                connection.sendUTF('Error during colonization');
                                 return;
                             }
                             
@@ -1764,50 +1762,99 @@ function gameMechanics(gameId) {
             );
         }
     });
-}function gameMechanics(gameId) {
-    // Process resource production for all colonized sectors
-    const sectors = getColonizedSectors(gameId);
-    
-    // Group sectors by owner
-    const ownerSectors = {};
-    sectors.forEach(sector => {
-        if (!ownerSectors[sector.ownerid]) {
-            ownerSectors[sector.ownerid] = [];
+}
+
+// Add to connect.js
+function gameMechanics(gameId) {
+    // Process resource production
+    db.query(`SELECT * FROM map${gameId} WHERE colonized = 1`, (err, sectors) => {
+        if (err) {
+            console.error("Error retrieving colonized sectors:", err);
+            return;
         }
-        ownerSectors[sector.ownerid].push(sector);
-    });
-    
-    // Process each player's resources
-    Object.entries(ownerSectors).forEach(([ownerId, sectors]) => {
-        // Calculate production
-        let totalMetal = 0;
-        let totalCrystal = 0;
-        let totalResearch = 0;
+        
+        // Group sectors by owner
+        const ownerSectors = {};
         
         sectors.forEach(sector => {
-            // Base production from buildings
-            const metalProduction = sector.metallvl * 100 * (sector.metalbonus / 100);
-            const crystalProduction = sector.crystallvl * 100 * (sector.crystalbonus / 100);
-            const researchProduction = sector.academylvl * 100;
-            
-            totalMetal += metalProduction;
-            totalCrystal += crystalProduction;
-            totalResearch += researchProduction;
+            if (!ownerSectors[sector.ownerid]) {
+                ownerSectors[sector.ownerid] = [];
+            }
+            ownerSectors[sector.ownerid].push(sector);
         });
         
-        // Update player's resources
-        // This uses websocket due to the incomplete database implementation
-        const player = clientMap[ownerId];
-        if (player) {
-            // This would normally be a database update
-            updateResources(player);
-            updateAllSectors(gameId, player);
-            player.sendUTF(`Resource production: ${Math.round(totalMetal)} Metal, ${Math.round(totalCrystal)} Crystal, ${Math.round(totalResearch)} Research`);
+        // Process each player's sectors
+        for (const [ownerId, playerSectors] of Object.entries(ownerSectors)) {
+            // Get player's tech levels
+            db.query(`SELECT * FROM players${gameId} WHERE playerid = ? LIMIT 1`, 
+                [ownerId], (err, playerResults) => {
+                    if (err || playerResults.length === 0) {
+                        console.error(`Error retrieving player ${ownerId} data:`, err);
+                        return;
+                    }
+                    
+                    const player = playerResults[0];
+                    
+                    // Calculate resource production for each sector
+                    let totalMetal = 0;
+                    let totalCrystal = 0;
+                    let totalResearch = 0;
+                    
+                    playerSectors.forEach(sector => {
+                        // Base production per level
+                        const metalBase = sector.metallvl * 100;
+                        const crystalBase = sector.crystallvl * 100;
+                        const researchBase = sector.academylvl * 100;
+                        
+                        // Apply sector bonuses
+                        const metalBonus = metalBase * (sector.metalbonus / 100);
+                        const crystalBonus = crystalBase * (sector.crystalbonus / 100);
+                        
+                        // Apply tech bonuses
+                        const metalProduction = Math.round(metalBonus * (1 + (player.tech1 * 0.1 || 0)));
+                        const crystalProduction = Math.round(crystalBonus * (1 + (player.tech2 * 0.1 || 0)));
+                        const researchProduction = Math.round(researchBase * (1 + (player.tech3 * 0.1 || 0)));
+                        
+                        totalMetal += metalProduction;
+                        totalCrystal += crystalProduction;
+                        totalResearch += researchProduction;
+                    });
+                    
+                    // Update player's resources
+                    db.query(`UPDATE players${gameId} SET 
+                        metal = metal + ?, 
+                        crystal = crystal + ?, 
+                        research = research + ? 
+                        WHERE playerid = ?`, 
+                        [totalMetal, totalCrystal, totalResearch, ownerId]
+                    );
+                    
+                    // Process ship construction
+                    playerSectors.forEach(sector => {
+                        for (let i = 1; i <= 9; i++) {
+                            const buildingShips = sector[`totship${i}build`] || 0;
+                            if (buildingShips > 0) {
+                                db.query(`UPDATE map${gameId} SET 
+                                    totalship${i} = totalship${i} + 1, 
+                                    totship${i}build = totship${i}build - 1 
+                                    WHERE sectorid = ?`, 
+                                    [sector.sectorid]
+                                );
+                            }
+                        }
+                    });
+                    
+                    // Notify player if they're online
+                    const client = clientMap[ownerId];
+                    if (client) {
+                        updateResources(client);
+                        updateAllSectors(gameId, client);
+                        client.sendUTF(`Resource production: ${totalMetal} Metal, ${totalCrystal} Crystal, ${totalResearch} Research`);
+                    }
+                }
+            );
         }
     });
-    
-    // Process ship construction
-    processShipConstruction(gameId);
 }
 
 // Helper function to get colonized sectors
