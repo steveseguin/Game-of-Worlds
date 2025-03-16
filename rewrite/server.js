@@ -427,10 +427,103 @@ function nextTurn(gameId) {
     // Process game mechanics (resources, ship building, etc.)
     gameMechanics(gameId);
     
+    // Check win conditions
+    checkWinConditions(gameId);
+    
     // Notify players
     clients.forEach(client => {
         if (client.gameid === gameId) {
             client.sendUTF("newround:");
+        }
+    });
+}
+
+function gameMechanics(gameId) {
+    console.log(`Running game mechanics for game ${gameId}`);
+    
+    // Process resource production
+    db.query(`SELECT * FROM map${gameId} WHERE colonized = 1`, (err, sectors) => {
+        if (err) {
+            console.error("Error retrieving colonized sectors:", err);
+            return;
+        }
+        
+        // Group sectors by owner
+        const ownerSectors = {};
+        
+        sectors.forEach(sector => {
+            if (!ownerSectors[sector.ownerid]) {
+                ownerSectors[sector.ownerid] = [];
+            }
+            ownerSectors[sector.ownerid].push(sector);
+        });
+        
+        // Process each player's sectors
+        for (const [ownerId, playerSectors] of Object.entries(ownerSectors)) {
+            // Get player's tech levels
+            db.query(`SELECT * FROM players${gameId} WHERE playerid = ? LIMIT 1`, 
+                [ownerId], (err, playerResults) => {
+                    if (err || playerResults.length === 0) {
+                        console.error(`Error retrieving player ${ownerId} data:`, err);
+                        return;
+                    }
+                    
+                    const player = playerResults[0];
+                    
+                    // Calculate resource production for each sector
+                    let totalMetal = 0;
+                    let totalCrystal = 0;
+                    let totalResearch = 0;
+                    
+                    playerSectors.forEach(sector => {
+                        // Base production per level
+                        const metalBase = sector.metallvl * 100;
+                        const crystalBase = sector.crystallvl * 100;
+                        const researchBase = sector.academylvl * 100;
+                        
+                        // Apply sector bonuses
+                        const metalProduction = Math.round(metalBase * (sector.metalbonus / 100) * (1 + (player.tech1 * 0.1 || 0)));
+                        const crystalProduction = Math.round(crystalBase * (sector.crystalbonus / 100) * (1 + (player.tech2 * 0.1 || 0)));
+                        const researchProduction = Math.round(researchBase * (1 + (player.tech3 * 0.1 || 0)));
+                        
+                        totalMetal += metalProduction;
+                        totalCrystal += crystalProduction;
+                        totalResearch += researchProduction;
+                    });
+                    
+                    // Update player's resources
+                    db.query(`UPDATE players${gameId} SET 
+                        metal = metal + ?, 
+                        crystal = crystal + ?, 
+                        research = research + ? 
+                        WHERE playerid = ?`, 
+                        [totalMetal, totalCrystal, totalResearch, ownerId]
+                    );
+                    
+                    // Process ship construction
+                    playerSectors.forEach(sector => {
+                        for (let i = 1; i <= 9; i++) {
+                            const buildingShips = sector[`totship${i}build`] || 0;
+                            if (buildingShips > 0) {
+                                db.query(`UPDATE map${gameId} SET 
+                                    totalship${i} = totalship${i} + 1, 
+                                    totship${i}build = totship${i}build - 1 
+                                    WHERE sectorid = ?`, 
+                                    [sector.sectorid]
+                                );
+                            }
+                        }
+                    });
+                    
+                    // Notify player if they're online
+                    const client = clientMap[ownerId];
+                    if (client) {
+                        updateResources(client);
+                        updateAllSectors(gameId, client);
+                        client.sendUTF(`Resource production: ${totalMetal} Metal, ${totalCrystal} Crystal, ${totalResearch} Research`);
+                    }
+                }
+            );
         }
     });
 }
@@ -904,6 +997,54 @@ function endTravel(s1, s2, s3, s4, s5, s6, s7, s8, s9, playerId, gameId, targetS
             );
         }
     );
+}
+
+
+function checkWinConditions(gameId) {
+    // Get all sectors
+    db.query(`SELECT ownerid, COUNT(*) as sectorCount 
+              FROM map${gameId} 
+              GROUP BY ownerid 
+              ORDER BY sectorCount DESC`, (err, results) => {
+        if (err) {
+            console.error("Error checking win conditions:", err);
+            return;
+        }
+        
+        // Check if game has a clear winner (owns >80% of sectors)
+        if (results.length > 0 && results[0].ownerid !== '0') {
+            // Get total sector count
+            db.query(`SELECT COUNT(*) as totalSectors FROM map${gameId}`, (err, totalResults) => {
+                if (err || totalResults.length === 0) return;
+                
+                const totalSectors = totalResults[0].totalSectors;
+                const winnerSectors = results[0].sectorCount;
+                const percentage = (winnerSectors / totalSectors) * 100;
+                
+                if (percentage >= 80) {
+                    // We have a winner!
+                    const winnerId = results[0].ownerid;
+                    
+                    // Update game status
+                    db.query(`UPDATE games SET status = 'completed' WHERE id = ?`, [gameId]);
+                    
+                    // Notify all players
+                    clients.forEach(client => {
+                        if (client.gameid === gameId) {
+                            if (client.name === winnerId) {
+                                client.sendUTF("VICTORY! You have conquered the galaxy!");
+                            } else {
+                                client.sendUTF(`Game over! Player ${winnerId} has conquered the galaxy!`);
+                            }
+                        }
+                    });
+                    
+                    // Stop the turn timer
+                    clearInterval(gameTimer[gameId]);
+                }
+            });
+        }
+    });
 }
 
 function updateSector(message, connection) {

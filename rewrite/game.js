@@ -1,5 +1,5 @@
-// rewrite/game.js - Complete implementation
-
+// In rewrite/game.js
+// Replace the entire file with this version
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize UI components
     if (window.GameUI) {
@@ -51,6 +51,57 @@ function setupEventListeners() {
     document.getElementById('moveAttackShips')?.addEventListener('click', sendaamm);
 }
 
+function sendallmm() {
+    const sectorId = document.getElementById('sectorofattack').innerHTML;
+    const shipList = document.getElementById('shipsFromNearBy');
+    
+    if (!sectorId || !shipList) return;
+    
+    let message = sectorId;
+    
+    // Add all ships
+    for (let i = 0; i < shipList.options.length; i++) {
+        message += ":" + shipList.options[i].value;
+    }
+    
+    if (confirm(`Send all ships to sector ${sectorId}?`)) {
+        websocket.send("//sendmmf:" + message);
+        document.getElementById('multiMove').style.display = 'none';
+    }
+}
+
+function sendaamm() {
+    const sectorId = document.getElementById('sectorofattack').innerHTML;
+    const shipList = document.getElementById('shipsFromNearBy');
+    
+    if (!sectorId || !shipList) return;
+    
+    let message = sectorId;
+    let totalShips = 0;
+    
+    // Add only attack ships (not scouts or colony ships)
+    for (let i = 0; i < shipList.options.length; i++) {
+        const value = shipList.options[i].value;
+        const parts = value.split(':');
+        const shipType = parseInt(parts[1]);
+        
+        if (shipType !== 3 && shipType !== 6) { // Skip scouts and colony ships
+            message += ":" + value;
+            totalShips++;
+        }
+    }
+    
+    if (totalShips === 0) {
+        alert("No attack ships available");
+        return;
+    }
+    
+    if (confirm(`Send all attack ships to sector ${sectorId}?`)) {
+        websocket.send("//sendmmf:" + message);
+        document.getElementById('multiMove').style.display = 'none';
+    }
+}
+
 function adjustViewport() {
     if (window.screen.availHeight < window.screen.availWidth) {
         document.body.style.zoom = window.screen.availHeight / 700;
@@ -72,63 +123,3 @@ function disableSelection(element) {
         disableSelection(children[i]);
     }
 }
-
-
-function initializeGame() {
-    // Initialize UI components
-    if (window.GameUI) {
-        GameUI.initialize();
-    }
-    
-    // Initialize control pad
-    if (window.ControlPad) {
-        ControlPad.initialize();
-    }
-    
-    // Initialize galaxy map
-    if (window.GalaxyMap) {
-        GalaxyMap.initialize(14, 8, 'minimapid');
-    }
-    
-    // Initialize chat system
-    if (window.ChatSystem) {
-        ChatSystem.initialize();
-    }
-    
-    // Initialize WebSocket connection
-    initializeWebSocket();
-    
-    console.log('Galaxy Conquest initialized');
-}
-
-document.getElementById('chatForm')?.addEventListener('submit', function(e) {
-    e.preventDefault();
-    sendChat(e);
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize UI components
-    if (window.GameUI) {
-        GameUI.initialize();
-    }
-    
-    // Initialize control pad
-    if (window.ControlPad) {
-        ControlPad.initialize();
-    }
-    
-    // Initialize galaxy map
-    if (window.GalaxyMap) {
-        GalaxyMap.initialize(14, 8, 'minimapid');
-    }
-    
-    // Initialize chat system
-    if (window.ChatSystem) {
-        ChatSystem.initialize();
-    }
-    
-    // Initialize WebSocket connection
-    initializeWebSocket();
-    
-    console.log('Galaxy Conquest initialized');
-});

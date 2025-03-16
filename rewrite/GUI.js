@@ -270,16 +270,98 @@ const GameUI = (function() {
         }
     }
     
-    // Return public API
-    return {
-        initialize,
-        updateResources,
-        updateSectorDisplay,
-        updateBuildings,
-        updateFleet,
-        switchTab,
-        toggleFullScreen
-    };
+	// Update owned sector display on minimap
+	function updateOwnedSector(sectorId, fleetSize, indicator) {
+		if (window.GalaxyMap) {
+			let status = window.GalaxyMap.SECTOR_STATUS.OWNED;
+			
+			if (indicator === 'A') {
+				status = window.GalaxyMap.SECTOR_STATUS.HAZARD;
+			} else if (indicator === 'BH') {
+				status = window.GalaxyMap.SECTOR_STATUS.BLACKHOLE;
+			} else if (indicator === 'C') {
+				status = window.GalaxyMap.SECTOR_STATUS.COLONIZED;
+			} else if (indicator === 'H') {
+				status = window.GalaxyMap.SECTOR_STATUS.HOMEWORLD;
+			} else if (indicator === 'W') {
+				status = window.GalaxyMap.SECTOR_STATUS.WARPGATE;
+			}
+			
+			window.GalaxyMap.updateSectorStatus(sectorId, status, {
+				fleetSize: fleetSize,
+				indicator: indicator
+			});
+		}
+	}
+
+	// Show multi-move options dialog
+	function showMultiMoveOptions(targetSector, shipsData) {
+		const multiMoveDiv = document.getElementById('multiMove');
+		if (!multiMoveDiv) return;
+		
+		// Update sector display
+		const sectorDisplay = document.getElementById('sectorofattack');
+		if (sectorDisplay) {
+			sectorDisplay.textContent = targetSector;
+		}
+		
+		// Clear existing options
+		const shipList = document.getElementById('shipsFromNearBy');
+		if (shipList) {
+			while (shipList.options.length > 0) {
+				shipList.remove(0);
+			}
+			
+			// Parse ship data and add to select
+			const sectors = shipsData.split(':');
+			let i = 0;
+			
+			while (i < sectors.length) {
+				const sectorId = sectors[i++];
+				if (!sectorId) break;
+				
+				const shipCounts = [];
+				for (let j = 0; j < 9; j++) {
+					shipCounts.push(parseInt(sectors[i++]) || 0);
+				}
+				
+				// Ship type names
+				const shipNames = [
+					"Frigate", "Destroyer", "Scout", "Cruiser", 
+					"Battleship", "Colony Ship", "Dreadnought", 
+					"Intruder", "Carrier"
+				];
+				
+				// Add options for each ship type
+				shipCounts.forEach((count, idx) => {
+					if (count > 0) {
+						for (let k = 1; k <= count; k++) {
+							const option = document.createElement('option');
+							option.value = `${sectorId}:${idx + 1}:${k}`;
+							option.text = `${shipNames[idx]} ${k} in sector ${sectorId}`;
+							shipList.add(option);
+						}
+					}
+				});
+			}
+		}
+		
+		// Show dialog
+		multiMoveDiv.style.display = 'block';
+	}
+
+	// Return public API
+	return {
+		initialize,
+		updateResources,
+		updateSectorDisplay,
+		updateBuildings,
+		updateFleet,
+		updateOwnedSector,
+		showMultiMoveOptions,
+		switchTab,
+		toggleFullScreen
+	};
 })();
 
 // Initialize when document is loaded

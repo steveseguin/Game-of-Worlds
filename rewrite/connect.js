@@ -108,8 +108,8 @@ function initializeWebSocket() {
     }
 
     // Create new WebSocket connection
-    const server = "ws://127.0.0.1:1337";
-    websocket = new WebSocket(server);
+    const serverUrl = "ws://" + window.location.hostname + ":1337";
+    websocket = new WebSocket(serverUrl);
     
     // Connection established
     websocket.onopen = function() {
@@ -149,10 +149,8 @@ function handleWebSocketMessage(message) {
     else if (message.indexOf("battle:") === 0) {
         if (window.BattleSystem) {
             window.BattleSystem.createBattleVisualization(message);
-        } else {
-            createBattleVisualization(message);
         }
-    }
+    } 
     // Lobby information
     else if (message.indexOf("lobby::") === 0) {
         // Game not started yet

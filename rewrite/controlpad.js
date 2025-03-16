@@ -9,6 +9,21 @@ const ControlPad = (function() {
     };
     
     let currentTab = null;
+	
+	function buyBuilding(buildingId) {
+        // Send building purchase request to server
+        websocket.send("//buybuilding:" + buildingId);
+    }
+    
+    function buyShip(shipId) {
+        // Send ship purchase request to server
+        websocket.send("//buyship:" + shipId);
+    }
+    
+    function buyTech(techId) {
+        // Send tech purchase request to server
+        websocket.send("//buytech:" + techId);
+    }
     
     function initialize() {
         // Set up tabs
