@@ -1,3 +1,16 @@
+/**
+ * lobby.js - Client-side lobby interface manager
+ * 
+ * Handles the game lobby interface where players can view available games,
+ * create new games, and join existing ones. Manages communication with
+ * the server for game creation and joining.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It communicates with the server via WebSocket to manage games.
+ * 
+ * Dependencies:
+ * - Requires a WebSocket connection to the server
+ */
 const LobbySystem = (function() {
     function initialize() {
         // Get available games

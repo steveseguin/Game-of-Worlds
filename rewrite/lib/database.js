@@ -1,4 +1,16 @@
-const InMemoryDB = {
+/**
+ * lib/database.js - Server-side in-memory database interface
+ * 
+ * Provides an in-memory database implementation for development and testing.
+ * Handles game data storage and retrieval including games, users, maps, and players.
+ * 
+ * This module is server-side and has access to server-side game state.
+ * It's a simplified database for development purposes.
+ * 
+ * Dependencies:
+ * - Used by server.js and other server-side modules for data storage
+ */
+ const InMemoryDB = {
     games: {},
     users: {},
     maps: {},

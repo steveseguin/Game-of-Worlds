@@ -1,4 +1,16 @@
-const BattleSystem = (function() {
+/**
+ * battle.js - Client-side battle visualization system
+ * 
+ * Handles the visual representation of space battles between fleets.
+ * Creates and animates battle UI elements, ship movements and explosions.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It's triggered by battle messages received from the server.
+ * 
+ * Dependencies:
+ * - None, but is used by connect.js to visualize battle data
+ */
+ const BattleSystem = (function() {
     function createBattleVisualization(message) {
         console.log("Creating battle visualization", message);
         

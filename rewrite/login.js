@@ -1,3 +1,16 @@
+/**
+ * login.js - Client-side authentication manager
+ * 
+ * Handles user login and registration forms, validation,
+ * and communication with the server for authentication.
+ * Manages the authentication flow before entering the game.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It communicates with the server via HTTP requests for authentication.
+ * 
+ * Dependencies:
+ * - None, but used by the login.html page
+ */
 const LoginSystem = (function() {
     function initialize() {
         const loginForm = document.getElementById('loginForm');

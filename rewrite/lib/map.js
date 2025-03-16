@@ -1,8 +1,16 @@
 /**
- * Map System for Galaxy Conquest
- * Handles sector relationships, planet types, and map generation
+ * lib/map.js - Server-side map generation and utilities
+ * 
+ * Implements map generation algorithms, sector types, and building types.
+ * Provides functions for calculating resource production, movement costs,
+ * and determining sector adjacency.
+ * 
+ * This module is server-side and has access to game state data.
+ * It's a core game mechanic module used by the server.
+ * 
+ * Dependencies:
+ * - Used by server.js and init.js for map operations
  */
-
 /**
  * Sector types with their properties
  */

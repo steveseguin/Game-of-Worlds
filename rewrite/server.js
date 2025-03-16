@@ -1,3 +1,17 @@
+/**
+ * server.js - Core server-side game logic
+ * 
+ * Implements the core game logic on the server side, including
+ * WebSocket communication, game state management, player actions processing,
+ * and database interactions. This is the main server-side module.
+ * 
+ * This module is server-side and has full access to database connections
+ * and server-side game state. It coordinates all game actions.
+ * 
+ * Dependencies:
+ * - Depends on lib/map.js, lib/combat.js, lib/tech.js for game mechanics
+ * - Used by index.js as the main server implementation
+ */
 const WebSocketServer = require('websocket').server;
 const http = require('http');
 const fs = require('fs');
@@ -1267,6 +1281,79 @@ function moveFleet(message, connection) {
                             });
                     });
             });
+    });
+}
+
+// In server.js or the WebSocket handler
+function handleClientConnection(connection) {
+    connection.name = 'unknown';
+    connection.isAlive = true;
+    clients.push(connection);
+    
+    // Set ping interval
+    connection.pingInterval = setInterval(() => {
+        if (connection.isAlive === false) {
+            clearInterval(connection.pingInterval);
+            connection.close();
+            return;
+        }
+        
+        connection.isAlive = false;
+        connection.ping();
+    }, 30000);
+    
+    // Handle ping response
+    connection.on('pong', () => {
+        connection.isAlive = true;
+    });
+    
+    // Handle reconnection
+    connection.on('message', message => {
+        if (message.type !== 'utf8') return;
+        
+        const data = message.utf8Data;
+        
+        // Authentication
+        if (data.indexOf("//auth:") === 0) {
+            const parts = data.split(":");
+            if (parts.length < 3) return;
+            
+            const playerId = parts[1];
+            const tempKey = parts[2];
+            
+            db.query('SELECT * FROM users WHERE id = ? AND tempkey = ? LIMIT 1', 
+                [playerId, tempKey], (err, results) => {
+                    if (err || results.length === 0) {
+                        connection.sendUTF("Authentication failed");
+                        return;
+                    }
+                    
+                    // User authenticated
+                    connection.name = playerId;
+                    connection.gameid = results[0].currentgame;
+                    clientMap[playerId] = connection;
+                    
+                    // Update last active timestamp
+                    db.query('UPDATE user_stats SET last_active = NOW() WHERE user_id = ?', [playerId]);
+                    
+                    // Find player's last sector
+                    if (connection.gameid) {
+                        db.query(`SELECT sectorid FROM map${connection.gameid} 
+                                 WHERE ownerid = ? ORDER BY colonized DESC LIMIT 1`,
+                            [playerId], (err, sectorResults) => {
+                                if (!err && sectorResults.length > 0) {
+                                    connection.sectorid = sectorResults[0].sectorid;
+                                    updateSector2(connection.sectorid, connection);
+                                }
+                                
+                                // Send game state
+                                updateResources(connection);
+                                updateAllSectors(connection.gameid, connection);
+                                connection.sendUTF("Reconnected to game");
+                            });
+                    }
+                });
+        }
     });
 }
 

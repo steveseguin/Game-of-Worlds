@@ -1,4 +1,15 @@
-
+/**
+ * minimap.js - Client-side minimap implementation
+ * 
+ * Handles the rendering and interaction with the minimap UI element.
+ * Manages sector display, highlighting, and selection events.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It communicates sector selections to the server via the main code.
+ * 
+ * Dependencies:
+ * - Used by game.js for minimap functionality
+ */
 const MiniMap = (function() {
     let hexElements = {};
     let width = 14;

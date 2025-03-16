@@ -1,6 +1,18 @@
-// Technology Research System for Galaxy Conquest
-
-
+/**
+ * tech.js - Technology system implementation
+ * 
+ * Defines the technology tree, tech requirements, costs, and effects.
+ * Provides functions for researching technologies and calculating
+ * tech-related bonuses. Includes comprehensive tech tree definition.
+ * 
+ * This module can be used both client-side (for UI) and server-side (for mechanics).
+ * The server-side version has database access, while client-side is for UI display.
+ * 
+ * Dependencies:
+ * - Used by server.js for tech mechanics on the server
+ * - May be used by client for tech tree visualization
+ */
+ 
 const TECH_CATEGORIES = {
     RESOURCE: {
         id: 1,

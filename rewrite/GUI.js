@@ -1,4 +1,16 @@
-
+/**
+ * GUI.js - Client-side UI component for Galaxy Conquest
+ * 
+ * Handles the game's main user interface components and interactions.
+ * Manages tab navigation, resource display, sectors visualization,
+ * building information, and fleet details in the UI.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It receives data from server responses via websocket messages.
+ * 
+ * Dependencies:
+ * - None, but is used by game.js
+ */
 const GameUI = (function() {
     // UI state
     let state = {

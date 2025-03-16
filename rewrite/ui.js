@@ -1,4 +1,16 @@
-// Galaxy Map implementation using SVG for better rendering
+/**
+ * ui.js - Client-side map visualization system
+ * 
+ * Implements the interactive galaxy map using SVG for visualization.
+ * Handles sector rendering, selection, and status updates.
+ * This is the GalaxyMap module for the client-side UI.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It communicates sector selections to the server via the main code.
+ * 
+ * Dependencies:
+ * - Used by game.js for map rendering and interaction
+ */
 window.GalaxyMap = (function() {
     // Sector status constants
     const SECTOR_STATUS = {

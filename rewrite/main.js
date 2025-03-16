@@ -1,3 +1,16 @@
+/**
+ * main.js - Client-side primary game code
+ * 
+ * Contains core game functionality for the client side application.
+ * Handles game state updates, UI interactions, and communication with the server.
+ * This appears to be a fragment or partial file in the codebase.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * 
+ * Dependencies:
+ * - Uses GalaxyMap for map visualization
+ * - May be used by or incorporated into other client modules
+ */
 if (window.GalaxyMap) {
         let status = window.GalaxyMap.SECTOR_STATUS.OWNED;
         

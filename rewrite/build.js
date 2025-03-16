@@ -1,4 +1,17 @@
-const BuildSystem = (function() {
+/**
+ * build.js - Client-side building and ship construction UI manager
+ * 
+ * Handles the building and ship construction UI elements and interactions.
+ * Manages button setup, updates building UI based on sector data,
+ * and updates ship building UI based on available resources and slots.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It communicates with the server via websocket messages to request building/ship construction.
+ * 
+ * Dependencies:
+ * - None, but is used by game.js
+ */
+ const BuildSystem = (function() {
     function initialize() {
         // Set up building buttons
         setupBuildingButtons();

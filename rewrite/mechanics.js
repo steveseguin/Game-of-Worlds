@@ -1,6 +1,16 @@
-// Battle mechanics for Galaxy Conquest
-// This handles combat between fleets
-
+/**
+ * mechanics.js - Client-side game mechanics functions
+ * 
+ * Implements client-side game mechanics related to combat, ships,
+ * and other core game logic. Contains ship type definitions and
+ * combat calculation functions for client-side prediction.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It mirrors some server-side logic for client-side simulation.
+ * 
+ * Dependencies:
+ * - Used by battle.js and possibly other client-side modules
+ */
 /**
  * Ship type definitions with base stats
  */

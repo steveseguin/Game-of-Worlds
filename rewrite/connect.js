@@ -1,4 +1,18 @@
-// WebSocket server connection
+/**
+ * connect.js - Client-side WebSocket connection and game state management
+ * 
+ * Handles the WebSocket connection to the server, message parsing,
+ * and updating the UI based on server responses. This file also contains
+ * functions for sending commands to the server.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It serves as the main communication layer between client and server.
+ * 
+ * Dependencies:
+ * - Depends on server.js for server-side functionality
+ * - Used by game.js for game initialization
+ * - Uses GameUI, BattleSystem, GalaxyMap for UI updates
+ */
 const server = "ws://127.0.0.1:1337";
 let websocket;
 let turnTimer = 180; // 3 minutes per turn

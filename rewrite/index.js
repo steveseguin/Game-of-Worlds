@@ -1,5 +1,16 @@
-// Create file: rewrite/index.js
-
+/**
+ * index.js - Server-side entry point
+ * 
+ * Main entry point for the Galaxy Conquest server. Sets up HTTP and WebSocket servers,
+ * handles file serving, database connection, and initializes the game server.
+ * 
+ * This module is server-side and has full access to database connections
+ * and server-side game state. It coordinates all server functionality.
+ * 
+ * Dependencies:
+ * - Depends on server.js for WebSocket server functionality
+ * - Uses map.js, combat.js, tech.js for game mechanics
+ */
 const WebSocketServer = require('websocket').server;
 const http = require('http');
 const fs = require('fs');

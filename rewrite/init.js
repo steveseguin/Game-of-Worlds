@@ -1,3 +1,18 @@
+/**
+ * init.js - Server-side game initialization
+ * 
+ * Initializes a new game with test players and game state.
+ * Creates test map data and assigns players to homeworlds.
+ * Primarily used for testing and development.
+ * 
+ * This module is server-side and has access to database connections
+ * and server-side game state.
+ * 
+ * Dependencies:
+ * - Depends on lib/database.js for data storage
+ * - Depends on lib/map.js for map generation
+ */
+
 const InMemoryDB = require('./lib/database');
 const MapSystem = require('./lib/map');
 

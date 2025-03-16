@@ -1,4 +1,17 @@
-// In server.js or a new events.js file
+/**
+ * events.js - Server-side event system
+ * 
+ * Provides an event-based communication system for server components.
+ * Handles sector updates, resource updates, and battle events notification
+ * to relevant players.
+ * 
+ * This module is server-side and has access to database connections
+ * and server-side game state. It uses the EventEmitter pattern to allow
+ * loose coupling between game systems.
+ * 
+ * Dependencies:
+ * - Used by server.js for server-side event management
+ */
 const EventEmitter = require('events');
 const gameEvents = new EventEmitter();
 

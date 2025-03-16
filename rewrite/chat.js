@@ -1,5 +1,16 @@
-// rewrite/chat.js - Complete implementation
-
+/**
+ * chat.js - Client-side chat system for Galaxy Conquest
+ * 
+ * Handles chat message display, history navigation, and message fading.
+ * Provides methods for displaying messages, managing chat history, and
+ * controlling the visual appearance of the chat UI.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It communicates with the server via websocket messages to send chat messages.
+ * 
+ * Dependencies:
+ * - None, but is used by connect.js and game.js
+ */
 const ChatSystem = (function() {
     let chatHistory = [];
     let chatHistoryTime = [];

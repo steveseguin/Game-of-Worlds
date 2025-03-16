@@ -1,5 +1,17 @@
-// In rewrite/game.js
-// Replace the entire file with this version
+/**
+ * game.html - Main game interface HTML structure
+ * 
+ * Defines the HTML structure of the main game interface, including
+ * resource display, sector information, minimap, control panels,
+ * and chat system. This file loads all required client-side JavaScript files.
+ * 
+ * This file is served to clients by the server and does not contain
+ * executable server-side code.
+ * 
+ * Dependencies:
+ * - Loads all client-side JavaScript modules
+ * - CSS styles from style.css
+ */
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize UI components
     if (window.GameUI) {

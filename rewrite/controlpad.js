@@ -1,5 +1,16 @@
-// rewrite/controlpad.js - Complete implementation
-
+/**
+ * controlpad.js - Client-side control pad UI manager
+ * 
+ * Handles the control pad tabs (build, fleet, tech, colonize)
+ * and related UI interactions. Manages tab switching and provides
+ * methods for sending build, research, and fleet commands.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It communicates with the server via websocket messages.
+ * 
+ * Dependencies:
+ * - None, but is used by game.js
+ */
 const ControlPad = (function() {
     const TABS = {
         BUILD: 'build',

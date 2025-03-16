@@ -1,5 +1,15 @@
-// Create new file: rewrite/setup.js
-
+/**
+ * setup.js - Server-side database and game setup
+ * 
+ * Handles initial database setup, table creation, and game initialization.
+ * Provides a command-line interface for creating new games and generating maps.
+ * 
+ * This module is server-side and has full access to database connections.
+ * It's primarily used during server deployment and game creation.
+ * 
+ * Dependencies:
+ * - Requires MySQL database connection
+ */
 const mysql = require('mysql');
 const readline = require('readline');
 

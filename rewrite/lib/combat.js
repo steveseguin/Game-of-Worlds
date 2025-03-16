@@ -1,8 +1,16 @@
 /**
- * Combat Mechanics for Galaxy Conquest
- * Handles battle calculations between fleets
+ * lib/combat.js - Server-side combat system
+ * 
+ * Implements the combat mechanics for battles between fleets.
+ * Handles calculations for ship damage, hit chances, and battle outcomes.
+ * Provides functions for conducting battles and processing results.
+ * 
+ * This module is server-side and has access to the database for battle results.
+ * It's a core game mechanic module used by the server.
+ * 
+ * Dependencies:
+ * - Used by server.js for processing combat
  */
-
 // Ship type definitions with base stats
 const SHIP_TYPES = {
     FRIGATE: {

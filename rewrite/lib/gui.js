@@ -1,5 +1,16 @@
-// Create file: rewrite/lib/gui.js
-
+/**
+ * lib/gui.js - Client-side UI component building utilities
+ * 
+ * Provides utility functions for building complex UI components
+ * such as control panels, building interfaces, and tech trees.
+ * Centralizes UI generation code for reuse across the application.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * It's a helper library for UI generation.
+ * 
+ * Dependencies:
+ * - Used by game.js and other UI modules
+ */
 const GUI = {
     buildControlPanel: function(containerId) {
         const container = document.getElementById(containerId);
