@@ -27,6 +27,57 @@ const testPlayers = [
     { id: 'player2', name: 'Player 2' }
 ];
 
+function initializeGame(gameId, mapWidth, mapHeight, playerCount) {
+    console.log(`Initializing game ${gameId} with map size ${mapWidth}x${mapHeight} for ${playerCount} players`);
+    
+    // Create map
+    const { sectors, homeworlds } = MapSystem.generateGameMap(mapWidth, mapHeight, playerCount);
+    
+    // Store sectors in database
+    const sectorValues = sectors.map(sector => [
+        sector.sectorid,
+        sector.sectortype,
+        sector.ownerid,
+        sector.colonized,
+        sector.artifact,
+        sector.metalbonus,
+        sector.crystalbonus,
+        sector.terraformlvl
+    ]);
+    
+    const insertQuery = `INSERT INTO map${gameId} 
+        (sectorid, sectortype, ownerid, colonized, artifact, metalbonus, crystalbonus, terraformlvl) 
+        VALUES ?`;
+    
+    db.query(insertQuery, [sectorValues], err => {
+        if (err) {
+            console.error(`Error inserting sectors for game ${gameId}:`, err);
+            return;
+        }
+        
+        console.log(`${sectors.length} sectors created for game ${gameId}`);
+        
+        // Configure homeworlds
+        homeworlds.forEach((sectorId, index) => {
+            // Set as homeworld
+            db.query(`UPDATE map${gameId} SET 
+                sectortype = 10, 
+                terraformlvl = 0, 
+                colonized = 1,
+                metallvl = 1,
+                crystallvl = 1,
+                academylvl = 1,
+                shipyardlvl = 1
+                WHERE sectorid = ?`, [sectorId]
+            );
+        });
+        
+        console.log(`${homeworlds.length} homeworlds configured for game ${gameId}`);
+    });
+    
+    return { sectors, homeworlds };
+}
+
 testPlayers.forEach((player, index) => {
     // Add user
     InMemoryDB.addUser(player.id, {

@@ -11,7 +11,7 @@ let chatfadetimer;
 let chatfadebegin;
 let chatfadevalue = 100;
 
-
+const ServerFunctions = require('./server.js');
 
 const GAME_STATE = {
     player: {
@@ -1416,8 +1416,6 @@ function disableSelection(element) {
     }
 }
 
-// In rewrite/connect.js - Add the missing moveFleet function
-
 function moveFleet(message, connection) {
     const parts = message.split(":");
     if (parts.length < 3) return;
@@ -1597,7 +1595,7 @@ function probeSector(message, connection) {
     );
 }
 
-// Add to connect.js
+
 function colonizePlanet(connection) {
     if (!connection.sectorid) {
         connection.sendUTF('You need to select a sector first');

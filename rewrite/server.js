@@ -1431,7 +1431,6 @@ function buyTech(message, connection) {
     );
 }
 
-// Export utility functions for use in other modules
 module.exports = {
     updateAllSectors,
     updateSector2,
@@ -1444,5 +1443,6 @@ module.exports = {
     probeSector,
     moveFleet,
     handleGameStart,
-    nextTurn
+    nextTurn,
+    gameMechanics
 };

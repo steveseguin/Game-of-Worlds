@@ -249,6 +249,7 @@ function broadcastPlayerList(gameId) {
     }
 }
 
+// in rewrite/index.js - complete the authUser function
 function authUser(message, connection) {
     const parts = message.split(":");
     if (parts.length < 3) {
@@ -284,4 +285,28 @@ function authUser(message, connection) {
             connection.gameid = user.currentgame;
             clientMap[playerId] = connection;
             
-            /// THIS NEEDS TO BE COMPLETED.
+            console.log(`Player ${playerId} authenticated, joining game ${user.currentgame}`);
+            
+            // Handle game state
+            if (turns[connection.gameid] > 0) {
+                connection.sendUTF("You have re-connected to a game that is already in progress.");
+                updateResources(connection);
+                updateAllSectors(connection.gameid, connection);
+            } else {
+                connection.sendUTF("lobby::");
+                connection.sendUTF("The game has yet to begin. Welcome.");
+            }
+            
+            // Broadcast player list to all players in the game
+            broadcastPlayerList(connection.gameid);
+        } else if (!user.currentgame) {
+            connection.sendUTF("Please join a game first.");
+            console.log("No game set for player. Authentication failed.");
+            connection.close();
+        } else {
+            connection.sendUTF("Invalid credentials");
+            console.log("Wrong credentials. Authentication failed.");
+            connection.close();
+        }
+    });
+}
