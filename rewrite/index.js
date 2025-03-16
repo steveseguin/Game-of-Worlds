@@ -206,6 +206,9 @@ function handleCommand(data, connection) {
         case "update":
             updateResources(connection);
             break;
+		case "joingame":
+            handleJoinGame(connection);
+            break;
         default:
             connection.sendUTF(`Unknown command: ${command}`);
     }

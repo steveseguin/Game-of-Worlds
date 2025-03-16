@@ -128,34 +128,46 @@ const BattleSystem = (function() {
     }
     
     function animateBattleRound(battleData, round, container) {
-        const delay = 5000 * round;
-        
-        setTimeout(() => {
-            // For each ship type (9 attacker types + 9 defender types)
-            for (let i = 0; i < 18; i++) {
-                const beforeCount = parseInt(battleData[i + 1]) || 0;
-                const afterCount = parseInt(battleData[i + 1 + round * 20]) || 0;
-                
-                // Calculate losses
-                const losses = beforeCount - afterCount;
-                
-                // Animate destruction of lost ships
-                for (let j = afterCount; j < beforeCount; j++) {
-                    const prefix = i < 9 ? '1a' : '1d';
-                    const shipType = i < 9 ? i : i - 9;
-                    const shipId = prefix + j + shipType;
-                    
-                    // Randomly time the explosions
-                    setTimeout(() => {
-                        const ship = document.getElementById(shipId);
-                        if (ship) {
-                            ship.src = 'boom.gif';
-                        }
-                    }, Math.random() * 2000);
-                }
-            }
-        }, delay);
-    }
+		const delay = 5000 * round;
+		
+		setTimeout(() => {
+			// For each ship type (9 attacker types + 9 defender types)
+			for (let i = 0; i < 18; i++) {
+				const beforeCount = parseInt(battleData[i + 1]) || 0;
+				const afterCount = parseInt(battleData[i + 1 + round * 20]) || 0;
+				
+				// Calculate losses
+				const losses = beforeCount - afterCount;
+				
+				// Animate destruction of lost ships
+				for (let j = afterCount; j < beforeCount; j++) {
+					const prefix = i < 9 ? '1a' : '1d';
+					const shipType = i < 9 ? i : i - 9;
+					const shipId = prefix + j + shipType;
+					
+					// Randomly time the explosions
+					setTimeout(() => {
+						const ship = document.getElementById(shipId);
+						if (ship) {
+							ship.src = 'boom.gif';
+							
+							// Add explosion sound if available
+							const sound = new Audio('explosion.mp3');
+							sound.volume = 0.3;
+							sound.play().catch(e => console.log('Sound play error:', e));
+							
+							// Remove ship after explosion animation
+							setTimeout(() => {
+								if (ship && ship.parentNode) {
+									ship.parentNode.removeChild(ship);
+								}
+							}, 1000);
+						}
+					}, Math.random() * 2000);
+				}
+			}
+		}, delay);
+	}
     
     return {
         createBattleVisualization

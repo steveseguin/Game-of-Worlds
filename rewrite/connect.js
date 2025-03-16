@@ -138,6 +138,481 @@ function initializeWebSocket() {
     };
 }
 
+function preMoveFleet(message, connection) {
+    console.log("Processing fleet movement:", message);
+    const arr = message.split(":");
+    if (arr.length < 2) {
+        connection.sendUTF("Invalid move format");
+        return;
+    }
+    
+    const msid = parseInt(arr[1], 16);
+    
+    // Get player's resources
+    db.query('SELECT * FROM players' + connection.gameid + ' WHERE playerid = ? LIMIT 1', 
+        [connection.name], (err, resultsp) => {
+            if (err) {
+                console.error("Error retrieving player data:", err);
+                return;
+            }
+            
+            if (resultsp.length === 0) {
+                connection.sendUTF('Error: Player data not found');
+                return;
+            }
+            
+            const player = resultsp[0];
+            
+            // Calculate fleet movement cost
+            let sumofships = 0;
+            for (let y = 4; y <= (arr.length - 1); y += 3) {
+                const shipType = parseInt(arr[y - 1]);
+                const count = parseInt(arr[y]) || 1;
+                
+                switch (shipType) {
+                    case 1: sumofships += count * 2; break; // Frigate
+                    case 2: sumofships += count * 3; break; // Destroyer
+                    case 3: sumofships += count * 1; break; // Scout
+                    case 4: sumofships += count * 2; break; // Cruiser
+                    case 5: sumofships += count * 3; break; // Battleship
+                    case 6: sumofships += count * 2; break; // Colony Ship
+                    case 7: sumofships += count * 5; break; // Dreadnought
+                    case 8: sumofships += count * 2; break; // Intruder
+                    case 9: sumofships += count * 3; break; // Carrier
+                }
+            }
+            
+            const crystalCost = sumofships * 100;
+            
+            // Check if player has enough crystal
+            if (crystalCost > player.crystal) {
+                connection.sendUTF(`You do not have enough crystal to send this fleet. Needed: ${crystalCost}`);
+                return;
+            }
+            
+            // Process the fleet movement
+            moveFleetMulti(arr, connection, crystalCost, player);
+        }
+    );
+}
+
+function moveFleetMulti(moveData, connection, crystalCost, playerData) {
+    const targetSectorId = parseInt(moveData[1], 16);
+    
+    // First, deduct the crystal cost
+    db.query(`UPDATE players${connection.gameid} SET crystal = crystal - ? WHERE playerid = ?`, 
+        [crystalCost, connection.name]
+    );
+    
+    // Process all ship movements
+    const shipMovements = [];
+    
+    for (let i = 2; i < moveData.length; i += 3) {
+        const sourceSectorId = parseInt(moveData[i], 16);
+        const shipType = parseInt(moveData[i+1]);
+        const count = parseInt(moveData[i+2]) || 1;
+        
+        if (isNaN(sourceSectorId) || isNaN(shipType) || isNaN(count) || 
+            shipType < 1 || shipType > 9 || count <= 0) {
+            continue;
+        }
+        
+        // Add to ship movements
+        shipMovements.push({
+            sourceSectorId,
+            shipType,
+            count
+        });
+    }
+    
+    // Process each ship movement sequentially
+    processShipMovements(shipMovements, 0, targetSectorId, connection, () => {
+        // After all movements, notify player and update UI
+        connection.sendUTF(`Fleet dispatched to sector ${targetSectorId.toString(16).toUpperCase()}. Cost: ${crystalCost} crystal`);
+        updateResources(connection);
+        updateAllSectors(connection.gameid, connection);
+        
+        // Schedule fleet arrival
+        setTimeout(() => {
+            fleetArrival(targetSectorId, connection);
+        }, 10000);
+    });
+}
+
+
+function fleetArrival(sectorId, connection) {
+    // Get target sector data
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`,
+        [sectorId],
+        (err, results) => {
+            if (err || results.length === 0) {
+                console.error("Error retrieving target sector data:", err);
+                return;
+            }
+            
+            const sector = results[0];
+            
+            // Check if hazard sector (apply losses)
+            let shipsLost = 0;
+            if (sector.sectortype === 1) { // Asteroid field
+                // 50% chance of losing ships
+                const hazardLoss = 0.5;
+                
+                // Update query parts
+                let updateFields = '';
+                
+                // Process each ship type
+                for (let i = 1; i <= 9; i++) {
+                    const comingField = `totship${i}coming`;
+                    const coming = sector[comingField] || 0;
+                    
+                    if (coming > 0) {
+                        // Calculate survivors (random between 50-100%)
+                        const survivalRate = Math.random() * hazardLoss + (1 - hazardLoss);
+                        const survivors = Math.round(coming * survivalRate);
+                        const lost = coming - survivors;
+                        shipsLost += lost;
+                        
+                        // Update field
+                        updateFields += `${comingField} = 0, totalship${i} = totalship${i} + ${survivors}, `;
+                    }
+                }
+                
+                // Remove trailing comma and space
+                if (updateFields.length > 0) {
+                    updateFields = updateFields.substring(0, updateFields.length - 2);
+                }
+                
+                // Update sector with survivors
+                if (updateFields) {
+                    db.query(`UPDATE map${connection.gameid} SET ${updateFields} WHERE sectorid = ?`,
+                        [sectorId],
+                        (err) => {
+                            if (err) {
+                                console.error("Error updating sector with survivors:", err);
+                            }
+                            
+                            if (shipsLost > 0) {
+                                connection.sendUTF(`Fleet arrived at asteroid field in sector ${sectorId.toString(16).toUpperCase()}. ${shipsLost} ships were lost to asteroid collisions.`);
+                            } else {
+                                connection.sendUTF(`Fleet arrived safely at asteroid field in sector ${sectorId.toString(16).toUpperCase()}.`);
+                            }
+                            
+                            updateSector2(sectorId, connection);
+                        }
+                    );
+                }
+            }
+            // Handle black hole - complete destruction
+            else if (sector.sectortype === 2) {
+                // Clear all incoming ships
+                let updateFields = '';
+                
+                for (let i = 1; i <= 9; i++) {
+                    updateFields += `totship${i}coming = 0, `;
+                }
+                
+                // Remove trailing comma and space
+                updateFields = updateFields.substring(0, updateFields.length - 2);
+                
+                db.query(`UPDATE map${connection.gameid} SET ${updateFields} WHERE sectorid = ?`,
+                    [sectorId],
+                    (err) => {
+                        if (err) {
+                            console.error("Error clearing ships in black hole:", err);
+                        }
+                        
+                        connection.sendUTF(`Your fleet was lost in the black hole at sector ${sectorId.toString(16).toUpperCase()}.`);
+                        updateSector2(sectorId, connection);
+                    }
+                );
+            }
+            // Normal sector - check for combat or peaceful arrival
+            else {
+                if (sector.ownerid !== connection.name && sector.ownerid !== '0') {
+                    // Enemy sector - initiate combat
+                    initiateCombat(sectorId, connection);
+                } else {
+                    // Friendly or empty sector - peaceful arrival
+                    let updateFields = '';
+                    
+                    for (let i = 1; i <= 9; i++) {
+                        const comingField = `totship${i}coming`;
+                        const coming = sector[comingField] || 0;
+                        
+                        if (coming > 0) {
+                            updateFields += `${comingField} = 0, totalship${i} = totalship${i} + ${coming}, `;
+                        }
+                    }
+                    
+                    // Remove trailing comma and space
+                    if (updateFields.length > 0) {
+                        updateFields = updateFields.substring(0, updateFields.length - 2);
+                        
+                        // If empty sector, claim it
+                        if (sector.ownerid === '0') {
+                            updateFields += `, ownerid = '${connection.name}'`;
+                        }
+                        
+                        // Update sector
+                        db.query(`UPDATE map${connection.gameid} SET ${updateFields} WHERE sectorid = ?`,
+                            [sectorId],
+                            (err) => {
+                                if (err) {
+                                    console.error("Error updating sector with arriving ships:", err);
+                                }
+                                
+                                connection.sendUTF(`Fleet arrived at sector ${sectorId.toString(16).toUpperCase()}.`);
+                                updateSector2(sectorId, connection);
+                                updateAllSectors(connection.gameid, connection);
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    );
+}
+
+function initiateCombat(sectorId, connection) {
+    // Get defender information
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`,
+        [sectorId],
+        (err, results) => {
+            if (err || results.length === 0) {
+                console.error("Error retrieving target sector for combat:", err);
+                return;
+            }
+            
+            const sector = results[0];
+            const defenderId = sector.ownerid;
+            
+            // Prepare attacker fleet (convert incoming to actual)
+            let attackerFleet = {
+                ship1: sector.totship1coming || 0,
+                ship2: sector.totship2coming || 0,
+                ship3: sector.totship3coming || 0,
+                ship4: sector.totship4coming || 0,
+                ship5: sector.totship5coming || 0,
+                ship6: sector.totship6coming || 0,
+                ship7: sector.totship7coming || 0,
+                ship8: sector.totship8coming || 0,
+                ship9: sector.totship9coming || 0
+            };
+            
+            // Prepare defender fleet
+            let defenderFleet = {
+                ship1: sector.totalship1 || 0,
+                ship2: sector.totalship2 || 0,
+                ship3: sector.totalship3 || 0,
+                ship4: sector.totalship4 || 0,
+                ship5: sector.totalship5 || 0,
+                ship6: sector.totalship6 || 0,
+                ship7: sector.totalship7 || 0,
+                ship8: sector.totalship8 || 0,
+                ship9: sector.totalship9 || 0,
+                orbitalTurret: sector.orbitalturret || 0,
+                groundTurret: sector.groundturret || 0
+            };
+            
+            // Get tech levels for both players
+            db.query(`SELECT tech4, tech5, tech6 FROM players${connection.gameid} WHERE playerid IN (?, ?)`,
+                [connection.name, defenderId],
+                (err, techResults) => {
+                    if (err) {
+                        console.error("Error retrieving tech levels:", err);
+                        return;
+                    }
+                    
+                    // Default tech levels
+                    let attackerTech = { weapons: 0, hull: 0, shields: 0 };
+                    let defenderTech = { weapons: 0, hull: 0, shields: 0 };
+                    
+                    // Assign tech levels from results
+                    techResults.forEach(tech => {
+                        if (tech.playerid === connection.name) {
+                            attackerTech = {
+                                weapons: tech.tech4 || 0,
+                                hull: tech.tech5 || 0,
+                                shields: tech.tech6 || 0
+                            };
+                        } else {
+                            defenderTech = {
+                                weapons: tech.tech4 || 0,
+                                hull: tech.tech5 || 0,
+                                shields: tech.tech6 || 0
+                            };
+                        }
+                    });
+                    
+                    // Conduct battle
+                    const battleResult = CombatSystem.conductBattle(
+                        attackerFleet, defenderFleet, attackerTech, defenderTech
+                    );
+                    
+                    // Process battle results
+                    processBattleResult(battleResult, sectorId, connection, defenderId);
+                }
+            );
+        }
+    );
+}
+
+function processBattleResult(battleResult, sectorId, connection, defenderId) {
+    // Convert result to battle message for clients
+    const battleMessage = CombatSystem.formatBattleMessage(battleResult);
+    
+    // Get clients for both players
+    const attackerClient = connection;
+    const defenderClient = clientMap[defenderId];
+    
+    // Send battle message to both players
+    if (attackerClient) {
+        attackerClient.sendUTF(battleMessage);
+    }
+    
+    if (defenderClient) {
+        defenderClient.sendUTF(battleMessage);
+    }
+    
+    // Process outcome based on victor
+    if (battleResult.result === "attackerVictory") {
+        // Update sector ownership and remaining ships
+        const remainingAttackers = battleResult.final.attackers;
+        
+        let updateQuery = "UPDATE map" + connection.gameid + " SET ";
+        
+        // Set ship counts
+        for (let i = 1; i <= 9; i++) {
+            updateQuery += `totalship${i} = ${remainingAttackers[i] || 0}, `;
+            updateQuery += `totship${i}coming = 0, `;
+        }
+        
+        // Change ownership and reset buildings if colonized
+        if (sector.colonized === 1) {
+            updateQuery += "ownerid = '" + connection.name + "', colonized = 0, ";
+            updateQuery += "orbitalturret = 0, groundturret = 0, ";
+            updateQuery += "metallvl = 0, crystallvl = 0, academylvl = 0, shipyardlvl = 0, warpgate = 0 ";
+        } else {
+            updateQuery += "ownerid = '" + connection.name + "', ";
+            updateQuery += "orbitalturret = 0, groundturret = 0 ";
+        }
+        
+        updateQuery += "WHERE sectorid = " + sectorId;
+        
+        db.query(updateQuery, (err) => {
+            if (err) {
+                console.error("Error updating sector after battle:", err);
+                return;
+            }
+            
+            // Notify both players
+            if (attackerClient) {
+                attackerClient.sendUTF(`Victory! Your forces have captured sector ${sectorId.toString(16).toUpperCase()}.`);
+                updateSector2(sectorId, attackerClient);
+                updateAllSectors(connection.gameid, attackerClient);
+            }
+            
+            if (defenderClient) {
+                defenderClient.sendUTF(`Defeat! Your forces lost control of sector ${sectorId.toString(16).toUpperCase()}.`);
+                updateAllSectors(connection.gameid, defenderClient);
+            }
+        });
+    } else {
+        // Defender victory
+        const remainingDefenders = battleResult.final.defenders;
+        
+        let updateQuery = "UPDATE map" + connection.gameid + " SET ";
+        
+        // Set ship counts and clear incoming
+        for (let i = 1; i <= 9; i++) {
+            updateQuery += `totalship${i} = ${remainingDefenders[i] || 0}, `;
+            updateQuery += `totship${i}coming = 0, `;
+        }
+        
+        // Update orbital turrets
+        updateQuery += `orbitalturret = ${battleResult.final.orbitalTurrets || 0}, `;
+        updateQuery += `groundturret = ${battleResult.final.groundTurrets || 0} `;
+        
+        updateQuery += "WHERE sectorid = " + sectorId;
+        
+        db.query(updateQuery, (err) => {
+            if (err) {
+                console.error("Error updating sector after battle:", err);
+                return;
+            }
+            
+            // Notify both players
+            if (attackerClient) {
+                attackerClient.sendUTF(`Defeat! Your attack on sector ${sectorId.toString(16).toUpperCase()} was repelled.`);
+                updateAllSectors(connection.gameid, attackerClient);
+            }
+            
+            if (defenderClient) {
+                defenderClient.sendUTF(`Victory! Your forces successfully defended sector ${sectorId.toString(16).toUpperCase()}.`);
+                updateSector2(sectorId, defenderClient);
+                updateAllSectors(connection.gameid, defenderClient);
+            }
+        });
+    }
+}
+// Helper function to process ship movements one by one
+function processShipMovements(movements, index, targetSectorId, connection, callback) {
+    if (index >= movements.length) {
+        // All movements processed
+        callback();
+        return;
+    }
+    
+    const movement = movements[index];
+    
+    // Get source sector information
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? AND ownerid = ? LIMIT 1`,
+        [movement.sourceSectorId, connection.name],
+        (err, results) => {
+            if (err || results.length === 0) {
+                // Skip this movement
+                processShipMovements(movements, index + 1, targetSectorId, connection, callback);
+                return;
+            }
+            
+            const sector = results[0];
+            const shipField = `totalship${movement.shipType}`;
+            
+            // Check if sector has enough ships
+            if (sector[shipField] < movement.count) {
+                // Not enough ships, skip
+                processShipMovements(movements, index + 1, targetSectorId, connection, callback);
+                return;
+            }
+            
+            // Remove ships from source sector
+            db.query(`UPDATE map${connection.gameid} SET ${shipField} = ${shipField} - ? WHERE sectorid = ?`,
+                [movement.count, movement.sourceSectorId],
+                (err) => {
+                    if (err) {
+                        console.error("Error updating source sector:", err);
+                    }
+                    
+                    // Prepare ships for arrival with totshipXcoming field
+                    const comingField = `totship${movement.shipType}coming`;
+                    db.query(`UPDATE map${connection.gameid} SET ${comingField} = ${comingField} + ? WHERE sectorid = ?`,
+                        [movement.count, targetSectorId],
+                        (err) => {
+                            if (err) {
+                                console.error("Error updating target sector:", err);
+                            }
+                            
+                            // Process next movement
+                            processShipMovements(movements, index + 1, targetSectorId, connection, callback);
+                        }
+                    );
+                }
+            );
+        }
+    );
+}
+
 function handleWebSocketMessage(message) {
     console.log("Received message:", message);
     

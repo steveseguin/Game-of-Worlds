@@ -156,6 +156,85 @@ server.on('request', (request, response) => {
         });
         return;
     }
+	
+	if (urlPath === '/login' || urlPath === '/register') {
+		let body = '';
+		request.on('data', chunk => {
+			body += chunk.toString();
+		});
+		
+		request.on('end', () => {
+			try {
+				const data = JSON.parse(body);
+				
+				if (urlPath === '/login') {
+					// Handle login
+					db.query('SELECT * FROM users WHERE username = ? LIMIT 1', [data.username], (err, results) => {
+						if (err || results.length === 0) {
+							response.writeHead(200, {'Content-Type': 'application/json'});
+							response.end(JSON.stringify({success: false, message: 'Invalid username or password'}));
+							return;
+						}
+						
+						const user = results[0];
+						// In a real app, passwords should be hashed
+						if (user.password === data.password) {
+							// Generate temp key
+							const tempKey = Math.random().toString(36).substring(2, 15);
+							
+							// Update user's temp key
+							db.query('UPDATE users SET tempkey = ? WHERE id = ?', [tempKey, user.id]);
+							
+							response.writeHead(200, {'Content-Type': 'application/json'});
+							response.end(JSON.stringify({
+								success: true, 
+								userId: user.id, 
+								tempKey: tempKey
+							}));
+						} else {
+							response.writeHead(200, {'Content-Type': 'application/json'});
+							response.end(JSON.stringify({success: false, message: 'Invalid username or password'}));
+						}
+					});
+				} else if (urlPath === '/register') {
+					// Handle registration
+					// Check if username exists
+					db.query('SELECT * FROM users WHERE username = ? LIMIT 1', [data.username], (err, results) => {
+						if (err) {
+							response.writeHead(200, {'Content-Type': 'application/json'});
+							response.end(JSON.stringify({success: false, message: 'Database error'}));
+							return;
+						}
+						
+						if (results.length > 0) {
+							response.writeHead(200, {'Content-Type': 'application/json'});
+							response.end(JSON.stringify({success: false, message: 'Username already exists'}));
+							return;
+						}
+						
+						// Create new user
+						const userId = data.username;
+						db.query('INSERT INTO users (id, username, password) VALUES (?, ?, ?)', 
+							[userId, data.username, data.password], (err) => {
+								if (err) {
+									response.writeHead(200, {'Content-Type': 'application/json'});
+									response.end(JSON.stringify({success: false, message: 'Error creating user'}));
+									return;
+								}
+								
+								response.writeHead(200, {'Content-Type': 'application/json'});
+								response.end(JSON.stringify({success: true}));
+							}
+						);
+					});
+				}
+			} catch (e) {
+				response.writeHead(400, {'Content-Type': 'application/json'});
+				response.end(JSON.stringify({success: false, message: 'Invalid request'}));
+			}
+		});
+		return;
+	}
     
     // Check for JS files
     if (urlPath.endsWith('.js')) {
@@ -195,6 +274,85 @@ server.on('request', (request, response) => {
 
 // Helper Functions
 
+function colonizePlanet(connection) {
+    if (!connection.sectorid) {
+        connection.sendUTF('You need to select a sector first');
+        return;
+    }
+    
+    // Get sector data
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, 
+        [connection.sectorid], (err, results) => {
+            if (err || results.length === 0) {
+                console.error("Error retrieving sector data:", err);
+                connection.sendUTF('Error retrieving sector data');
+                return;
+            }
+            
+            const sector = results[0];
+            
+            // Get player's terraform tech level
+            db.query(`SELECT tech7 FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, 
+                [connection.name], (err, techResults) => {
+                    if (err || techResults.length === 0) {
+                        console.error("Error retrieving tech data:", err);
+                        connection.sendUTF('Error retrieving tech data');
+                        return;
+                    }
+                    
+                    const terraformLevel = techResults[0].tech7 || 0;
+                    
+                    // Check colonization requirements
+                    if (sector.ownerid != connection.name) {
+                        connection.sendUTF('You must control this sector to colonize it');
+                        return;
+                    }
+                    
+                    if (sector.colonized === 1) {
+                        connection.sendUTF('This sector is already colonized');
+                        return;
+                    }
+                    
+                    if (sector.sectortype <= 5) {
+                        connection.sendUTF('This sector has no planet to colonize');
+                        return;
+                    }
+                    
+                    if (terraformLevel < sector.terraformlvl) {
+                        connection.sendUTF(`This planet requires terraform level ${sector.terraformlvl} to colonize`);
+                        return;
+                    }
+                    
+                    if (sector.totalship6 <= 0) {
+                        connection.sendUTF('You need at least one colony ship in this sector to colonize');
+                        return;
+                    }
+                    
+                    // All requirements met, colonize the planet
+                    db.query(`UPDATE map${connection.gameid} SET 
+                        colonized = 1, 
+                        totalship6 = totalship6 - 1,
+                        metallvl = 1,
+                        crystallvl = 1
+                        WHERE sectorid = ?`, 
+                        [connection.sectorid], (err) => {
+                            if (err) {
+                                console.error("Error colonizing planet:", err);
+                                connection.sendUTF('Error colonizing planet');
+                                return;
+                            }
+                            
+                            connection.sendUTF(`Sector ${connection.sectorid.toString(16).toUpperCase()} has been successfully colonized!`);
+                            updateSector2(connection.sectorid, connection);
+                            updateAllSectors(connection.gameid, connection);
+                        }
+                    );
+                }
+            );
+        }
+    );
+}
+
 function broadcastConnectedUsers() {
     clients.forEach(client => {
         client.sendUTF(`$^$${clients.length}`);
@@ -230,6 +388,88 @@ function broadcastPlayerList(gameId, excludePlayer) {
             }
         });
     }
+}
+
+function addUserToGame(userId, gameId) {
+    return new Promise((resolve, reject) => {
+        // Check if game exists
+        db.query('SELECT * FROM games WHERE id = ?', [gameId], (err, gameResults) => {
+            if (err || gameResults.length === 0) {
+                return reject('Game not found');
+            }
+            
+            // Update user's current game
+            db.query('UPDATE users SET currentgame = ? WHERE id = ?', [gameId, userId], (err) => {
+                if (err) {
+                    return reject('Error updating user');
+                }
+                
+                // Add player to game's player table
+                db.query(`INSERT INTO players${gameId} (playerid) VALUES (?)`, [userId], (err) => {
+                    if (err) {
+                        return reject('Error adding player to game');
+                    }
+                    
+                    // Find an available homeworld
+                    db.query(`SELECT sectorid FROM map${gameId} WHERE sectortype = 10 AND ownerid = '0' LIMIT 1`, 
+                    (err, sectorResults) => {
+                        if (err || sectorResults.length === 0) {
+                            return reject('No available homeworld');
+                        }
+                        
+                        const homeworldId = sectorResults[0].sectorid;
+                        
+                        // Assign homeworld to player
+                        db.query(`UPDATE map${gameId} SET ownerid = ?, colonized = 1 WHERE sectorid = ?`, 
+                        [userId, homeworldId], (err) => {
+                            if (err) {
+                                return reject('Error assigning homeworld');
+                            }
+                            
+                            // Add starting fleet
+                            db.query(`UPDATE map${gameId} SET totalship1 = 3, totalship3 = 1 WHERE sectorid = ?`, 
+                            [homeworldId], (err) => {
+                                if (err) {
+                                    return reject('Error setting up starting fleet');
+                                }
+                                resolve();
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+
+function handleJoinGame(message, connection) {
+    const gameId = parseInt(message.split(':')[1]);
+    
+    // Check if game exists and is waiting for players
+    db.query('SELECT * FROM games WHERE id = ? AND status = "waiting"', [gameId], (err, results) => {
+        if (err || results.length === 0) {
+            connection.sendUTF('Error: Game not found or already started');
+            return;
+        }
+        
+        // Add user to game
+        addUserToGame(connection.name, gameId)
+            .then(() => {
+                connection.gameid = gameId;
+                connection.sendUTF(`You have joined game ${gameId}`);
+                
+                // Update client game state
+                updateResources(connection);
+                updateAllSectors(gameId, connection);
+                
+                // Broadcast updated player list
+                broadcastPlayerList(gameId);
+            })
+            .catch(error => {
+                connection.sendUTF(`Error joining game: ${error}`);
+            });
+    });
 }
 
 // Authentication and Game Management Functions
@@ -367,7 +607,7 @@ function handlePlayerReady(connection) {
 
 function startGame(gameId) {
     // Set turn to 1 in database
-    db.query('UPDATE games SET turn = 1 WHERE id = ?', [gameId]);
+    db.query('UPDATE games SET turn = 1, status = "active" WHERE id = ?', [gameId]);
     turns[gameId] = 1;
     
     console.log(`Game ${gameId} starting`);
@@ -389,19 +629,56 @@ function startGame(gameId) {
             };
         }
 
-        // Assign homeworlds to players
-        mapResults.forEach(sector => {
-            if (sector.sectortype === 10 && clientMap[sector.ownerid]) {
-                const client = clientMap[sector.ownerid];
-                
-                client.sendUTF(`sector:${sector.sectorid.toString(16).toUpperCase()}:owner:${sector.ownerid}:type:${sector.sectortype}:artifact:${sector.artifact}:metalbonus:${sector.metalbonus}:crystalbonus:${sector.crystalbonus}:terraform:${sector.terraformlvl}`);
-                client.sectorid = sector.sectorid;
-                client.sendUTF(`ownsector:${sector.sectorid.toString(16).toUpperCase()}`);
-                
-                console.log(`Player ${sector.ownerid} assigned to sector ${sector.sectorid.toString(16).toUpperCase()}`);
-                
-                updateSector2(sector.sectorid, client);
+        // Get all players in game
+        db.query(`SELECT playerid FROM players${gameId}`, (err, playerResults) => {
+            if (err) {
+                console.error("Error getting game players:", err);
+                return;
             }
+            
+            // Track homeworld assignments
+            const assignedHomeworlds = [];
+            
+            // For each player, find a homeworld
+            playerResults.forEach(playerRow => {
+                const playerId = playerRow.playerid;
+                
+                // Find an unassigned homeworld
+                let homeworldSector = null;
+                
+                for (const sector of mapResults) {
+                    if (sector.sectortype === 10 && 
+                        !assignedHomeworlds.includes(sector.sectorid)) {
+                        homeworldSector = sector;
+                        assignedHomeworlds.push(sector.sectorid);
+                        break;
+                    }
+                }
+                
+                if (homeworldSector) {
+                    // Assign homeworld to player
+                    db.query(`UPDATE map${gameId} SET 
+                        ownerid = ?, 
+                        colonized = 1,
+                        metallvl = 1,
+                        crystallvl = 1,
+                        academylvl = 1,
+                        shipyardlvl = 2,
+                        totalship1 = 5,
+                        totalship3 = 2
+                        WHERE sectorid = ?`,
+                        [playerId, homeworldSector.sectorid]
+                    );
+                    
+                    // Notify player if online
+                    const client = clientMap[playerId];
+                    if (client) {
+                        client.sendUTF(`Your home sector is ${homeworldSector.sectorid.toString(16).toUpperCase()}`);
+                        client.sectorid = homeworldSector.sectorid;
+                        updateSector2(homeworldSector.sectorid, client);
+                    }
+                }
+            });
         });
     });
     
@@ -411,6 +688,7 @@ function startGame(gameId) {
             client.sendUTF("GAME HAS STARTED!");
             client.sendUTF("newround:");
             updateResources(client);
+            updateAllSectors(gameId, client);
         }
     });
     
@@ -525,6 +803,46 @@ function gameMechanics(gameId) {
                 }
             );
         }
+        
+        // Check for conflicts in contested sectors
+        db.query(`SELECT * FROM map${gameId} WHERE 
+                 totalship1 > 0 OR totalship2 > 0 OR totalship3 > 0 OR 
+                 totalship4 > 0 OR totalship5 > 0 OR totalship7 > 0 OR 
+                 totalship8 > 0 OR totalship9 > 0`, 
+            (err, armedSectors) => {
+                if (err) {
+                    console.error("Error retrieving armed sectors:", err);
+                    return;
+                }
+                
+                // Group sectors by ID to find multiple fleets in same sector
+                const sectorFleets = {};
+                
+                armedSectors.forEach(sector => {
+                    if (!sectorFleets[sector.sectorid]) {
+                        sectorFleets[sector.sectorid] = [];
+                    }
+                    
+                    // Only add sectors with ships
+                    const totalShips = sector.totalship1 + sector.totalship2 + sector.totalship3 +
+                                      sector.totalship4 + sector.totalship5 + sector.totalship6 +
+                                      sector.totalship7 + sector.totalship8 + sector.totalship9;
+                    
+                    if (totalShips > 0) {
+                        sectorFleets[sector.sectorid].push(sector);
+                    }
+                });
+                
+                // Process sectors with multiple fleets from different owners
+                for (const [sectorId, fleets] of Object.entries(sectorFleets)) {
+                    if (fleets.length > 1) {
+                        // Multiple owners in same sector - initiate auto combat
+                        console.log(`Conflict detected in sector ${sectorId}`);
+                        // Implement auto-combat logic here
+                    }
+                }
+            }
+        );
     });
 }
 
@@ -999,7 +1317,6 @@ function endTravel(s1, s2, s3, s4, s5, s6, s7, s8, s9, playerId, gameId, targetS
     );
 }
 
-
 function checkWinConditions(gameId) {
     // Get all sectors
     db.query(`SELECT ownerid, COUNT(*) as sectorCount 
@@ -1011,40 +1328,77 @@ function checkWinConditions(gameId) {
             return;
         }
         
-        // Check if game has a clear winner (owns >80% of sectors)
-        if (results.length > 0 && results[0].ownerid !== '0') {
-            // Get total sector count
-            db.query(`SELECT COUNT(*) as totalSectors FROM map${gameId}`, (err, totalResults) => {
-                if (err || totalResults.length === 0) return;
-                
-                const totalSectors = totalResults[0].totalSectors;
-                const winnerSectors = results[0].sectorCount;
-                const percentage = (winnerSectors / totalSectors) * 100;
-                
-                if (percentage >= 80) {
-                    // We have a winner!
-                    const winnerId = results[0].ownerid;
-                    
-                    // Update game status
-                    db.query(`UPDATE games SET status = 'completed' WHERE id = ?`, [gameId]);
-                    
-                    // Notify all players
-                    clients.forEach(client => {
-                        if (client.gameid === gameId) {
-                            if (client.name === winnerId) {
-                                client.sendUTF("VICTORY! You have conquered the galaxy!");
-                            } else {
-                                client.sendUTF(`Game over! Player ${winnerId} has conquered the galaxy!`);
-                            }
+        // Get active players
+        db.query(`SELECT playerid FROM players${gameId}`, (err, playerResults) => {
+            if (err) {
+                console.error("Error retrieving players:", err);
+                return;
+            }
+            
+            const activePlayers = playerResults.map(r => r.playerid);
+            
+            // If only one player remains, they win
+            if (activePlayers.length === 1) {
+                const winnerId = activePlayers[0];
+                endGame(gameId, winnerId, "last player standing");
+                return;
+            }
+            
+            // Check if game has a clear winner (owns >80% of colonizable sectors)
+            if (results.length > 0 && results[0].ownerid !== '0') {
+                // Get total colonizable sector count
+                db.query(`SELECT COUNT(*) as totalSectors FROM map${gameId} WHERE sectortype > 5`, 
+                    (err, totalResults) => {
+                        if (err || totalResults.length === 0) return;
+                        
+                        const totalSectors = totalResults[0].totalSectors;
+                        const winnerSectors = results[0].sectorCount;
+                        const percentage = (winnerSectors / totalSectors) * 100;
+                        
+                        if (percentage >= 80) {
+                            // We have a winner!
+                            const winnerId = results[0].ownerid;
+                            endGame(gameId, winnerId, "conquest");
                         }
-                    });
-                    
-                    // Stop the turn timer
-                    clearInterval(gameTimer[gameId]);
-                }
-            });
+                    }
+                );
+            }
+        });
+    });
+}
+
+function endGame(gameId, winnerId, reason) {
+    // Update game status
+    db.query(`UPDATE games SET status = 'completed', winner = ? WHERE id = ?`, 
+        [winnerId, gameId]);
+    
+    // Stop the turn timer
+    clearInterval(gameTimer[gameId]);
+    
+    // Create victory message
+    let victoryMessage = "";
+    if (reason === "conquest") {
+        victoryMessage = `Player ${winnerId} has conquered 80% of the galaxy!`;
+    } else if (reason === "last player standing") {
+        victoryMessage = `Player ${winnerId} is the last remaining player!`;
+    } else {
+        victoryMessage = `Player ${winnerId} has won the game!`;
+    }
+    
+    // Notify all players
+    clients.forEach(client => {
+        if (client.gameid === gameId) {
+            if (client.name === winnerId) {
+                client.sendUTF(`VICTORY! You have won the game by ${reason}!`);
+            } else {
+                client.sendUTF(`Game over! ${victoryMessage}`);
+            }
         }
     });
+    
+    // Remove game from active games
+    delete activeGames[gameId];
+    delete turns[gameId];
 }
 
 function updateSector(message, connection) {
