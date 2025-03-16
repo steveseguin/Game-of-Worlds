@@ -80,12 +80,7 @@ server.listen(PORT, () => {
 // Create WebSocket server
 const wsServer = new WebSocketServer({
     httpServer: server,
-    maxReceivedFrameSize: 64 * 1024 * 1024,   // 64MiB
-    maxReceivedMessageSize: 64 * 1024 * 1024, // 64MiB
-    fragmentOutgoingMessages: false,
-    keepalive: true,
-    disableNagleAlgorithm: false,
-    autoAcceptConnections: true
+    autoAcceptConnections: false
 });
 
 // WebSocket connection handler

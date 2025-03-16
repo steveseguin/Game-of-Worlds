@@ -54,13 +54,13 @@ const GameUI = (function() {
     }
     
     // Set up event listeners
-    function setupEventListeners() {
-        // Tab switching
-        document.getElementById('buildtab')?.addEventListener('click', () => switchTab('build'));
-        document.getElementById('fleettab')?.addEventListener('click', () => switchTab('fleet'));
-        document.getElementById('techtab')?.addEventListener('click', () => switchTab('techtree'));
-        document.getElementById('colonizetab')?.addEventListener('click', () => switchTab('colonize'));
-    }
+	function setupEventListeners() {
+		// Tab switching - needs to use our defined function instead of direct manipulation
+		document.getElementById('buildtab')?.addEventListener('click', () => switchTab('build'));
+		document.getElementById('fleettab')?.addEventListener('click', () => switchTab('fleet'));
+		document.getElementById('techtab')?.addEventListener('click', () => switchTab('techtree'));
+		document.getElementById('colonizetab')?.addEventListener('click', () => switchTab('colonize'));
+	}
     
     // Switch tabs
     function switchTab(tabName) {

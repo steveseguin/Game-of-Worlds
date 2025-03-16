@@ -201,17 +201,17 @@ const BattleSystem = (function() {
     }
     
     // Clean up all animation timers and elements
-    function cleanupBattleVisualization() {
-        // Clear all animation timers
-        battleAnimationTimers.forEach(timer => clearTimeout(timer));
-        battleAnimationTimers = [];
-        
-        // Remove battle DOM element if it exists
-        const battleGround = document.getElementById('battleGround');
-        if (battleGround && battleGround.parentNode) {
-            battleGround.parentNode.removeChild(battleGround);
-        }
-    }
+	function cleanupBattleVisualization() {
+		// Clear all animation timers
+		battleAnimationTimers.forEach(timer => clearTimeout(timer));
+		battleAnimationTimers = [];
+		
+		// Remove battle DOM element if it exists
+		const battleGround = document.getElementById('battleGround');
+		if (battleGround && battleGround.parentNode) {
+			battleGround.parentNode.removeChild(battleGround);
+		}
+	}
     
     return {
         createBattleVisualization,

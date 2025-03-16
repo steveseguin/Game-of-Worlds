@@ -1356,21 +1356,3 @@ function setalpha(element, opacity) {
     // Initialize the game when document is ready
     document.addEventListener('DOMContentLoaded', initialize);
 })();
-
-// Update owned sector on map
-function updateOwnedSector(message) {
-    // Parse message
-    const parts = message.split(':');
-    if (parts.length < 3) return;
-    
-    const sectorId = parseInt(parts[1], 16);
-    const fleetSize = parseInt(parts[2]) || 0;
-    const indicator = parts[3] || '';
-    
-    // Update map if using the minimap renderer
-    if (window.GalaxyMap) {
-        let status = window.GalaxyMap.SECTOR_STATUS.OWNED;
-        
-        // Determine status based on indicator
-        if (indicator === 'A') {
-            status = window.GalaxyMap.

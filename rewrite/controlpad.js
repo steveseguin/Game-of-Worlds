@@ -36,32 +36,20 @@ const ControlPad = (function() {
         websocket.send("//buytech:" + techId);
     }
     
-    function initialize() {
-        // Set up tabs
-        document.getElementById('buildtab')?.addEventListener('click', () => switchTab(TABS.BUILD));
-        document.getElementById('fleettab')?.addEventListener('click', () => switchTab(TABS.FLEET));
-        document.getElementById('techtab')?.addEventListener('click', () => switchTab(TABS.TECH));
-        document.getElementById('colonizetab')?.addEventListener('click', () => switchTab(TABS.COLONIZE));
-        
-        // Set up building buttons
-        for (let i = 1; i <= 6; i++) {
-            document.getElementById(`bb${i}`)?.addEventListener('click', () => buyBuilding(i));
-        }
-        
-        // Set up ship buttons
-        setupShipButtons();
-        
-        // Set up tech buttons
-        for (let i = 1; i <= 9; i++) {
-            document.getElementById(`t${i}`)?.addEventListener('click', () => buyTech(i));
-        }
-        
-        // Set up fleet movement UI
-        setupFleetUI();
-        
-        // Default to build tab
-        switchTab(TABS.BUILD);
-    }
+	function initialize() {
+		// Set up tabs without duplicating GameUI event listeners
+		// Only set up building, ship, and tech button events here
+		
+		// Set up building buttons
+		for (let i = 1; i <= 6; i++) {
+			document.getElementById(`bb${i}`)?.addEventListener('click', () => buyBuilding(i));
+		}
+		
+		// Set up tech buttons
+		for (let i = 1; i <= 9; i++) {
+			document.getElementById(`t${i}`)?.addEventListener('click', () => buyTech(i));
+		}
+	}
     
     function setupShipButtons() {
         for (let i = 1; i <= 9; i++) {
