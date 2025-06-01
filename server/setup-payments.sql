@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS vip_memberships (
     start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     end_date TIMESTAMP NOT NULL,
     auto_renew BOOLEAN DEFAULT TRUE,
+    last_daily_claim DATE NULL DEFAULT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id),
     INDEX idx_user_tier (user_id, tier),
     INDEX idx_end_date (end_date)
