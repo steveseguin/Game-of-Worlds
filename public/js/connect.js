@@ -12,7 +12,10 @@
  * - Used by game.js for game initialization
  * - Uses GameUI, BattleSystem, GalaxyMap for UI updates
  */
-let server = "ws://127.0.0.1:1337";
+// Get WebSocket URL based on current location
+let server = window.location.protocol === 'https:' 
+    ? `wss://${window.location.host}`
+    : `ws://${window.location.host}`;
 let websocket;
 let turnTimer = 180; // 3 minutes per turn
 let turnInterval;

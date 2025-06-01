@@ -2,11 +2,12 @@
   "name": "game-of-worlds",
   "version": "1.0.0",
   "description": "Galaxy Conquest - A turn-based space strategy game",
-  "main": "rewrite/index.js",
+  "main": "server/index.js",
   "scripts": {
-    "start": "node rewrite/index.js",
-    "setup": "node rewrite/setup.js",
-    "dev": "node rewrite/index.js"
+    "start": "node server/index.js",
+    "setup": "node server/setup.js",
+    "dev": "nodemon server/index.js",
+    "test": "node server/test-server.js"
   },
   "dependencies": {
     "mysql2": "^3.13.0",

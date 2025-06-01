@@ -1,176 +1,21 @@
-<!-- 
- * index.html - Main landing page HTML structure
- * 
- * Defines the HTML structure of the game's landing page, with
- * resources bar, turn timer, sector display, chat system, and
- * control panels. Sets up the basic game UI layout.
- * 
- * This file is served to clients by the server and does not contain
- * executable server-side code.
- * 
- * Dependencies:
- * - Loads client-side JavaScript modules
- * - CSS styles from style.css
--->
+<!-- rewrite/game.html - Complete implementation -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Galaxy Conquest</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: #222 url('spacebak.jpg');
-            color: white;
-            font-family: Verdana, sans-serif;
-        }
-        
-        .hidden {
-            display: none;
-        }
-        
-        #resourceBar {
-            background-color: #333;
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 495px;
-            border-bottom: 5px solid #444;
-            border-right: 5px solid #444;
-            height: 30px;
-            border-radius: 0 0 15px 0;
-            padding: 5px;
-        }
-        
-        #turnTimeBar {
-            background-color: #333;
-            position: absolute;
-            right: 0;
-            top: 0;
-            width: 300px;
-            border-bottom: 5px solid #222;
-            border-left: 5px solid #444;
-            height: 90px;
-            text-align: center;
-        }
-        
-        #minimapid {
-            position: absolute;
-            right: 0px;
-            bottom: 0px;
-            width: 500px;
-            height: 356px;
-            background-color: #5C605A;
-        }
-        
-        #sectordisplay {
-            position: absolute;
-            top: 80px;
-            left: 270px;
-        }
-        
-        .tab-buttons {
-            display: flex;
-            margin-bottom: 10px;
-        }
-        
-        .tab-button {
-            padding: 8px 15px;
-            background: #444;
-            color: white;
-            border: 1px solid #666;
-            cursor: pointer;
-            margin-right: 5px;
-        }
-        
-        .tab-button.active {
-            background: #666;
-            border-bottom: none;
-        }
-        
-        .tab-panel {
-            border: 1px solid #666;
-            padding: 15px;
-            background: rgba(30, 30, 30, 0.8);
-        }
-        
-        .building-row, .ship-row, .tech-row {
-            display: flex;
-            margin-bottom: 10px;
-            align-items: center;
-        }
-        
-        .building-info, .ship-info, .tech-info {
-            flex: 2;
-        }
-        
-        .building-cost, .ship-cost, .tech-cost {
-            flex: 1;
-            text-align: right;
-        }
-        
-        .building-button, .ship-button, .tech-button, .colonize-button {
-            margin-left: 10px;
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-        
-        #multiMove {
-            position: absolute;
-            display: none;
-            left: 10px;
-            bottom: 10px;
-            width: 500px;
-            height: 400px;
-            background-color: #555;
-            border: 5px solid #111;
-            z-index: 1000;
-            padding: 10px;
-        }
-        
-        #battleGround {
-            position: absolute;
-            display: none;
-            left: 10%;
-            top: 10%;
-            width: 80%;
-            height: 80%;
-            background-color: #000;
-            background-image: url('spacebak.jpg');
-            z-index: 1000;
-        }
-        
-        #empireupdates {
-            padding: 5px 15px;
-            position: absolute;
-            right: 180px;
-            bottom: 62px;
-            width: 320px;
-            background-color: #C2B49E;
-            border-radius: 15px;
-        }
-        
-        #controlPadGUI {
-            position: absolute;
-            left: 0;
-            bottom: 0;
-            width: 500px;
-            height: 360px;
-        }
-    </style>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <!-- Resource Display -->
+    <!-- Resource Bar -->
     <div id="resourceBar">
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="resources.png" style="position:relative;left:-25px;" alt="Metal"/></div><span id="metalresource"> 0 Metal,</span>
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="resources.png" style="position:relative;left:0;" alt="Crystal"/></div><span id="crystalresource"> 0 Crystal,</span>
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="resources.png" style="position:relative;left:-50px;" alt="Research"/></div><span id="researchresource"> 0 Research</span>
+        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="js/resources.png" style="position:relative;left:-25px;" alt="Metal"/></div><span id="metalresource"> 0 Metal,</span>
+        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="js/resources.png" style="position:relative;left:0;" alt="Crystal"/></div><span id="crystalresource"> 0 Crystal,</span>
+        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="js/resources.png" style="position:relative;left:-50px;" alt="Research"/></div><span id="researchresource"> 0 Research</span>
     </div>
     
-    <!-- Turn Timer -->
+    <!-- Turn Time Bar -->
     <div id="turnTimeBar">
         <br />
         Game mode: <i>Large Conquest</i>
@@ -180,11 +25,12 @@
     <!-- Connection Info -->
     <div style="position:absolute;top:0;left:550px;">
         <span id="status">Not connected</span>, Users connected: <span id="connected">-</span>
+        <button onclick="Shop.open()" style="margin-left:20px;padding:5px 10px;background:#f39c12;border:none;color:white;cursor:pointer;border-radius:5px;">Shop</button>
     </div>
     
     <!-- Sector Display -->
     <div id="sectorimg" style="z-index:-2;background-repeat:no-repeat;position:absolute;width:100%;height:100%; top:70px;left:300px;"></div>
-    <div id="sectordisplay">
+    <div id="sectordisplay" style="position:absolute; top:80px;left:270px;display:block;">
         <table border="0px">
             <tr><td>Sector ID:</td><td><div style="display:inline-block" id="sectorid">N/A</div></td></tr>
             <tr><td>Owner:</td><td><div style="display:inline-block" id="planetowner">N/A</div></td></tr>
@@ -233,12 +79,12 @@
         </table>
     </div>
     
-    <!-- Empire Updates/Chat -->
-    <div id="avatarbox" style="position:absolute;right:0;bottom:359px;width:200px;height:180px;">
+    <!-- Avatar Box and Chat -->
+    <div id="avatarbox">
         <button style="position:absolute;right:1px;top:15px;width:25px;height:40px;" id="chatHistoryUp"><h1>^</h1></button>
         <button style="position:absolute;right:1px;top:75px;width:25px;height:40px;" id="chatHistoryDown"><h2>v</h2></button>
         <div id="empireupdates">
-            <img style="position:absolute;right:-15px;top:15px;" src="bubblebox.png" />
+            <img style="position:absolute;right:-15px;top:15px;" src="js/bubblebox.png" />
             <font color="black" size="2">
                 <p id="log">
                     Welcome to Galaxy Conquest, Emperor. <br />The game is yet to begin. Please wait for all intended players to join before clicking 'Game Start'.
@@ -246,14 +92,48 @@
             </font>
             <font color="#555" size="1"><i><p id="timeSince" style="position:absolute;right:25px;bottom:-8px;">Have Fun!</p></i></font>
         </div>
+        <img style="z-index:-1;position:absolute;right:37px;top:0px;" src="js/avatar1.jpg" />
+        <img style="z-index:-1;position:absolute;right:0;top:126px;width:525px;height:59px;" src="js/topofmap.png" />
+        <img style="z-index:-1;position:absolute;right:500px;top:184px;width:40px;" src="js/mapleftside.png" />
+        <img style="z-index:-1;position:absolute;right:40px;top:140px;" src="js/waveform.gif" />
     </div>
     
-    <!-- Control Pad GUI -->
-    <div id="controlPadGUI">
-        <!-- Will be populated via JavaScript -->
+    <!-- Control Pad -->
+    <div id="controlPadGUI" style="position:absolute;left:0;bottom:0;width:500px;height:360px;">
+        <!-- Tab Buttons -->
+        <div style="display:flex;margin-bottom:-1px;">
+            <button id="buildtab" class="tab-button active">Build</button>
+            <button id="fleettab" class="tab-button">Fleet</button>
+            <button id="techtab" class="tab-button">Research</button>
+            <button id="colonizetab" class="tab-button">Colonize</button>
+        </div>
+        
+        <!-- Build Tab -->
+        <div id="build" class="tab-panel">
+            <!-- Building buttons -->
+        </div>
+        
+        <!-- Fleet Tab -->
+        <div id="fleet" class="tab-panel hidden">
+            <!-- Fleet management UI -->
+        </div>
+        
+        <!-- Tech Tab -->
+        <div id="techtree" class="tab-panel hidden">
+            <!-- Tech tree UI -->
+        </div>
+        
+        <!-- Colonize Tab -->
+        <div id="colonizediv" class="tab-panel hidden">
+            <b><button id="colonizeBtn" style="padding:20px;">Attempt to Colonize Sector</button></b><br /><br />
+            To colonize a sector, the following must be met:<br /><br />
+            -You need a Colony Ship in the sector<br /><br />
+            -You need a terraform tech level equal or greater to the sector's terraform requirement<br /><br />
+            -The sector must contain a planet
+        </div>
     </div>
     
-    <!-- Minimap -->
+    <!-- Mini Map -->
     <div id="minimapid"></div>
     
     <!-- Multi-Move Dialog -->
@@ -266,11 +146,6 @@
         <button style="z-index:10;position:absolute; left: 420px; bottom: 220px; width: 70px; height: 60px;" id="moveAttackShips">Move Attack Ships</button>
     </div>
     
-    <!-- Reconnection Window -->
-    <div id="lobbyWindow" style="display:none;position:absolute;left:10%;top:10%;width:80%;height:80%;background-color:#333;border:5px solid #444;">
-        <center><br /><br /><h1>THE CONNECTION WAS LOST</h1><br />Please refresh the page to reconnect.<br /><br /><button onclick="location.reload(true)" style="padding:20px;">Refresh this page</button></center>
-    </div>
-    
     <!-- Chat Input -->
     <div style="position:absolute;bottom:0;left:0;width:500px;height:30px;z-index:100;">
         <form id="chatForm">
@@ -278,11 +153,23 @@
         </form>
     </div>
     
+    <!-- Reconnection Window -->
+    <div id="lobbyWindow" style="display:none;">
+        <center><br /><br /><h1>THE CONNECTION WAS LOST</h1><br />Please refresh the page to reconnect.<br /><br /><button onclick="location.reload(true)" style="padding:20px;">Refresh this page</button></center>
+    </div>
+    
     <!-- Scripts -->
-    <script src="lib/gui.js"></script>
-    <script src="minimap.js"></script>
-    <script src="ui.js"></script>
-    <script src="controlpad.js"></script>
-    <script src="GUI.js"></script>
-    <script src="connect.js"></script>
-    <script src="game.js"></scri
+    <script src="js/ui.js"></script>
+    <script src="js/minimap.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/battle.js"></script>
+    <script src="js/controlpad.js"></script>
+    <script src="js/connect.js"></script>
+    <script src="js/notification-system.js"></script>
+    <script src="js/shop-enhanced.js"></script>
+    <script src="js/sound.js"></script>
+    <script src="js/game.js"></script>
+    <!-- Stripe.js for payments -->
+    <script src="https://js.stripe.com/v3/"></script>
+</body>
+</html>

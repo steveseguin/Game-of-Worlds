@@ -149,22 +149,14 @@ const httpServer = http.createServer((request, response) => {
     // Get content type
     const contentType = contentTypeMap[ext] || 'text/plain';
     
-    // Read the file
-    fs.readFile(path.join(__dirname, pathname.substr(1)), (err, data) => {
+    // Read the file from public directory
+    let filePath = path.join(__dirname, '..', 'public', pathname.substr(1));
+    
+    fs.readFile(filePath, (err, data) => {
         if (err) {
-            // If file not found, check if it's in parent directory
-            fs.readFile(path.join(__dirname, '..', pathname.substr(1)), (err2, data2) => {
-                if (err2) {
-                    // File not found
-                    response.writeHead(404);
-                    response.end('File not found');
-                    return;
-                }
-                
-                // File found in parent directory
-                response.writeHead(200, {'Content-Type': contentType});
-                response.end(data2);
-            });
+            // File not found
+            response.writeHead(404);
+            response.end('File not found');
             return;
         }
         
