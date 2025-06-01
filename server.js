@@ -1,1828 +1,1432 @@
-var WebSocketServer = require('websocket').server;
-var http = require('http');
-var url = require('url');
-var fs = require('fs');
+const WebSocketServer = require('websocket').server;
+const http = require('http');
+const mysql = require('mysql');
+const fs = require('fs');
+const url = require('url');
+const path = require('path');
+// Import game mechanics modules
+const MapSystem = require('./lib/map');
+const CombatSystem = require('./lib/combat');
+const TechSystem = require('./lib/tech');
 
-
-var mysql = require('mysql');
-
-var client = mysql.createClient({
-  user: 'root',
-  password: 'bitnami',
-  host: '127.0.0.1',
+// Create MySQL connection
+const db = mysql.createConnection({
+    host: '127.0.0.1',
+    user: 'root',
+    password: 'bitnami',
+    database: 'game'
 });
 
-client.query('USE game');
+// Connect to database
+db.connect(err => {
+    if (err) {
+        console.error('Error connecting to database:', err);
+        process.exit(1);
+    }
+    console.log('Connected to database');
+});
 
-console.log("WebSocket-Node: echo-server");
-
-var server = http.createServer(function(request, response) {
-    console.log((new Date()) + " Received request for " + request.url);
+// Create HTTP server
+const server = http.createServer((request, response) => {
+    console.log(`${new Date()} Received request for ${request.url}`);
     response.writeHead(404);
     response.end();
 });
-server.listen(1337, function() {
-    console.log((new Date()) + " Server is listening on port 1337");
+
+// Start server
+const PORT = 1337;
+server.listen(PORT, () => {
+    console.log(`${new Date()} Server is listening on port ${PORT}`);
 });
 
-wsServer = new WebSocketServer({
+// Create WebSocket server
+const wsServer = new WebSocketServer({
     httpServer: server,
-    maxReceivedFrameSize: 64*1024*1024,   // 64MiB
-    maxReceivedMessageSize: 64*1024*1024, // 64MiB
+    maxReceivedFrameSize: 64 * 1024 * 1024,   // 64MiB
+    maxReceivedMessageSize: 64 * 1024 * 1024, // 64MiB
     fragmentOutgoingMessages: false,
     keepalive: true,
     disableNagleAlgorithm: false,
     autoAcceptConnections: true
 });
 
+// Game state
+const clients = [];
+const gameTimer = {};
+const clientMap = {};
+const turns = {};
+const activeGames = {};
 
-clients=[];
-gameTimer=[];
-cid=[];
-turns=[];
-map=[];
-
-wsServer.on('connect', function(connection) {
-    connection.name='unknown';
+// WebSocket connection handler
+wsServer.on('connect', connection => {
+    connection.name = 'unknown';
     clients.push(connection);
 
-    console.log((new Date()) + " Connection accepted" + " - Protocol Version " + connection.webSocketVersion);
-    for (var i in clients){
-           clients[i].sendUTF("$^$"+clients.length);
-    }
-	console.log("there are "+clients.length+" clients connected");
+    console.log(`${new Date()} Connection accepted - Protocol Version ${connection.webSocketVersion}`);
+    broadcastConnectedUsers();
 
-    connection.on('message', function(message) {
-	console.log("Incoming: "+message.utf8Data);
-        if (message.type === 'utf8' && connection.name=='unknown'){
-		if (message.utf8Data.indexOf("//auth:")===0){
-			console.log("Auth attempt");
-			authUser(message,connection);
-		}
-		else {
-			console.log("someone is poking the server");
-			connection.close();
-		}
-	}
-	else if (message.type === 'utf8'){
-	    if (message.utf8Data.indexOf("//start")===0){
-		if (turns[connection.gameid]===undefined){
-		    console.log("game has not started yet. will start");
-		    turns[connection.gameid]=0;		
-		    for (var i in clients){
-			   if (clients[i].gameid==connection.gameid){
-				client.query('UPDATE games SET turn = 0 WHERE id = "'+connection.gameid+'"');
-				clients[i].sendUTF("The game is starting in 10 seconds");
-				clients[i].sendUTF("start10:");
-			   }
-    		    }
-		    var starttimer = setTimeout(function() {startGame(connection.gameid);},10000);
-		    console.log("game: "+connection.gameid+" has been started.");		
-		}
-		else if (turns[connection.gameid]!=0){
-			var readystatus=0;
-			connection.ready=1;
-			for (var i in clients){
-				if (clients[i].gameid==connection.gameid && clients[i].ready==1){
-					readystatus=1;
-					console.log("player "+clients[i].name+" is ready");
-				}
-				else if (clients[i].gameid==connection.gameid){
-					console.log("player "+clients[i].name+" is not ready; no next turn");
-					readystatus=0;
-					break;
-				}
-			}
-			if (readystatus){
-				console.log("good to go on next turn.");
-				for (var i in clients){
-					if (clients[i].gameid==connection.gameid){
-	                                        clients[i].ready=0;;
-        	                        }
-				}
-				clearInterval(gameTimer[connection.gameid]);
-				gameTimer[connection.gameid]=setInterval(function() {nextTurn(connection.gameid);},180000);
-				nextTurn(connection.gameid);
-			}
-			readystatus=0;
-			
-		}
-		else { 
-			console.log("Game is starting. Can't start next round yet.");
-		}
-	    }
-	    else if (message.utf8Data.indexOf("//colonize")===0){
-		colonizePlanet(connection);
-	    }
-	    else if (message.utf8Data.indexOf("//buytech:")===0){
-                buyTech(message,connection);
-            }
-            else if (message.utf8Data.indexOf("//probe:")===0){
-                probeSector(message,connection);
-            }
-            else if (message.utf8Data.indexOf("//buyship:")===0){
-                buyShip(message,connection);
-            }
-            else if (message.utf8Data.indexOf("//buybuilding:")===0){
-                buyBuilding(message,connection);
-            }
-            else if (message.utf8Data.indexOf("//move:")===0){
-	    }
-	    else if (message.utf8Data.indexOf("//sector tile")===0){
-		updateSector(message,connection);
-            }
-	    else if (message.utf8Data.indexOf("//mmove:")===0){
-		surroundShips(message,connection);
-	    }
-            else if (message.utf8Data.indexOf("//sendmmf:")===0){
-                preMoveFleet(message,connection);
-            }
-    	    else if (message.utf8Data.indexOf("//update")===0){
-		updateResources(connection);
-	    }
-            else {
-                console.log("Received utf-8 message of " + message.utf8Data.length + " characters.");
-                    for (var i in clients){
-                           if (clients[i].gameid==connection.gameid){
-                                clients[i].sendUTF("Player "+connection.name+" says: "+message.utf8Data);
-                           }
-                    }
-            }
+    // Message handler
+    connection.on('message', message => {
+        if (message.type !== 'utf8') {
+            console.log("Non-UTF data received. Closing connection.");
+            connection.close();
+            return;
         }
-	else {
-	    console.log("non-UTF data recieved. close connection");
-	    connection.close();
-	}
+
+        const data = message.utf8Data;
+        console.log(`Incoming message: ${data}`);
+
+        // Handle authentication
+        if (connection.name === 'unknown') {
+            if (data.indexOf("//auth:") === 0) {
+                authUser(data, connection);
+            } else {
+                console.log("Unauthenticated user poking the server");
+                connection.close();
+            }
+            return;
+        }
+
+        // Handle various commands
+        if (data.indexOf("//start") === 0) {
+            handleGameStart(connection);
+        } else if (data.indexOf("//colonize") === 0) {
+            colonizePlanet(connection);
+        } else if (data.indexOf("//buytech:") === 0) {
+            buyTech(data, connection);
+        } else if (data.indexOf("//probe:") === 0) {
+            probeSector(data, connection);
+        } else if (data.indexOf("//buyship:") === 0) {
+            buyShip(data, connection);
+        } else if (data.indexOf("//buybuilding:") === 0) {
+            buyBuilding(data, connection);
+        } else if (data.indexOf("//move:") === 0) {
+            moveFleet(data, connection);
+        } else if (data.indexOf("//sector tile") === 0 || data.indexOf("//sector ") === 0) {
+            updateSector(data, connection);
+        } else if (data.indexOf("//mmove:") === 0) {
+            surroundShips(data, connection);
+        } else if (data.indexOf("//sendmmf:") === 0) {
+            preMoveFleet(data, connection);
+        } else if (data.indexOf("//update") === 0) {
+            updateResources(connection);
+        } else {
+            // Regular chat message
+            broadcastToGame(connection, `Player ${connection.name} says: ${data}`);
+        }
     });
-    connection.on('close', function(reasonCode, description) {
-        var i = clients.indexOf(connection);
-        clients.splice(i,1);
-	if (cid[connection.name]!==undefined){
-		i = cid.indexOf(connection.name);
-		cid.splice(i,1);
-	}
-        console.log((new Date()) + " Peer " + connection.remoteAddress + " disconnected.");
 
-	var playerlist="pl";
-        for (var i in clients){
-                        clients[i].sendUTF("$^$"+clients.length);
-                        if (clients[i].gameid==connection.gameid  && connection.name!=clients[i].name && connection!=clients[i]){
-                                playerlist=playerlist+":"+connection.name;
-                        }
-                }
-        for (var i in clients){
-                if (clients[i].gameid==connection.gameid && playerlist!="pl"){
-                        clients[i].sendUTF(playerlist);
-                }
+    // Connection close handler
+    connection.on('close', (reasonCode, description) => {
+        const index = clients.indexOf(connection);
+        if (index !== -1) {
+            clients.splice(index, 1);
         }
-
+        
+        if (clientMap[connection.name]) {
+            delete clientMap[connection.name];
+        }
+        
+        console.log(`${new Date()} Peer ${connection.remoteAddress} disconnected`);
+        broadcastConnectedUsers();
+        
+        // Notify other players in the same game
+        if (connection.gameid) {
+            broadcastPlayerList(connection.gameid, connection.name);
+        }
     });
 });
 
-function surroundShips(message, connection){
-	msid = parseInt(message.utf8Data.split(":")[1],16);
-	client.query('SELECT * FROM map'+connection.gameid,
-                function (err, results, fields) {
-                         if (err) {
-                                throw err;
-                         }
-			sendchunk='';
-			for (qcm in results){
-				mmm = results[qcm];
-				if (mmm['sectorid']==msid){
-					break;
-				}
-			}
-			for (i in results){
-			   mapa = results[i];
-			   if (mapa['ownerid']==connection.name && (mapa['totalship1'] || mapa['totalship2'] || mapa['totalship3'] || mapa['totalship4'] || mapa['totalship5'] || mapa['totalship6']  || mapa['totalship7']  || mapa['totalship8']  || mapa['totalship9'] )){
-			     if (mmm['warpgate']==0 && mmm['totalship9']==0){	
-				if ((msid-1)%16 > 8 && msid%16 != 0 ){
-				        if (mapa['sectorid']+1 == msid || mapa['sectorid']-1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']+9 == msid || mapa['sectorid']-8 == msid || mapa['sectorid']-7 == msid){
-                                	        sendchunk+=":"+mapa['sectorid'].toString(16).toUpperCase()+":"+mapa['totalship1']+":"+mapa['totalship2']+":"+mapa['totalship3']+":"+mapa['totalship4']+":"+mapa['totalship5']+":"+mapa['totalship6']+":"+mapa['totalship7']+":"+mapa['totalship8']+":"+mapa['totalship9'];
-                                	}
-				}
-				else if ((msid-1)%16 < 7 && msid%16 != 1 ){
-                                        if (mapa['sectorid']+1 == msid || mapa['sectorid']-1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']+7 == msid || mapa['sectorid']-8 == msid || mapa['sectorid']-9 == msid){
-                                                sendchunk+=":"+mapa['sectorid'].toString(16).toUpperCase()+":"+mapa['totalship1']+":"+mapa['totalship2']+":"+mapa['totalship3']+":"+mapa['totalship4']+":"+mapa['totalship5']+":"+mapa['totalship6']+":"+mapa['totalship7']+":"+mapa['totalship8']+":"+mapa['totalship9'];
-                                        }
-                                }
-				else if (msid%16==1 ){
-				        if (mapa['sectorid']-1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']+7 == msid || mapa['sectorid']-8 == msid || mapa['sectorid']-9 == msid){
-                                                sendchunk+=":"+mapa['sectorid'].toString(16).toUpperCase()+":"+mapa['totalship1']+":"+mapa['totalship2']+":"+mapa['totalship3']+":"+mapa['totalship4']+":"+mapa['totalship5']+":"+mapa['totalship6']+":"+mapa['totalship7']+":"+mapa['totalship8']+":"+mapa['totalship9'];
-                                        }	
-				}
-				else if (msid%16==0 ){
-					if (mapa['sectorid']+1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']+9 == msid || mapa['sectorid']-8 == msid || mapa['sectorid']-7 == msid){
-                                                sendchunk+=":"+mapa['sectorid'].toString(16).toUpperCase()+":"+mapa['totalship1']+":"+mapa['totalship2']+":"+mapa['totalship3']+":"+mapa['totalship4']+":"+mapa['totalship5']+":"+mapa['totalship6']+":"+mapa['totalship7']+":"+mapa['totalship8']+":"+mapa['totalship9'];
-                                        } 
-				}
-                                else if (msid%8==0 ){
-                                        if (mapa['sectorid']+1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']-8 == msid){
-                                                sendchunk+=":"+mapa['sectorid'].toString(16).toUpperCase()+":"+mapa['totalship1']+":"+mapa['totalship2']+":"+mapa['totalship3']+":"+mapa['totalship4']+":"+mapa['totalship5']+":"+mapa['totalship6']+":"+mapa['totalship7']+":"+mapa['totalship8']+":"+mapa['totalship9'];
-                                        }
-				}
-				else {
-                                        if (mapa['sectorid']-1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']-8 == msid){
-                                                sendchunk+=":"+mapa['sectorid'].toString(16).toUpperCase()+":"+mapa['totalship1']+":"+mapa['totalship2']+":"+mapa['totalship3']+":"+mapa['totalship4']+":"+mapa['totalship5']+":"+mapa['totalship6']+":"+mapa['totalship7']+":"+mapa['totalship8']+":"+mapa['totalship9'];
-                                        }	
-				}
-			     }
-			     else {
-				sendchunk+=":"+mapa['sectorid'].toString(16).toUpperCase()+":"+mapa['totalship1']+":"+mapa['totalship2']+":"+mapa['totalship3']+":"+mapa['totalship4']+":"+mapa['totalship5']+":"+mapa['totalship6']+":"+mapa['totalship7']+":"+mapa['totalship8']+":"+mapa['totalship9'];
-			     }
-			   }
-			}
-			if (sendchunk==""){
-				connection.sendUTF('You have no ships in nearby sectors.');
-			}
-			else {
-				console.log(sendchunk);
-				connection.sendUTF('mmoptions:'+msid.toString(16).toUpperCase()+sendchunk);
-			}
-		}
-	);
+server.on('request', (request, response) => {
+    console.log(`${new Date()} Received request for ${request.url}`);
+    
+    // Parse the URL
+    const urlPath = url.parse(request.url).pathname;
+    
+    if (urlPath === '/' || urlPath === '/index.html') {
+        // Serve index page
+        fs.readFile(path.join(__dirname, 'game.html'), (err, data) => {
+            if (err) {
+                response.writeHead(404);
+                response.end('File not found');
+                return;
+            }
+            response.writeHead(200, {'Content-Type': 'text/html'});
+            response.end(data);
+        });
+        return;
+    }
+    
+    // Check for JS files
+    if (urlPath.endsWith('.js')) {
+        fs.readFile(path.join(__dirname, urlPath), (err, data) => {
+            if (err) {
+                response.writeHead(404);
+                response.end('File not found');
+                return;
+            }
+            response.writeHead(200, {'Content-Type': 'application/javascript'});
+            response.end(data);
+        });
+        return;
+    }
+    
+    // Check for image files
+    if (['.jpg', '.png', '.gif'].some(ext => urlPath.endsWith(ext))) {
+        const contentType = urlPath.endsWith('.jpg') ? 'image/jpeg' :
+                           urlPath.endsWith('.png') ? 'image/png' : 'image/gif';
+        
+        fs.readFile(path.join(__dirname, '..', urlPath), (err, data) => {
+            if (err) {
+                response.writeHead(404);
+                response.end('File not found');
+                return;
+            }
+            response.writeHead(200, {'Content-Type': contentType});
+            response.end(data);
+        });
+        return;
+    }
+    
+    // Default 404 response
+    response.writeHead(404);
+    response.end();
+});
+
+// Helper Functions
+
+function broadcastConnectedUsers() {
+    clients.forEach(client => {
+        client.sendUTF(`$^$${clients.length}`);
+    });
+    console.log(`There are ${clients.length} clients connected`);
 }
-function preMoveFleet(message,connection){
- console.log(message);
- arr = message.utf8Data.split(":");
- msid = parseInt(message.utf8Data.split(":")[1],16);
- client.query('SELECT * FROM players'+connection.gameid+' WHERE playerid = '+connection.name+' LIMIT 1',
-  function (err, resultsp, fields) {
+
+function broadcastToGame(sender, message) {
+    if (!sender.gameid) return;
+    
+    clients.forEach(client => {
+        if (client.gameid === sender.gameid) {
+            client.sendUTF(message);
+        }
+    });
+}
+
+function broadcastPlayerList(gameId, excludePlayer) {
+    let playerList = "pl";
+    
+    // Build list of players in this game
+    clients.forEach(client => {
+        if (client.gameid === gameId && (client.name !== excludePlayer || !excludePlayer)) {
+            playerList += ":" + client.name;
+        }
+    });
+    
+    // Only broadcast if we have players
+    if (playerList !== "pl") {
+        clients.forEach(client => {
+            if (client.gameid === gameId) {
+                client.sendUTF(playerList);
+            }
+        });
+    }
+}
+
+// Authentication and Game Management Functions
+
+function authUser(message, connection) {
+    const parts = message.split(":");
+    if (parts.length < 3) {
+        connection.sendUTF("Invalid authentication format");
+        connection.close();
+        return;
+    }
+    
+    const playerId = parts[1];
+    const tempKey = parts[2];
+    
+    console.log(`Player ${playerId} attempting to authenticate`);
+    
+    db.query('SELECT * FROM users WHERE id = ? LIMIT 1', [playerId], (err, results) => {
         if (err) {
-             throw err;
+            console.error("Database error during authentication:", err);
+            connection.sendUTF("Database error");
+            connection.close();
+            return;
         }
-	resultp=resultsp[0];
-	sumofships=0;
-	for (y=4;y<=(arr.length-1);y+=3){
-		if (parseInt(arr[y-1])==1){
-			sumofships+=parseInt(arr[y]*2);
-		}
-		else if (parseInt(arr[y-1])==2){
-			sumofships+=parseInt(arr[y]*2);
-		}
-                else if (parseInt(arr[y-1])==3){
-                        sumofships+=parseInt(arr[y]*1);
-                }
-                else if (parseInt(arr[y-1])==4){
-                        sumofships+=parseInt(arr[y]*2);
-                }
-                else if (parseInt(arr[y-1])==5){
-                        sumofships+=parseInt(arr[y]*3);
-                }
-                else if (parseInt(arr[y-1])==6){
-                        sumofships+=parseInt(arr[y]*2);
-                }
-                else if (parseInt(arr[y-1])==7){
-                        sumofships+=parseInt(arr[y]*5);
-                }
-                else if (parseInt(arr[y-1])==8){
-                        sumofships+=parseInt(arr[y]*2);
-                }
-                else if (parseInt(arr[y-1])==9){
-                        sumofships+=parseInt(arr[y]*3);
-                }
-	}
-	if (sumofships*100>resultp['crystal']){
-	  console.log('sumofships'+sumofships);
-	  connection.sendUTF('You do not have enough crystal to send this fleet. Needed:'+(sumofships*100));
-	}
-	else {
-           client.query('SELECT * FROM map'+connection.gameid,
-                function (err, results, fields) {
-                         if (err) {
-                                throw err;
-                         }
-			s1=0;
-			s2=0;
-			s3=0;
-			s4=0;
-			s5=0;
-			s6=0;
-                        s7=0;
-                        s8=0;
-                        s9=0;
-
-			gotoHere = msid;
-			for (crk in results){
-				resultsx=results[crk];
-				if (resultsx['sectorid']==msid){
-					break;
-				}
-			}
-			for (i in results){
-                          mapa = results[i];
-                          if (mapa['ownerid']==connection.name){
-				console.log("s:"+i);
-			    for (x=2;x<=(arr.length-1);x+=3){
-			      if (parseInt(arr[x],16)==mapa['sectorid'] && arr[x+2]!=undefined && arr[x+1]!=undefined){
-				console.log("Sector supposedly contains ship found");
-				 if (((msid-1)%16 > 8 && msid%16 != 0 ) || resultsx['warpgate']==1){
-                                        if (mapa['sectorid']+1 == msid || mapa['sectorid']-1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']+9 == msid || mapa['sectorid']-8 == msid || mapa['sectorid']-7 == msid || resultsx['warpgate']==1){
-						console.log("YES THIS SHOUDL WORK!!");
-						if (mapa['totalship1']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==1){
-							s1+=parseInt(arr[x+2]);
-							mapa['totalship1']-=parseInt(arr[x+2]);
-						}
-						else if (mapa['totalship2']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==2){
-                                                        s2+=parseInt(arr[x+2]);
-                                                        mapa['totalship2']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship3']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==3){
-                                                        s3+=parseInt(arr[x+2]);
-                                                        mapa['totalship3']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship4']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==4){
-                                                        s4+=parseInt(arr[x+2]);
-                                                        mapa['totalship4']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship5']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==5){
-                                                        s5+=parseInt(arr[x+2]);
-                                                        mapa['totalship5']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship6']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==6){
-                                                        s6+=parseInt(arr[x+2]);
-                                                        mapa['totalship6']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship7']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==7){
-                                                        s7+=parseInt(arr[x+2]);
-                                                        mapa['totalship7']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship8']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==8){
-                                                        s8+=parseInt(arr[x+2]);
-                                                        mapa['totalship8']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship9']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==9){
-                                                        s9+=parseInt(arr[x+2]);
-                                                        mapa['totalship9']-=parseInt(arr[x+2]);
-                                                }
-
-                                        }
-                                }
-                                else if ((msid-1)%16 < 7 && msid%16 != 1){
-                                        if (mapa['sectorid']+1 == msid || mapa['sectorid']-1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']+7 == msid || mapa['sectorid']-8 == msid || mapa['sectorid']-9 == msid){
-                                                if (mapa['totalship1']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==1){
-                                                        s1+=parseInt(arr[x+2]);
-                                                        mapa['totalship1']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship2']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==2){
-                                                        s2+=parseInt(arr[x+2]);
-                                                        mapa['totalship2']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship3']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==3){
-                                                        s3+=parseInt(arr[x+2]);
-                                                        mapa['totalship3']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship4']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==4){
-                                                        s4+=parseInt(arr[x+2]);
-                                                        mapa['totalship4']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship5']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==5){
-                                                        s5+=parseInt(arr[x+2]);
-                                                        mapa['totalship5']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship6']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==6){
-                                                        s6+=parseInt(arr[x+2]);
-                                                        mapa['totalship6']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship7']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==7){
-                                                        s7+=parseInt(arr[x+2]);
-                                                        mapa['totalship7']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship8']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==8){
-                                                        s8+=parseInt(arr[x+2]);
-                                                        mapa['totalship8']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship9']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==9){
-                                                        s9+=parseInt(arr[x+2]);
-                                                        mapa['totalship9']-=parseInt(arr[x+2]);
-                                                }
-
-                                        }
-                                }
-                                else if (msid%16==1){
-                                        if (mapa['sectorid']-1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']+7 == msid || mapa['sectorid']-8 == msid || mapa['sectorid']-9 == msid){
-                                                if (mapa['totalship1']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==1){
-                                                        s1+=parseInt(arr[x+2]);
-                                                        mapa['totalship1']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship2']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==2){
-                                                        s2+=parseInt(arr[x+2]);
-                                                        mapa['totalship2']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship3']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==3){
-                                                        s3+=parseInt(arr[x+2]);
-                                                        mapa['totalship3']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship4']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==4){
-                                                        s4+=parseInt(arr[x+2]);
-                                                        mapa['totalship4']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship5']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==5){
-                                                        s5+=parseInt(arr[x+2]);
-                                                        mapa['totalship5']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship6']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==6){
-                                                        s6+=parseInt(arr[x+2]);
-                                                        mapa['totalship6']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship7']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==7){
-                                                        s7+=parseInt(arr[x+2]);
-                                                        mapa['totalship7']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship8']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==8){
-                                                        s8+=parseInt(arr[x+2]);
-                                                        mapa['totalship8']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship9']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==9){
-                                                        s9+=parseInt(arr[x+2]);
-                                                        mapa['totalship9']-=parseInt(arr[x+2]);
-                                                }
-
-                                        }
-                                }
-                                else if (msid%16==0){
-                                        if (mapa['sectorid']+1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']+9 == msid || mapa['sectorid']-8 == msid || mapa['sectorid']-7 == msid){
-                                                if (mapa['totalship1']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==1){
-                                                        s1+=parseInt(arr[x+2]);
-                                                        mapa['totalship1']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship2']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==2){
-                                                        s2+=parseInt(arr[x+2]);
-                                                        mapa['totalship2']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship3']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==3){
-                                                        s3+=parseInt(arr[x+2]);
-                                                        mapa['totalship3']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship4']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==4){
-                                                        s4+=parseInt(arr[x+2]);
-                                                        mapa['totalship4']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship5']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==5){
-                                                        s5+=parseInt(arr[x+2]);
-                                                        mapa['totalship5']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship6']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==6){
-                                                        s6+=parseInt(arr[x+2]);
-                                                        mapa['totalship6']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship7']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==7){
-                                                        s7+=parseInt(arr[x+2]);
-                                                        mapa['totalship7']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship8']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==8){
-                                                        s8+=parseInt(arr[x+2]);
-                                                        mapa['totalship8']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship9']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==9){
-                                                        s9+=parseInt(arr[x+2]);
-                                                        mapa['totalship9']-=parseInt(arr[x+2]);
-                                                }
-
-                                        }
-                                }
-                                else if (msid%8==0){
-                                        if (mapa['sectorid']+1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']-8 == msid){
-                                                if (mapa['totalship1']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==1){
-                                                        s1+=parseInt(arr[x+2]);
-                                                        mapa['totalship1']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship2']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==2){
-                                                        s2+=parseInt(arr[x+2]);
-                                                        mapa['totalship2']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship3']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==3){
-                                                        s3+=parseInt(arr[x+2]);
-                                                        mapa['totalship3']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship4']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==4){
-                                                        s4+=parseInt(arr[x+2]);
-                                                        mapa['totalship4']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship5']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==5){
-                                                        s5+=parseInt(arr[x+2]);
-                                                        mapa['totalship5']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship6']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==6){
-                                                        s6+=parseInt(arr[x+2]);
-                                                        mapa['totalship6']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship7']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==7){
-                                                        s7+=parseInt(arr[x+2]);
-                                                        mapa['totalship7']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship8']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==8){
-                                                        s8+=parseInt(arr[x+2]);
-                                                        mapa['totalship8']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship9']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==9){
-                                                        s9+=parseInt(arr[x+2]);
-                                                        mapa['totalship9']-=parseInt(arr[x+2]);
-                                                }
-
-                                        }
-                                }
-                                else {
-                                        if (mapa['sectorid']-1 == msid || mapa['sectorid']+8 == msid || mapa['sectorid']-8 == msid){
-                                                if (mapa['totalship1']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==1){
-                                                        s1+=parseInt(arr[x+2]);
-                                                        mapa['totalship1']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship2']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==2){
-                                                        s2+=parseInt(arr[x+2]);
-                                                        mapa['totalship2']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship3']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==3){
-                                                        s3+=parseInt(arr[x+2]);
-                                                        mapa['totalship3']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship4']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==4){
-                                                        s4+=parseInt(arr[x+2]);
-                                                        mapa['totalship4']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship5']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==5){
-                                                        s5+=parseInt(arr[x+2]);
-                                                        mapa['totalship5']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship6']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==6){
-                                                        s6+=parseInt(arr[x+2]);
-                                                        mapa['totalship6']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship7']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==7){
-                                                        s7+=parseInt(arr[x+2]);
-                                                        mapa['totalship7']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship8']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==8){
-                                                        s8+=parseInt(arr[x+2]);
-                                                        mapa['totalship8']-=parseInt(arr[x+2]);
-                                                }
-                                                else if (mapa['totalship9']>=parseInt(arr[x+2]) && parseInt(arr[x+1])==9){
-                                                        s9+=parseInt(arr[x+2]);
-                                                        mapa['totalship9']-=parseInt(arr[x+2]);
-                                                }
-
-                                        }
-                                }
-			    }
-			  }
-			    
-			  client.query('UPDATE map'+connection.gameid+' SET totalship1 = '+mapa['totalship1']+', totalship2 = '+mapa['totalship2']+', totalship3 = '+mapa['totalship3']+', totalship4 = '+mapa['totalship4']+', totalship5 = '+mapa['totalship5']+', totalship6 = '+mapa['totalship6']+', totalship7 = '+mapa['totalship7']+', totalship8 = '+mapa['totalship8']+', totalship9 = '+mapa['totalship9']+' WHERE sectorid = "'+mapa['sectorid']+'" LIMIT 1');
-			  }
-			}
-			console.log('tot ships send:'+(s1+s2+s3+s4+s5+s6+s7+s8+s9));
-	                totcrystalcost = (s1*2+s2*2+s3*1+s4*2+s5*3+s6*2+s7*5+s8*2+s9*3)*100;
-			if (totcrystalcost>0){
-	                      	client.query('UPDATE players'+connection.gameid+' SET crystal = crystal - '+totcrystalcost+' WHERE playerid = '+connection.name);
-				setTimeout(endTravel, 10000, s1,s2,s3,s4,s5,s6,s7,s8,s9,connection.name,connection.gameid,resultsx,resultsp,gotoHere,connection);
-				connection.sendUTF("Our fleet successfully departed at a cost of "+totcrystalcost+" crystal and should arrive in sector "+gotoHere.toString(16).toUpperCase()+" in 10 seconds.");
-				updateAllSectors(connection.gameid,connection);
-
-			}
-			else {
-				connection.sendUTF("You did not select any ships to move.  Please try again");
-			} 
-                }
-           );
+        
+        if (results.length === 0) {
+            connection.sendUTF("User not found");
+            connection.close();
+            return;
         }
+        
+        const user = results[0];
+        
+        if (user.tempkey === tempKey && user.currentgame) {
+            // Authentication successful
+            connection.name = playerId;
+            connection.gameid = user.currentgame;
+            clientMap[playerId] = connection;
+            
+            console.log(`Player ${playerId} authenticated, joining game ${user.currentgame}`);
+            
+            // Handle game state
+            if (turns[connection.gameid] > 0) {
+                connection.sendUTF("You have re-connected to a game that is already in progress.");
+                updateResources(connection);
+                updateAllSectors(connection.gameid, connection);
+            } else {
+                connection.sendUTF("lobby::");
+                connection.sendUTF("The game has yet to begin. Welcome.");
+            }
+            
+            // Broadcast player list to all players in the game
+            broadcastPlayerList(connection.gameid);
+        } else if (!user.currentgame) {
+            connection.sendUTF("Please join a game first.");
+            console.log("No game set for player. Authentication failed.");
+            connection.close();
+        } else {
+            connection.sendUTF("Invalid credentials");
+            console.log("Wrong credentials. Authentication failed.");
+            connection.close();
+        }
+    });
+}
+
+function handleGameStart(connection) {
+    if (!connection.gameid) {
+        connection.sendUTF("You are not in a game");
+        return;
     }
- );
-}
-
-
-function endTravel(s1,s2,s3,s4,s5,s6,s7,s8,s9,pID,gID,resultsx,resultsp,gotoHere,connection){
-	client.query('SELECT * FROM players'+gID+' WHERE playerid = '+pID+' LIMIT 1',
-  		function (err, resultsp, fields) {
-  		      	if (err) {
-        	     		throw err;
-        		}
-			console.log('end travel function ready');
-        		resultp=resultsp[0];			
-					endtravel=1;
-					if (resultsx['sectortype']==2){
-						connection.sendUTF('Fleet arrived in sector "+gotoHere.toString(16).toUpperCase()+"... but the sector contained a blackhole! UH-OH! Our fleet was crushed by the immense gravity of the black hole!');
-						updateAllSectors(gID,connection);
-                                            	updateResources(connection);
-						connection.sendUTF("info:"+gotoHere.toString(16).toUpperCase()+":2");
-						endtravel = 0;
-					}
-                                        else if (resultsx['sectortype']==1 && resultsx['ownerid']!=pID){
-				    	    starttravel=s1+s2+s3+s4+s5+s6+s7+s8+s9;
-					    s1 = Math.round(s1*Math.random());
-                                            s2 = Math.round(s2*Math.random());
-                                            s3 = Math.round(s3*Math.random());
-                                            s4 = Math.round(s4*Math.random());
-                                            s5 = Math.round(s5*Math.random());
-                                            s6 = Math.round(s6*Math.random());
-                                            s7 = Math.round(s6*Math.random());
-                                            s8 = Math.round(s6*Math.random());
-                                            s9 = Math.round(s6*Math.random());
-					    endtravel=s1+s2+s3+s4+s5+s6+s7+s8+s9;
-						if (0==endtravel){
-							connection.sendUTF('Our fleet warped into an asteroid belt and were hit hard. Ouch! We lost are entire fleet!');
-							updateAllSectors(gID,connection);
-                                               		updateResources(connection);
-						}
-						else if (endtravel==starttravel){
-							connection.sendUTF('Our fleet warped into an asteroid belt, but we avoided being hit. Whew!  As long as we control this sector, we should be safe to move more ships in.');
-						}
-						else {
-							connection.sendUTF('Our fleet warped into an asteroid belt and were hit hard. Ouch! We lost '+(starttravel-endtravel)+' ships.  If we can control the sector though, that should not happen to us again.');
-						}
-						connection.sendUTF("info:"+gotoHere.toString(16).toUpperCase()+":1");
-                                        }
-					if (endtravel==0){
-					}
-                                	else if (resultsx['ownerid']==0){
-							client.query('UPDATE map'+gID+' SET totalship1 = '+s1+', totalship2 = '+s2+', totalship3 = '+s3+', totalship4 = '+s4+', totalship5 = '+s5+', totalship6 = '+s6+', totalship7 = '+s7+', totalship8 = '+s8+', totalship9 = '+s9+', ownerid = '+pID+' WHERE sectorid = '+gotoHere);
-							if (resultsx['sectortype']!=2){
-                                		        	console.log('sector untaken. take it');
-								connection.sendUTF('Fleet moved; you took control of the sector without issue. ');
-							}
-							updateAllSectors(gID,connection);
-							updateResources(connection);
-                                        }
-           		                else if (resultsx['ownerid']==pID){
- 	                                        	client.query('UPDATE map'+gID+' SET totalship1 = totalship1 + '+s1+', totalship2 = totalship2 + '+s2+', totalship3 = totalship3 +  '+s3+', totalship4 = totalship4 + '+s4+', totalship5 = totalship5 + '+s5+', totalship6 = totalship6 + '+s6+', totalship7 = '+s7+', totalship8 = '+s8+', totalship9 = '+s9+' WHERE sectorid = '+gotoHere);
-		                	                console.log('sector yours. move freely');
-							connection.sendUTF('Fleet moved sucessfully.');
-							updateAllSectors(gID,connection);
-							updateResources(connection);
-                               			}
-		                        else if (resultsx['ownerid']===undefined){
-                		                            console.log('ERROR 324!');
-     	        	                }
- 		                        else { 
-								defenderid=resultsx['ownerid'];
-							        for (var ib in resultsp){
-                                              			       	resultdd=resultsp[ib];
-                                                       			if (resultdd['playerid'] == defenderid){break;}
-                                               			}
-						console.log('An attack is taking place.');
-						ispp=0;
-						battle='battle';
-
-/// attackers tech info is in resultp[]
-/// defenders tech info is in resultdd[]
-
-AWL = resultp['tech4']; 	 // attacker's weapon tech level (ie: no weapon tech is then 0)
-DWL = resultdd['tech4']; 	 //attacker's weapon tech level
-
-DSL = resultdd['tech6'];	//defender's shield's level (ie: 1)
-ASL = resultp['tech6']; 	//attack's shield's level
-	
-a1=[];
-a2=[];
-a3=[];
-a4=[];
-a5=[];
-a6=[];
-a7=[];
-a8=[];
-a9=[];
-
-
-for (tmp=0;tmp<s1;tmp++){
-	a1[tmp]=Math.pow(1.1,resultp['tech5']);
-} 
-for (tmp=0;tmp<s2;tmp++){
-        a2[tmp]=2*Math.pow(1.1,resultp['tech5']);
-}
-for (tmp=0;tmp<s3;tmp++){
-        a3[tmp]=Math.pow(1.1,resultp['tech5']);
-}
-for (tmp=0;tmp<s4;tmp++){
-        a4[tmp]=3*Math.pow(1.1,resultp['tech5']);
-}
-for (tmp=0;tmp<s5;tmp++){
-        a5[tmp]=5*Math.pow(1.1,resultp['tech5']);
-}
-for (tmp=0;tmp<s6;tmp++){
-        a6[tmp]=Math.pow(1.1,resultp['tech5']);
-}
-for (tmp=0;tmp<s7;tmp++){
-        a7[tmp]=16*Math.pow(1.1,resultp['tech5']);
-}
-for (tmp=0;tmp<s8;tmp++){
-        a8[tmp]=Math.pow(1.1,resultp['tech5']);
-}
-for (tmp=0;tmp<s9;tmp++){
-        a9[tmp]=8*Math.pow(1.1,resultp['tech5']);
-}
-
-////////////////////////
-
-d1=[];
-d2=[];
-d3=[];
-d4=[];
-d5=[];
-d6=[];
-d7=[];
-d8=[];
-d9=[];
-
-d10 = resultsx['orbitalturret'];
-
-for (tmp=0;tmp<resultsx['totalship1'];tmp++){
-        d1[tmp]=Math.pow(1.1,resultdd['tech5']);
-}
-for (tmp=0;tmp<resultsx['totalship2'];tmp++){
-        d2[tmp]=2*Math.pow(1.1,resultdd['tech5']);
-}
-for (tmp=0;tmp<resultsx['totalship3'];tmp++){
-        d3[tmp]=Math.pow(1.1,resultdd['tech5']);
-}
-for (tmp=0;tmp<resultsx['totalship4'];tmp++){
-        d4[tmp]=3*Math.pow(1.1,resultdd['tech5']);
-}
-for (tmp=0;tmp<resultsx['totalship5'];tmp++){
-        d5[tmp]=5*Math.pow(1.1,resultdd['tech5']);
-}
-for (tmp=0;tmp<resultsx['totalship6'];tmp++){
-        d6[tmp]=Math.pow(1.1,resultdd['tech5']);
-}
-for (tmp=0;tmp<resultsx['totalship7'];tmp++){
-        d7[tmp]=16*Math.pow(1.1,resultdd['tech5']);
-}
-for (tmp=0;tmp<resultsx['totalship8'];tmp++){
-        d8[tmp]=Math.pow(1.1,resultdd['tech5']);
-}
-for (tmp=0;tmp<resultsx['totalship9'];tmp++){
-        d9[tmp]=8*Math.pow(1.1,resultdd['tech5']);
-}
-
-///////////////////////////
-
-											
-battle+=":"+a1.length+":"+a2.length+":"+a3.length+":"+a4.length+":"+a5.length+":"+a6.length+":"+a7.length+":"+a8.length+":"+a9.length+":"+d1.length+":"+d2.length+":"+d3.length+":"+d4.length+":"+d5.length+":"+d6.length+":"+d7.length+":"+
-		d8.length+":"+d9.length+":"+d10;
-console.log('battle:'+battle);
-var stopvar = 0;
-while (stopvar == 0){
-	
-	///  destroyers and dreadnoughts do multiple hits; not one large chunk of damage.  
-
-	ATS = a1.length + a2.length*2 + a4.length*3 + a5.length*6 + a7.length*16; + a8.length*8; + a9.length*4;;   // attackers total shots per round (changes)
-	DTS = d1.length + d2.length*2 + d4.length*3 + d5.length*6 + d7.length*16; + d8.length*8; + d9.length*4 + d10*2;     // defenders total shots per round from ships (changes);
-	console.log(ATS+":A vs D:"+DTS);
-	//////////////////// Attacker's Turn to hit.
-	if (ATS>0) {	                                  		// for each enemy shot do the following...
-		console.log("ATS>0");
-		while (ATS>0 && d1.length>0){           		// See what shots first hit defender's corvette, if any.
-			if (Math.random() < (0.9*Math.pow(0.95,DSL)) ){  	// if the shot accuracy (0 to 1.0) is greater than the shield , hit
-				d1[d1.length-1]-=Math.pow(1.1,AWL);  		// hit a corvette for 1 shot, plus attacker's modifier tech damage (1.1 dmg in this case)
-			}	
-			ATS--;                   	 		// reduce the number of shots remaining by 1, even if the shot did no damage
-			if (d1[d1.length-1]<=0) {   	 		// check to see if that ship has lost all hitpoints
-				d1.splice(d1.length-1,1);  		// if it has, remove that ship from the battle.
-			}	
-		}		
-	
-		while (ATS>0 && d2.length>0){		 			// Assuming shots left and defender has destroyers, do the following...
-			if (Math.random() < (0.9*Math.pow(0.95,DSL))){  		// if the shot accuracy (0 to 1.0) is greater than the shield mod+base, hit
-				d2[d2.length-1]-=Math.pow(1.1,AWL);  			// hit a destroyer for 1 shot (1.1 dmg in this case)
-			}	
-			ATS--;                   	 			// reduce the number of shots remaining by 1, even if the shot did no damage
-			if (d2[d2.length-1]<=0) {   	 			// check to see if that ship has lost all hitpoints
-				d2.splice(d2.length-1,1);  			// if it has, remove that ship from the battle.
-			}	
-		}		
-	
-	
-		while (ATS>0 && d4.length>0){		 			// Assuming shots left and defender has crusiers, do the following...
-			if (Math.random() < (Math.pow(0.9*Math.pow(0.95,DSL)),2)){  		// if the shot accuracy (0 to 1.0) is greater than the shield mod+base, hit
-				d4[d4.length-1]-=Math.pow(1.1,AWL);  			// hit a crusier for 1 shot (1.1 dmg in this case)
-			}	
-			ATS--;                   	 			// reduce the number of shots remaining by 1, even if the shot did no damage
-			if (d4[d4.length-1]<=0) {   	 			// check to see if that ship has lost all hitpoints
-				d4.splice(d4.length-1,1);  			// if it has, remove that ship from the battle.
-			}	
-		}		
-	
-		while (ATS>0 && d5.length>0){		 				// Assuming shots left and defender has dreadnought, do the following...
-			if (Math.random() <  (Math.pow(0.9*Math.pow(0.95,DSL)),3)){  	// if random is less than the chance to hit... hit.  	
-											// if the shot accuracy (0 to 1.0) is greater than the double shield mod+base...
-				d5[d5.length-1]-=Math.pow(1.1,AWL); 				// hit the dreadnought for 1 shot (1.1 dmg in this case)
-					
-			}
-			ATS--;                   	 				// reduce the number of shots remaining by 1, even if the shot did no damage
-			if (d5[d5.length-1]<=0) {   	 				// check to see if that ship has lost all hitpoints
-				d5.splice(d5.length-1,1);  				// if it has, remove that ship from the battle.
-			}	
-		}
-                while (ATS>0 && d7.length>0){                                           // Assuming shots left and defender has dreadnought, do the following...
-                        if (Math.random() <  (Math.pow(0.9*Math.pow(0.95,DSL)),5)){     // if random is less than the chance to hit... hit.
-                                                                                        // if the shot accuracy (0 to 1.0) is greater than the double shield mod+base...
-                                d7[d7.length-1]-=Math.pow(1.1,AWL);                             // hit the dreadnought for 1 shot (1.1 dmg in this case)
-
-                        }
-                        ATS--;                                                          // reduce the number of shots remaining by 1, even if the shot did no damage
-                        if (d7[d7.length-1]<=0) {                                       // check to see if that ship has lost all hitpoints
-                                d7.splice(d7.length-1,1);                               // if it has, remove that ship from the battle.
-                        }
-                }
-                while (ATS>0 && d8.length>0){                                           // Assuming shots left and defender has dreadnought, do the following...
-                        if (Math.random() <  (Math.pow(0.9*Math.pow(0.95,DSL)),10)){     // if random is less than the chance to hit... hit.
-                                                                                        // if the shot accuracy (0 to 1.0) is greater than the double shield mod+base...
-                                d8[d8.length-1]-=Math.pow(1.1,AWL);                             // hit the dreadnought for 1 shot (1.1 dmg in this case)
-
-                        }
-                        ATS--;                                                          // reduce the number of shots remaining by 1, even if the shot did no damage
-                        if (d8[d8.length-1]<=0) {                                       // check to see if that ship has lost all hitpoints
-                                d8.splice(d8.length-1,1);                               // if it has, remove that ship from the battle.
-                        }
-                }
-                while (ATS>0 && d9.length>0){                                           // Assuming shots left and defender has dreadnought, do the following...
-                        if (Math.random() <  (Math.pow(0.9*Math.pow(0.95,DSL)),3)){     // if random is less than the chance to hit... hit.
-                                                                                        // if the shot accuracy (0 to 1.0) is greater than the double shield mod+base...
-                                d9[d9.length-1]-=Math.pow(1.1,AWL);                             // hit the dreadnought for 1 shot (1.1 dmg in this case)
-
-                        }
-                        ATS--;                                                          // reduce the number of shots remaining by 1, even if the shot did no damage
-                        if (d9[d9.length-1]<=0) {                                       // check to see if that ship has lost all hitpoints
-                                d9.splice(d9.length-1,1);                               // if it has, remove that ship from the battle.
-                        }
-                }
-
-
-		while (ATS>0 && d3.length>0){		 	// Assuming shots left and defender has scout, do the following...
-			d3[d3.length-1]-=Math.pow(1.1,AWL); 		// hit the scout for 1 shot (1.1 dmg in this case)
-			ATS--;                   	 	// reduce the number of shots remaining by 1
-			if (d3[d3.length-1]<=0) {   		 // check to see if that ship has lost all hitpoints
-				d3.splice(d3.length-1,1);  	// if it has, remove that ship from the battle.
-			}	
-		}
-		
-		while (ATS>0 && d6.length>0){		 	// Assuming shots left and defender has colonyship, do the following...
-			if (Math.random() < (0.9*Math.pow(0.95,DSL))){  		// if the shot accuracy (0 to 1.0) is greater than the shield mod+base, hit
-				d6[d6.length-1]-=Math.pow(1.1,AWL); 		// hit the colony ship for 1 shot (1.1 dmg in this case)
-			}
-			ATS--;                   	 	// reduce the number of shots remaining by 1, even if deflected
-			if (d6[d6.length-1]<=0) {   		 // check to see if that ship has lost all hitpoints
-				d6.splice(d6.length-1,1);  	// if it has, remove that ship from the battle.
-			}	
-		}
-	
-		while (ATS>0 && d10>0){
-			if (Math.random() <  (Math.pow(0.9*Math.pow(0.95,DSL)),2)){ 
-				d10-=Math.pow(1.1,AWL); 		// hit the planet for 1 shot (1.1 dmg in this case)
-			}
-			ATS--;                   	// reduce the number of shots remaining by 1
-			if (d10<=0) {   		 	// check to see if the ground defense has been overrun
-				d10=0;		  	// if it has,  Sector is free for the taking if d7=0 and if there are no defending ships still alive.
-			}	
-		}
-	}
-	
-	////////////////  Defender's turn to hit.
-	
-	if (DTS>0) {         						// the defending ships/planet now get to take their shots on the incoming attackers... assuming they have shots to be made.
-		console.log("DTS>0");
-		while (DTS>0 && a1.length>0){            			// See what shots hit attackers corvette, if any.
-			if (Math.random() < (0.9*Math.pow(0.95,ASL) ) ){  		// if the shot accuracy (0 to 1.0) is greater than the shield , hit
-				a1[a1.length-1]-=Math.pow(1.1,DWL);  			// hit a corvette for 1 shot, plus attacker's modifier tech damage (1.1 dmg in this case)
-			}	
-			DTS--;                   	 			// reduce the number of shots remaining by 1, even if the shot did no damage
-			if (a1[a1.length-1]<=0) {   	 			// check to see if that ship has lost all hitpoints
-				a1.splice(a1.length-1,1);  			// if it has, remove that ship from the battle.
-			}	
-		}
-	       								
-		while (DTS>0 && a2.length>0){            			// See what shots hit attackers destroyer, if any.
-			if (Math.random() < (0.9*Math.pow(0.95,ASL) )){  		// if the shot accuracy (0 to 1.0) is greater than the shield , hit
-				a2[a2.length-1]-=Math.pow(1.1,DWL);  			// hit a destroyer for 1 shot, plus attacker's modifier tech damage (1.1 dmg in this case)
-			}	
-			DTS--;                   	 			// reduce the number of shots remaining by 1, even if the shot did no damage
-			if (a2[a2.length-1]<=0) {   	 			// check to see if that ship has lost all hitpoints
-				a2.splice(a2.length-1,1);  			// if it has, remove that ship from the battle.
-			}	
-		}
-	
-		while (DTS>0 && a4.length>0){            			// See what shots hit attackers destroyer, if any.
-			if (Math.random() < (Math.pow(0.9*Math.pow(0.95,ASL)),2)){  		// if the shot accuracy (0 to 1.0) is greater than the shield , hit
-				a4[a4.length-1]-=Math.pow(1.1,DWL);  			// hit a destroyer for 1 shot, plus attacker's modifier tech damage (1.1 dmg in this case)
-			}	
-			DTS--;                   	 			// reduce the number of shots remaining by 1, even if the shot did no damage
-			if (a4[a4.length-1]<=0) {   	 			// check to see if that ship has lost all hitpoints
-				a4.splice(a4.length-1,1);  			// if it has, remove that ship from the battle.
-			}	
-		}
-	
-		while (DTS>0 && a5.length>0){            						// See what shots hit attackers destroyer, if any.
-                        if (Math.random() < (Math.pow(0.9*Math.pow(0.95,ASL)),3)){
-				a5[a5.length-1]-=Math.pow(1.1,DWL);  					// hit a destroyer for 1 shot, plus attacker's modifier tech damage (1.1 dmg in this case)
-			}	
-			DTS--;                   	 						// reduce the number of shots remaining by 1, even if the shot did no damage
-			if (a5[a5.length-1]<=0) {   	 						// check to see if that ship has lost all hitpoints
-				a5.splice(a5.length-1,1);  						// if it has, remove that ship from the battle.
-			}	
-		}
-	
-                while (DTS>0 && a7.length>0){                   // Assuming shots left and defender has scout, do the following...
-                        if (Math.random() < (Math.pow(0.9*Math.pow(0.95,ASL)),5)){
-                                a7[a7.length-1]-=Math.pow(1.1,DWL);             // hit the scout for 1 shot (1.1 dmg in this case)
-                        }
-                        DTS--;                                  // reduce the number of shots remaining by 1
-                        if (a7[a7.length-1]<=0) {                // check to see if that ship has lost all hitpoints
-                                a7.splice(a7.length-1,1);       // if it has, remove that ship from the battle.
-                        }
-                }
-                while (DTS>0 && a8.length>0){                   // Assuming shots left and defender has scout, do the following...
-                        if (Math.random() < (Math.pow(0.9*Math.pow(0.95,ASL)),10)){
-                                a8[a8.length-1]-=Math.pow(1.1,DWL);             // hit the scout for 1 shot (1.1 dmg in this case)
-                        }
-                        DTS--;                                  // reduce the number of shots remaining by 1
-                        if (a8[a8.length-1]<=0) {                // check to see if that ship has lost all hitpoints
-                                a8.splice(a8.length-1,1);       // if it has, remove that ship from the battle.
-                        }
-                }
-                while (DTS>0 && a9.length>0){                   // Assuming shots left and defender has scout, do the following...
-                        if (Math.random() < (Math.pow(0.9*Math.pow(0.95,ASL)),3)){
-                                a9[a9.length-1]-=Math.pow(1.1,DWL);             // hit the scout for 1 shot (1.1 dmg in this case)
-                        }
-                        DTS--;                                  // reduce the number of shots remaining by 1
-                        if (a9[a9.length-1]<=0) {                // check to see if that ship has lost all hitpoints
-                                a9.splice(a9.length-1,1);       // if it has, remove that ship from the battle.
-                        }
-                }
-
-                while (DTS>0 && a3.length>0){                   // Assuming shots left and defender has scout, do the following...
-                        a3[a3.length-1]-=Math.pow(1.1,DWL);             // hit the scout for 1 shot (1.1 dmg in this case)
-                        DTS--;                                  // reduce the number of shots remaining by 1
-                        if (a3[a3.length-1]<=0) {                // check to see if that ship has lost all hitpoints
-                                a3.splice(a3.length-1,1);       // if it has, remove that ship from the battle.
-                        }
-                }
-                while (DTS>0 && a6.length>0){                   // Assuming shots left and defender has scout, do the following...
-                        if (Math.random() < (0.9*Math.pow(0.95,ASL) )){                 // if the shot accuracy (0 to 1.0) is greater than the shield , hit
-                                a6[a6.length-1]-=Math.pow(1.1,DWL);             // hit the scout for 1 shot (1.1 dmg in this case)
-                        }
-                        DTS--;                                  // reduce the number of shots remaining by 1
-                        if (a6[a6.length-1]<=0) {                // check to see if that ship has lost all hitpoints
-                                a6.splice(a6.length-1,1);       // if it has, remove that ship from the battle.
-                        }
-                }
-	
-	}
-	/////// check to see if anyone won this round of battle
-	if ((a1.length + a2.length + a3.length + a4.length + a5.length + a6.length +a7.length +a8.length +a9.length)==0) {   /// if true, all attacking ships are dead. Defender auto-win.
-		client.query('UPDATE map'+gID+' SET totalship1 = '+d1.length+', totalship2 = '+d2.length+', totalship3 = '+d3.length+', totalship4 = '+d4.length+', totalship5 = '+d5.length+', totalship6 = '+d6.length+', totalship7 = '+d7.length+', totalship8 = '+d8.length+', totalship9 = '+d9.length+' WHERE sectorid = '+gotoHere);
-		connection.sendUTF('All our ships were destroyed.  We lost the battle.');
-		battle+=":"+a1.length+":"+a2.length+":"+a3.length+":"+a4.length+":"+a5.length+":"+a6.length+":"+a7.length+":"+a8.length+":"+a9.length+":"+d1.length+":"+d2.length+":"+d3.length+":"+d4.length+":"+d5.length+":"+d6.length+":"+d7.length+":"+
-                					d8.length+":"+d9.length+":"+d10;
-		connection.sendUTF(battle);
-		connection.sendUTF("info:"+gotoHere.toString(16).toUpperCase()+":"+3);
-                for (mm in clients){
-                        if (clients[mm].gameid==gID){
-                                if (clients[mm].name!=pID && defenderid==clients[mm].name){
-                                        clients[mm].sendUTF("We were just attacked in sector "+gotoHere.toString(16).toUpperCase()+", yet we won the battle.");
-                                        clients[mm].sendUTF(battle);
-                                        updateAllSectors(clients[mm].gameid,connection);
-                                        updateResources(clients[mm]);
-                                        updateSector2(clients[mm].sectorid, clients[mm]);
-                                }
-                                else if (clients[mm].name!=pID){
-                                        clients[mm].sendUTF("Somewhere in the universe, a great battle just took place.");
-                                }
-                        }
-                }
-
-                                                                                                                     updateAllSectors(gID,connection);
-                                                                                                                     updateResources(connection);
-                                                                                                                     updateSector2(connection.sectorid, connection);
-
-		break;	
-	}
-	else if ((d1.length + d2.length + d3.length + d4.length + d5.length + d6.length + d7.length + d8.length + d9.length + d10)==0) {   /// if true, all defenders are out of hitpoints or sector uncolonized/defended, yet attackers still alive. Sector captured.
-		client.query('UPDATE map'+gID+' SET totalship1 = '+a1.length+', totalship2 = '+a2.length+', totalship3 = '+a3.length+', totalship4 = '+a4.length+', totalship5 = '+a5.length+', totalship6 = '+a6.length+',  totalship7 = '+a7.length+', totalship8 = '+a8.length+', totalship9 = '+a9.length+', ownerid = '+pID+', colonized = 0, orbitalturret = 0, warpgate = 0, academylvl = 0, shipyardlvl = 0, metallvl = 0, crystallvl = 0, totship1build = 0, totship2build = 0, totship3build = 0, totship4build = 0, totship5build = 0, totship6build = 0,  totship7build = 0, totship8build = 0, totship9build = 0 WHERE sectorid = '+gotoHere);
-		connection.sendUTF('We captured the sector.');
-                battle+=":"+a1.length+":"+a2.length+":"+a3.length+":"+a4.length+":"+a5.length+":"+a6.length+":"+a7.length+":"+a8.length+":"+a9.length+":"+d1.length+":"+d2.length+":"+d3.length+":"+d4.length+":"+d5.length+":"+d6.length+":"+d7.length+":"+
-                                                        d8.length+":"+d9.length+":"+d10;
-		connection.sendUTF(battle);
-                for (mm in clients){
-                        if (clients[mm].gameid==gID){
-                                if (clients[mm].name!=pID && defenderid==clients[mm].name){
-                                        clients[mm].sendUTF("We were just attacked in sector "+gotoHere.toString(16).toUpperCase()+" and we lost the battle.");
-                                        clients[mm].sendUTF(battle);
-					clients[mm].sendUTF("info:"+gotoHere.toString(16).toUpperCase()+":"+3);
-                                        updateAllSectors(clients[mm].gameid,connection);
-                                        updateResources(clients[mm]);
-                                        updateSector2(clients[mm].sectorid, clients[mm]);
-                                }
-                                else if (clients[mm].name!=pID){
-                                        clients[mm].sendUTF("Somewhere in the universe, a great battle just took place.");
-                                }
-                        }
-                }
-		                                                                                                     updateAllSectors(gID,connection);
-                                                                                                                     updateResources(connection);
-                                                                                                                     updateSector2(connection.sectorid, connection);
-		break;
-	}
-	else if ((a1.length + a2.length + a4.length + a5.length + a7.length + a8.length + a9.length)==0) {   // if true, attackers have no more firepower, yet defenders are still alive... with something, so defenders auto win.
-		client.query('UPDATE map'+gID+' SET totalship1 = '+d1.length+', totalship2 = '+d2.length+', totalship3 = '+d3.length+', totalship4 = '+d4.length+', totalship5 = '+d5.length+', totalship6 = '+d6.length+', totalship7 = '+d7.length+', totalship8 = '+d8.length+', totalship9 = '+d9.length+' WHERE sectorid = '+gotoHere);
-		connection.sendUTF("Our ships entered battle with the enemy.  Our unarmed ships are trying to ram the enemy in a last ditch effort to win the battle."); 
-                battle+=":"+a1.length+":"+a2.length+":"+a3.length+":"+a4.length+":"+a5.length+":"+a6.length+":"+a7.length+":"+a8.length+":"+a9.length+":"+d1.length+":"+d2.length+":"+d3.length+":"+d4.length+":"+d5.length+":"+d6.length+":"+d7.length+":"+
-                                                        d8.length+":"+d9.length+":"+d10;
-                battle+=":0:0:0:0:0:0:0:0:0:"+d1.length+":"+d2.length+":"+d3.length+":"+d4.length+":"+d5.length+":"+d6.length+":"+d7.length+":"+
-                                                        d8.length+":"+d9.length+":"+d10;
-		connection.sendUTF(battle);
-		connection.sendUTF("info:"+gotoHere.toString(16).toUpperCase()+":"+3);
-		for (mm in clients){
-			if (clients[mm].gameid==gID){
-				if (clients[mm].name!=pID && defenderid==clients[mm].name){
-					clients[mm].sendUTF("We were just attacked in sector "+gotoHere.toString(16).toUpperCase()+", yet we won the battle.");
-					clients[mm].sendUTF(battle);
-					updateAllSectors(clients[mm].gameid,connection);
-                                        updateResources(clients[mm]);
-                                        updateSector2(clients[mm].sectorid, clients[mm]);
-				}
-				else if (clients[mm].name!=pID){
-					clients[mm].sendUTF("Somewhere in the universe, a great battle just took place.");
-				}
-			}
-		}
-                        updateAllSectors(gID,connection);
-                        updateResources(connection);
-                        updateSector2(connection.sectorid, connection);
-
-		break;
-	}	
-	//otherwise, just keep repeating everything again until there is a winner or loser....
+    
+    const gameId = connection.gameid;
+    
+    if (turns[gameId] === undefined) {
+        // Game is not started yet, start it
+        console.log(`Game ${gameId} is starting`);
+        turns[gameId] = 0;
+        
+        // Notify players
+        broadcastToGame({ gameid: gameId }, "The game is starting in 10 seconds");
+        broadcastToGame({ gameid: gameId }, "start10:");
+        
+        // Update database
+        db.query('UPDATE games SET turn = 0 WHERE id = ?', [gameId]);
+        
+        // Schedule game start
+        setTimeout(() => startGame(gameId), 10000);
+    } else if (turns[gameId] !== 0) {
+        // Game is in progress, player ready for next turn
+        handlePlayerReady(connection);
+    } else {
+        console.log("Game is in starting phase, can't start next round yet.");
     }
-    ///////////////////////////////////////////////////////// END BATTLE MECHANIC
-   }
-  }
- );
 }
 
-function colonizePlanet(connection){
-	if (connection.sectorid != undefined){
-        client.query('SELECT * FROM map'+connection.gameid+' where sectorid = "'+connection.sectorid+'" LIMIT 1',
-                function (err, resultsm, fields) {
-                         if (err) {
-                                throw err;
-                         }
-			 resultm = resultsm[0];
+function handlePlayerReady(connection) {
+    // Mark player as ready for next turn
+    connection.ready = 1;
+    
+    // Check if all players are ready
+    let allReady = true;
+    let playersInGame = 0;
+    
+    clients.forEach(client => {
+        if (client.gameid === connection.gameid) {
+            playersInGame++;
+            if (!client.ready) {
+                allReady = false;
+                console.log(`Player ${client.name} is not ready for next turn`);
+            } else {
+                console.log(`Player ${client.name} is ready for next turn`);
+            }
+        }
+    });
+    
+    // If all players are ready, advance to next turn
+    if (allReady && playersInGame > 0) {
+        console.log("All players ready, advancing to next turn");
+        
+        // Reset ready status
+        clients.forEach(client => {
+            if (client.gameid === connection.gameid) {
+                client.ready = 0;
+            }
+        });
+        
+        // Clear and reset timer
+        clearInterval(gameTimer[connection.gameid]);
+        gameTimer[connection.gameid] = setInterval(() => nextTurn(connection.gameid), 180000);
+        
+        // Advance turn
+        nextTurn(connection.gameid);
+    }
+}
 
-			 if (resultm['totalship6']>0 && resultm['ownerid']==connection.name && resultm['sectortype']>5 && resultm['colonized']!=1){ 
-			 client.query('SELECT * FROM players'+connection.gameid+' where playerid = "'+connection.name+'" LIMIT 1',
-        		        function (err, resultsp, fields) {
-        		                 if (err) {
-        		                        throw err;
-        		                 }
-        		                 resultp = resultsp[0];
-					 if (resultp['tech7']>=resultm['terraformlvl']){
-						connection.sendUTF('Colonization of sector successful!');
-						client.query('UPDATE map'+connection.gameid+' SET colonized = 1, terraformlvl = 0, totalship6 = totalship6 - 1 WHERE sectorid = "'+connection.sectorid+'" LIMIT 1'); 
- 	                                        updateAllSectors(connection.gameid,connection);
+function startGame(gameId) {
+    // Set turn to 1 in database
+    db.query('UPDATE games SET turn = 1 WHERE id = ?', [gameId]);
+    turns[gameId] = 1;
+    
+    console.log(`Game ${gameId} starting`);
+    
+    // Load map data
+    db.query('SELECT * FROM map' + gameId, (err, mapResults) => {
+        if (err) {
+            console.error("Error loading map data:", err);
+            return;
+        }
+        
+        // Initialize game state
+        if (!activeGames[gameId]) {
+            activeGames[gameId] = {
+                id: gameId,
+                sectors: mapResults,
+                players: {},
+                turn: 1
+            };
+        }
 
-					 }
-					 else {
-						connection.sendUTF('You do not have a high enough terraforming tech to colonize this sector.');
-					 }
-        		        }
-        		);
-			}
-			else if (resultm['colonized']==1){
-				connection.sendUTF('This sector is already colonized by you.');
-			}
-			else if (resultm['totalship6']<1){
-				connection.sendUTF('There are no colony ships in this sector.');
-			}
-			else if ( resultm['sectortype']<=5 ){
-				connection.sendUTF("There are no planets in this sector. You cannot colonize or terraform it.");
-			}
-			else {connection.sendUTF('You do not control this sector. Error.');}
+        // Assign homeworlds to players
+        mapResults.forEach(sector => {
+            if (sector.sectortype === 10 && clientMap[sector.ownerid]) {
+                const client = clientMap[sector.ownerid];
+                
+                client.sendUTF(`sector:${sector.sectorid.toString(16).toUpperCase()}:owner:${sector.ownerid}:type:${sector.sectortype}:artifact:${sector.artifact}:metalbonus:${sector.metalbonus}:crystalbonus:${sector.crystalbonus}:terraform:${sector.terraformlvl}`);
+                client.sectorid = sector.sectorid;
+                client.sendUTF(`ownsector:${sector.sectorid.toString(16).toUpperCase()}`);
+                
+                console.log(`Player ${sector.ownerid} assigned to sector ${sector.sectorid.toString(16).toUpperCase()}`);
+                
+                updateSector2(sector.sectorid, client);
+            }
+        });
+    });
+    
+    // Notify all players
+    clients.forEach(client => {
+        if (client.gameid === gameId) {
+            client.sendUTF("GAME HAS STARTED!");
+            client.sendUTF("newround:");
+            updateResources(client);
+        }
+    });
+    
+    // Start turn timer
+    gameTimer[gameId] = setInterval(() => nextTurn(gameId), 180000);
+}
+
+function nextTurn(gameId) {
+    turns[gameId]++;
+    
+    // Update database
+    db.query('UPDATE games SET turn = turn + 1 WHERE id = ?', [gameId]);
+    
+    // Process game mechanics (resources, ship building, etc.)
+    gameMechanics(gameId);
+    
+    // Notify players
+    clients.forEach(client => {
+        if (client.gameid === gameId) {
+            client.sendUTF("newround:");
+        }
+    });
+}
+
+function updateResources(connection) {
+    db.query('SELECT * FROM players' + connection.gameid + ' WHERE playerid = ? LIMIT 1', 
+        [connection.name], (err, results) => {
+            if (err) {
+                console.error("Error updating resources:", err);
+                return;
+            }
+            
+            if (results.length === 0) {
+                console.error(`No player data found for player ${connection.name}`);
+                return;
+            }
+            
+            const result = results[0];
+            connection.sendUTF(`resources:${result.metal}:${result.crystal}:${result.research}`);
+            connection.sendUTF(`tech:${result.tech1}:${result.tech2}:${result.tech3}:${result.tech4}:${result.tech5}:${result.tech6}:${result.tech7}:${result.tech8}:${result.tech9}`);
+        }
+    );
+}
+
+// Fleet Movement and Ship Building
+
+function surroundShips(message, connection) {
+    const msid = parseInt(message.utf8Data.split(":")[1], 16);
+    
+    db.query('SELECT * FROM map' + connection.gameid, (err, results) => {
+        if (err) {
+            console.error("Error retrieving map data:", err);
+            return;
+        }
+        
+        let targetSector;
+        let sendchunk = '';
+        
+        // Find target sector first
+        for (const sector of results) {
+            if (sector.sectorid === msid) {
+                targetSector = sector;
+                break;
+            }
+        }
+        
+        if (!targetSector) {
+            connection.sendUTF('Error: Target sector not found');
+            return;
+        }
+        
+        // Find ships in nearby sectors
+        for (const sector of results) {
+            // Check if player owns the sector and it has ships
+            if (sector.ownerid == connection.name && 
+                (sector.totalship1 || sector.totalship2 || sector.totalship3 || 
+                 sector.totalship4 || sector.totalship5 || sector.totalship6 || 
+                 sector.totalship7 || sector.totalship8 || sector.totalship9)) {
+                
+                // Check if the sector can see the target sector (adjacency or warp gate)
+                const isAdjacent = MapSystem.areSectorsAdjacent(sector.sectorid, msid, 16) || 
+                                 targetSector.warpgate === 1 || 
+                                 sector.totalship9 > 0; // Carriers can move anywhere
+                
+                if (isAdjacent) {
+                    // Add sector to send chunk
+                    sendchunk += `:${sector.sectorid.toString(16).toUpperCase()}:${sector.totalship1}:${sector.totalship2}:${sector.totalship3}:${sector.totalship4}:${sector.totalship5}:${sector.totalship6}:${sector.totalship7}:${sector.totalship8}:${sector.totalship9}`;
                 }
-        );
-	}
-	else {connection.sendUTF('No sector specified. Error.');}
+            }
+        }
+        
+        if (sendchunk === '') {
+            connection.sendUTF('You have no ships in nearby sectors.');
+        } else {
+            connection.sendUTF(`mmoptions:${msid.toString(16).toUpperCase()}${sendchunk}`);
+        }
+    });
 }
-function updateResources(connection){
-        client.query('SELECT * FROM players'+connection.gameid+' where playerid = "'+connection.name+'" LIMIT 1',
-                function (err, results, fields) {
-                         if (err) {
-                              	throw err;
-                         }
-                         var result = results[0];
-                         connection.sendUTF('resources:'+result['metal']+':'+result['crystal']+':'+result['research']);
- 			 connection.sendUTF("tech:"+result['tech1']+":"+result['tech2']+":"+result['tech3']+":"+result['tech4']+":"+result['tech5']+":"+result['tech6']+":"+result['tech7']+":"+result['tech8']+":"+result['tech9']);
+
+function preMoveFleet(message, connection) {
+    console.log("Processing fleet movement:", message.utf8Data);
+    const arr = message.utf8Data.split(":");
+    const msid = parseInt(arr[1], 16);
+    
+    // Get player's resources
+    db.query('SELECT * FROM players' + connection.gameid + ' WHERE playerid = ? LIMIT 1', 
+        [connection.name], (err, resultsp) => {
+            if (err) {
+                console.error("Error retrieving player data:", err);
+                return;
+            }
+            
+            if (resultsp.length === 0) {
+                connection.sendUTF('Error: Player data not found');
+                return;
+            }
+            
+            const player = resultsp[0];
+            
+            // Calculate fleet movement cost
+            let sumofships = 0;
+            for (let y = 4; y <= (arr.length - 1); y += 3) {
+                const shipType = parseInt(arr[y - 1]);
+                const count = parseInt(arr[y]);
+                
+                switch (shipType) {
+                    case 1: sumofships += count * 2; break; // Frigate
+                    case 2: sumofships += count * 2; break; // Destroyer
+                    case 3: sumofships += count * 1; break; // Scout
+                    case 4: sumofships += count * 2; break; // Cruiser
+                    case 5: sumofships += count * 3; break; // Battleship
+                    case 6: sumofships += count * 2; break; // Colony Ship
+                    case 7: sumofships += count * 5; break; // Dreadnought
+                    case 8: sumofships += count * 2; break; // Intruder
+                    case 9: sumofships += count * 3; break; // Carrier
                 }
-        );
-
-}
-function probeSector(message,connection){
-	console.log('probe? check resources first');
-	 client.query('SELECT * FROM players'+connection.gameid+' where playerid = "'+connection.name+'" LIMIT 1',
-                function (err, results, fields) {
-                         if (err) {
-                                throw err;
-                         }
-                         var result = results[0];
-                         if (result['crystal']>=300){
-				client.query('UPDATE players'+connection.gameid+' SET crystal = crystal - 300 WHERE playerid = "'+connection.name+'"' );
-				updateSectorProbe(message.utf8Data.split("//probe:")[1], connection);
-			 }
-			 else {
-				connection.sendUTF('Not enough Crystal to send a probe.');
-			 }
+            }
+            
+            const crystalCost = sumofships * 100;
+            
+            // Check if player has enough crystal
+            if (crystalCost > player.crystal) {
+                connection.sendUTF(`You do not have enough crystal to send this fleet. Needed: ${crystalCost}`);
+                return;
+            }
+            
+            // Get map data
+            db.query('SELECT * FROM map' + connection.gameid, (err, mapResults) => {
+                if (err) {
+                    console.error("Error retrieving map data:", err);
+                    return;
                 }
-        );
-}
-function updateSectorProbe(sect2update, connection){
-		sect2update=parseInt(sect2update);
-                client.query('SELECT * FROM map'+connection.gameid+' WHERE sectorid = '+sect2update+' LIMIT 1',
-                    function (err, results, fields) {
-                         if (err) {
-                              console.log("QUERY FAILED");
-                              throw err;
-                         }
-	                        console.log("sector update");
-        	                results=results[0];
-
-				if (results['ownerid']==0){
-					owner="no one";
-				        if (results['sectortype']>5){
-                                	        connection.sendUTF("Our probe was unable to detect enemy life in sector "+sect2update.toString(16).toUpperCase()+", but the sector does contain a colonizable planet with a metal production rate of "+results['metalbonus']+"% and a crystal output rate of "+results['crystalbonus']+"%.");
-					}
-					else if (results['sectortype']<2){
-						connection.sendUTF("Our probe was destroyed when entering sector "+sect2update.toString(16).toUpperCase()+".  No information was gathered.");
-					}
-        	                        else {
-                	                        connection.sendUTF("Our probe was unable to detect enemy life in sector "+sect2update.toString(16).toUpperCase()+", nor any colonizable planets.");
-                        	        }
-				}
-				else if (results['ownerid']==connection.name){
-					connection.sendUTF("You just probed yourself.  What a waste...");
-				}
-				else {
-					owner=results['ownerid'];
-					client.query('SELECT * FROM players'+connection.gameid,
-        			        	function (err, resultsp, fields) {
-                        			 if (err) {
-                        			      console.log("QUERY FAILED");
-                        			      throw err;
-                        			 }
-						 for (r in resultsp){
-							resultp = resultsp[r];
-							if (resultp['playerid']==connection.name){
-								prober = resultp;
-							}
-							else if (resultp['playerid'] == owner){
-								probee = resultp;
-							}
-						 }							 
-						 spylevel = prober['tech8'] - probee['tech9'];
-						 proberesult = '';
-						 if (spylevel >=0){
-			                                if (results['sectortype']>5){
-                        			                proberesult = "Our probe detected that sector "+sect2update.toString(16).toUpperCase()+" is controlled by Player "+owner+" and that the sector contains a colonizable planet with a metal production rate of "+results['metalbonus']+"% and a crystal output rate of "+results['crystalbonus']+"%.";
-                                			}
-                                			else {
-                                			        proberesult = "Our probe detected that sector "+sect2update.toString(16).toUpperCase()+" is controlled by Player "+owner+" and that the sector contains no colonizable planets.";
-                                			}
-						 }
-						 totships = results['totalship1']+results['totalship2']+results['totalship3']+results['totalship4']+results['totalship5']+results['totalship6']+results['totalship7']+results['totalship8']+results['totalship9'];
-						 if (spylevel == 1){proberesult += "We were also able to detect that the enemy has at least "+Math.floor(Math.random()*totships)+" ships in sector "+sect2update.toString(16).toUpperCase()+".";
-						                                                connection.sendUTF('info:'+sect2update.toString(16).toUpperCase()+':3');
-
-						}
-						 if (spylevel == 2){proberesult += "We were also able to detect that the enemy has "+totships+" ships in sector "+sect2update.toString(16).toUpperCase()+".";
-						                                                connection.sendUTF('info:'+sect2update.toString(16).toUpperCase()+':3');
-
-						}
-						
-						 if (spylevel == 3){proberesult += "We were also able to detect that the enemy has "+totships+" ships in sector "+sect2update.toString(16).toUpperCase()+" and "+probee['orbitalturret']+" orbital turrets.";
-						                                                connection.sendUTF('info:'+sect2update.toString(16).toUpperCase()+':3');
-						}
-
- 						 if (spylevel >= 4){proberesult += "We were also able to detect that the enemy has "+totships+" ships in sector "+sect2update.toString(16).toUpperCase()+", "+probee['orbitalturret']+" orbital turrets, and "+probee['warpgate']+ " warp gate(s)." ;
-						                                                connection.sendUTF('info:'+sect2update.toString(16).toUpperCase()+':3');
-
-						}
-						 if (spylevel == -1){proberesult = "Our probe was destroyed by the enemy when entering  sector "+sect2update.toString(16).toUpperCase()+".  No other information was gathered.";
-                                                        for (cc in clients){
-                                                                if (clients[cc].name==results['ownerid'] && clients[cc].gameid==connection.gameid){
-                                                                        clients[cc].sendUTF("We hear reports that an enemy probe was found within our borders and destroyed.");
-                                                                }
-                                                        }
-						connection.sendUTF('info:'+sect2update.toString(16).toUpperCase()+':3');
-						}
-						 if (spylevel == -2){proberesult = "Our probe was destroyed by the enemy when entering sector "+sect2update.toString(16).toUpperCase()+".  No information was gathered.";
-                                                        for (cc in clients){
-                                                                if (clients[cc].name==results['ownerid'] && clients[cc].gameid==connection.gameid){
-                                                                        clients[cc].sendUTF("An enemy probe tried to scan us in sector "+sect2update.toString(16).toUpperCase()+", but we destroyed the probe before it finished its scan.");
-                                                                }
-                                                        }
-                                                connection.sendUTF('info:'+sect2update.toString(16).toUpperCase()+':3');
-						}
-						 if (spylevel == -3){proberesult = "Our probe was destroyed when entering sector "+sect2update.toString(16).toUpperCase()+".  No information was gathered.";
-                                                        for (cc in clients){
-                                                                if (clients[cc].name==results['ownerid'] && clients[cc].gameid==connection.gameid){
-                                                                        clients[cc].sendUTF("Player "+connection.name+" tried to scan us in sector " + sect2update.toString(16).toUpperCase() + " with a probe, but we safely destroyed it in time.");
-                                                                }
-                                                        }
-}
-						 if (spylevel <= -4){proberesult = "Our probe was destroyed when entering sector "+sect2update.toString(16).toUpperCase()+".  No information was gathered.";
-							for (cc in clients){
-								if (clients[cc].name==results['ownerid'] && clients[cc].gameid==connection.gameid && connection.sectorid){
-									clients[cc].sendUTF("Player "+connection.name+" tried to scan us in sector "+sect2update.toString(16).toUpperCase()+" with a probe, but we safely destroyed it and were able to determine that the probe came from sector "+connection.sectorid.toString(16).toUpperCase()+".");
-									clients[cc].sendUTF('info:'+connection.sectorid.toString(16).toUpperCase()+':3');
-								}
-								else if ( clients[cc].name==results['ownerid'] && clients[cc].gameid==connection.gameid ){
-                                                                        clients[cc].sendUTF("Player "+connection.name+" tried to scan us in sector "+sect2update.toString(16).toUpperCase()+" with a probe, but we safely destroyed it in time.");
-                                                                }
-							}
-						 }
-						 connection.sendUTF(proberesult);
-						}
-					);
-		
-
-
-				}
+                
+                let targetSector;
+                let ships = {
+                    s1: 0, s2: 0, s3: 0, s4: 0, s5: 0,
+                    s6: 0, s7: 0, s8: 0, s9: 0
+                };
+                
+                // Find target sector
+                for (const sector of mapResults) {
+                    if (sector.sectorid === msid) {
+                        targetSector = sector;
+                        break;
                     }
-                );
-}
-
-function updateSector(message, connection){
-                sect2updatehex = message.utf8Data.split("//sector tile")[1];
-                sect2update = parseInt(sect2updatehex,16);
-                client.query('SELECT * FROM map'+connection.gameid+' WHERE sectorid = '+sect2update+' LIMIT 1',
-                    function (err, results, fields) {
-                         if (err) {
-                              console.log("QUERY FAILED");
-                              throw err;
-                         }
-                        console.log("sector update");
-                        results=results[0];
-			if (results['ownerid']==connection.name){
-	                        connection.sendUTF("sector:"+sect2updatehex+":owner:"+results['ownerid']+":type:"+results['sectortype']+":artifact:"+results['artifact']+":metalbonus:"+results['metalbonus']+":crystalbonus:"+results['crystalbonus']+":terraform:"+results['terraformlvl']);
-	                        connection.sendUTF("ub:"+results['metallvl']+":"+results['crystallvl']+":"+results['academylvl']+":"+results['shipyardlvl']+":"+results['orbitalturret']+":"+results['warpgate']); 
-				connection.sectorid=sect2update;
-				cid[connection.name]=connection;
-		        	connection.sendUTF("Updated sector "+sect2updatehex+" successfully.");
-				connection.sendUTF("fleet:"+results['totalship1']+":"+results['totalship2']+":"+results['totalship3']+":"+results['totalship4']+":"+results['totalship5']+":"+results['totalship6']+":"+results['totalship7']+":"+results['totalship8']+":"+results['totalship9']+":"+results['totship1build']+":"+results['totship2build']+":"+results['totship3build']+":"+results['totship4build']+":"+results['totship5build']+":"+results['totship6build']+":"+results['totship7build']+":"+results['totship8build']+":"+results['totship9build']);
-			}
-			else {
-				connection.sendUTF("probeonly:"+sect2update);
-			}
-	            }
-                );
-}
-function updateSector2(sectordec, connection){
-                if (sectordec!==undefined){
-	        sect2updatehex = sectordec.toString(16).toUpperCase();
-                sect2update = sectordec;
-                connection.sectorid=sect2update;
-		cid[connection.name]=connection;
-                client.query('SELECT * FROM map'+connection.gameid+' WHERE sectorid = '+sect2update+' LIMIT 1',
-                    function (err, results, fields) {
-                         if (err) {
-                              console.log("QUERY FAILED");
-                              throw err;
-                         }
-                        console.log("sector update2");
-                        results=results[0];
-			if (results['ownerid']==connection.name){
-                        connection.sendUTF("sector:"+sect2updatehex+":owner:"+results['ownerid']+":type:"+results['sectortype']+":artifact:"+results['artifact']+":metalbonus:"+results['metalbonus']+":crystalbonus:"+results['crystalbonus']+":terraform:"+results['terraformlvl']);
-			connection.sendUTF("ub:"+results['metallvl']+":"+results['crystallvl']+":"+results['academylvl']+":"+results['shipyardlvl']+":"+results['orbitalturret']+":"+results['warpgate']);
-			connection.sendUTF("fleet:"+results['totalship1']+":"+results['totalship2']+":"+results['totalship3']+":"+results['totalship4']+":"+results['totalship5']+":"+results['totalship6']+":"+results['totalship7']+":"+results['totalship8']+":"+results['totalship9']+":"+results['totship1build']+":"+results['totship2build']+":"+results['totship3build']+":"+results['totship4build']+":"+results['totship5build']+":"+results['totship6build']+":"+results['totship7build']+":"+results['totship8build']+":"+results['totship9build']);
-			sectorinfo = results;
-                        totalshipinsec = sectorinfo['totalship1']+sectorinfo['totalship2']+sectorinfo['totalship3']+sectorinfo['totalship4']+sectorinfo['totalship5']+sectorinfo['totalship6']+sectorinfo['totalship7']+sectorinfo['totalship8']+sectorinfo['totalship9'];
-				if (sectorinfo['sectortype']==1){
-					 connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":A");
-				}
-				else if ( sectorinfo['warpgate']==1){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":W");
-                                }	
-                                else if (sectorinfo['colonized']==1){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":C");
+                }
+                
+                if (!targetSector) {
+                    connection.sendUTF('Error: Target sector not found');
+                    return;
+                }
+                
+                // Process ship movements
+                for (const sourceSector of mapResults) {
+                    if (sourceSector.ownerid == connection.name) {
+                        // Look for ships in this sector that match the request
+                        for (let x = 2; x <= (arr.length - 1); x += 3) {
+                            const sourceSectorId = parseInt(arr[x], 16);
+                            
+                            if (sourceSectorId === sourceSector.sectorid && 
+                                arr[x + 2] !== undefined && arr[x + 1] !== undefined) {
+                                
+                                const shipType = parseInt(arr[x + 1]);
+                                const count = parseInt(arr[x + 2]);
+                                
+                                // Check if sector is adjacent or has warp capabilities
+                                const canMove = MapSystem.areSectorsAdjacent(sourceSector.sectorid, msid, 16) || 
+                                              targetSector.warpgate === 1 || 
+                                              sourceSector.totalship9 > 0; // Carriers can move anywhere
+                                
+                                if (canMove) {
+                                    // Move ships based on type
+                                    switch (shipType) {
+                                        case 1:
+                                            if (sourceSector.totalship1 >= count) {
+                                                ships.s1 += count;
+                                                sourceSector.totalship1 -= count;
+                                            }
+                                            break;
+                                        case 2:
+                                            if (sourceSector.totalship2 >= count) {
+                                                ships.s2 += count;
+                                                sourceSector.totalship2 -= count;
+                                            }
+                                            break;
+                                        case 3:
+                                            if (sourceSector.totalship3 >= count) {
+                                                ships.s3 += count;
+                                                sourceSector.totalship3 -= count;
+                                            }
+                                            break;
+                                        case 4:
+                                            if (sourceSector.totalship4 >= count) {
+                                                ships.s4 += count;
+                                                sourceSector.totalship4 -= count;
+                                            }
+                                            break;
+                                        case 5:
+                                            if (sourceSector.totalship5 >= count) {
+                                                ships.s5 += count;
+                                                sourceSector.totalship5 -= count;
+                                            }
+                                            break;
+                                        case 6:
+                                            if (sourceSector.totalship6 >= count) {
+                                                ships.s6 += count;
+                                                sourceSector.totalship6 -= count;
+                                            }
+                                            break;
+                                        case 7:
+                                            if (sourceSector.totalship7 >= count) {
+                                                ships.s7 += count;
+                                                sourceSector.totalship7 -= count;
+                                            }
+                                            break;
+                                        case 8:
+                                            if (sourceSector.totalship8 >= count) {
+                                                ships.s8 += count;
+                                                sourceSector.totalship8 -= count;
+                                            }
+                                            break;
+                                        case 9:
+                                            if (sourceSector.totalship9 >= count) {
+                                                ships.s9 += count;
+                                                sourceSector.totalship9 -= count;
+                                            }
+                                            break;
+                                    }
+                                    
+                                    // Update source sector in database
+                                    db.query(`UPDATE map${connection.gameid} SET 
+                                        totalship1 = ?, totalship2 = ?, totalship3 = ?, 
+                                        totalship4 = ?, totalship5 = ?, totalship6 = ?,
+                                        totalship7 = ?, totalship8 = ?, totalship9 = ?
+                                        WHERE sectorid = ?`, 
+                                        [
+                                            sourceSector.totalship1, sourceSector.totalship2, 
+                                            sourceSector.totalship3, sourceSector.totalship4, 
+                                            sourceSector.totalship5, sourceSector.totalship6,
+                                            sourceSector.totalship7, sourceSector.totalship8,
+                                            sourceSector.totalship9, sourceSector.sectorid
+                                        ]
+                                    );
                                 }
-                                else if (sectorinfo['sectortype']==10){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":H");
-                                }
-                                else if (sectorinfo['sectortype']>5){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":P");
-                                }
-                                else if (sectorinfo['sectortype']==2){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":BH");
-                                }
-				else {
-                        		connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":"+sectorinfo['colonized']);
-				}
-			}
-		    }
-                );
-		}
-		else {
-			console.log("No sector selected to refresh; is player dead?");
-		}
-}
-function buyShip(message, connection){
-                ship2buy = message.utf8Data.split("//buyship:")[1];
-                console.log("player is asking to buy ship: "+ship2buy);
-		if (connection.sectorid!==undefined){
-		    connection.sendUTF('Building a ship in sector: '+connection.sectorid);
-                    client.query('SELECT * FROM map'+connection.gameid+' WHERE sectorid = "'+connection.sectorid+'" LIMIT 1',
-                       	function (err, results2, fields) {
-                           if (err) {
-                                console.log("QUERY FAILED33");
-                                throw err;
-                           }
-                           results2=results2[0];
-			   buildSpace = results2['totship1build']*3 + results2['totship2build']*5 + results2['totship3build'] + results2['totship4build']*8 + results2['totship5build']*12 + results2['totship6build']*7 + + results2['totship7build']*20 + results2['totship8build']*5 + results2['totship9build']*15;
-			   buildSpace = results2['shipyardlvl'] - buildSpace;
-			   if ((buildSpace>=3 && ship2buy==1) || (buildSpace>=5 && ship2buy==2) || (buildSpace>=1 && ship2buy==3) || (buildSpace>=8 && ship2buy==4) || (buildSpace>=12 && ship2buy==5) || (buildSpace>=7 && ship2buy==6) ||
-					 (buildSpace>=20 && ship2buy==7) ||  (buildSpace>=5 && ship2buy==8) ||  (buildSpace>=15 && ship2buy==9) ){
-  			     client.query('SELECT * FROM players'+connection.gameid+' WHERE playerid = "'+connection.name+'" LIMIT 1',
-                                function (err, results, fields) {
-                                	if (err) {
-                                		console.log("QUERY FAILED22");
-                                		 throw err;
-                                	}
-                                	results=results[0];
-                           		if (results2['ownerid']==connection.name){
-							if (results['metal']>=300 && ship2buy==1){
-								client.query('UPDATE players'+connection.gameid+' SET metal = metal - 200 WHERE playerid = "'+connection.name+'"');
-						           	client.query('UPDATE map'+connection.gameid+' SET totship1build = totship1build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-								connection.sendUTF('You started construction on a ship in this sector.');
-								updateResources(connection);
-								
-							}
-							else if (results['metal']>=500 && ship2buy==2){
-                                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - 500 WHERE playerid = "'+connection.name+'"');
-                                                                client.query('UPDATE map'+connection.gameid+' SET totship2build = totship2build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                                connection.sendUTF('You started construction on a ship in this sector.');
-                                                                updateResources(connection);
-
-                                                        }
-                                                        else if (results['metal']>=200 && ship2buy==3){
-                                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - 100 WHERE playerid = "'+connection.name+'"');
-                                                                client.query('UPDATE map'+connection.gameid+' SET totship3build = totship3build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                                connection.sendUTF('You started construction on a ship in this sector.');
-                                                                updateResources(connection);
-
-                                                        }
-                                                        else if (results['metal']>=900 && ship2buy==4){
-                                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - 400 WHERE playerid = "'+connection.name+'"');
-                                                                client.query('UPDATE map'+connection.gameid+' SET totship4build = totship4build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                                connection.sendUTF('You started construction on a ship in this sector.');
-                                                                updateResources(connection);
-
-                                                        }
-                                                        else if (results['metal']>=1600 && ship2buy==5){
-                                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - 800 WHERE playerid = "'+connection.name+'"');
-                                                                client.query('UPDATE map'+connection.gameid+' SET totship5build = totship5build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                                connection.sendUTF('You started construction on a ship in this sector.');
-                                                                updateResources(connection);
-
-                                                        }
-                                                        else if (results['metal']>=1000 && ship2buy==6){
-                                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - 1000 WHERE playerid = "'+connection.name+'"');
-                                                                client.query('UPDATE map'+connection.gameid+' SET totship6build = totship6build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                                connection.sendUTF('You started construction on a ship in this sector.');
-                                                                updateResources(connection);
-                                                        }
-                                                        else if (results['metal']>=4400 && ship2buy==7){
-                                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - 4400 WHERE playerid = "'+connection.name+'"');
-                                                                client.query('UPDATE map'+connection.gameid+' SET totship7build = totship7build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                                connection.sendUTF('You started construction on a ship in this sector.');
-                                                                updateResources(connection);
-                                                        }
-                                                        else if (results['metal']>=1200 && ship2buy==8){
-                                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - 1200 WHERE playerid = "'+connection.name+'"');
-                                                                client.query('UPDATE map'+connection.gameid+' SET totship8build = totship8build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                                connection.sendUTF('You started construction on a ship in this sector.');
-                                                                updateResources(connection);
-                                                        }
-                                                        else if (results['metal']>=3000 && ship2buy==9){
-                                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - 3000 WHERE playerid = "'+connection.name+'"');
-                                                                client.query('UPDATE map'+connection.gameid+' SET totship9build = totship9build +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                                connection.sendUTF('You started construction on a ship in this sector.');
-                                                                updateResources(connection);
-                                                        }
-
-							else {
-								connection.sendUTF('You do not have enough resources for this purchase.');
-							}
-							updateAllSectors( connection.gameid, connection);
-	   				 }
-					 else {
-						connection.sendUTF('You do not own this sector. Cannot build ship.');
-					 }
-			     	   }
-			     );
-                         }
-                         else {
-                              connection.sendUTF('Your shipyard does not have enough free space to build this ship. Please upgrade it accordingly.')
-                         }
-		       }
-		    );
-		}
-		else {connection.sendUTF('You need to specify a sector');}
-}
-function buyBuilding(message, connection){
-                building2buy = message.utf8Data.split("//buybuilding:")[1];
-                console.log("player is asking to buy building: "+building2buy);
-                if (connection.sectorid!==undefined){
-	            client.query('SELECT * FROM map'+connection.gameid+' WHERE sectorid = "'+connection.sectorid+'" LIMIT 1',
-                       function (err, results2, fields) {
-                           if (err) {
-                                console.log("QUERY FAILED33");
-                                throw err;
-                           }
-                           results2=results2[0];    	
- 		    	   if (results2['ownerid']==connection.name && results2['terraformlvl']==0 && results2['colonized'] == 1 && results2['sectortype']>5){
-	 	   	     client.query('SELECT * FROM players'+connection.gameid+' WHERE playerid = "'+connection.name+'" LIMIT 1',
-	                        function (err, results, fields) {
-        	                    if (err) {
-                	              console.log("QUERY FAILED22");
-                        	      throw err;
-                        	    }
-				    results=results[0];
-					if (building2buy==1){
-						if (results['metal']>=100*(results2['metallvl']+1) && (results2['sectortype']-4)*2 >=results2['metallvl']+1){
-			                	        connection.sendUTF('Building a metal extractor in sector: '+connection.sectorid.toString(16).toUpperCase());
-	        	                		client.query('UPDATE map'+connection.gameid+' SET metallvl = metallvl +1 WHERE sectorid = "'+connection.sectorid+'"' );
-	                                                client.query('UPDATE players'+connection.gameid+' SET metal = metal - '+(100*(results2['metallvl']+1))+' WHERE playerid = "'+connection.name+'"' );
-                                                        updateResources(connection);
-							updateSector2(connection.sectorid, connection);
-						}
-						else if ( (results2['sectortype']-4)*2 <results2['metallvl']+1){
-							connection.sendUTF("You have reached the planet's maximum limit for metal extractors.");
-						}
-						else {
-							connection.sendUTF('Not enough Metal');
-							console.log('not enough metal');
-						}
-						if ((results2['sectortype']-4)*2 <= results2['metallvl']+1){
-							connection.sendUTF("maxbuild::1");
-						}
-	                		}
-					else if (building2buy==2){
-                                                if (results['metal']>=100*(results2['crystallvl']+1)  && (results2['sectortype']-4)*2 >=results2['crystallvl']+1){
-                                                        connection.sendUTF('Building a crystal refinery in sector: '+connection.sectorid.toString(16).toUpperCase());
-                                                        client.query('UPDATE map'+connection.gameid+' SET crystallvl = crystallvl +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                        client.query('UPDATE players'+connection.gameid+' SET metal = metal - '+(100*(results2['crystallvl']+1))+' WHERE playerid = "'+connection.name+'"' );
-                                                        updateResources(connection);                                                
-                                                        updateSector2(connection.sectorid, connection);
-						}
-                                                else if ( (results2['sectortype']-4)*2 <results2['crystallvl']+1){
-                                                        connection.sendUTF("You have reached the planet's maximum limit for crystal refineries.");
-                                                }
-                                                else {
-                                                        connection.sendUTF('Not enough Metal');
-                                                        console.log('not enough metal');
-                                                }
-                                                if ((results2['sectortype']-4)*2 <= results2['crystallvl']+1){
-                                                        connection.sendUTF("maxbuild::2");
-							console.log("max build");
-                                                }
-	                       	 	}
-	                       		else if (building2buy==3){
-                                                if (results['metal']>=100*(results2['academylvl']+1)  && (results2['sectortype']-4)*2 >=results2['academylvl']+1){
-        	                                        connection.sendUTF('Building a research academy in sector: '+connection.sectorid.toString(16).toUpperCase());
-	                                                client.query('UPDATE map'+connection.gameid+' SET academylvl = academylvl +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                        client.query('UPDATE players'+connection.gameid+' SET metal = metal - '+(100*(results2['academylvl']+1))+' WHERE playerid = "'+connection.name+'"' );
-                                                        updateResources(connection);
-                                                        updateSector2(connection.sectorid, connection);
-						}
-                                                else if ( (results2['sectortype']-4)*2 < results2['academylvl']+1){
-                                                        connection.sendUTF("You have reached the planet's maximum limit for research academies.");
-                                                }
-                                                else {
-                                                        connection.sendUTF('Not enough Metal');
-                                                        console.log('not enough metal');
-                                                }
-                                                if ((results2['sectortype']-4)*2 <= results2['academylvl']+1){
-                                                        connection.sendUTF("maxbuild::3");
-                                                }
-   	    	                 	}
-   	    	                 	else if (building2buy==4){
-						if (results['metal']>=100*(results2['shipyardlvl']+1)){
-                                                        connection.sendUTF('Building a research spaceport in sector: '+connection.sectorid.toString(16).toUpperCase());
-                                                        client.query('UPDATE map'+connection.gameid+' SET shipyardlvl = shipyardlvl +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                        client.query('UPDATE players'+connection.gameid+' SET metal = metal - '+(100*(results2['shipyardlvl']+1))+' WHERE playerid = "'+connection.name+'"' );
-                                                        updateResources(connection);
-                                                        updateSector2(connection.sectorid, connection);
-                                                }
-                                                else {
-                                                        connection.sendUTF('Not enough Metal');
-                                                        console.log('not enough metal');
-						}
-   		                     	}
-   		                     	else if (building2buy==5){
-                                                if (results['metal']>=(300*(results2['orbitalturret']+1))){
-                                                        connection.sendUTF('Building a Starbase in sector: '+connection.sectorid.toString(16).toUpperCase());
-                                                        client.query('UPDATE map'+connection.gameid+' SET orbitalturret = orbitalturret +1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                        client.query('UPDATE players'+connection.gameid+' SET metal = metal - '+ (300*(results2['orbitalturret']+1))+' WHERE playerid = "'+connection.name+'"' );
-                                                        updateResources(connection);
-                                                        updateSector2(connection.sectorid, connection);
-						}
-                                                else {
-                                                        connection.sendUTF('Not enough Metal');
-                                                        console.log('not enough metal');
-                                                }
-               	         		}
-                	        	else if (building2buy==6){
-						if (results['metal']>=2000 && results2['warpgate']<1){
-                                                        connection.sendUTF('Building a warp gate in sector: '+connection.sectorid.toString(16).toUpperCase());
-                                                        client.query('UPDATE map'+connection.gameid+' SET warpgate = 1 WHERE sectorid = "'+connection.sectorid+'"' );
-                                                        client.query('UPDATE players'+connection.gameid+' SET metal = metal - '+2000+' WHERE playerid = "'+connection.name+'"' );
-							updateResources(connection);
-                                                        updateSector2(connection.sectorid, connection);
-                                                }
-						else if (results2['warpgate'] >= 1) {
-							connection.sendUTF('This sector already contains a warp gate.');
-						}
-                                                else {
-                                                        connection.sendUTF('Not enough Metal');
-                                                        console.log('not enough metal');
-						}
-                	        	}
-					else {
-                	        	        connection.sendUTF('That build option does not exist: error');
-						console.log("trying to buy a building that does not exist");
-					}
-			          }
-			     );
-			   }
-			   else if (results2['colonized']!=1){
-				connection.sendUTF('You first need to colonize this sector before you can build in it.');
-			   }
-			   else if (results2['sectortype']<=5){
-				connection.sendUTF('This sector contains no planets; building and terraforming not possible in this sector.');
-			   }
-			   else if (results2['terraformlvl']!=0){
-				 connection.sendUTF('This sector needs terraforming before you can colonize and build on it.');
-			   } 
-			   else {
-				connection.sendUTF('You need to own this sector first');
-				console.log(results2['ownerid']+":"+connection.name+":GAMEID:"+connection.gameid);
-			   }
-			}
-		    );
-		}
-                else {connection.sendUTF('You need to specify a sector');}
-}
-function buyTech(message, connection){
-                tech2buy = message.utf8Data.split("//buytech:")[1];
-		type2buy = parseInt(tech2buy) ;
-                console.log("player is asking to buy tech: "+tech2buy);
-                client.query('SELECT * FROM players'+connection.gameid+' WHERE playerid = "'+connection.name+'" LIMIT 1',
-                    function (err, results, fields) {
-                         if (err) {
-                              console.log("QUERY FAILED");
-                              throw err;
-                         }
-			results=results[0];
-				if (results['tech'+type2buy]!=undefined  && Math.round(Math.pow(8,results['tech'+type2buy]+2)+36) <= results['research'] && type2buy==7){
-                                                client.query('UPDATE players'+connection.gameid+' SET research = "'+ (results['research'] -  Math.round(Math.pow(8,results['tech'+type2buy]+2)+36)) +'", tech'+type2buy+' = tech'+type2buy+' + 1 WHERE  playerid = "'+connection.name+'"');
-                                                updateResources(connection);
-                                                connection.sendUTF("Tech purchased.");
-                                                results['tech'+type2buy]++;			
-				}
-		 		else if (results['tech'+type2buy]!=undefined  && Math.round(Math.pow(1.5,results['tech'+type2buy]+1+12)+5) <= results['research']){
-						client.query('UPDATE players'+connection.gameid+' SET research = "'+ (results['research'] -  Math.round(Math.pow(1.5,results['tech'+type2buy]+1+12)+5)) +'", tech'+type2buy+' = tech'+type2buy+' + 1 WHERE  playerid = "'+connection.name+'"');
-						updateResources(connection);
-						connection.sendUTF("Tech purchased.");
-						results['tech'+type2buy]++;
-				}
-				else {
-					connection.sendUTF("You do not have enough research to get this tech. Needed: "+ Math.pow(10,results['tech'+type2buy]+1) );
-				}
-				connection.sendUTF("tech:"+results['tech1']+":"+results['tech2']+":"+results['tech3']+":"+results['tech4']+":"+results['tech5']+":"+results['tech6']+":"+results['tech7']+":"+results['tech8']+":"+results['tech9']);
-				
-		    }
-
-                );
-}
-
-function authUser(message,connection){
-	var pid = message.utf8Data.split(":")[1];
-	var tkey = message.utf8Data.split(":")[2];
-	console.log("player "+pid+" is trying to connect.");
-	client.query('SELECT * FROM users where id = '+pid+' LIMIT 1',
-                function (err, results, fields) {
-                         if (err) {
-                                throw err;
-                         }
-			 var result = results[0];
-			 if (result['tempkey']==tkey && result['currentgame'] && tkey){
-
-				connection.name=pid;
-                                connection.gameid=result['currentgame'];
-				cid[pid]=connection;
-				console.log(pid+":"+cid[pid])
-				clients.splice(clients.indexOf(connection),1);
-				clients.push(connection);
-
-				if (turns[connection.gameid]>0){
-					connection.sendUTF("You have re-connected to a game that is already in progress.");
-					updateResources(connection);
-        	                 	updateAllSectors( connection.gameid, connection);
-				}
-				else {
-					connection.sendUTF("lobby::");
-					connection.sendUTF("The game has yet to begin. Welcome.");
-				}		
-				console.log ("player "+pid+" was authed. Joining game "+result['currentgame']);
-				
-				var playerlist="pl";
-        			for (var i in clients){
-                	        	clients[i].sendUTF("$^$"+clients.length);
-                        		if (clients[i].gameid==connection.gameid){
-						if ( connection.name!=clients[i].name || connection==clients[i] ){
-                               				playerlist=playerlist+":"+clients[i].name;
-						}
-        	                	}
-	       			}
-        			for (var i in clients){
-                			if (clients[i].gameid==connection.gameid && playerlist!="pl"){
-                        			clients[i].sendUTF(playerlist);
-		        		}
-				}			
-                         }
-			 else if (!result['currentgame']){
-				connection.sendUTF("Please join a game first.");
-				console.log ("no game set in sql for player. fail");
-				connection.close();
-			 }
-			 else {
-				connection.sendUTF("Error With Connection Credentials. Welcome to limbo annoymous.");
-                                console.log ("wrong credentials. fail");				
-				connection.close();
-			 }
-		} 
-        );
-}
-
-function updateAllSectors(gameID,connection){
-	 client.query('SELECT * FROM map'+gameID,
-                                function (err, mapResults, fields) {
-                                        if (err) {
-                                                throw err;
-                                        }
-					var totshipinsec;
-                                        for (var i in mapResults){
-		                          	sectorinfo = mapResults[i];
-                				if ( sectorinfo['ownerid']==connection.name){
-                                                       	if (connection.sectorid==undefined){
-                                                                connection.sectorid=sectorinfo['sectorid'];
-								connection.sendUTF("sector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":owner:"+sectorinfo['ownerid']+":type:"+sectorinfo['sectortype']+":artifact:"+sectorinfo['artifact']+":metalbonus:"+sectorinfo['metalbonus']+":crystalbonus:"+sectorinfo['crystalbonus']+":terraform:"+sectorinfo['terraformlvl']);
-								cid[connection.name]=connection;
-								connection.sendUTF("ub:"+sectorinfo['metallvl']+":"+sectorinfo['crystallvl']+":"+sectorinfo['academylvl']+":"+sectorinfo['shipyardlvl']+":"+sectorinfo['orbitalturret']+":"+sectorinfo['warpgate']);
-								connection.sendUTF("fleet:"+sectorinfo['totalship1']+":"+sectorinfo['totalship2']+":"+sectorinfo['totalship3']+":"+sectorinfo['totalship4']+":"+sectorinfo['totalship5']+":"+sectorinfo['totalship6']+":"+sectorinfo['totalship7']+":"+sectorinfo['totalship8']+":"+sectorinfo['totalship9']+":"+sectorinfo['totship1build']+":"+sectorinfo['totship2build']+":"+sectorinfo['totship3build']+":"+sectorinfo['totship4build']+":"+sectorinfo['totship5build']+":"+sectorinfo['totship6build']+":"+sectorinfo['totship7build']+":"+sectorinfo['totship8build']+":"+sectorinfo['totship9build']);
-							}
-							else if (connection.sectorid==sectorinfo['sectorid']){
-								connection.sendUTF("sector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":owner:"+sectorinfo['ownerid']+":type:"+sectorinfo['sectortype']+":artifact:"+sectorinfo['artifact']+":metalbonus:"+sectorinfo['metalbonus']+":crystalbonus:"+sectorinfo['crystalbonus']+":terraform:"+sectorinfo['terraformlvl']);								
-								connection.sendUTF("ub:"+sectorinfo['metallvl']+":"+sectorinfo['crystallvl']+":"+sectorinfo['academylvl']+":"+sectorinfo['shipyardlvl']+":"+sectorinfo['orbitalturret']+":"+sectorinfo['warpgate'])
-								connection.sendUTF("fleet:"+sectorinfo['totalship1']+":"+sectorinfo['totalship2']+":"+sectorinfo['totalship3']+":"+sectorinfo['totalship4']+":"+sectorinfo['totalship5']+":"+sectorinfo['totalship6']+":"+sectorinfo['totship1build']+":"+sectorinfo['totship2build']+":"+sectorinfo['totship3build']+":"+sectorinfo['totship4build']+":"+sectorinfo['totship5build']+":"+sectorinfo['totship6build']+":"+sectorinfo['totship7build']+":"+sectorinfo['totship8build']+":"+sectorinfo['totship9build'])
-							}
-							totalshipinsec = sectorinfo['totalship1']+sectorinfo['totalship2']+sectorinfo['totalship3']+sectorinfo['totalship4']+sectorinfo['totalship5']+sectorinfo['totalship6']+sectorinfo['totalship7']+sectorinfo['totalship8']+sectorinfo['totalship9'];
-
-                                if (sectorinfo['sectortype']==1){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":A");
-                                }
-                                else if ( sectorinfo['warpgate']==1){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":W");
-                                }
-                                else if ( sectorinfo['colonized']==1){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":C");
-                                }
-                                else if ( sectorinfo['sectortype']==10){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":H");
-                                }
-                                else if (sectorinfo['sectortype']>5){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":P");
-                                }
-                                else if (sectorinfo['sectortype']==2){
-                                         connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":BH");
-                                }
-                                else {
-                                        connection.sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":"+totalshipinsec+":"+sectorinfo['colonized']);
-                                }
-
-		                               	}							
-                                	}
-				}
+                            }
+                        }
+                    }
+                }
+                
+                // Check if any ships are actually moving
+                const totalShips = ships.s1 + ships.s2 + ships.s3 + ships.s4 + 
+                                 ships.s5 + ships.s6 + ships.s7 + ships.s8 + ships.s9;
+                
+                if (totalShips > 0) {
+                    // Deduct crystal cost
+                    db.query(`UPDATE players${connection.gameid} SET crystal = crystal - ? WHERE playerid = ?`, 
+                        [crystalCost, connection.name]
                     );
-}
-
-function startGame(gameID){
-	client.query('UPDATE games SET turn = 1 WHERE id = "'+gameID+'"');
-	turns[gameID]=1;
-	console.log("startGame function started for gameID "+gameID);
-                    client.query('SELECT * FROM map'+gameID,
-                                function (err, mapResults, fields) {
-                                        if (err) {
-                                                throw err;
-                                        }
-					for (var i in mapResults){
-						sectorinfo = mapResults[i];
-						if (sectorinfo['sectortype']==10 && cid[sectorinfo['ownerid']]!==undefined){
-							cid[sectorinfo['ownerid']].sendUTF("sector:"+sectorinfo['sectorid'].toString(16).toUpperCase()+":owner:"+sectorinfo['ownerid']+":type:"+sectorinfo['sectortype']+":artifact:"+sectorinfo['artifact']+":metalbonus:"+sectorinfo['metalbonus']+":crystalbonus:"+sectorinfo['crystalbonus']+":terraform:"+sectorinfo['terraformlvl']);
-							cid[sectorinfo['ownerid']].sectorid=sectorinfo['sectorid'];
-							cid[sectorinfo['ownerid']].sendUTF("ownsector:"+sectorinfo['sectorid'].toString(16).toUpperCase());
-							console.log ("player given sector:"+sectorinfo['sectorid'].toString(16).toUpperCase());
-							updateSector2(sectorinfo['sectorid'], cid[sectorinfo['ownerid']]);
-						}
-						else { console.log('home with no sector: '+cid[sectorinfo['ownerid']]);}
-					}
-				}
-		    );
-                    for (var i in clients){
-                           if (clients[i].gameid==gameID){
-                                clients[i].sendUTF("GAME HAS STARTED!");
-                                clients[i].sendUTF("newround:");
-				updateResources(clients[i]);
-                           }
-                    }
-        gameTimer[gameID]=setInterval(function() {nextTurn(gameID);},180000);
-}
-function nextTurn(gameID){
-		    turns[gameID]=turns[gameID]+1;
-		    client.query('UPDATE games SET turn = turn + 1 WHERE id = "'+gameID+'"');
-		    gameMechanics(gameID);
-                    for (var i in clients){
-                           if (clients[i].gameid==gameID){
-				clients[i].sendUTF("newround:");
-                           }
-                    }
-}
-function gameMechanics(gameID){
-        client.query('SELECT * FROM players'+gameID,
-                function (err, playerResults, fields) {
-                         if (err) {
-                                throw err;
-                         }
- 		         client.query('SELECT * FROM map'+gameID,
-		                function (err, mapResults, fields) {
-                         		if (err) {
-                                		throw err;
-                         		}
-					var playerMetalMade = [];
-                                        var playerCrystalMade = [];
-                                        var playerResearchMade = [];
-				 	for (var i in mapResults){
-						sector = mapResults[i];
-						if (sector['ownerid']!=0){
-							if (!playerMetalMade[sector['ownerid']]){playerMetalMade[sector['ownerid']]=0}
-							if (!playerCrystalMade[sector['ownerid']]){playerCrystalMade[sector['ownerid']]=0}
-                                                        if (!playerResearchMade[sector['ownerid']]){playerResearchMade[sector['ownerid']]=0}
-
-							playerMetalMade[sector['ownerid']]=playerMetalMade[sector['ownerid']] + sector['metalbonus']/100*(sector['metallvl']*100);
-							console.log("metal made:"+playerMetalMade[sector['ownerid']]); 
-                                                        playerCrystalMade[sector['ownerid']]=playerCrystalMade[sector['ownerid']] + sector['crystalbonus']/100*(sector['crystallvl']*100);
-                                                        console.log("Crystal made:"+playerCrystalMade[sector['ownerid']]);
-                                                        playerResearchMade[sector['ownerid']]=playerResearchMade[sector['ownerid']] + (sector['academylvl']*100);
-                                                        console.log("research made:"+playerResearchMade[sector['ownerid']]);
-
-							client.query('UPDATE map'+gameID+' SET totalship1 = totalship1 + '+sector['totship1build']+', totalship2 = totalship2 + '+sector['totship2build']+',totalship3 = totalship3 + '+sector['totship3build']+',totalship4 = totalship4 + '+sector['totship4build']+',totalship5 = totalship5 + '+sector['totship5build']+',totalship6 = totalship6 + '+sector['totship6build']+', totalship7 = totalship7 + '+sector['totship7build']+', totalship8 = totalship8 + '+sector['totship8build']+', totalship9 = totalship9 + '+sector['totship9build']+', totship1build = 0, totship2build = 0, totship3build = 0, totship4build = 0, totship5build = 0, totship6build = 0, totship7build = 0, totship8build = 0, totship9build = 0 WHERE sectorid = '+sector['sectorid']);
-						}
-					}
-					for (var i in playerResults){
-						player=playerResults[i];
-						playerid=player['playerid'];
-                                                if (cid[playerid]!=undefined){
-                                                        cid[playerid].sendUTF("Next Round: Emperor, a resource shipment of "+playerMetalMade[playerid]+" metal and "+playerCrystalMade[playerid]+" crystal has just arrived. We have also recieved word that "+playerResearchMade[playerid]+" additional researchers are now on standby."); 
-                                                }
-						if (playerMetalMade[playerid]!==undefined){
-							playerMetalMade[playerid]=playerMetalMade[playerid] * Math.pow(1.1,player['tech1']) + player['metal'];
-						}
-						else {
-							playerMetalMade[playerid]=player['metal'];
-						}
-
-                                                if (playerCrystalMade[playerid]!==undefined){
-                                                        playerCrystalMade[playerid]=playerCrystalMade[playerid]* Math.pow(1.1,player['tech2']) +player['crystal'];
-                                                }
-                                                else {
-                                                        playerCrystalMade[playerid]=player['crystal'];
-                                                }
-
-                                                if (playerResearchMade[playerid]!==undefined){
-                                                        playerResearchMade[playerid]=playerResearchMade[playerid]* Math.pow(1.1,player['tech3'])+player['research'];
-                                                }
-                                                else {
-                                                        playerResearchMade[playerid]=player['research'];
-                                                }
-						client.query('UPDATE players'+gameID+' SET metal="'+playerMetalMade[playerid]+'", crystal="'+playerCrystalMade[playerid]+'", research="'+playerResearchMade[playerid]+'" WHERE playerid = "'+playerid+'"', updateResourcesAll(playerid, playerMetalMade, playerCrystalMade, playerResearchMade));
-					}
-    				}
-			 );
+                    
+                    // Schedule fleet arrival
+                    setTimeout(() => 
+                        endTravel(
+                            ships.s1, ships.s2, ships.s3, ships.s4, ships.s5, 
+                            ships.s6, ships.s7, ships.s8, ships.s9, 
+                            connection.name, connection.gameid, 
+                            targetSector, player, msid, connection
+                        ), 
+                        10000
+                    );
+                    
+                    connection.sendUTF(`Our fleet successfully departed at a cost of ${crystalCost} crystal and should arrive in sector ${msid.toString(16).toUpperCase()} in 10 seconds.`);
+                    updateAllSectors(connection.gameid, connection);
+                } else {
+                    connection.sendUTF("You did not select any ships to move. Please try again");
                 }
-        );
+            });
+        }
+    );
 }
 
-function updateResourcesAll(playerid, playerMetalMade, playerCrystalMade, playerResearchMade){
-	if (cid[playerid]!==undefined){
-		console.log('UpdateResourceALL CALLed');
-		cid[playerid].sendUTF('resources:'+playerMetalMade[playerid]+':'+playerCrystalMade[playerid]+':'+playerResearchMade[playerid] );
-		updateSector2(cid[playerid].sectorid, cid[playerid]);
-		updateAllSectors(cid[playerid].gameid, cid[playerid]);
-	}
+function endTravel(s1, s2, s3, s4, s5, s6, s7, s8, s9, playerId, gameId, targetSector, playerData, sectorId, connection) {
+    // Get latest player data
+    db.query('SELECT * FROM players' + gameId + ' WHERE playerid = ? LIMIT 1', 
+        [playerId], (err, resultsp) => {
+            if (err) {
+                console.error("Error retrieving player data:", err);
+                return;
+            }
+            
+            // Get fresh target sector data
+            db.query('SELECT * FROM map' + gameId + ' WHERE sectorid = ? LIMIT 1',
+                [sectorId], (err, results) => {
+                    if (err) {
+                        console.error("Error retrieving target sector data:", err);
+                        return;
+                    }
+                    
+                    if (results.length === 0) {
+                        connection.sendUTF('Error: Target sector not found');
+                        return;
+                    }
+                    
+                    const targetSector = results[0];
+                    
+                    // Start with full fleet
+                    let arrivalShips = {
+                        s1, s2, s3, s4, s5, s6, s7, s8, s9
+                    };
+                    
+                    // Flag to track if ships survived travel
+                    let endtravel = 1;
+                    
+                    // Handle special sector types
+                    if (targetSector.sectortype === 2) { // Black hole
+                        connection.sendUTF(`Fleet arrived in sector ${sectorId.toString(16).toUpperCase()}... but the sector contained a blackhole! UH-OH! Our fleet was crushed by the immense gravity of the black hole!`);
+                        updateAllSectors(gameId, connection);
+                        updateResources(connection);
+                        connection.sendUTF(`info:${sectorId.toString(16).toUpperCase()}:2`);
+                        endtravel = 0;
+                    } 
+                    else if (targetSector.sectortype === 1 && targetSector.ownerid != playerId) { // Asteroid field (random damage)
+                        const startTravel = s1 + s2 + s3 + s4 + s5 + s6 + s7 + s8 + s9;
+                        
+                        // Apply random damage to ships
+                        arrivalShips = {
+                            s1: Math.round(s1 * Math.random()),
+                            s2: Math.round(s2 * Math.random()),
+                            s3: Math.round(s3 * Math.random()),
+                            s4: Math.round(s4 * Math.random()),
+                            s5: Math.round(s5 * Math.random()),
+                            s6: Math.round(s6 * Math.random()),
+                            s7: Math.round(s7 * Math.random()),
+                            s8: Math.round(s8 * Math.random()),
+                            s9: Math.round(s9 * Math.random())
+                        };
+                        
+                        const endTravel = arrivalShips.s1 + arrivalShips.s2 + arrivalShips.s3 + 
+                                      arrivalShips.s4 + arrivalShips.s5 + arrivalShips.s6 +
+                                      arrivalShips.s7 + arrivalShips.s8 + arrivalShips.s9;
+                        
+                        if (endTravel === 0) {
+                            connection.sendUTF('Our fleet warped into an asteroid belt and were hit hard. Ouch! We lost our entire fleet!');
+                            updateAllSectors(gameId, connection);
+                            updateResources(connection);
+                        } else if (endTravel === startTravel) {
+                            connection.sendUTF('Our fleet warped into an asteroid belt, but we avoided being hit. Whew! As long as we control this sector, we should be safe to move more ships in.');
+                        } else {
+                            connection.sendUTF(`Our fleet warped into an asteroid belt and were hit hard. Ouch! We lost ${startTravel - endTravel} ships. If we can control the sector though, that should not happen to us again.`);
+                        }
+                        
+                        connection.sendUTF(`info:${sectorId.toString(16).toUpperCase()}:1`);
+                    }
+                    
+                    // Process arrival if ships survived
+                    if (endtravel !== 0) {
+                        if (targetSector.ownerid == 0) {
+                            // Empty sector - take control
+                            db.query(`UPDATE map${gameId} SET 
+                                totalship1 = ?, totalship2 = ?, totalship3 = ?, 
+                                totalship4 = ?, totalship5 = ?, totalship6 = ?,
+                                totalship7 = ?, totalship8 = ?, totalship9 = ?,
+                                ownerid = ?
+                                WHERE sectorid = ?`, 
+                                [
+                                    arrivalShips.s1, arrivalShips.s2, arrivalShips.s3, 
+                                    arrivalShips.s4, arrivalShips.s5, arrivalShips.s6,
+                                    arrivalShips.s7, arrivalShips.s8, arrivalShips.s9,
+                                    playerId, sectorId
+                                ]
+                            );
+                            
+                            if (targetSector.sectortype !== 2) {
+                                connection.sendUTF('Fleet moved; you took control of the sector without issue.');
+                            }
+                            updateAllSectors(gameId, connection);
+                            updateResources(connection);
+                        } else if (targetSector.ownerid == playerId) {
+                            // Player's own sector - add ships
+                            db.query(`UPDATE map${gameId} SET 
+                                totalship1 = totalship1 + ?, totalship2 = totalship2 + ?, 
+                                totalship3 = totalship3 + ?, totalship4 = totalship4 + ?, 
+                                totalship5 = totalship5 + ?, totalship6 = totalship6 + ?,
+                                totalship7 = totalship7 + ?, totalship8 = totalship8 + ?,
+                                totalship9 = totalship9 + ?
+                                WHERE sectorid = ?`, 
+                                [
+                                    arrivalShips.s1, arrivalShips.s2, arrivalShips.s3, 
+                                    arrivalShips.s4, arrivalShips.s5, arrivalShips.s6,
+                                    arrivalShips.s7, arrivalShips.s8, arrivalShips.s9,
+                                    sectorId
+                                ]
+                            );
+                            
+                            connection.sendUTF('Fleet moved successfully.');
+                            updateAllSectors(gameId, connection);
+                            updateResources(connection);
+                        } else {
+                            // Enemy sector - initiate battle
+                            const defenderId = targetSector.ownerid;
+                            
+                            // Get defender's tech levels
+                            db.query(`SELECT * FROM players${gameId} WHERE playerid = ? LIMIT 1`, [defenderId], 
+                                (err, defenderResults) => {
+                                    if (err || defenderResults.length === 0) {
+                                        console.error("Error getting defender data:", err);
+                                        return;
+                                    }
+                                    
+                                    const defenderData = defenderResults[0];
+                                    
+                                    // Prepare attacker fleet
+                                    const attackerFleet = {
+                                        ship1: arrivalShips.s1,
+                                        ship2: arrivalShips.s2,
+                                        ship3: arrivalShips.s3,
+                                        ship4: arrivalShips.s4,
+                                        ship5: arrivalShips.s5,
+                                        ship6: arrivalShips.s6,
+                                        ship7: arrivalShips.s7,
+                                        ship8: arrivalShips.s8,
+                                        ship9: arrivalShips.s9
+                                    };
+                                    
+                                    // Prepare defender fleet
+                                    const defenderFleet = {
+                                        ship1: targetSector.totalship1,
+                                        ship2: targetSector.totalship2,
+                                        ship3: targetSector.totalship3,
+                                        ship4: targetSector.totalship4,
+                                        ship5: targetSector.totalship5,
+                                        ship6: targetSector.totalship6,
+                                        ship7: targetSector.totalship7,
+                                        ship8: targetSector.totalship8,
+                                        ship9: targetSector.totalship9,
+                                        orbitalTurret: targetSector.orbitalturret || 0,
+                                        groundTurret: targetSector.groundturret || 0
+                                    };
+                                    
+                                    // Prepare tech levels
+                                    const attackerTech = {
+                                        weapons: playerData.tech4 || 0,
+                                        hull: playerData.tech5 || 0,
+                                        shields: playerData.tech6 || 0
+                                    };
+                                    
+                                    const defenderTech = {
+                                        weapons: defenderData.tech4 || 0,
+                                        hull: defenderData.tech5 || 0,
+                                        shields: defenderData.tech6 || 0
+                                    };
+                                    
+                                    // Conduct battle
+                                    const battleResult = CombatSystem.conductBattle(
+                                        attackerFleet, defenderFleet, attackerTech, defenderTech
+                                    );
+                                    
+                                    // Process battle results
+                                    CombatSystem.processBattleResult(
+                                        battleResult, 
+                                        { db, clients, clientMap }, 
+                                        playerId, 
+                                        defenderId, 
+                                        sectorId,
+                                        gameId
+                                    );
+                                }
+                            );
+                        }
+                    }
+                }
+            );
+        }
+    );
+}
+
+function updateSector(message, connection) {
+    let sectorId;
+    
+    // Handle both old and new format
+    if (message.indexOf("//sector tile") === 0) {
+        sectorId = parseInt(message.split("//sector tile")[1], 16);
+    } else {
+        sectorId = parseInt(message.split("//sector ")[1], 16);
+    }
+    
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, [sectorId], 
+        (err, results) => {
+            if (err) {
+                console.error("Error retrieving sector data:", err);
+                return;
+            }
+            
+            if (results.length === 0) {
+                connection.sendUTF("Error: Sector not found");
+                return;
+            }
+            
+            const sector = results[0];
+            
+            if (sector.ownerid == connection.name) {
+                // Player owns the sector, send full information
+                connection.sendUTF(`sector:${sectorId.toString(16).toUpperCase()}:owner:${sector.ownerid}:type:${sector.sectortype}:artifact:${sector.artifact}:metalbonus:${sector.metalbonus}:crystalbonus:${sector.crystalbonus}:terraform:${sector.terraformlvl}`);
+                connection.sendUTF(`ub:${sector.metallvl}:${sector.crystallvl}:${sector.academylvl}:${sector.shipyardlvl}:${sector.orbitalturret}:${sector.warpgate}`);
+                
+                // Store selected sector
+                connection.sectorid = sectorId;
+                clientMap[connection.name] = connection;
+                
+                connection.sendUTF(`Updated sector ${sectorId.toString(16).toUpperCase()} successfully.`);
+                connection.sendUTF(`fleet:${sector.totalship1}:${sector.totalship2}:${sector.totalship3}:${sector.totalship4}:${sector.totalship5}:${sector.totalship6}:${sector.totalship7}:${sector.totalship8}:${sector.totalship9}:${sector.totship1build}:${sector.totship2build}:${sector.totship3build}:${sector.totship4build}:${sector.totship5build}:${sector.totship6build}:${sector.totship7build}:${sector.totship8build}:${sector.totship9build}`);
+            } else {
+                // Player does not own sector, offer probe option
+                connection.sendUTF(`probeonly:${sectorId}`);
+            }
+        }
+    );
+}
+
+function updateSector2(sectorId, connection) {
+    if (sectorId === undefined) {
+        console.log("No sector selected to refresh; is player dead?");
+        return;
+    }
+    
+    const sectorHex = sectorId.toString(16).toUpperCase();
+    connection.sectorid = sectorId;
+    clientMap[connection.name] = connection;
+    
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, [sectorId], 
+        (err, results) => {
+            if (err) {
+                console.error("Error retrieving sector data:", err);
+                return;
+            }
+            
+            if (results.length === 0) {
+                console.error(`Sector ${sectorId} not found`);
+                return;
+            }
+            
+            const sector = results[0];
+            
+            if (sector.ownerid == connection.name) {
+                // Send sector info
+                connection.sendUTF(`sector:${sectorHex}:owner:${sector.ownerid}:type:${sector.sectortype}:artifact:${sector.artifact}:metalbonus:${sector.metalbonus}:crystalbonus:${sector.crystalbonus}:terraform:${sector.terraformlvl}`);
+                connection.sendUTF(`ub:${sector.metallvl}:${sector.crystallvl}:${sector.academylvl}:${sector.shipyardlvl}:${sector.orbitalturret}:${sector.warpgate}`);
+                connection.sendUTF(`fleet:${sector.totalship1}:${sector.totalship2}:${sector.totalship3}:${sector.totalship4}:${sector.totalship5}:${sector.totalship6}:${sector.totalship7}:${sector.totalship8}:${sector.totalship9}:${sector.totship1build}:${sector.totship2build}:${sector.totship3build}:${sector.totship4build}:${sector.totship5build}:${sector.totship6build}:${sector.totship7build}:${sector.totship8build}:${sector.totship9build}`);
+                
+                // Create owner sector info
+                const totalShipCount = sector.totalship1 + sector.totalship2 + sector.totalship3 + 
+                                   sector.totalship4 + sector.totalship5 + sector.totalship6 +
+                                   sector.totalship7 + sector.totalship8 + sector.totalship9;
+                
+                let indicator = '';
+                
+                if (sector.sectortype === 1) {
+                    indicator = 'A'; // Asteroid
+                } else if (sector.warpgate === 1) {
+                    indicator = 'W'; // Warp gate
+                } else if (sector.colonized === 1) {
+                    indicator = 'C'; // Colonized
+                } else if (sector.sectortype === 10) {
+                    indicator = 'H'; // Homeworld
+                } else if (sector.sectortype === 2) {
+                    indicator = 'BH'; // Black hole
+                } else if (sector.sectortype > 5) {
+                    indicator = 'P'; // Planet
+                }
+                
+                connection.sendUTF(`ownsector:${sectorHex}:${totalShipCount}:${indicator}`);
+            }
+        }
+    );
+}
+
+function updateAllSectors(gameId, connection) {
+    db.query(`SELECT * FROM map${gameId}`, (err, sectors) => {
+        if (err) {
+            console.error("Error retrieving map data:", err);
+            return;
+        }
+        
+        for (const sector of sectors) {
+            if (sector.ownerid == connection.name) {
+                // If player has no selected sector, set this as default
+                if (connection.sectorid === undefined) {
+                    connection.sectorid = sector.sectorid;
+                    
+                    // Send sector details for UI
+                    connection.sendUTF(`sector:${sector.sectorid.toString(16).toUpperCase()}:owner:${sector.ownerid}:type:${sector.sectortype}:artifact:${sector.artifact}:metalbonus:${sector.metalbonus}:crystalbonus:${sector.crystalbonus}:terraform:${sector.terraformlvl}`);
+                    connection.sendUTF(`ub:${sector.metallvl}:${sector.crystallvl}:${sector.academylvl}:${sector.shipyardlvl}:${sector.orbitalturret}:${sector.warpgate}`);
+                    connection.sendUTF(`fleet:${sector.totalship1}:${sector.totalship2}:${sector.totalship3}:${sector.totalship4}:${sector.totalship5}:${sector.totalship6}:${sector.totalship7}:${sector.totalship8}:${sector.totalship9}:${sector.totship1build}:${sector.totship2build}:${sector.totship3build}:${sector.totship4build}:${sector.totship5build}:${sector.totship6build}:${sector.totship7build}:${sector.totship8build}:${sector.totship9build}`);
+                } else if (connection.sectorid === sector.sectorid) {
+                    // Update selected sector UI
+                    connection.sendUTF(`sector:${sector.sectorid.toString(16).toUpperCase()}:owner:${sector.ownerid}:type:${sector.sectortype}:artifact:${sector.artifact}:metalbonus:${sector.metalbonus}:crystalbonus:${sector.crystalbonus}:terraform:${sector.terraformlvl}`);
+                    connection.sendUTF(`ub:${sector.metallvl}:${sector.crystallvl}:${sector.academylvl}:${sector.shipyardlvl}:${sector.orbitalturret}:${sector.warpgate}`);
+                    connection.sendUTF(`fleet:${sector.totalship1}:${sector.totalship2}:${sector.totalship3}:${sector.totalship4}:${sector.totalship5}:${sector.totalship6}:${sector.totalship7}:${sector.totalship8}:${sector.totalship9}:${sector.totship1build}:${sector.totship2build}:${sector.totship3build}:${sector.totship4build}:${sector.totship5build}:${sector.totship6build}:${sector.totship7build}:${sector.totship8build}:${sector.totship9build}`);
+                }
+                
+                // Send minimap data for owned sector
+                const totalShipCount = sector.totalship1 + sector.totalship2 + sector.totalship3 + 
+                                   sector.totalship4 + sector.totalship5 + sector.totalship6 +
+                                   sector.totalship7 + sector.totalship8 + sector.totalship9;
+                
+                let indicator = '';
+                
+                if (sector.sectortype === 1) {
+                    indicator = 'A'; // Asteroid
+                } else if (sector.warpgate === 1) {
+                    indicator = 'W'; // Warp gate
+                } else if (sector.colonized === 1) {
+                    indicator = 'C'; // Colonized
+                } else if (sector.sectortype === 10) {
+                    indicator = 'H'; // Homeworld
+                } else if (sector.sectortype === 2) {
+                    indicator = 'BH'; // Black hole
+                } else if (sector.sectortype > 5) {
+                    indicator = 'P'; // Planet
+                }
+                
+                connection.sendUTF(`ownsector:${sector.sectorid.toString(16).toUpperCase()}:${totalShipCount}:${indicator}`);
+            }
+        }
+    });
+}
+
+// Building and Research Functions
+
+function buyBuilding(message, connection) {
+    const buildingId = parseInt(message.utf8Data.split("//buybuilding:")[1]);
+    
+    console.log(`Player ${connection.name} is trying to buy building: ${buildingId}`);
+    
+    if (connection.sectorid === undefined) {
+        connection.sendUTF('You need to select a sector first');
+        return;
+    }
+    
+    // Get sector data
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, [connection.sectorid], 
+        (err, results) => {
+            if (err) {
+                console.error("Error retrieving sector data:", err);
+                return;
+            }
+            
+            if (results.length === 0) {
+                connection.sendUTF('Error: Sector not found');
+                return;
+            }
+            
+            const sector = results[0];
+            
+            // Check if player owns the sector and it's colonized
+            if (sector.ownerid == connection.name && sector.terraformlvl === 0 && 
+                sector.colonized === 1 && sector.sectortype > 5) {
+                
+                // Get player's resources
+                db.query(`SELECT * FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, [connection.name], 
+                    (err, playerResults) => {
+                        if (err) {
+                            console.error("Error retrieving player data:", err);
+                            return;
+                        }
+                        
+                        if (playerResults.length === 0) {
+                            connection.sendUTF('Error: Player data not found');
+                            return;
+                        }
+                        
+                        const player = playerResults[0];
+                        
+                        switch (buildingId) {
+                            case 1: // Metal Extractor
+                                const metalCost = 100 * (sector.metallvl + 1);
+                                const maxMetalLvl = (sector.sectortype - 4) * 2;
+                                
+                                if (player.metal >= metalCost && maxMetalLvl >= sector.metallvl + 1) {
+                                    connection.sendUTF(`Building a metal extractor in sector: ${connection.sectorid.toString(16).toUpperCase()}`);
+                                    
+                                    db.query(`UPDATE map${connection.gameid} SET metallvl = metallvl + 1 WHERE sectorid = ?`, [connection.sectorid]);
+                                    db.query(`UPDATE players${connection.gameid} SET metal = metal - ? WHERE playerid = ?`, [metalCost, connection.name]);
+                                    
+                                    updateResources(connection);
+                                    updateSector2(connection.sectorid, connection);
+                                } else if (maxMetalLvl < sector.metallvl + 1) {
+                                    connection.sendUTF("You have reached the planet's maximum limit for metal extractors.");
+                                } else {
+                                    connection.sendUTF('Not enough Metal');
+                                }
+                                
+                                if (maxMetalLvl <= sector.metallvl + 1) {
+                                    connection.sendUTF("maxbuild::1");
+                                }
+                                break;
+                                
+                            case 2: // Crystal Refinery
+                                const crystalCost = 100 * (sector.crystallvl + 1);
+                                const maxCrystalLvl = (sector.sectortype - 4) * 2;
+                                
+                                if (player.metal >= crystalCost && maxCrystalLvl >= sector.crystallvl + 1) {
+                                    connection.sendUTF(`Building a crystal refinery in sector: ${connection.sectorid.toString(16).toUpperCase()}`);
+                                    
+                                    db.query(`UPDATE map${connection.gameid} SET crystallvl = crystallvl + 1 WHERE sectorid = ?`, [connection.sectorid]);
+                                    db.query(`UPDATE players${connection.gameid} SET metal = metal - ? WHERE playerid = ?`, [crystalCost, connection.name]);
+                                    
+                                    updateResources(connection);
+                                    updateSector2(connection.sectorid, connection);
+                                } else if (maxCrystalLvl < sector.crystallvl + 1) {
+                                    connection.sendUTF("You have reached the planet's maximum limit for crystal refineries.");
+                                } else {
+                                    connection.sendUTF('Not enough Metal');
+                                }
+                                
+                                if (maxCrystalLvl <= sector.crystallvl + 1) {
+                                    connection.sendUTF("maxbuild::2");
+                                }
+                                break;
+                                
+                            case 3: // Research Academy
+                                const academyCost = 100 * (sector.academylvl + 1);
+                                const maxAcademyLvl = (sector.sectortype - 4) * 2;
+                                
+                                if (player.metal >= academyCost && maxAcademyLvl >= sector.academylvl + 1) {
+                                    connection.sendUTF(`Building a research academy in sector: ${connection.sectorid.toString(16).toUpperCase()}`);
+                                    
+                                    db.query(`UPDATE map${connection.gameid} SET academylvl = academylvl + 1 WHERE sectorid = ?`, [connection.sectorid]);
+                                    db.query(`UPDATE players${connection.gameid} SET metal = metal - ? WHERE playerid = ?`, [academyCost, connection.name]);
+                                    
+                                    updateResources(connection);
+                                    updateSector2(connection.sectorid, connection);
+                                } else if (maxAcademyLvl < sector.academylvl + 1) {
+                                    connection.sendUTF("You have reached the planet's maximum limit for research academies.");
+                                } else {
+                                    connection.sendUTF('Not enough Metal');
+                                }
+                                
+                                if (maxAcademyLvl <= sector.academylvl + 1) {
+                                    connection.sendUTF("maxbuild::3");
+                                }
+                                break;
+                                
+                            case 4: // Spaceport
+                                const spaceportCost = 100 * (sector.shipyardlvl + 1);
+                                
+                                if (player.metal >= spaceportCost) {
+                                    connection.sendUTF(`Building a spaceport in sector: ${connection.sectorid.toString(16).toUpperCase()}`);
+                                    
+                                    db.query(`UPDATE map${connection.gameid} SET shipyardlvl = shipyardlvl + 1 WHERE sectorid = ?`, [connection.sectorid]);
+                                    db.query(`UPDATE players${connection.gameid} SET metal = metal - ? WHERE playerid = ?`, [spaceportCost, connection.name]);
+                                    
+                                    updateResources(connection);
+                                    updateSector2(connection.sectorid, connection);
+                                } else {
+                                    connection.sendUTF('Not enough Metal');
+                                }
+                                break;
+                                
+                            case 5: // Orbital Turret
+                                const turretCost = 100 * (sector.orbitalturret + 1);
+                                
+                                if (player.metal >= turretCost) {
+                                    connection.sendUTF(`Building an orbital defense turret in sector: ${connection.sectorid.toString(16).toUpperCase()}`);
+                                    
+                                    db.query(`UPDATE map${connection.gameid} SET orbitalturret = orbitalturret + 1, groundturret = groundturret + 1 WHERE sectorid = ?`, [connection.sectorid]);
+                                    db.query(`UPDATE players${connection.gameid} SET metal = metal - ? WHERE playerid = ?`, [turretCost, connection.name]);
+                                    
+                                    updateResources(connection);
+                                    updateSector2(connection.sectorid, connection);
+                                } else {
+                                    connection.sendUTF('Not enough Metal');
+                                }
+                                break;
+                                
+                            case 6: // Warp Gate
+                                const warpgateCost = 10000;
+                                
+                                if (player.metal >= warpgateCost && sector.warpgate < 1) {
+                                    connection.sendUTF(`Building a warp gate in sector: ${connection.sectorid.toString(16).toUpperCase()}`);
+                                    
+                                    db.query(`UPDATE map${connection.gameid} SET warpgate = 1 WHERE sectorid = ?`, [connection.sectorid]);
+                                    db.query(`UPDATE players${connection.gameid} SET metal = metal - ? WHERE playerid = ?`, [warpgateCost, connection.name]);
+                                    
+                                    updateResources(connection);
+                                    updateSector2(connection.sectorid, connection);
+                                } else if (sector.warpgate >= 1) {
+                                    connection.sendUTF('This sector already contains a warp gate.');
+                                } else {
+                                    connection.sendUTF('Not enough Metal');
+                                }
+                                break;
+                                
+                            default:
+                                connection.sendUTF('That build option does not exist');
+                        }
+                    }
+                );
+            } else if (sector.colonized !== 1) {
+                connection.sendUTF('You first need to colonize this sector before you can build on it');
+            } else if (sector.sectortype <= 5) {
+                connection.sendUTF('This sector contains no planets; building and terraforming not possible');
+            } else if (sector.terraformlvl !== 0) {
+                connection.sendUTF('This sector needs terraforming before you can build on it.');
+            } else {
+                connection.sendUTF('You need to own this sector first');
+            }
+        }
+    );
+}
+
+function buyShip(message, connection) {
+    const shipId = parseInt(message.utf8Data.split("//buyship:")[1]);
+    
+    console.log(`Player ${connection.name} is trying to buy ship: ${shipId}`);
+    
+    if (connection.sectorid === undefined) {
+        connection.sendUTF('You need to select a sector first');
+        return;
+    }
+    
+    connection.sendUTF(`Building a ship in sector: ${connection.sectorid}`);
+    
+    // Get sector data
+    db.query(`SELECT * FROM map${connection.gameid} WHERE sectorid = ? LIMIT 1`, [connection.sectorid], 
+        (err, results) => {
+            if (err) {
+                console.error("Error retrieving sector data:", err);
+                return;
+            }
+            
+            if (results.length === 0) {
+                connection.sendUTF('Error: Sector not found');
+                return;
+            }
+            
+            const sector = results[0];
+            
+            // Calculate available build slots
+            const usedSlots = sector.totship1build * 3 + 
+                          sector.totship2build * 5 + 
+                          sector.totship3build * 1 + 
+                          sector.totship4build * 8 + 
+                          sector.totship5build * 12 + 
+                          sector.totship6build * 7 +
+                          sector.totship7build * 20 +
+                          sector.totship8build * 5 +
+                          sector.totship9build * 15;
+            
+            const availableSlots = sector.shipyardlvl - usedSlots;
+            
+            // Check if sector has enough build slots for the requested ship
+            let requiredSlots = 0;
+            let metalCost = 0;
+            let shipField = '';
+            
+            switch (shipId) {
+                case 1: // Frigate
+                    requiredSlots = 3;
+                    metalCost = 300;
+                    shipField = 'totship1build';
+                    break;
+                case 2: // Destroyer
+                    requiredSlots = 5;
+                    metalCost = 500;
+                    shipField = 'totship2build';
+                    break;
+                case 3: // Scout
+                    requiredSlots = 1;
+                    metalCost = 200;
+                    shipField = 'totship3build';
+                    break;
+                case 4: // Cruiser
+                    requiredSlots = 8;
+                    metalCost = 900;
+                    shipField = 'totship4build';
+                    break;
+                case 5: // Battleship
+                    requiredSlots = 12;
+                    metalCost = 1600;
+                    shipField = 'totship5build';
+                    break;
+                case 6: // Colony Ship
+                    requiredSlots = 7;
+                    metalCost = 1000;
+                    shipField = 'totship6build';
+                    break;
+                case 7: // Dreadnought
+                    requiredSlots = 20;
+                    metalCost = 4400;
+                    shipField = 'totship7build';
+                    break;
+                case 8: // Intruder
+                    requiredSlots = 5;
+                    metalCost = 1200;
+                    shipField = 'totship8build';
+                    break;
+                case 9: // Carrier
+                    requiredSlots = 15;
+                    metalCost = 3000;
+                    shipField = 'totship9build';
+                    // Additional requirement: Warp gate
+                    if (sector.warpgate !== 1) {
+                        connection.sendUTF('You need a Warp Gate in this sector to build Carriers.');
+                        return;
+                    }
+                    break;
+                default:
+                    connection.sendUTF('Invalid ship type');
+                    return;
+            }
+            
+            if (availableSlots >= requiredSlots && sector.ownerid == connection.name) {
+                // Check if player has enough resources
+                db.query(`SELECT * FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, [connection.name], 
+                    (err, playerResults) => {
+                        if (err) {
+                            console.error("Error retrieving player data:", err);
+                            return;
+                        }
+                        
+                        if (playerResults.length === 0) {
+                            connection.sendUTF('Error: Player data not found');
+                            return;
+                        }
+                        
+                        const player = playerResults[0];
+                        
+                        if (player.metal >= metalCost) {
+                            // Build ship
+                            db.query(`UPDATE players${connection.gameid} SET metal = metal - ? WHERE playerid = ?`, [metalCost, connection.name]);
+                            db.query(`UPDATE map${connection.gameid} SET ${shipField} = ${shipField} + 1 WHERE sectorid = ?`, [connection.sectorid]);
+                            
+                            connection.sendUTF('You started construction on a ship in this sector.');
+                            updateResources(connection);
+                            updateAllSectors(connection.gameid, connection);
+                        } else {
+                            connection.sendUTF('You do not have enough resources for this purchase.');
+                        }
+                    }
+                );
+            } else if (sector.ownerid != connection.name) {
+                connection.sendUTF('You do not own this sector. Cannot build ship.');
+            } else {
+                connection.sendUTF('Your shipyard does not have enough free space to build this ship. Please upgrade it accordingly.');
+            }
+        }
+    );
+}
+
+function buyTech(message, connection) {
+    const techId = parseInt(message.utf8Data.split("//buytech:")[1]);
+    
+    console.log(`Player ${connection.name} is trying to buy tech: ${techId}`);
+    
+    // Get player's current tech levels and resources
+    db.query(`SELECT * FROM players${connection.gameid} WHERE playerid = ? LIMIT 1`, [connection.name], 
+        (err, results) => {
+            if (err) {
+                console.error("Error retrieving player data:", err);
+                return;
+            }
+            
+            if (results.length === 0) {
+                connection.sendUTF('Error: Player data not found');
+                return;
+            }
+            
+            const player = results[0];
+            
+            // Calculate tech cost based on current level
+            let techCost = 0;
+            const techField = `tech${techId}`;
+            const currentLevel = player[techField] || 0;
+            
+            // Special calculation for terraforming (tech7)
+            if (techId === 7) {
+                techCost = Math.round(Math.pow(8, currentLevel + 2) + 36);
+            } else {
+                techCost = Math.round(Math.pow(1.5, currentLevel + 13) + 5);
+            }
+            
+            // Check if player has enough research
+            if (player.research >= techCost) {
+                // Purchase tech
+                db.query(`UPDATE players${connection.gameid} SET 
+                    research = research - ?, 
+                    ${techField} = ${techField} + 1
+                    WHERE playerid = ?`, 
+                    [techCost, connection.name]
+                );
+                
+                connection.sendUTF("Tech purchased.");
+                updateResources(connection);
+            } else {
+                connection.sendUTF(`You do not have enough research to get this tech. Needed: ${techCost}`);
+            }
+        }
+    );
 }
