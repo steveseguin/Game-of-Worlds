@@ -66,6 +66,10 @@ const LoginSystem = (function() {
                 document.cookie = `userId=${data.userId}; path=/; max-age=86400`;
                 document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
                 
+                // Store user ID in localStorage for shop access
+                localStorage.setItem('userId', data.userId);
+                localStorage.setItem('username', data.username);
+                
                 // Redirect to game
                 window.location.href = '/lobby.html';
             } else {

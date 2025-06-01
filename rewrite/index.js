@@ -11,6 +11,9 @@
  * - Depends on server.js for WebSocket server functionality
  * - Uses map.js, combat.js, tech.js for game mechanics
  */
+// Load environment variables
+require('dotenv').config();
+
 const WebSocketServer = require('websocket').server;
 const http = require('http');
 const fs = require('fs');
@@ -28,10 +31,10 @@ const { clients, clientMap, gameTimer, turns, activeGames } = gameState;
 // Configuration
 const PORT = process.env.PORT || 1337;
 const DB_CONFIG = {
-    host: '127.0.0.1',
-    user: 'root',
-    password: '',
-    database: 'game'
+    host: process.env.DB_HOST || '127.0.0.1',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'game'
 };
 
 function connectToDatabase() {
@@ -79,6 +82,47 @@ const httpServer = http.createServer((request, response) => {
     
     if (pathname === '/register' && request.method === 'POST') {
         serverLogic.handleRegister(request, response);
+        return;
+    }
+    
+    if (pathname === '/api/payment/create-intent' && request.method === 'POST') {
+        serverLogic.handleCreatePaymentIntent(request, response);
+        return;
+    }
+    
+    if (pathname === '/api/payment/create-subscription' && request.method === 'POST') {
+        serverLogic.handleCreateSubscription(request, response);
+        return;
+    }
+    
+    if (pathname === '/api/payment/webhook' && request.method === 'POST') {
+        serverLogic.handlePaymentWebhook(request, response);
+        return;
+    }
+    
+    if (pathname === '/api/payment/spend-crystals' && request.method === 'POST') {
+        serverLogic.handleSpendCrystals(request, response);
+        return;
+    }
+    
+    // Handle balance query
+    const balanceMatch = pathname.match(/^\/api\/user\/(\d+)\/balance$/);
+    if (balanceMatch && request.method === 'GET') {
+        serverLogic.handleGetBalance(request, response, balanceMatch[1]);
+        return;
+    }
+    
+    // Handle owned items query
+    const ownedMatch = pathname.match(/^\/api\/user\/(\d+)\/owned-items$/);
+    if (ownedMatch && request.method === 'GET') {
+        serverLogic.handleGetOwnedItems(request, response, ownedMatch[1]);
+        return;
+    }
+    
+    // Handle purchase history query
+    const historyMatch = pathname.match(/^\/api\/user\/(\d+)\/purchase-history$/);
+    if (historyMatch && request.method === 'GET') {
+        serverLogic.handleGetPurchaseHistory(request, response, historyMatch[1]);
         return;
     }
     

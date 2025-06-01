@@ -22,6 +22,8 @@ const securitySystem = require('./lib/security');
 const victorySystem = require('./lib/victory');
 const aiSystem = require('./lib/ai');
 const diplomacySystem = require('./lib/diplomacy');
+const { PaymentManager } = require('./lib/payments');
+const PaymentEndpoints = require('./lib/payment-endpoints');
 
 // Game state (shared with index.js)
 const gameState = {
@@ -34,10 +36,18 @@ const gameState = {
 
 // Database connection (will be set by index.js)
 let db = null;
+let paymentManager = null;
+let paymentEndpoints = null;
 
 // Set the database connection
 function setDatabase(database) {
     db = database;
+    // Initialize payment manager with database
+    paymentManager = new PaymentManager(db);
+    // Initialize payment endpoints
+    paymentEndpoints = new PaymentEndpoints(paymentManager, db);
+    // Set global gameState for payment notifications
+    global.gameState = gameState;
 }
 
 // Authentication functions
@@ -1219,6 +1229,73 @@ function evolveShips(gameId, playerId) {
     // For now, just a placeholder
 }
 
+// Payment handler functions - delegate to enhanced endpoints
+async function handleCreatePaymentIntent(request, response) {
+    if (!paymentEndpoints) {
+        response.writeHead(503, {'Content-Type': 'application/json'});
+        response.end(JSON.stringify({error: 'Payment system not available'}));
+        return;
+    }
+    return paymentEndpoints.handleCreateIntent(request, response);
+}
+
+async function handleCreateSubscription(request, response) {
+    if (!paymentEndpoints) {
+        response.writeHead(503, {'Content-Type': 'application/json'});
+        response.end(JSON.stringify({error: 'Payment system not available'}));
+        return;
+    }
+    return paymentEndpoints.handleCreateSubscription(request, response);
+}
+
+async function handlePaymentWebhook(request, response) {
+    if (!paymentEndpoints) {
+        response.writeHead(503, {'Content-Type': 'application/json'});
+        response.end(JSON.stringify({error: 'Payment system not available'}));
+        return;
+    }
+    return paymentEndpoints.handleWebhook(request, response);
+}
+
+async function handleSpendCrystals(request, response) {
+    if (!paymentEndpoints) {
+        response.writeHead(503, {'Content-Type': 'application/json'});
+        response.end(JSON.stringify({error: 'Payment system not available'}));
+        return;
+    }
+    return paymentEndpoints.handleSpendCrystals(request, response);
+}
+
+// Handle get balance request
+async function handleGetBalance(request, response, userId) {
+    if (!paymentEndpoints) {
+        response.writeHead(503, {'Content-Type': 'application/json'});
+        response.end(JSON.stringify({error: 'Payment system not available'}));
+        return;
+    }
+    return paymentEndpoints.handleGetBalance(request, response, userId);
+}
+
+// Handle get owned items
+async function handleGetOwnedItems(request, response, userId) {
+    if (!paymentEndpoints) {
+        response.writeHead(503, {'Content-Type': 'application/json'});
+        response.end(JSON.stringify({error: 'Payment system not available'}));
+        return;
+    }
+    return paymentEndpoints.handleGetOwnedItems(request, response, userId);
+}
+
+// Handle get purchase history
+async function handleGetPurchaseHistory(request, response, userId) {
+    if (!paymentEndpoints) {
+        response.writeHead(503, {'Content-Type': 'application/json'});
+        response.end(JSON.stringify({error: 'Payment system not available'}));
+        return;
+    }
+    return paymentEndpoints.handleGetPurchaseHistory(request, response, userId);
+}
+
 // Export functions for use by index.js
 module.exports = {
     setDatabase,
@@ -1238,5 +1315,12 @@ module.exports = {
     updateAllSectors,
     handleJoinGame,
     handleGetUnlockedRaces,
+    handleCreatePaymentIntent,
+    handleCreateSubscription,
+    handlePaymentWebhook,
+    handleSpendCrystals,
+    handleGetBalance,
+    handleGetOwnedItems,
+    handleGetPurchaseHistory,
     gameState
 };

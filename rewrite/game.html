@@ -25,6 +25,7 @@
     <!-- Connection Info -->
     <div style="position:absolute;top:0;left:550px;">
         <span id="status">Not connected</span>, Users connected: <span id="connected">-</span>
+        <button onclick="Shop.open()" style="margin-left:20px;padding:5px 10px;background:#f39c12;border:none;color:white;cursor:pointer;border-radius:5px;">Shop</button>
     </div>
     
     <!-- Sector Display -->
@@ -164,6 +165,11 @@
     <script src="battle.js"></script>
     <script src="controlpad.js"></script>
     <script src="connect.js"></script>
+    <script src="lib/notification-system.js"></script>
+    <script src="shop-enhanced.js"></script>
+    <script src="sound.js"></script>
     <script src="game.js"></script>
+    <!-- Stripe.js for payments -->
+    <script src="https://js.stripe.com/v3/"></script>
 </body>
 </html>

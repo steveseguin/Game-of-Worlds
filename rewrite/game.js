@@ -36,6 +36,21 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize websocket connection
     initializeWebSocket();
     
+    // Initialize shop system
+    if (window.Shop) {
+        // Get user ID from session or auth
+        const userId = window.gameUserId || localStorage.getItem('userId');
+        if (userId) {
+            Shop.initialize(userId);
+        }
+    }
+    
+    // Initialize sound system
+    if (window.SoundSystem) {
+        SoundSystem.initialize();
+        SoundSystem.playContextualMusic('menu');
+    }
+    
     // Set up global event handlers
     setupEventListeners();
     
