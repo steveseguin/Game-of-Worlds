@@ -133,6 +133,20 @@ function handleWebSocketMessage(message) {
             window.ChatSystem.displayMessage("Waiting for game to start...");
         }
     }
+    // Game started
+    else if (message.indexOf("startgame::") === 0) {
+        // Hide lobby and show game
+        document.getElementById("lobbyWindow").style.display = "none";
+        document.getElementById("gameWindow").style.display = "block";
+        
+        // Initialize game UI
+        if (window.GameUI && window.GameUI.initialize) {
+            window.GameUI.initialize();
+        }
+        
+        // Request initial game state
+        websocket.send("//update");
+    }
     // Max build notification
     else if (message.indexOf("maxbuild::") === 0) {
         const buildingType = message.split("::")[1];
@@ -161,7 +175,16 @@ function handleWebSocketMessage(message) {
             window.GameUI.showMultiMoveOptions(targetSector, shipsData);
         }
     }
-    // New round
+    // New turn
+    else if (message.indexOf("newturn::") === 0) {
+        const turnNumber = message.split("::")[1];
+        document.getElementById("nextTurnText").innerHTML = `Turn ${turnNumber}`;
+        document.getElementById("turnRedFlashWhenLow").innerHTML = '180s';
+        turnTimer = 180;
+        clearInterval(turnInterval);
+        turnInterval = setInterval(updateTimer, 1000);
+    }
+    // New round (legacy)
     else if (message === "newround:") {
         document.getElementById("nextTurnText").innerHTML = 'Next Turn';
         document.getElementById("turnRedFlashWhenLow").innerHTML = '180s';
@@ -190,7 +213,7 @@ function handleWebSocketMessage(message) {
         turnInterval = setInterval(updateTimer, 1000);
     }
     // Sector information
-    else if (message.indexOf("sector:") === 0) {
+    else if (message.indexOf("sector::") === 0) {
         updateSectorInfo(message);
     }
     // Generic information
@@ -202,7 +225,7 @@ function handleWebSocketMessage(message) {
         updateBuildings(message);
     }
     // Resources update
-    else if (message.indexOf("resources:") === 0) {
+    else if (message.indexOf("resources::") === 0) {
         updateResources(message);
     }
     // Chat or other messages
@@ -239,27 +262,39 @@ function updateBuildings(message) {
 }
 
 function updateSectorInfo(message) {
-    const parts = message.split(':');
-    if (parts.length < 8) return;
+    const parts = message.split('::');
+    if (parts.length < 3) return;
     
-    // Parse sector data
-    const sectorData = {
-        id: parts[1],
-        owner: parts[3],
-        type: parseInt(parts[5]),
-        artifact: parseInt(parts[7]),
-        metalBonus: parseFloat(parts[9]),
-        crystalBonus: parseFloat(parts[11]),
-        terraformLevel: parseInt(parts[13])
-    };
-    
-    // Store in game state
-    GAME_STATE.selectedSectorData = sectorData;
-    GAME_STATE.selectedSector = parseInt(sectorData.id, 16);
-    
-    // Update UI
-    if (window.GameUI && window.GameUI.updateSectorDisplay) {
-        window.GameUI.updateSectorDisplay(sectorData);
+    const sectorId = parseInt(parts[1]);
+    try {
+        const data = JSON.parse(parts[2]);
+        
+        // Parse sector data
+        const sectorData = {
+            id: sectorId,
+            owner: data.sector.owner,
+            type: data.sector.type,
+            x: data.sector.x,
+            y: data.sector.y,
+            ships: data.ships || [],
+            buildings: data.buildings || []
+        };
+        
+        // Store in game state
+        GAME_STATE.selectedSectorData = sectorData;
+        GAME_STATE.selectedSector = sectorId;
+        
+        // Update UI
+        if (window.GameUI && window.GameUI.updateSectorDisplay) {
+            window.GameUI.updateSectorDisplay(sectorData);
+        }
+        
+        // Update ship counts
+        if (window.GameUI && window.GameUI.updateFleetDisplay) {
+            window.GameUI.updateFleetDisplay(sectorData.ships);
+        }
+    } catch (e) {
+        console.error('Error parsing sector data:', e);
     }
 }
 
@@ -285,7 +320,7 @@ function updateSectorStatus(message) {
 }
 
 function updateResources(message) {
-    const parts = message.split(':');
+    const parts = message.split('::');
     if (parts.length < 4) return;
     
     // Parse resource values
@@ -401,7 +436,7 @@ function sendmmf() {
 
 function changeSector(sectorId) {
     // Request sector information from server
-    websocket.send("//sector " + sectorId);
+    websocket.send("//sector:" + sectorId);
     
     // Update UI to indicate selected sector
     if (window.GalaxyMap && window.GalaxyMap.selectSector) {

@@ -623,18 +623,42 @@ function getAdjacentSectors(sectorId, mapWidth, mapHeight) {
 /**
  * Calculate crystal cost for fleet movement
  * @param {object} fleet - Fleet composition
+ * @param {object} shipTypes - Ship type definitions (to avoid circular dependency)
  * @return {number} - Total crystal cost
  */
-function calculateMovementCost(fleet) {
+function calculateMovementCost(fleet, shipTypes) {
     let totalCost = 0;
     
-    // Sum costs for each ship type
-    Object.entries(SHIP_TYPES).forEach(([_, shipType]) => {
-        const count = fleet[`ship${shipType.id}`] || 0;
-        if (count > 0) {
-            totalCost += count * shipType.movementCost;
+    // If shipTypes not provided, use default movement costs
+    if (!shipTypes) {
+        // Default movement costs by ship ID
+        const defaultCosts = {
+            1: 200, // Frigate
+            2: 300, // Destroyer
+            3: 100, // Scout
+            4: 200, // Cruiser
+            5: 300, // Battleship
+            6: 200, // Colony Ship
+            7: 500, // Dreadnought
+            8: 200, // Intruder
+            9: 300  // Carrier
+        };
+        
+        for (let i = 1; i <= 9; i++) {
+            const count = fleet[`ship${i}`] || 0;
+            if (count > 0) {
+                totalCost += count * (defaultCosts[i] || 200);
+            }
         }
-    });
+    } else {
+        // Use provided ship types
+        Object.entries(shipTypes).forEach(([_, shipType]) => {
+            const count = fleet[`ship${shipType.id}`] || 0;
+            if (count > 0) {
+                totalCost += count * shipType.movementCost;
+            }
+        });
+    }
     
     return totalCost;
 }
@@ -643,9 +667,10 @@ function calculateMovementCost(fleet) {
  * Handle hazardous sector effects
  * @param {object} fleet - Fleet composition
  * @param {object} sector - Sector data
+ * @param {object} shipTypes - Ship type definitions (optional, to avoid circular dependency)
  * @return {object} - Updated fleet after hazards
  */
-function applyHazardEffects(fleet, sector) {
+function applyHazardEffects(fleet, sector, shipTypes) {
     const updatedFleet = { ...fleet };
     
     // Only apply effects for hazardous sectors
@@ -655,17 +680,33 @@ function applyHazardEffects(fleet, sector) {
     }
     
     // Apply random losses based on danger level
-    Object.entries(SHIP_TYPES).forEach(([_, shipType]) => {
-        const key = `ship${shipType.id}`;
-        const count = updatedFleet[key] || 0;
-        
-        if (count > 0) {
-            // Calculate survivors
-            const survivorRate = 1 - sectorType.dangerLevel;
-            const survivors = Math.round(count * survivorRate * Math.random());
-            updatedFleet[key] = survivors;
+    if (shipTypes) {
+        // Use provided ship types
+        Object.entries(shipTypes).forEach(([_, shipType]) => {
+            const key = `ship${shipType.id}`;
+            const count = updatedFleet[key] || 0;
+            
+            if (count > 0) {
+                // Calculate survivors
+                const survivorRate = 1 - sectorType.dangerLevel;
+                const survivors = Math.round(count * survivorRate * Math.random());
+                updatedFleet[key] = survivors;
+            }
+        });
+    } else {
+        // Apply to all ship types (1-9)
+        for (let i = 1; i <= 9; i++) {
+            const key = `ship${i}`;
+            const count = updatedFleet[key] || 0;
+            
+            if (count > 0) {
+                // Calculate survivors
+                const survivorRate = 1 - sectorType.dangerLevel;
+                const survivors = Math.round(count * survivorRate * Math.random());
+                updatedFleet[key] = survivors;
+            }
         }
-    });
+    }
     
     return updatedFleet;
 }
@@ -679,6 +720,7 @@ module.exports = {
     canConstructBuilding,
     canColonizeSector,
     generateGameMap,
+    generateMap: generateGameMap, // Alias for compatibility
     areSectorsAdjacent,
     getAdjacentSectors,
     calculateMovementCost,

@@ -370,6 +370,24 @@ function generateTechTree() {
 }
 
 /**
+ * Get technology by ID
+ * @param {number} techId - Technology ID number
+ * @return {object|null} - Technology object or null if not found
+ */
+function getTechnology(techId) {
+    // Find technology by matching ID
+    for (const [techKey, tech] of Object.entries(TECHNOLOGIES)) {
+        if (tech.id === techId) {
+            return {
+                key: techKey,
+                ...tech
+            };
+        }
+    }
+    return null;
+}
+
+/**
 * Render a tech tree visualization using HTML/CSS
 * @param {object} techs - Player's current tech levels
 * @param {number} availableResearch - Available research points
@@ -463,5 +481,6 @@ module.exports = {
    getTechByTier,
    getTechByCategory,
    generateTechTree,
+   getTechnology,
    renderTechUI
 };

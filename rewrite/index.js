@@ -18,18 +18,12 @@ const path = require('path');
 const mysql2 = require('mysql2');
 const url = require('url');
 
-// Import game mechanics
-const mapSystem = require('./lib/map');
-const combatSystem = require('./lib/combat');
-const techSystem = require('./lib/tech');
+// Import server logic
+const serverLogic = require('./server');
 
-
-// Game state
-const clients = [];
-const gameTimer = {};
-const clientMap = {};
-const turns = {};
-const activeGames = {};
+// Use shared game state from server.js
+const { gameState } = serverLogic;
+const { clients, clientMap, gameTimer, turns, activeGames } = gameState;
 
 // Configuration
 const PORT = process.env.PORT || 1337;
@@ -66,26 +60,31 @@ function connectToDatabase() {
 
 const db = connectToDatabase();
 
-// Connect to database
-db.connect(err => {
-    if (err) {
-        console.error('Error connecting to database:', err);
-        process.exit(1);
-    }
-    console.log('Connected to database');
-});
+// Set database connection in server module
+serverLogic.setDatabase(db);
 
 // Create HTTP server
-const server = http.createServer((request, response) => {
+const httpServer = http.createServer((request, response) => {
     console.log(`${new Date()} Received request for ${request.url}`);
     
     // Parse URL
     const parsedUrl = url.parse(request.url);
     let pathname = parsedUrl.pathname;
     
+    // Handle API endpoints
+    if (pathname === '/login' && request.method === 'POST') {
+        serverLogic.handleLogin(request, response);
+        return;
+    }
+    
+    if (pathname === '/register' && request.method === 'POST') {
+        serverLogic.handleRegister(request, response);
+        return;
+    }
+    
     // Default to index.html for root path
     if (pathname === '/') {
-        pathname = '/game.html';
+        pathname = '/login.html';
     }
     
     // Get the file extension
@@ -132,61 +131,18 @@ const server = http.createServer((request, response) => {
 });
 
 // Start HTTP server
-server.listen(PORT, () => {
+httpServer.listen(PORT, () => {
     console.log(`${new Date()} Server is listening on port ${PORT}`);
 });
 
 // Create WebSocket server
 const wsServer = new WebSocketServer({
-    httpServer: server,
+    httpServer: httpServer,
     autoAcceptConnections: false
 });
 
 
-server.on('request', (request, response) => {
-    // Parse URL
-    const parsedUrl = url.parse(request.url);
-    let pathname = parsedUrl.pathname;
-    
-    // Default to index.html for root path
-    if (pathname === '/') {
-        pathname = '/index.html';
-    }
-    
-    // Get file extension
-    const ext = path.parse(pathname).ext || '.html';
-    
-    // Content type map
-    const contentTypeMap = {
-        '.html': 'text/html',
-        '.js': 'application/javascript',
-        '.css': 'text/css',
-        '.json': 'application/json',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.gif': 'image/gif'
-    };
-    
-    const contentType = contentTypeMap[ext] || 'text/plain';
-    
-    // Try to read from rewrite directory first, then from parent directory
-    fs.readFile(path.join(__dirname, pathname.substr(1)), (err, data) => {
-        if (err) {
-            fs.readFile(path.join(__dirname, '..', pathname.substr(1)), (err2, data2) => {
-                if (err2) {
-                    response.writeHead(404);
-                    response.end('File not found');
-                    return;
-                }
-                response.writeHead(200, {'Content-Type': contentType});
-                response.end(data2);
-            });
-            return;
-        }
-        response.writeHead(200, {'Content-Type': contentType});
-        response.end(data);
-    });
-});
+// Remove duplicate request handler - already handled in httpServer creation above
 
 // WebSocket connection handler
 wsServer.on('request', request => {
@@ -255,40 +211,43 @@ function handleCommand(data, connection) {
     
     switch (command) {
         case "start":
-            handleGameStart(connection);
+            serverLogic.handleGameStart(connection);
             break;
         case "colonize":
-            colonizePlanet(connection);
+            serverLogic.colonizePlanet(connection);
             break;
         case "buytech":
-            buyTech(data, connection);
+            serverLogic.buyTech(data, connection);
             break;
         case "probe":
-            probeSector(data, connection);
+            serverLogic.probeSector(data, connection);
             break;
         case "buyship":
-            buyShip(data, connection);
+            serverLogic.buyShip(data, connection);
             break;
         case "buybuilding":
-            buyBuilding(data, connection);
+            serverLogic.buyBuilding(data, connection);
             break;
         case "move":
-            moveFleet(data, connection);
+            serverLogic.moveFleet(data, connection);
             break;
         case "sector":
-            updateSector(data, connection);
+            serverLogic.updateSector(data, connection);
             break;
         case "mmove":
-            surroundShips(data, connection);
+            serverLogic.surroundShips(data, connection);
             break;
         case "sendmmf":
-            preMoveFleet(data, connection);
+            serverLogic.preMoveFleet(data, connection);
             break;
         case "update":
-            updateResources(connection);
+            serverLogic.updateResources(connection);
             break;
-		case "joingame":
-            handleJoinGame(connection);
+        case "joingame":
+            serverLogic.handleJoinGame(data, connection);
+            break;
+        case "getunlockedraces":
+            serverLogic.handleGetUnlockedRaces(connection);
             break;
         default:
             connection.sendUTF(`Unknown command: ${command}`);
@@ -374,8 +333,8 @@ function authUser(message, connection) {
             // Handle game state
             if (turns[connection.gameid] > 0) {
                 connection.sendUTF("You have re-connected to a game that is already in progress.");
-                updateResources(connection);
-                updateAllSectors(connection.gameid, connection);
+                serverLogic.updateResources(connection);
+                serverLogic.updateAllSectors(connection.gameid, connection);
             } else {
                 connection.sendUTF("lobby::");
                 connection.sendUTF("The game has yet to begin. Welcome.");

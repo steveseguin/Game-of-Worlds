@@ -64,12 +64,12 @@ const LoginSystem = (function() {
             if (data.success) {
                 // Store auth tokens in cookies
                 document.cookie = `userId=${data.userId}; path=/; max-age=86400`;
-				document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
+                document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
                 
                 // Redirect to game
                 window.location.href = '/lobby.html';
             } else {
-                document.getElementById('loginError').textContent = data.message;
+                document.getElementById('loginError').textContent = data.error || 'Login failed';
             }
         })
         .catch(error => {
@@ -94,15 +94,22 @@ const LoginSystem = (function() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ username, password, email: '' })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                document.getElementById('registerSuccess').textContent = 'Registration successful! You can now log in.';
-                showLoginForm({ preventDefault: () => {} });
+                // Store auth tokens in cookies
+                document.cookie = `userId=${data.userId}; path=/; max-age=86400`;
+                document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
+                
+                // Show success and redirect
+                document.getElementById('registerSuccess').textContent = 'Registration successful!';
+                setTimeout(() => {
+                    window.location.href = '/lobby.html';
+                }, 1000);
             } else {
-                document.getElementById('registerError').textContent = data.message;
+                document.getElementById('registerError').textContent = data.error || 'Registration failed';
             }
         })
         .catch(error => {

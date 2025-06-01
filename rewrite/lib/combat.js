@@ -569,6 +569,7 @@ function updateClientSectors(client, gameId) {
 module.exports = {
     SHIP_TYPES,
     conductBattle,
+    resolveCombat: conductBattle, // Alias for compatibility
     formatBattleMessage,
     processBattleResult
 };

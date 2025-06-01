@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Premium Race - Galaxy Conquest</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        body {
+            background: #000 url('spacebak.jpg') no-repeat center center fixed;
+            background-size: cover;
+            color: white;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        
+        .purchase-container {
+            max-width: 600px;
+            margin: 50px auto;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #444;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #FFD700;
+            margin-bottom: 30px;
+        }
+        
+        .race-preview {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .price {
+            font-size: 36px;
+            color: #4CAF50;
+            margin: 20px 0;
+        }
+        
+        #card-element {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        
+        .btn-purchase {
+            background: #FFD700;
+            color: #000;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 4px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .btn-purchase:hover {
+            background: #FFC000;
+        }
+        
+        .btn-purchase:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        #error-message {
+            color: #ff6666;
+            margin-top: 10px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #40C0A0;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="purchase-container">
+        <h1>Unlock Premium Race</h1>
+        
+        <div class="race-preview" id="racePreview">
+            <!-- Race details will be inserted here -->
+        </div>
+        
+        <div class="price" id="price">$4.99</div>
+        
+        <form id="payment-form">
+            <div id="card-element">
+                <!-- Stripe Elements will be inserted here -->
+            </div>
+            
+            <div id="error-message"></div>
+            
+            <button type="submit" class="btn-purchase" id="submit">
+                Complete Purchase
+            </button>
+        </form>
+        
+        <a href="/lobby.html" class="back-link">← Back to Lobby</a>
+    </div>
+    
+    <script>
+        // Get race ID from URL params
+        const urlParams = new URLSearchParams(window.location.search);
+        const raceId = urlParams.get('race');
+        
+        // Race data (in production, fetch from server)
+        const races = {
+            10: { name: "Quantum Entities", price: 4.99, description: "Beings of pure energy with reality-bending abilities" },
+            11: { name: "Titan Lords", price: 4.99, description: "Giants who build massive, powerful ships" },
+            12: { name: "Shadow Realm", price: 4.99, description: "Masters of stealth and subterfuge" }
+        };
+        
+        const race = races[raceId];
+        if (race) {
+            document.getElementById('racePreview').innerHTML = `
+                <h2>${race.name}</h2>
+                <p>${race.description}</p>
+            `;
+            document.getElementById('price').textContent = `$${race.price}`;
+        }
+        
+        // Initialize Stripe
+        const stripe = Stripe('YOUR_STRIPE_PUBLISHABLE_KEY'); // Replace with your key
+        const elements = stripe.elements();
+        
+        // Create card element
+        const cardElement = elements.create('card', {
+            style: {
+                base: {
+                    color: '#32325d',
+                    fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
+                    fontSmoothing: 'antialiased',
+                    fontSize: '16px',
+                    '::placeholder': {
+                        color: '#aab7c4'
+                    }
+                },
+                invalid: {
+                    color: '#fa755a',
+                    iconColor: '#fa755a'
+                }
+            }
+        });
+        
+        cardElement.mount('#card-element');
+        
+        // Handle form submission
+        const form = document.getElementById('payment-form');
+        const submitButton = document.getElementById('submit');
+        const errorMessage = document.getElementById('error-message');
+        
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            submitButton.disabled = true;
+            submitButton.textContent = 'Processing...';
+            
+            // In production, you would:
+            // 1. Create a payment intent on your server
+            // 2. Confirm the payment with Stripe
+            // 3. Update the database to unlock the race
+            // 4. Redirect back to the game
+            
+            // For now, just show a message
+            setTimeout(() => {
+                alert('Stripe integration would process the payment here.\n\nIn production:\n1. Create payment intent\n2. Process payment\n3. Unlock race in database\n4. Redirect to game');
+                submitButton.disabled = false;
+                submitButton.textContent = 'Complete Purchase';
+            }, 2000);
+        });
+        
+        // Handle card errors
+        cardElement.on('change', (event) => {
+            if (event.error) {
+                errorMessage.textContent = event.error.message;
+            } else {
+                errorMessage.textContent = '';
+            }
+        });
+    </script>
+</body>
+</html>
