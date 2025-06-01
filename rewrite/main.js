@@ -1,3 +1,16 @@
+/**
+ * main.js - Client-side primary game code
+ * 
+ * Contains core game functionality for the client side application.
+ * Handles game state updates, UI interactions, and communication with the server.
+ * This appears to be a fragment or partial file in the codebase.
+ * 
+ * This module is client-side only and does not directly access the database.
+ * 
+ * Dependencies:
+ * - Uses GalaxyMap for map visualization
+ * - May be used by or incorporated into other client modules
+ */
 if (window.GalaxyMap) {
         let status = window.GalaxyMap.SECTOR_STATUS.OWNED;
         
@@ -672,7 +685,7 @@ function moveShips(fromId, toId) {
     });
 }
 
-// Send multi-move fleet command
+// Send multiple move fleet command
 function sendmmf() {
     const sectorId = document.getElementById('sectorofattack').innerHTML;
     const shipList = document.getElementById('shipsFromNearBy');
@@ -689,6 +702,11 @@ function sendmmf() {
             message += ":" + shipList.options[i].value;
             totalShips++;
         }
+    }
+    
+    if (totalShips === 0) {
+        alert("No ships selected");
+        return;
     }
     
     // Calculate crystal cost
@@ -712,7 +730,7 @@ function sendmmf() {
     
     // Confirm movement
     if (confirm(`Are you sure you wish to send these ${totalShips} ships to sector ${sectorId}? It will cost you ${sumOfShips * 100} crystal.`)) {
-        sendToServer("//sendmmf:" + message);
+        websocket.send("//sendmmf:" + message);
         document.getElementById('multiMove').style.display = 'none';
     }
 }
@@ -724,17 +742,22 @@ function sendallmm() {
     
     if (!sectorId || !shipList) return;
     
+    if (shipList.options.length === 0) {
+        alert("No ships available");
+        return;
+    }
+    
     let message = sectorId;
     let totalShips = 0;
     let sumOfShips = 0;
     
-    // Gather all ships
+    // Add all ships to message
     for (let i = 0; i < shipList.options.length; i++) {
         message += ":" + shipList.options[i].value;
         totalShips++;
     }
     
-    // Calculate crystal cost (same as sendmmf)
+    // Calculate crystal cost
     const selectedValues = message.split(':');
     for (let y = 3; y <= (selectedValues.length - 1); y += 3) {
         const shipType = parseInt(selectedValues[y - 1]);
@@ -754,19 +777,64 @@ function sendallmm() {
     }
     
     // Confirm movement
-    if (confirm(`Are you sure you wish to send these ${totalShips} ships to sector ${sectorId}? It will cost you ${sumOfShips * 100} crystal.`)) {
-        sendToServer("//sendmmf:" + message);
+    if (confirm(`Are you sure you wish to send all ${totalShips} ships to sector ${sectorId}? It will cost you ${sumOfShips * 100} crystal.`)) {
+        websocket.send("//sendmmf:" + message);
         document.getElementById('multiMove').style.display = 'none';
     }
 }
 
-// Send only attack ships
+// Send only attack ships (excluding scouts and colony ships)
 function sendaamm() {
     const sectorId = document.getElementById('sectorofattack').innerHTML;
     const shipList = document.getElementById('shipsFromNearBy');
     
-    // Main Game Script for Galaxy Conquest
-// This integrates all the game modules together
+    if (!sectorId || !shipList) return;
+    
+    let message = sectorId;
+    let totalShips = 0;
+    let sumOfShips = 0;
+    
+    // Add all attack ships to message (exclude scouts and colony ships)
+    for (let i = 0; i < shipList.options.length; i++) {
+        const value = shipList.options[i].value;
+        const parts = value.split(':');
+        const shipType = parseInt(parts[1]);
+        
+        // Skip scouts (type 3) and colony ships (type 6)
+        if (shipType !== 3 && shipType !== 6) {
+            message += ":" + value;
+            totalShips++;
+        }
+    }
+    
+    if (totalShips === 0) {
+        alert("No attack ships available");
+        return;
+    }
+    
+    // Calculate crystal cost
+    const selectedValues = message.split(':');
+    for (let y = 3; y <= (selectedValues.length - 1); y += 3) {
+        const shipType = parseInt(selectedValues[y - 1]);
+        const count = parseInt(selectedValues[y]) || 1;
+        
+        switch (shipType) {
+            case 1: sumOfShips += count * 2; break;
+            case 2: sumOfShips += count * 3; break;
+            case 4: sumOfShips += count * 2; break;
+            case 5: sumOfShips += count * 3; break;
+            case 7: sumOfShips += count * 5; break;
+            case 8: sumOfShips += count * 2; break;
+            case 9: sumOfShips += count * 3; break;
+        }
+    }
+    
+    // Confirm movement
+    if (confirm(`Are you sure you wish to send these ${totalShips} attack ships to sector ${sectorId}? It will cost you ${sumOfShips * 100} crystal.`)) {
+        websocket.send("//sendmmf:" + message);
+        document.getElementById('multiMove').style.display = 'none';
+    }
+}
 
 // Global game state
 const GAME_STATE = {
@@ -798,76 +866,56 @@ const GAME_STATE = {
     fleetMovementInProgress: false
 };
 
-// Initialize game when document is loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize WebSocket connection
     initializeWebSocket();
     
-    // Set up event listeners
+    // Set up event listeners for UI
     setupEventListeners();
     
-    // Disable text selection for UI elements
+    // Disable selection on game elements
     disableSelection(document);
     
     console.log('Galaxy Conquest initialized');
 });
 
-// Set up event listeners for UI elements
+function disableSelection(element) {
+    if (!element) return;
+    
+    element.onselectstart = function() { return false; };
+    element.style.userSelect = "none";
+    
+    const children = element.getElementsByTagName('*');
+    for (let i = 0; i < children.length; i++) {
+        disableSelection(children[i]);
+    }
+}
+
 function setupEventListeners() {
     // Next turn button
-    const nextTurnBtn = document.getElementById('nextTurnText');
-    if (nextTurnBtn) {
-        nextTurnBtn.parentElement.addEventListener('click', nextTurn);
-    }
+    document.getElementById('nextTurnBtn')?.addEventListener('click', nextTurn);
     
-    // Chat input
-    const chatForm = document.querySelector('form');
-    if (chatForm) {
-        chatForm.addEventListener('submit', sendChat);
-    }
+    // Chat form
+    document.querySelector('form#chatForm')?.addEventListener('submit', sendChat);
     
-    // Building buttons
-    for (let i = 1; i <= 6; i++) {
-        const buildBtn = document.getElementById(`bb${i}`);
-        if (buildBtn) {
-            buildBtn.addEventListener('click', () => buyBuilding(i));
-        }
-    }
+    // Chat history buttons
+    document.getElementById('chatHistoryUp')?.addEventListener('click', showChatHistory);
+    document.getElementById('chatHistoryDown')?.addEventListener('click', function() {
+        chatID = 0;
+        showChatHistory();
+    });
     
-    // Tech buttons
-    for (let i = 1; i <= 9; i++) {
-        const techBtn = document.getElementById(`t${i}`);
-        if (techBtn) {
-            techBtn.addEventListener('click', () => buyTech(i));
-        }
-    }
+    // Close multi-move button
+    document.getElementById('closeMultiMove')?.addEventListener('click', function() {
+        document.getElementById('multiMove').style.display = 'none';
+    });
     
-    // Ship building buttons
-    for (let i = 1; i <= 9; i++) {
-        const shipBtn = document.querySelector(`button[onclick="buyShip(${i});"]`);
-        if (shipBtn) {
-            // Replace onclick with addEventListener
-            shipBtn.removeAttribute('onclick');
-            shipBtn.addEventListener('click', () => buyShip(i));
-        }
-    }
-    
-    // Fleet movement controls
-    const fleetBtn = document.querySelector('button[onclick="popupSelectDestination();"]');
-    if (fleetBtn) {
-        fleetBtn.removeAttribute('onclick');
-        fleetBtn.addEventListener('click', popupSelectDestination);
-    }
-    
-    // Ship selection
-    setupShipSelectionControls();
-    
-    // Multi-move dialog controls
-    setupMultiMoveControls();
-    
-    // Tab controls for side panels
-    setupTabControls();
+    // Move buttons
+    document.getElementById('moveSelectedShips')?.addEventListener('click', sendmmf);
+    document.getElementById('moveAllShips')?.addEventListener('click', sendallmm);
+    document.getElementById('moveAttackShips')?.addEventListener('click', sendaamm);
 }
+
 
 // Set up ship selection controls
 function setupShipSelectionControls() {
@@ -1160,20 +1208,151 @@ function startCountdown(seconds) {
     }, 1000);
 }
 
-// Update owned sector on map
-function updateOwnedSector(message) {
-    // Parse message
-    const parts = message.split(':');
-    if (parts.length < 3) return;
+function sendChat(event) {
+    event.preventDefault();
+    const chatInput = document.getElementById("chat");
+    if (chatInput.value.trim().length > 0) {
+        websocket.send(chatInput.value);
+        chatInput.value = "";
+    }
+}
+
+function pushLog() {
+    const d = new Date();
+    document.getElementById('timeSince').innerHTML = "0 seconds ago.";
+    chatHistoryTime.push(d.getTime());
+    chatHistory.push(document.getElementById("log").innerHTML);
+    clearInterval(timeSinceCounter);
+    timeSinceCounter = setInterval(() => timelogupdate(), 1000);
+    chatID = 1;
+}
+
+function showChatHistory() {
+    chatID++;
+    if (chatID > chatHistoryTime.length) {
+        chatID = chatHistoryTime.length;
+    }
+    const d = new Date();
+    document.getElementById("log").innerHTML = chatHistory[chatHistory.length - chatID];
+    document.getElementById('timeSince').innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago.";
+    startchatfade();
+}
+
+function timelogupdate() {
+    const d = new Date();
+    document.getElementById('timeSince').innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - parseInt(chatID)]) / 1000) + " seconds ago.";
+}
+
+function startchatfade() {
+    clearTimeout(chatfadetimer);
+    clearTimeout(chatfadebegin);
+    setalpha(document.getElementById("empireupdates"), 100);
+    chatfadevalue = 100;
+    chatfadebegin = setTimeout(() => chatfade(document.getElementById("empireupdates")), 16000);
+}
+
+function chatfade(logid) {
+    if (chatfadevalue > 0) {
+        chatfadevalue -= 2;
+        setalpha(logid, chatfadevalue);
+        chatfadetimer = setTimeout(() => chatfade(logid), 60);
+    }
+}
+
+function setalpha(element, opacity) {
+    element.style.opacity = opacity / 100;
+}
+
+// Game initialization
+(function() {
+    // Store modules
+    const modules = {};
     
-    const sectorId = parseInt(parts[1], 16);
-    const fleetSize = parseInt(parts[2]) || 0;
-    const indicator = parts[3] || '';
-    
-    // Update map if using the minimap renderer
-    if (window.GalaxyMap) {
-        let status = window.GalaxyMap.SECTOR_STATUS.OWNED;
+    // Initialize the game
+    function initialize() {
+        console.log('Galaxy Conquest initialization');
         
-        // Determine status based on indicator
-        if (indicator === 'A') {
-            status = window.GalaxyMap.
+        // Register modules
+        registerModules();
+        
+        // Initialize each module
+        initializeModules();
+        
+        // Set up global event listeners
+        setupGlobalEventListeners();
+        
+        console.log('Galaxy Conquest initialized successfully');
+    }
+    
+    // Register all game modules
+    function registerModules() {
+        // Core modules
+        modules.gameUI = window.GameUI;
+        modules.galaxyMap = window.GalaxyMap;
+        modules.controlPad = window.ControlPad;
+        
+        // Check for module availability
+        if (!modules.gameUI) console.warn('GameUI module not found');
+        if (!modules.galaxyMap) console.warn('GalaxyMap module not found');
+        if (!modules.controlPad) console.warn('ControlPad module not found');
+    }
+    
+    // Initialize registered modules
+    function initializeModules() {
+        // Initialize UI components
+        if (modules.gameUI) modules.gameUI.initialize();
+        
+        // Initialize minimap
+        if (modules.galaxyMap) {
+            const minimapContainer = document.getElementById('minimapid');
+            if (minimapContainer) {
+                modules.galaxyMap.initialize(14, 8, 'minimapid');
+            }
+        }
+        
+        // Initialize control pad
+        if (modules.controlPad) modules.controlPad.initialize();
+    }
+    
+    // Set up global event listeners
+    function setupGlobalEventListeners() {
+        // Listen for window resize
+        window.addEventListener('resize', handleWindowResize);
+        
+        // Listen for visibility change
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        // Prevent context menu on right-click
+        document.addEventListener('contextmenu', e => e.preventDefault());
+    }
+    
+    // Window resize handler
+    function handleWindowResize() {
+        // Adjust game viewport scaling
+        if (window.screen.availHeight < window.screen.availWidth) {
+            document.body.style.zoom = window.screen.availHeight / 700;
+        } else {
+            document.body.style.zoom = window.screen.availWidth / 700;
+        }
+    }
+    
+    // Visibility change handler (pause/resume game timers)
+    function handleVisibilityChange() {
+        if (document.hidden) {
+            // Pause game timers when tab is not visible
+            if (window.turnInterval) {
+                window.turnIntervalPaused = window.turnInterval;
+                clearInterval(window.turnInterval);
+            }
+        } else {
+            // Resume game timers when tab becomes visible
+            if (window.turnIntervalPaused) {
+                window.turnInterval = setInterval(updateTimer, 1000);
+                window.turnIntervalPaused = null;
+            }
+        }
+    }
+    
+    // Initialize the game when document is ready
+    document.addEventListener('DOMContentLoaded', initialize);
+})();
