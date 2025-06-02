@@ -2,7 +2,7 @@
 
 A turn-based multiplayer space strategy game where players compete to dominate the galaxy through colonization, research, and tactical combat.
 
-![screenshot](https://github.com/steveseguin/Game-of-Worlds/blob/master/ext.jpg?raw=true)
+![screenshot](https://github.com/steveseguin/Game-of-Worlds/blob/master/public/images/sample.jpg?raw=true)
 
 ## Overview
 
