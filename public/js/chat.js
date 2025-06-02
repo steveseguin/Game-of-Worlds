@@ -43,7 +43,9 @@ const ChatSystem = (function() {
         const logElement = document.getElementById('log');
         if (!logElement) return;
         
-        logElement.innerHTML = message + "<br>";
+        // Sanitize message to prevent XSS
+        const sanitizedMessage = escapeHtml(message);
+        logElement.innerHTML = sanitizedMessage + "<br>";
         
         // Trim log if it gets too long
         if (logElement.innerHTML.length > 1500) {
@@ -66,7 +68,7 @@ const ChatSystem = (function() {
     function pushLog() {
         const d = new Date();
         const timeSince = document.getElementById('timeSince');
-        if (timeSince) timeSince.innerHTML = "0 seconds ago";
+        if (timeSince) timeSince.textContent = "0 seconds ago";
         
         chatHistoryTime.push(d.getTime());
         chatHistory.push(document.getElementById("log").innerHTML);
@@ -91,7 +93,7 @@ const ChatSystem = (function() {
         }
         
         if (timeSince && chatHistoryTime.length >= chatID) {
-            timeSince.innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
+            timeSince.textContent = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
         }
         
         startChatFade();
@@ -101,7 +103,7 @@ const ChatSystem = (function() {
         const d = new Date();
         const timeSince = document.getElementById('timeSince');
         if (timeSince && chatHistoryTime.length >= chatID) {
-            timeSince.innerHTML = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
+            timeSince.textContent = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
         }
     }
     
@@ -128,6 +130,15 @@ const ChatSystem = (function() {
     function setAlpha(element, opacity) {
         if (!element) return;
         element.style.opacity = opacity / 100;
+    }
+    
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
     
     return {

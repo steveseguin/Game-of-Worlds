@@ -14,6 +14,10 @@
 // Load environment variables
 require('dotenv').config();
 
+// Validate environment configuration
+const { validateAndInitialize } = require('./config/env-validator');
+validateAndInitialize();
+
 const WebSocketServer = require('websocket').server;
 const http = require('http');
 const fs = require('fs');

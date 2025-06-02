@@ -3,7 +3,7 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background: #222 url('spacebak.jpg');
+    background: #222 url('../images/spacebak.jpg');
     color: white;
     font-family: Verdana, sans-serif;
 }
@@ -177,7 +177,7 @@ td {
     width: 80%;
     height: 80%;
     background-color: #000;
-    background-image: url('spacebak.jpg');
+    background-image: url('../images/spacebak.jpg');
     z-index: 1000;
 }
 

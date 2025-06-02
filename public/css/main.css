@@ -12,7 +12,7 @@ button {
 body {
 	align-text:middle;
 	background-color:#000;
-	background-image:url('spacebak.jpg');
+	background-image:url('../images/spacebak.jpg');
 	margin:0;
 	padding:0;
 	font-family: sans-serif;
