@@ -135,6 +135,50 @@ const httpServer = http.createServer((request, response) => {
         pathname = '/login.html';
     }
     
+    // Protected pages that require authentication
+    const protectedPages = ['/index.html', '/game.html', '/lobby.html', '/purchase-race.html'];
+    
+    // Check if the requested page is protected
+    if (protectedPages.includes(pathname)) {
+        // Parse cookies to check authentication
+        const cookies = request.headers.cookie ? request.headers.cookie.split(';').reduce((acc, cookie) => {
+            const [key, value] = cookie.trim().split('=');
+            acc[key] = value;
+            return acc;
+        }, {}) : {};
+        
+        const userId = cookies.userId;
+        const tempKey = cookies.tempKey;
+        
+        // Verify authentication
+        if (!userId || !tempKey) {
+            // No authentication cookies, redirect to login
+            response.writeHead(302, {'Location': '/login.html'});
+            response.end();
+            return;
+        }
+        
+        // Verify credentials against database
+        db.query('SELECT tempkey FROM users WHERE id = ?', [userId], (err, results) => {
+            if (err || results.length === 0 || results[0].tempkey !== tempKey) {
+                // Invalid credentials, redirect to login
+                response.writeHead(302, {'Location': '/login.html'});
+                response.end();
+                return;
+            }
+            
+            // Valid authentication, serve the file
+            serveFile(pathname, response);
+        });
+        return;
+    }
+    
+    // For non-protected pages, serve directly
+    serveFile(pathname, response);
+});
+
+// Helper function to serve files
+function serveFile(pathname, response) {
     // Get the file extension
     const ext = path.parse(pathname).ext || '.html';
     
