@@ -4,6 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Purchase Premium Race - Galaxy Conquest</title>
+    <script>
+        // Authentication check for static hosting
+        (function() {
+            // Check if user has authentication cookies
+            function getCookie(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+                return null;
+            }
+            
+            const userId = getCookie('userId');
+            const tempKey = getCookie('tempKey');
+            
+            // If no authentication cookies, redirect to login
+            if (!userId || !tempKey) {
+                window.location.href = '/login.html';
+            }
+        })();
+    </script>
     <script src="https://js.stripe.com/v3/"></script>
     <style>
         body {
