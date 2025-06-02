@@ -30,6 +30,8 @@ td {
     width: 500px;
     height: 356px;
     background-color: #5C605A;
+    overflow: hidden;
+    border: 2px solid #333;
 }
 
 #avatarbox {
@@ -99,6 +101,15 @@ td {
 .hex-tile {
     width: 40px;
     height: 46px;
+    position: absolute;
+}
+
+.hex-tile svg {
+    cursor: pointer;
+}
+
+.hex-tile polygon {
+    transition: fill 0.2s ease;
 }
 
 /* Fleet management */
