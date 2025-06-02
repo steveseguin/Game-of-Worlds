@@ -74,7 +74,7 @@ const Shop = (function() {
                 </div>
                 
                 <div class="shop-balance">
-                    <img src="crystal.png" alt="Crystals" class="crystal-icon">
+                    <img src="./images/crystal.png" alt="Crystals" class="crystal-icon">
                     <span id="crystal-balance">
                         <span class="balance-loading">Loading...</span>
                     </span> Crystals
@@ -200,7 +200,7 @@ const Shop = (function() {
                 name: 'Quantum Entities',
                 description: 'Phase through enemy attacks, instant warp capabilities',
                 price: '$4.99',
-                image: 'race10.png',
+                image: './images/planet1.png',
                 features: ['Phase Shift', 'Instant Warp', 'Energy Shields']
             },
             {
@@ -208,7 +208,7 @@ const Shop = (function() {
                 name: 'Titan Lords',
                 description: 'Massive ships, extreme durability, area damage',
                 price: '$4.99',
-                image: 'race11.png',
+                image: './images/planet2.png',
                 features: ['Massive Ships', '2x Hull Strength', 'Area Damage']
             },
             {
@@ -216,7 +216,7 @@ const Shop = (function() {
                 name: 'Shadow Realm',
                 description: 'Cloaking technology, sabotage abilities, stealth attacks',
                 price: '$4.99',
-                image: 'race12.png',
+                image: './images/planet3.png',
                 features: ['Cloaking', 'Sabotage', 'Surprise Attacks']
             }
         ];
@@ -847,7 +847,7 @@ const Shop = (function() {
         return {
             name: getProductName(productId),
             description: 'Premium game content',
-            image: 'placeholder.png'
+            image: './images/resources.png'
         };
     }
     

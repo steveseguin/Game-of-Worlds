@@ -173,7 +173,7 @@ const GameUI = (function() {
         // Update sector image
         const sectorImg = document.getElementById('sectorimg');
         if (sectorImg) {
-            sectorImg.style.backgroundImage = `url(type${sectorData.type}.gif)`;
+            sectorImg.style.backgroundImage = `url(./images/type${sectorData.type}.gif)`;
         }
     }
     

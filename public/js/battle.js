@@ -40,7 +40,7 @@ const BattleSystem = (function() {
         battleDiv.style.height = '80%';
         battleDiv.style.top = '10%';
         battleDiv.style.background = '#000';
-        battleDiv.style.backgroundImage = 'url(spacebak.jpg)';
+        battleDiv.style.backgroundImage = 'url(./images/spacebak.jpg)';
         battleDiv.style.zIndex = '1000';
         battleDiv.style.display = 'block';
         document.body.appendChild(battleDiv);
@@ -101,7 +101,7 @@ const BattleSystem = (function() {
             groundImg.style.left = '0%';
             groundImg.style.top = '10%';
             groundImg.style.height = '90%';
-            groundImg.src = 'ground.gif';
+            groundImg.src = './images/ground.gif';
             battleDiv.appendChild(groundImg);
             
             const baseImg = document.createElement('img');
@@ -109,7 +109,7 @@ const BattleSystem = (function() {
             baseImg.style.position = 'absolute';
             baseImg.style.left = '15%';
             baseImg.style.top = '60%';
-            baseImg.src = 'base.png';
+            baseImg.src = './images/base.png';
             battleDiv.appendChild(baseImg);
         }
         
@@ -144,7 +144,7 @@ const BattleSystem = (function() {
         }
         
         img.style.top = Math.round(Math.random() * 60 + 20) + '%';
-        img.src = 'ship' + shipType + '.png';
+        img.src = './images/ship' + shipType + '.gif';
         container.appendChild(img);
     }
     
@@ -170,7 +170,7 @@ const BattleSystem = (function() {
                     const explosionTimer = setTimeout(() => {
                         const ship = document.getElementById(shipId);
                         if (ship) {
-                            ship.src = 'boom.gif';
+                            ship.src = './images/boom.gif';
                             
                             // Add explosion sound if available
                             try {
