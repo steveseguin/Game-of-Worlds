@@ -68,8 +68,12 @@
         
         #sectordisplay {
             position: absolute;
-            top: 80px;
-            left: 270px;
+            top: 100px;
+            left: 520px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
         }
         
         .tab-buttons {
@@ -159,6 +163,10 @@
             bottom: 0;
             width: 500px;
             height: 360px;
+            background-color: rgba(0, 0, 0, 0.8);
+            border-top: 2px solid #444;
+            border-right: 2px solid #444;
+            z-index: 100;
         }
     </style>
 </head>
@@ -183,7 +191,7 @@
     </div>
     
     <!-- Sector Display -->
-    <div id="sectorimg" style="z-index:-2;background-repeat:no-repeat;position:absolute;width:100%;height:100%; top:70px;left:300px;"></div>
+    <div id="sectorimg" style="z-index:-2;background-repeat:no-repeat;position:absolute;width:100%;height:100%; top:0;left:0;"></div>
     <div id="sectordisplay">
         <table border="0px">
             <tr><td>Sector ID:</td><td><div style="display:inline-block" id="sectorid">N/A</div></td></tr>
@@ -272,9 +280,9 @@
     </div>
     
     <!-- Chat Input -->
-    <div style="position:absolute;bottom:0;left:0;width:500px;height:30px;z-index:100;">
+    <div style="position:absolute;bottom:30px;left:10px;width:480px;height:30px;z-index:200;">
         <form id="chatForm">
-            <input id="chat" type="text" style="width:480px;" placeholder="Type and press enter to chat" />
+            <input id="chat" type="text" style="width:100%;padding:5px;background:rgba(0,0,0,0.8);color:white;border:1px solid #444;" placeholder="Type and press enter to chat" />
         </form>
     </div>
     
