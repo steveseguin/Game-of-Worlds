@@ -46,7 +46,7 @@ const Shop = (function() {
                 </div>
                 
                 <div class="shop-balance">
-                    <img src="crystal.png" alt="Crystals" class="crystal-icon">
+                    <img src="./images/crystal.png" alt="Crystals" class="crystal-icon">
                     <span id="crystal-balance">0</span> Crystals
                 </div>
                 
@@ -55,19 +55,19 @@ const Shop = (function() {
                         <h3>Premium Races</h3>
                         <div class="shop-items">
                             <div class="shop-item" onclick="Shop.purchaseRace('race_quantum')">
-                                <img src="race10.png" alt="Quantum Entities">
+                                <img src="./images/planet1.png" alt="Quantum Entities">
                                 <h4>Quantum Entities</h4>
                                 <p>Phase through enemy attacks, instant warp capabilities</p>
                                 <div class="price">$4.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseRace('race_titan')">
-                                <img src="race11.png" alt="Titan Lords">
+                                <img src="./images/planet2.png" alt="Titan Lords">
                                 <h4>Titan Lords</h4>
                                 <p>Massive ships, extreme durability, area damage</p>
                                 <div class="price">$4.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseRace('race_shadow')">
-                                <img src="race12.png" alt="Shadow Realm">
+                                <img src="./images/planet3.png" alt="Shadow Realm">
                                 <h4>Shadow Realm</h4>
                                 <p>Cloaking technology, sabotage abilities, stealth attacks</p>
                                 <div class="price">$4.99</div>
@@ -79,25 +79,25 @@ const Shop = (function() {
                         <h3>Premium Crystals</h3>
                         <div class="shop-items">
                             <div class="shop-item" onclick="Shop.purchaseCrystals('crystals_500')">
-                                <img src="crystal.png" alt="500 Crystals">
+                                <img src="./images/crystal.png" alt="500 Crystals">
                                 <h4>500 Crystals</h4>
                                 <div class="price">$4.99</div>
                             </div>
                             <div class="shop-item popular" onclick="Shop.purchaseCrystals('crystals_1200')">
                                 <div class="popular-badge">BEST VALUE</div>
-                                <img src="crystal.png" alt="1200 Crystals">
+                                <img src="./images/crystal.png" alt="1200 Crystals">
                                 <h4>1200 Crystals</h4>
                                 <p class="bonus">+200 Bonus!</p>
                                 <div class="price">$9.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseCrystals('crystals_2500')">
-                                <img src="crystal.png" alt="2500 Crystals">
+                                <img src="./images/crystal.png" alt="2500 Crystals">
                                 <h4>2500 Crystals</h4>
                                 <p class="bonus">+500 Bonus!</p>
                                 <div class="price">$19.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseCrystals('crystals_6500')">
-                                <img src="crystal.png" alt="6500 Crystals">
+                                <img src="./images/crystal.png" alt="6500 Crystals">
                                 <h4>6500 Crystals</h4>
                                 <p class="bonus">+1500 Bonus!</p>
                                 <div class="price">$49.99</div>
@@ -109,7 +109,7 @@ const Shop = (function() {
                         <h3>VIP Membership</h3>
                         <div class="shop-items">
                             <div class="shop-item" onclick="Shop.purchaseVIP('vip_bronze')">
-                                <img src="vip_bronze.png" alt="Bronze VIP">
+                                <img src="./images/metal.png" alt="Bronze VIP">
                                 <h4>Bronze VIP</h4>
                                 <ul>
                                     <li>10% Resource Bonus</li>
@@ -121,7 +121,7 @@ const Shop = (function() {
                             </div>
                             <div class="shop-item popular" onclick="Shop.purchaseVIP('vip_silver')">
                                 <div class="popular-badge">RECOMMENDED</div>
-                                <img src="vip_silver.png" alt="Silver VIP">
+                                <img src="./images/crystal.png" alt="Silver VIP">
                                 <h4>Silver VIP</h4>
                                 <ul>
                                     <li>20% Resource Bonus</li>
@@ -133,7 +133,7 @@ const Shop = (function() {
                                 <div class="price">$9.99/month</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseVIP('vip_gold')">
-                                <img src="vip_gold.png" alt="Gold VIP">
+                                <img src="./images/buygold.jpg" alt="Gold VIP">
                                 <h4>Gold VIP</h4>
                                 <ul>
                                     <li>30% Resource Bonus</li>
@@ -152,19 +152,19 @@ const Shop = (function() {
                         <h3>Boosters</h3>
                         <div class="shop-items">
                             <div class="shop-item" onclick="Shop.purchaseBooster('booster_resource')">
-                                <img src="booster_resource.png" alt="Resource Booster">
+                                <img src="./images/resources.png" alt="Resource Booster">
                                 <h4>Resource Booster</h4>
                                 <p>2x Resource Generation for 7 days</p>
                                 <div class="price">$2.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseBooster('booster_research')">
-                                <img src="booster_research.png" alt="Research Booster">
+                                <img src="./images/research.png" alt="Research Booster">
                                 <h4>Research Booster</h4>
                                 <p>2x Research Speed for 7 days</p>
                                 <div class="price">$2.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseBooster('booster_build')">
-                                <img src="booster_build.png" alt="Speed Build">
+                                <img src="./images/base.png" alt="Speed Build">
                                 <h4>Speed Build</h4>
                                 <p>2x Build Speed for 3 days</p>
                                 <div class="price">$1.99</div>
@@ -176,19 +176,19 @@ const Shop = (function() {
                         <h3>Cosmetics</h3>
                         <div class="shop-items">
                             <div class="shop-item" onclick="Shop.purchaseCosmetic('skin_pack_neon')">
-                                <img src="skin_neon.png" alt="Neon Skins">
+                                <img src="./images/ship1.png" alt="Neon Skins">
                                 <h4>Neon Ship Skins</h4>
                                 <p>3 Vibrant neon ship skins</p>
                                 <div class="price">$6.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseCosmetic('avatar_pack_legendary')">
-                                <img src="avatar_legendary.png" alt="Legendary Avatars">
+                                <img src="./images/avatar1.jpg" alt="Legendary Avatars">
                                 <h4>Legendary Avatars</h4>
                                 <p>3 Epic avatar designs</p>
                                 <div class="price">$4.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseBattlePass()">
-                                <img src="battle_pass.png" alt="Battle Pass">
+                                <img src="./images/playerstats.jpg" alt="Battle Pass">
                                 <h4>Galactic Battle Pass</h4>
                                 <p>50 tiers of exclusive rewards!</p>
                                 <div class="price">$9.99</div>
@@ -200,37 +200,37 @@ const Shop = (function() {
                         <h3>Crystal Shop</h3>
                         <div class="shop-items">
                             <div class="shop-item" onclick="Shop.spendCrystals('crystal_race_unlock')">
-                                <img src="race_unlock.png" alt="Race Unlock">
+                                <img src="./images/planet4.png" alt="Race Unlock">
                                 <h4>Unlock Any Race</h4>
                                 <p>Unlock any non-premium race instantly</p>
                                 <div class="crystal-price">1000 Crystals</div>
                             </div>
                             <div class="shop-item" onclick="Shop.spendCrystals('crystal_instant_build')">
-                                <img src="instant_build.png" alt="Instant Build">
+                                <img src="./images/base1.png" alt="Instant Build">
                                 <h4>Instant Build</h4>
                                 <p>Complete current building instantly</p>
                                 <div class="crystal-price">50 Crystals</div>
                             </div>
                             <div class="shop-item" onclick="Shop.spendCrystals('crystal_instant_research')">
-                                <img src="instant_research.png" alt="Instant Research">
+                                <img src="./images/research.png" alt="Instant Research">
                                 <h4>Instant Research</h4>
                                 <p>Complete current research instantly</p>
                                 <div class="crystal-price">100 Crystals</div>
                             </div>
                             <div class="shop-item" onclick="Shop.spendCrystals('crystal_resources_small')">
-                                <img src="resources.png" alt="Resources">
+                                <img src="./images/resources.png" alt="Resources">
                                 <h4>Resource Pack (Small)</h4>
                                 <p>5k Metal, 5k Crystal, 2.5k Research</p>
                                 <div class="crystal-price">200 Crystals</div>
                             </div>
                             <div class="shop-item" onclick="Shop.spendCrystals('crystal_resources_large')">
-                                <img src="resources.png" alt="Resources">
+                                <img src="./images/resources.png" alt="Resources">
                                 <h4>Resource Pack (Large)</h4>
                                 <p>25k Metal, 25k Crystal, 12.5k Research</p>
                                 <div class="crystal-price">800 Crystals</div>
                             </div>
                             <div class="shop-item" onclick="Shop.spendCrystals('crystal_fleet_slot')">
-                                <img src="fleet_slot.png" alt="Fleet Slot">
+                                <img src="./images/ship5.png" alt="Fleet Slot">
                                 <h4>Extra Fleet Slot</h4>
                                 <p>Permanently increase fleet capacity</p>
                                 <div class="crystal-price">500 Crystals</div>

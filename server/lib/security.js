@@ -151,10 +151,14 @@ function generateToken(length = 32) {
 
 // Generate session token with expiry
 function generateSessionToken(userId) {
+    if (!process.env.SESSION_SECRET) {
+        throw new Error('SESSION_SECRET environment variable is not set');
+    }
+    
     const token = generateToken(32);
     const expiry = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
     const signature = crypto
-        .createHmac('sha256', process.env.SESSION_SECRET || 'default-secret')
+        .createHmac('sha256', process.env.SESSION_SECRET)
         .update(`${token}:${userId}:${expiry}`)
         .digest('hex');
     
@@ -168,6 +172,10 @@ function generateSessionToken(userId) {
 
 // Verify session token
 function verifySessionToken(fullToken, userId) {
+    if (!process.env.SESSION_SECRET) {
+        throw new Error('SESSION_SECRET environment variable is not set');
+    }
+    
     const parts = fullToken.split(':');
     if (parts.length !== 3) return false;
     
@@ -178,7 +186,7 @@ function verifySessionToken(fullToken, userId) {
     
     // Verify signature
     const expectedSignature = crypto
-        .createHmac('sha256', process.env.SESSION_SECRET || 'default-secret')
+        .createHmac('sha256', process.env.SESSION_SECRET)
         .update(`${token}:${userId}:${expiry}`)
         .digest('hex');
     
@@ -272,8 +280,12 @@ function isValidIP(ip) {
 
 // Generate CSRF token
 function generateCSRFToken(sessionId) {
+    if (!process.env.CSRF_SECRET) {
+        throw new Error('CSRF_SECRET environment variable is not set');
+    }
+    
     return crypto
-        .createHmac('sha256', process.env.CSRF_SECRET || 'csrf-secret')
+        .createHmac('sha256', process.env.CSRF_SECRET)
         .update(sessionId)
         .digest('hex');
 }

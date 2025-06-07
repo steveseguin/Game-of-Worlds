@@ -21,9 +21,9 @@ const MiniMap = (function() {
         
         container.innerHTML = '';
         
-        let id = 1;
-        for (let x = 0; x < width; x++) {
-            for (let y = 0; y < height; y++) {
+        let id = 0;
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
                 createHexTile(container, id, x, y);
                 id++;
             }
@@ -37,9 +37,11 @@ const MiniMap = (function() {
         tile.id = 'tileholder' + id;
         tile.className = 'hex-tile';
         
-        // Position with even/odd row offset
-        const yPos = y * 42 + (x % 2 === 0 ? 21 : 0);
-        const xPos = x * 35 + 2;
+        // Position with even/odd row offset for proper hexagon layout
+        const hexWidth = 35;
+        const hexHeight = 40;
+        const yPos = y * hexHeight + (x % 2 === 0 ? hexHeight/2 : 0);
+        const xPos = x * hexWidth + 2;
         
         tile.style.position = 'absolute';
         tile.style.left = xPos + 'px';
@@ -95,11 +97,17 @@ const MiniMap = (function() {
         });
         
         hex.addEventListener('mouseout', function() {
-            this.setAttribute("fill", "#DDDDDD");
+            // Restore original color based on current state
+            const originalFill = this.getAttribute('data-original-fill') || "#DDDDDD";
+            this.setAttribute("fill", originalFill);
         });
         
         hex.addEventListener('click', function() {
-            changeSector(id);
+            if (typeof changeSector === 'function') {
+                changeSector(id);
+            } else if (window.GameUI && typeof window.GameUI.changeSector === 'function') {
+                window.GameUI.changeSector(id);
+            }
         });
         
         svg.appendChild(hex);
@@ -163,6 +171,7 @@ const MiniMap = (function() {
         
         elem.hex.setAttribute("fill", fillColor);
         elem.hex.setAttribute("stroke", strokeColor);
+        elem.hex.setAttribute("data-original-fill", fillColor);
         
         // Update fleet size
         if (fleetSize && fleetSize > 0) {

@@ -271,7 +271,7 @@ function updateSectorInfo(message) {
     // Update sector image if available
     const sectorImage = document.getElementById('sectorimg');
     if (sectorImage) {
-        sectorImage.style.backgroundImage = `url(type${sectorData.type}.gif)`;
+        sectorImage.style.backgroundImage = `url(./images/type${sectorData.type}.gif)`;
     }
 }
 
@@ -502,7 +502,7 @@ function createBattleVisualization(message) {
     battleDiv.style.height = '80%';
     battleDiv.style.top = '10%';
     battleDiv.style.background = '#000';
-    battleDiv.style.backgroundImage = 'url(spacebak.jpg)';
+    battleDiv.style.backgroundImage = 'url(./images/spacebak.jpg)';
     battleDiv.style.zIndex = '1000';
     document.body.appendChild(battleDiv);
     
@@ -562,7 +562,7 @@ function createBattleVisualization(message) {
         groundImg.style.left = '0%';
         groundImg.style.top = '10%';
         groundImg.style.height = '90%';
-        groundImg.src = 'ground.gif';
+        groundImg.src = './images/ground.gif';
         battleDiv.appendChild(groundImg);
         
         const baseImg = document.createElement('img');
@@ -570,7 +570,7 @@ function createBattleVisualization(message) {
         baseImg.style.position = 'absolute';
         baseImg.style.left = '15%';
         baseImg.style.top = '60%';
-        baseImg.src = 'base.png';
+        baseImg.src = './images/base.png';
         battleDiv.appendChild(baseImg);
     }
     
@@ -603,7 +603,7 @@ function createShipImage(container, id, side, shipType) {
     }
     
     img.style.top = Math.round(Math.random() * 60 + 20) + '%';
-    img.src = 'ship' + shipType + '.png';
+    img.src = './images/ship' + shipType + '.gif';
     container.appendChild(img);
 }
 
@@ -633,7 +633,7 @@ function animateBattleRound(battleData, round, container) {
                 setTimeout(() => {
                     const ship = document.getElementById(shipId);
                     if (ship) {
-                        ship.src = 'boom.gif';
+                        ship.src = './images/boom.gif';
                     }
                 }, Math.random() * 2000);
             }

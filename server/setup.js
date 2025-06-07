@@ -257,6 +257,7 @@ function createNewGame() {
                         totship8coming INT DEFAULT 0,
                         totship9coming INT DEFAULT 0,
                         FOREIGN KEY (ownerid) REFERENCES users(id)
+
                     )
                 `, err => {
                     if (err) {
@@ -330,15 +331,81 @@ function createNewGame() {
                                 
                                 console.log(`Buildings table for game ${gameId} created`);
                                 
-                                // All tables created successfully
-                                console.log(`\nAll tables for game ${gameId} created successfully!`);
-                                console.log('\nNext steps:');
-                                console.log('1. Have players register accounts');
-                                console.log('2. Players can join this game using the game ID');
-                                console.log('3. Once all players have joined, the creator can start the game');
-                                
-                                rl.close();
-                                connection.end();
+                                // Create diplomacy table for this game
+                                connection.query(`
+                                    CREATE TABLE diplomacy${gameId} (
+                                        id INT AUTO_INCREMENT PRIMARY KEY,
+                                        player1_id INT NOT NULL,
+                                        player2_id INT NOT NULL,
+                                        status VARCHAR(32) DEFAULT 'neutral',
+                                        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                        updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                        FOREIGN KEY (player1_id) REFERENCES users(id),
+                                        FOREIGN KEY (player2_id) REFERENCES users(id),
+                                        UNIQUE KEY unique_relationship (player1_id, player2_id)
+                                    )
+                                `, err => {
+                                    if (err) {
+                                        console.error(`Error creating diplomacy${gameId} table:`, err);
+                                        rl.close();
+                                        connection.end();
+                                        return;
+                                    }
+                                    
+                                    console.log(`Diplomacy table for game ${gameId} created`);
+                                    
+                                    // Create wonders table for this game
+                                    connection.query(`
+                                        CREATE TABLE wonders${gameId} (
+                                            id INT AUTO_INCREMENT PRIMARY KEY,
+                                            owner_id INT NOT NULL,
+                                            wonder_type VARCHAR(64) NOT NULL,
+                                            level INT DEFAULT 1,
+                                            sector_id INT NOT NULL,
+                                            completed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                            FOREIGN KEY (owner_id) REFERENCES users(id)
+                                        )
+                                    `, err => {
+                                        if (err) {
+                                            console.error(`Error creating wonders${gameId} table:`, err);
+                                            rl.close();
+                                            connection.end();
+                                            return;
+                                        }
+                                        
+                                        console.log(`Wonders table for game ${gameId} created`);
+                                        
+                                        // Create game_snapshots table for this game
+                                        connection.query(`
+                                            CREATE TABLE game_snapshots${gameId} (
+                                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                                turn INT NOT NULL,
+                                                snapshot_data JSON,
+                                                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                                INDEX idx_turn (turn)
+                                            )
+                                        `, err => {
+                                            if (err) {
+                                                console.error(`Error creating game_snapshots${gameId} table:`, err);
+                                                rl.close();
+                                                connection.end();
+                                                return;
+                                            }
+                                            
+                                            console.log(`Game snapshots table for game ${gameId} created`);
+                                            
+                                            // All tables created successfully
+                                            console.log(`\nAll tables for game ${gameId} created successfully!`);
+                                            console.log('\nNext steps:');
+                                            console.log('1. Have players register accounts');
+                                            console.log('2. Players can join this game using the game ID');
+                                            console.log('3. Once all players have joined, the creator can start the game');
+                                            
+                                            rl.close();
+                                            connection.end();
+                                        });
+                                    });
+                                });
                             });
                         });
                     });
