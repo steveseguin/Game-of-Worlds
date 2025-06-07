@@ -364,6 +364,13 @@ class DiplomacyManager {
     // Transfer resources between players
     transferResources(fromPlayer, toPlayer, resourceType, amount) {
         return new Promise((resolve, reject) => {
+            // Whitelist validation for resourceType
+            const allowedResourceTypes = ['metal', 'crystal', 'research'];
+            if (!allowedResourceTypes.includes(resourceType)) {
+                reject(new Error('Invalid resource type'));
+                return;
+            }
+
             this.db.beginTransaction((err) => {
                 if (err) {
                     reject(err);
