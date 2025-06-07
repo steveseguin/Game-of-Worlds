@@ -45,7 +45,7 @@ Game-of-Worlds/
 │       ├── tech.js     # Technology tree
 │       └── victory.js  # Victory conditions
 ├── public/             # Client-side files
-│   ├── index.html     # Landing page
+│   ├── landing.html   # Landing page
 │   ├── game.html      # Main game interface
 │   ├── js/            # Client JavaScript
 │   ├── css/           # Stylesheets
