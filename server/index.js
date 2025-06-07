@@ -132,7 +132,7 @@ const httpServer = http.createServer((request, response) => {
     
     // Default to index.html for root path
     if (pathname === '/') {
-        pathname = '/login.html';
+      pathname = '/landing.html';
     }
     
     // Protected pages that require authentication
