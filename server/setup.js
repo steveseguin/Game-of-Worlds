@@ -257,6 +257,7 @@ function createNewGame() {
                         totship8coming INT DEFAULT 0,
                         totship9coming INT DEFAULT 0,
                         FOREIGN KEY (ownerid) REFERENCES users(id)
+
                     )
                 `, err => {
                     if (err) {
