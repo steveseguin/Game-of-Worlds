@@ -10,9 +10,9 @@
 <body>
     <!-- Resource Bar -->
     <div id="resourceBar">
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="js/resources.png" style="position:relative;left:-25px;" alt="Metal"/></div><span id="metalresource"> 0 Metal,</span>
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="js/resources.png" style="position:relative;left:0;" alt="Crystal"/></div><span id="crystalresource"> 0 Crystal,</span>
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="js/resources.png" style="position:relative;left:-50px;" alt="Research"/></div><span id="researchresource"> 0 Research</span>
+        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:-25px;" alt="Metal"/></div><span id="metalresource"> 0 Metal,</span>
+        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:0;" alt="Crystal"/></div><span id="crystalresource"> 0 Crystal,</span>
+        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:-50px;" alt="Research"/></div><span id="researchresource"> 0 Research</span>
     </div>
     
     <!-- Turn Time Bar -->
@@ -84,7 +84,7 @@
         <button style="position:absolute;right:1px;top:15px;width:25px;height:40px;" id="chatHistoryUp"><h1>^</h1></button>
         <button style="position:absolute;right:1px;top:75px;width:25px;height:40px;" id="chatHistoryDown"><h2>v</h2></button>
         <div id="empireupdates">
-            <img style="position:absolute;right:-15px;top:15px;" src="js/bubblebox.png" />
+            <img style="position:absolute;right:-15px;top:15px;" src="./images/bubblebox.png" />
             <font color="black" size="2">
                 <p id="log">
                     Welcome to Galaxy Conquest, Emperor. <br />The game is yet to begin. Please wait for all intended players to join before clicking 'Game Start'.
@@ -92,10 +92,10 @@
             </font>
             <font color="#555" size="1"><i><p id="timeSince" style="position:absolute;right:25px;bottom:-8px;">Have Fun!</p></i></font>
         </div>
-        <img style="z-index:-1;position:absolute;right:37px;top:0px;" src="js/avatar1.jpg" />
-        <img style="z-index:-1;position:absolute;right:0;top:126px;width:525px;height:59px;" src="js/topofmap.png" />
-        <img style="z-index:-1;position:absolute;right:500px;top:184px;width:40px;" src="js/mapleftside.png" />
-        <img style="z-index:-1;position:absolute;right:40px;top:140px;" src="js/waveform.gif" />
+        <img style="z-index:-1;position:absolute;right:37px;top:0px;" src="./images/avatar1.jpg" />
+        <img style="z-index:-1;position:absolute;right:0;top:126px;width:525px;height:59px;" src="./images/topofmap.png" />
+        <img style="z-index:-1;position:absolute;right:500px;top:184px;width:40px;" src="./images/mapleftside.png" />
+        <img style="z-index:-1;position:absolute;right:40px;top:140px;" src="./images/waveform.gif" />
     </div>
     
     <!-- Control Pad -->
@@ -162,6 +162,26 @@
     <script src="js/ui.js"></script>
     <script src="js/minimap.js"></script>
     <script src="js/chat.js"></script>
+    <script>
+        // Authentication check for static hosting
+        (function() {
+            // Check if user has authentication cookies
+            function getCookie(name) {
+                const value = `; ${document.cookie}`;
+                const parts = value.split(`; ${name}=`);
+                if (parts.length === 2) return parts.pop().split(';').shift();
+                return null;
+            }
+            
+            const userId = getCookie('userId');
+            const tempKey = getCookie('tempKey');
+            
+            // If no authentication cookies, redirect to login
+            if (!userId || !tempKey) {
+                window.location.href = '/login.html';
+            }
+        })();
+    </script>
     <script src="js/battle.js"></script>
     <script src="js/controlpad.js"></script>
     <script src="js/connect.js"></script>
