@@ -22,6 +22,9 @@ function parseDbPort(value) {
 }
 
 const databaseName = process.env.DB_NAME || 'game';
+const autoConfirm = (process.env.SETUP_AUTO_CONFIRM || '').trim().toLowerCase();
+const autoCreateGame = ['y', 'yes', 'create'].includes(autoConfirm);
+const autoSkipPrompt = !autoCreateGame && ['n', 'no', 'skip'].includes(autoConfirm);
 
 // Configuration
 const config = {
@@ -96,6 +99,27 @@ function ensureReferralSchema(conn, callback) {
                 ensureUniqueKey(conn, 'users', 'users_referral_code_unique', 'referral_code', callback);
             });
         });
+    });
+}
+
+function finalizeSetup() {
+    if (autoCreateGame) {
+        createNewGame();
+        return;
+    }
+    if (autoSkipPrompt) {
+        rl.close();
+        connection.end();
+        return;
+    }
+    rl.question('Do you want to create a new game? (y/n): ', answer => {
+        const normalized = answer.trim().toLowerCase();
+        if (normalized === 'y' || normalized === 'yes') {
+            createNewGame();
+        } else {
+            rl.close();
+            connection.end();
+        }
     });
 }
 
@@ -246,15 +270,7 @@ connection.connect(err => {
                                     
                                     console.log('All tables created successfully!');
                                     
-                                    // Ask if user wants to create a new game
-                                    rl.question('Do you want to create a new game? (y/n): ', answer => {
-                                        if (answer.toLowerCase() === 'y') {
-                                            createNewGame();
-                                        } else {
-                                            rl.close();
-                                            connection.end();
-                                        }
-                                    });
+                                    finalizeSetup();
                                 });
                             });
                         });
