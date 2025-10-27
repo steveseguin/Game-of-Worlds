@@ -11,16 +11,22 @@ const crypto = require('crypto');
 const REQUIRED_ENV_VARS = {
     // Security-critical variables (no defaults allowed)
     SESSION_SECRET: {
-        required: true,
+        required: false,
+        requiredInProduction: true,
         minLength: 32,
         description: 'Session secret for signing cookies',
-        example: 'Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
+        example: 'Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+        generateIfMissing: () => crypto.randomBytes(32).toString('hex'),
+        sensitive: true
     },
     CSRF_SECRET: {
-        required: true,
+        required: false,
+        requiredInProduction: true,
         minLength: 32,
         description: 'CSRF token secret',
-        example: 'Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
+        example: 'Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+        generateIfMissing: () => crypto.randomBytes(32).toString('hex'),
+        sensitive: true
     },
     
     // Database configuration
@@ -35,9 +41,17 @@ const REQUIRED_ENV_VARS = {
         description: 'Database user'
     },
     DB_PASSWORD: {
-        required: true,
+        required: false,
+        requiredInProduction: true,
+        default: '',
         description: 'Database password',
         sensitive: true
+    },
+    DB_PORT: {
+        required: false,
+        default: '3306',
+        pattern: /^\d{1,5}$/,
+        description: 'Database port'
     },
     DB_NAME: {
         required: false,
@@ -78,13 +92,15 @@ const REQUIRED_ENV_VARS = {
 function validateEnvironment() {
     const errors = [];
     const warnings = [];
+    const isProduction = process.env.NODE_ENV === 'production';
     
     // Check each required variable
     for (const [varName, config] of Object.entries(REQUIRED_ENV_VARS)) {
-        const value = process.env[varName];
+        let value = process.env[varName];
+        const isRequired = config.required || (isProduction && config.requiredInProduction);
         
         // Check if required variable is missing
-        if (config.required && !value) {
+        if (isRequired && !value) {
             errors.push(`Missing required environment variable: ${varName}`);
             errors.push(`  Description: ${config.description}`);
             if (config.example) {
@@ -95,13 +111,22 @@ function validateEnvironment() {
         }
         
         // Apply default if not required and missing
-        if (!config.required && !value && config.default) {
+        if (!isRequired && !value && Object.prototype.hasOwnProperty.call(config, 'default')) {
             process.env[varName] = config.default;
+            value = process.env[varName];
             continue;
         }
         
-        // Skip validation if optional and not provided
-        if (!config.required && !value) {
+        // Generate development secrets when available
+        if (!isProduction && !value && typeof config.generateIfMissing === 'function') {
+            const generated = config.generateIfMissing();
+            process.env[varName] = generated;
+            value = generated;
+            warnings.push(`${varName} was not set. Generated a temporary development value.`);
+        }
+        
+        // Skip validation if optional and still not provided
+        if (!value) {
             continue;
         }
         

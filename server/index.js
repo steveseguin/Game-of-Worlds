@@ -33,42 +33,89 @@ const { gameState } = serverLogic;
 const { clients, clientMap, gameTimer, turns, activeGames } = gameState;
 
 // Configuration
+function parseDbPort(value) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : 3306;
+}
+
 const PORT = process.env.PORT || 1337;
 const DB_CONFIG = {
     host: process.env.DB_HOST || '127.0.0.1',
+    port: parseDbPort(process.env.DB_PORT),
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'game'
 };
 
+// Basic offline DB shim to avoid crashes while reconnecting
+function createOfflineDb() {
+    return {
+        isOffline: true,
+        query(query, params, callback) {
+            const cb = typeof params === 'function' ? params : callback;
+            if (typeof cb === 'function') {
+                const err = new Error('Database connection is not available');
+                err.code = 'DB_OFFLINE';
+                process.nextTick(() => cb(err));
+            }
+        }
+    };
+}
+
+let db = createOfflineDb();
+let reconnectTimer = null;
+serverLogic.setDatabase(db);
+
+function scheduleReconnect() {
+    if (reconnectTimer) {
+        return;
+    }
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectToDatabase();
+    }, 5000);
+}
+
+function setActiveDatabase(connection) {
+    connection.isOffline = false;
+    db = connection;
+    serverLogic.setDatabase(connection);
+}
+
+function setOfflineDatabase() {
+    const offlineDb = createOfflineDb();
+    db = offlineDb;
+    serverLogic.setDatabase(offlineDb);
+}
+
 function connectToDatabase() {
-    const db = mysql2.createConnection(DB_CONFIG);
+    const connection = mysql2.createConnection(DB_CONFIG);
     
-    db.connect(err => {
+    connection.connect(err => {
         if (err) {
-            console.error('Error connecting to database:', err);
-            setTimeout(connectToDatabase, 5000); // Try to reconnect after 5 seconds
+            console.error('Error connecting to database:', err.message || err);
+            connection.destroy();
+            setOfflineDatabase();
+            scheduleReconnect();
             return;
         }
         console.log('Connected to database');
+        setActiveDatabase(connection);
     });
     
-    db.on('error', err => {
+    connection.on('error', err => {
         console.error('Database error:', err);
-        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-            connectToDatabase();
+        if (err.code === 'PROTOCOL_CONNECTION_LOST' || err.fatal) {
+            connection.destroy();
+            setOfflineDatabase();
+            scheduleReconnect();
         } else {
             throw err;
         }
     });
-    
-    return db;
 }
 
-const db = connectToDatabase();
-
-// Set database connection in server module
-serverLogic.setDatabase(db);
+connectToDatabase();
 
 // Create HTTP server
 const httpServer = http.createServer((request, response) => {

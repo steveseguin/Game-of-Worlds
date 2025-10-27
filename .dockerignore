@@ -1,0 +1,6 @@
+.git
+.github
+node_modules
+npm-debug.log
+mysql_data
+.env

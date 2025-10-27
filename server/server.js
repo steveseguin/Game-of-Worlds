@@ -39,15 +39,23 @@ let db = null;
 let paymentManager = null;
 let paymentEndpoints = null;
 
+// Expose game state for other modules that rely on it
+global.gameState = gameState;
+
 // Set the database connection
 function setDatabase(database) {
     db = database;
+    
+    if (!database || database.isOffline) {
+        paymentManager = null;
+        paymentEndpoints = null;
+        return;
+    }
+    
     // Initialize payment manager with database
     paymentManager = new PaymentManager(db);
     // Initialize payment endpoints
     paymentEndpoints = new PaymentEndpoints(paymentManager, db);
-    // Set global gameState for payment notifications
-    global.gameState = gameState;
 }
 
 // Authentication functions
