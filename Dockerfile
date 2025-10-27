@@ -10,6 +10,5 @@ RUN npm install --omit=dev
 COPY . .
 
 # Expose the default port; Railway will override with $PORT
-EXPOSE 1337
-
-CMD ["npm", "start"]
+# Automatically run database setup before starting the server
+CMD ["bash", "-lc", "SETUP_AUTO_CONFIRM=n node server/setup.js && npm start"]
