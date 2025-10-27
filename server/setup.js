@@ -16,12 +16,88 @@ require('dotenv').config();
 const mysql2 = require('mysql2');
 const readline = require('readline');
 
+function parseDbPort(value) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : 3306;
+}
+
+const databaseName = process.env.DB_NAME || 'game';
+
 // Configuration
 const config = {
     host: process.env.DB_HOST || '127.0.0.1',
+    port: parseDbPort(process.env.DB_PORT),
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || ''
 };
+
+const escapedDbName = mysql2.escapeId(databaseName);
+
+function ensureColumn(conn, table, column, definition, callback) {
+    conn.query('SHOW COLUMNS FROM ?? LIKE ?', [table, column], (err, results) => {
+        if (err) {
+            return callback(err);
+        }
+        if (results.length > 0) {
+            return callback();
+        }
+        const sql = `ALTER TABLE ${mysql2.escapeId(table)} ADD COLUMN ${mysql2.escapeId(column)} ${definition}`;
+        conn.query(sql, callback);
+    });
+}
+
+function ensureUniqueKey(conn, table, indexName, column, callback) {
+    conn.query('SHOW INDEX FROM ?? WHERE Column_name = ?', [table, column], (err, results) => {
+        if (err) {
+            return callback(err);
+        }
+        const hasUnique = results.some(row => row.Non_unique === 0);
+        if (hasUnique) {
+            return callback();
+        }
+        const sql = `ALTER TABLE ${mysql2.escapeId(table)} ADD CONSTRAINT ${mysql2.escapeId(indexName)} UNIQUE (${mysql2.escapeId(column)})`;
+        conn.query(sql, callback);
+    });
+}
+
+function ensureForeignKey(conn, table, constraintName, column, referencedTable, referencedColumn, options, callback) {
+    const opts = options || {};
+    conn.query(
+        `SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = ? AND REFERENCED_COLUMN_NAME = ?`,
+        [databaseName, table, column, referencedTable, referencedColumn],
+        (err, results) => {
+            if (err) {
+                return callback(err);
+            }
+            if (results.length > 0) {
+                return callback();
+            }
+            const onDelete = opts.onDelete ? ` ON DELETE ${opts.onDelete}` : '';
+            const onUpdate = opts.onUpdate ? ` ON UPDATE ${opts.onUpdate}` : '';
+            const sql = `ALTER TABLE ${mysql2.escapeId(table)} ADD CONSTRAINT ${mysql2.escapeId(constraintName)} FOREIGN KEY (${mysql2.escapeId(column)}) REFERENCES ${mysql2.escapeId(referencedTable)} (${mysql2.escapeId(referencedColumn)})${onDelete}${onUpdate}`;
+            conn.query(sql, callback);
+        }
+    );
+}
+
+function ensureReferralSchema(conn, callback) {
+    ensureColumn(conn, 'users', 'referred_by', 'INT DEFAULT NULL', err => {
+        if (err) {
+            return callback(err);
+        }
+        ensureForeignKey(conn, 'users', 'fk_users_referred_by', 'referred_by', 'users', 'id', { onDelete: 'SET NULL' }, err => {
+            if (err) {
+                return callback(err);
+            }
+            ensureColumn(conn, 'users', 'referral_code', 'VARCHAR(32)', err => {
+                if (err) {
+                    return callback(err);
+                }
+                ensureUniqueKey(conn, 'users', 'users_referral_code_unique', 'referral_code', callback);
+            });
+        });
+    });
+}
 
 // Create readline interface
 const rl = readline.createInterface({
@@ -40,9 +116,10 @@ connection.connect(err => {
     }
     
     console.log('Connected to MySQL');
+    console.log(`Using database ${databaseName}`);
     
     // Create database
-    connection.query('CREATE DATABASE IF NOT EXISTS game', err => {
+    connection.query(`CREATE DATABASE IF NOT EXISTS ${escapedDbName}`, err => {
         if (err) {
             console.error('Error creating database:', err);
             process.exit(1);
@@ -51,7 +128,7 @@ connection.connect(err => {
         console.log('Database created or already exists');
         
         // Use the database
-        connection.query('USE game', err => {
+        connection.query(`USE ${escapedDbName}`, err => {
             if (err) {
                 console.error('Error selecting database:', err);
                 process.exit(1);
@@ -161,14 +238,9 @@ connection.connect(err => {
                                 }
                                 
                                 // Add referral tracking to users table
-                                connection.query(`
-                                    ALTER TABLE users 
-                                    ADD COLUMN IF NOT EXISTS referred_by INT DEFAULT NULL,
-                                    ADD COLUMN IF NOT EXISTS referral_code VARCHAR(32) UNIQUE,
-                                    ADD FOREIGN KEY (referred_by) REFERENCES users(id)
-                                `, err => {
-                                    if (err && !err.message.includes('Duplicate column name')) {
-                                        console.error('Error adding referral columns:', err);
+                                ensureReferralSchema(connection, err => {
+                                    if (err) {
+                                        console.error('Error configuring referral columns:', err);
                                         process.exit(1);
                                     }
                                     
