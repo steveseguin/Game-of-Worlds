@@ -259,7 +259,7 @@ function serveFile(pathname, response) {
         response.writeHead(200, {'Content-Type': contentType});
         response.end(data);
     });
-});
+}
 
 // Start HTTP server
 httpServer.listen(PORT, () => {
