@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="crystalGradient" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#2f3a88"/>
+      <stop offset="100%" stop-color="#7be8ff"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="56" fill="#0d1c35" stroke="#8deaff" stroke-width="4"/>
+  <g fill="url(#crystalGradient)" stroke="#d5faff" stroke-width="3" stroke-linejoin="round">
+    <path d="M60 18l20 30-12 40H52L40 48z"/>
+    <path d="M40 48l-12 24 18 16z" opacity="0.8"/>
+    <path d="M80 48l12 24-18 16z" opacity="0.8"/>
+    <path d="M60 18l-8 30 8 12 8-12z" opacity="0.9"/>
+  </g>
+  <circle cx="60" cy="60" r="6" fill="#ffffff" opacity="0.9"/>
+</svg>

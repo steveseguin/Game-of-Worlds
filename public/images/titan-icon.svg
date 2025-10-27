@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="titanGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#422f21"/>
+      <stop offset="100%" stop-color="#c08a45"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="56" fill="#1d140c" stroke="#e6ba73" stroke-width="4"/>
+  <path d="M44 26l12 12-20 52-12-12z" fill="url(#titanGradient)" stroke="#f4d9aa" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M76 26l20 52-12 12-20-52z" fill="url(#titanGradient)" stroke="#f4d9aa" stroke-width="4" stroke-linejoin="round"/>
+  <rect x="50" y="46" width="20" height="48" rx="6" fill="#f4d9aa" opacity="0.9"/>
+  <path d="M50 58h20" stroke="#a06c2a" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="60" cy="40" r="10" fill="#ffe3b0" stroke="#a06c2a" stroke-width="4"/>
+</svg>

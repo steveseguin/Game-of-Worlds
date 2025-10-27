@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="zephyrGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a3c1f"/>
+      <stop offset="100%" stop-color="#59d06b"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="56" fill="url(#zephyrGradient)" stroke="#bdf8c7" stroke-width="4"/>
+  <path d="M30 70c15-10 30-10 45 0s30 10 40-10" fill="none" stroke="#e4ffe9" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M22 52c12-8 26-9 38-1s28 7 38-7" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+  <path d="M28 88c10-6 24-5 34 2s22 7 30-2" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <circle cx="44" cy="58" r="5" fill="#ffffff"/>
+  <circle cx="72" cy="74" r="5" fill="#ffffff"/>
+</svg>

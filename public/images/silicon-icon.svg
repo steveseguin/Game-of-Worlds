@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="siliconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f2a58"/>
+      <stop offset="100%" stop-color="#2f87ff"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="56" fill="url(#siliconGradient)" stroke="#9cd5ff" stroke-width="4"/>
+  <g fill="none" stroke="#dff1ff" stroke-width="4" stroke-linecap="round">
+    <path d="M35 35h20v20H35zM65 35h20v20H65zM35 65h20v20H35zM65 65h20v20H65z"/>
+    <path d="M45 35V20M75 35V20M45 85v15M75 85v15M35 45H20M95 45h-15M35 75H20M95 75h-15"/>
+  </g>
+  <g fill="#9cd5ff">
+    <circle cx="20" cy="45" r="4"/>
+    <circle cx="20" cy="75" r="4"/>
+    <circle cx="100" cy="45" r="4"/>
+    <circle cx="100" cy="75" r="4"/>
+    <circle cx="45" cy="20" r="4"/>
+    <circle cx="75" cy="20" r="4"/>
+    <circle cx="45" cy="100" r="4"/>
+    <circle cx="75" cy="100" r="4"/>
+  </g>
+</svg>
