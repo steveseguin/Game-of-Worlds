@@ -226,8 +226,15 @@ const httpServer = http.createServer((request, response) => {
 
 // Helper function to serve files
 function serveFile(pathname, response) {
-    // Get the file extension
-    const ext = path.parse(pathname).ext || '.html';
+    let requestedPath = pathname;
+    if (!requestedPath || requestedPath === '/') {
+        requestedPath = '/index.html';
+    } else if (requestedPath.endsWith('/')) {
+        requestedPath = `${requestedPath}index.html`;
+    }
+
+    const normalizedPath = path.normalize(requestedPath).replace(/^(\.\.[/\\])+/, '');
+    const ext = path.parse(normalizedPath).ext || '.html';
     
     // Map file extensions to content types
     const contentTypeMap = {
@@ -245,7 +252,8 @@ function serveFile(pathname, response) {
     const contentType = contentTypeMap[ext] || 'text/plain';
     
     // Read the file from public directory
-    let filePath = path.join(__dirname, '..', 'public', pathname.substr(1));
+    const relativePath = normalizedPath.startsWith('/') ? normalizedPath.slice(1) : normalizedPath;
+    const filePath = path.join(__dirname, '..', 'public', relativePath);
     
     fs.readFile(filePath, (err, data) => {
         if (err) {
