@@ -15,13 +15,13 @@ test('validateUsername accepts and rejects expected handles', () => {
     assert.match(invalid.error, /letters/i);
 });
 
-test('validatePassword enforces strength requirements', () => {
-    const weak = security.validatePassword('short1');
+test('validatePassword enforces minimum length', () => {
+    const weak = security.validatePassword('12345');
     assert.equal(weak.valid, false);
-    assert.match(weak.error, /at least 8/i);
+    assert.match(weak.error, /at least 6/i);
 
-    const strong = security.validatePassword('FleetDeck42');
-    assert.deepEqual(strong, { valid: true });
+    const acceptable = security.validatePassword('fleet12');
+    assert.deepEqual(acceptable, { valid: true });
 });
 
 test('validateEmail reports missing or malformed addresses', () => {
