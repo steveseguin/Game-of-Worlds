@@ -32,18 +32,78 @@ const LoginSystem = (function() {
         if (loginLink) {
             loginLink.addEventListener('click', showLoginForm);
         }
+
+        const loginTab = document.getElementById('loginTab');
+        if (loginTab) {
+            loginTab.addEventListener('click', event => {
+                event.preventDefault();
+                switchPanels('login');
+            });
+        }
+
+        const registerTab = document.getElementById('registerTab');
+        if (registerTab) {
+            registerTab.addEventListener('click', event => {
+                event.preventDefault();
+                switchPanels('register');
+            });
+        }
     }
     
     function showRegisterForm(e) {
         e.preventDefault();
-        document.getElementById('loginPanel').style.display = 'none';
-        document.getElementById('registerPanel').style.display = 'block';
+        switchPanels('register');
     }
     
     function showLoginForm(e) {
         e.preventDefault();
-        document.getElementById('registerPanel').style.display = 'none';
-        document.getElementById('loginPanel').style.display = 'block';
+        switchPanels('login');
+    }
+
+    function switchPanels(panel) {
+        const loginPanel = document.getElementById('loginPanel');
+        const registerPanel = document.getElementById('registerPanel');
+        const loginTab = document.getElementById('loginTab');
+        const registerTab = document.getElementById('registerTab');
+
+        if (!loginPanel || !registerPanel || !loginTab || !registerTab) {
+            return;
+        }
+
+        const showLogin = panel === 'login';
+
+        loginPanel.classList.toggle('is-active', showLogin);
+        registerPanel.classList.toggle('is-active', !showLogin);
+
+        if (showLogin) {
+            loginPanel.removeAttribute('hidden');
+            registerPanel.setAttribute('hidden', '');
+        } else {
+            registerPanel.removeAttribute('hidden');
+            loginPanel.setAttribute('hidden', '');
+        }
+
+        loginTab.classList.toggle('is-active', showLogin);
+        registerTab.classList.toggle('is-active', !showLogin);
+
+        loginTab.setAttribute('aria-selected', showLogin ? 'true' : 'false');
+        registerTab.setAttribute('aria-selected', showLogin ? 'false' : 'true');
+
+        if (showLogin) {
+            const registerError = document.getElementById('registerError');
+            const registerSuccess = document.getElementById('registerSuccess');
+            if (registerError) {
+                registerError.textContent = '';
+            }
+            if (registerSuccess) {
+                registerSuccess.textContent = '';
+            }
+        } else {
+            const loginError = document.getElementById('loginError');
+            if (loginError) {
+                loginError.textContent = '';
+            }
+        }
     }
     
     function handleLogin(e) {

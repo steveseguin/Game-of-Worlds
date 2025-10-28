@@ -4,252 +4,131 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Galaxy Conquest - Welcome!</title>
-    <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #1a1a2e; /* Dark space blue */
-            color: #e0e0e0; /* Light grey text */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-        }
-        header {
-            background-color: #11111e; /* Even darker blue */
-            padding: 20px 0;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-        }
-        header h1 {
-            margin: 0;
-            font-size: 3em;
-            color: #ffcc00; /* Gold color for title */
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-        .container {
-            max-width: 900px;
-            margin: 20px;
-            padding: 20px;
-            background-color: rgba(40, 40, 70, 0.8); /* Semi-transparent dark purple-blue */
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.3);
-            text-align: center;
-        }
-        .artwork-placeholder {
-            width: 100%;
-            max-width: 400px; /* Adjust as needed */
-            height: 300px; /* Adjust as needed */
-            background-color: #33334c; /* Darker placeholder color */
-            border: 2px dashed #ffcc00; /* Gold dashed border */
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 20px auto;
-            border-radius: 8px;
-        }
-        .artwork-placeholder p {
-            color: #ffcc00;
-            font-style: italic;
-        }
-        .description {
-            font-size: 1.1em;
-            line-height: 1.6;
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        .features {
-            margin: 20px 0;
-            text-align: left;
-        }
-        .features h2 {
-            color: #ffaa00; /* Lighter gold/orange */
-            border-bottom: 2px solid #ffaa00;
-            padding-bottom: 5px;
-            margin-bottom: 10px;
-        }
-        .features ul {
-            list-style-type: none;
-            padding: 0;
-        }
-        .features li {
-            background-color: rgba(255, 255, 255, 0.05);
-            padding: 10px;
-            margin-bottom: 8px;
-            border-radius: 4px;
-            transition: background-color 0.3s ease;
-        }
-        .features li:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        .cta-button {
-            display: inline-block;
-            background-color: #ffcc00; /* Gold */
-            color: #1a1a2e; /* Dark space blue for text */
-            padding: 15px 30px;
-            font-size: 1.2em;
-            text-decoration: none;
-            border-radius: 5px;
-            font-weight: bold;
-            transition: background-color 0.3s ease, transform 0.2s ease;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
-        .cta-button:hover {
-            background-color: #ffdd44; /* Lighter gold on hover */
-            transform: translateY(-2px);
-        }
-        footer {
-            margin-top: auto;
-            padding: 20px 0;
-            width: 100%;
-            text-align: center;
-            background-color: #11111e;
-            font-size: 0.9em;
-        }
-
-        .races-preview {
-            margin: 30px 0;
-            text-align: center;
-        }
-        .races-preview h2 {
-            color: #ffaa00; /* Lighter gold/orange */
-            border-bottom: 2px solid #ffaa00;
-            padding-bottom: 5px;
-            margin-bottom: 15px;
-            display: inline-block; /* To make border only as wide as text */
-        }
-        .races-preview p {
-            font-size: 1.1em;
-            line-height: 1.6;
-            margin-bottom: 20px;
-            max-width: 700px; /* Limit width of paragraph */
-            margin-left: auto;
-            margin-right: auto;
-        }
-        .race-pods-container {
-            display: flex;
-            justify-content: space-around; /* Distribute pods evenly */
-            flex-wrap: wrap; /* Allow wrapping on smaller screens */
-            margin-top: 20px;
-        }
-        .race-pod {
-            background-color: rgba(255, 255, 255, 0.05);
-            border: 1px solid #ffcc00; /* Gold border */
-            border-radius: 8px;
-            padding: 15px;
-            margin: 10px;
-            width: calc(25% - 22px); /* Adjust for 4 pods per row, considering margin and padding */
-            min-width: 150px; /* Minimum width for smaller screens */
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            text-align: center;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        .race-pod:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 10px rgba(255,204,0,0.3); /* Gold shadow on hover */
-        }
-        .race-icon {
-            width: 80px; /* Or your preferred size */
-            height: 80px; /* Or your preferred size */
-            margin: 0 auto 10px auto;
-            display: block;
-        }
-        .race-pod p {
-            margin: 0;
-            font-weight: bold;
-            color: #e0e0e0;
-        }
-    </style>
+    <link rel="stylesheet" href="css/landing.css">
 </head>
 <body>
-    <header>
-        <h1>Galaxy Conquest</h1>
+    <header class="site-header">
+        <h1 class="site-title">Galaxy Conquest</h1>
+        <a class="cta-button header-cta" href="/login.html">
+            Play Now
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 20 20">
+                <path fill="currentColor" d="M4 9h8.586L9.293 5.707a1 1 0 1 1 1.414-1.414l5.999 6.001a1 1 0 0 1 0 1.412l-6 6a1 1 0 1 1-1.414-1.414L12.586 11H4a1 1 0 1 1 0-2Z"/>
+            </svg>
+        </a>
     </header>
 
-    <div class="container">
-        <img src="images/radio-galaxy.svg" alt="Galaxy Artwork" style="width: 100%; max-width: 400px; height: auto; border-radius: 8px; margin: 20px auto; display: block;">
-
-        <section class="description">
-            <p>Welcome to Galaxy Conquest, a turn-based multiplayer space strategy game where you compete to dominate the galaxy! Originally built in 2012, Game of Worlds has been completely rewritten in Node.js with modern web technologies. This real-time turn-based strategy game combines the depth of classic 4X games with the accessibility of browser-based gaming.</p>
-            <p>Plan your moves carefully, manage your resources, research powerful technologies, and engage in tactical combat to expand your empire across the stars.</p>
-        </section>
-
-        <section class="features">
-            <h2>Key Features:</h2>
-            <ul>
-                <li><b>12 Unique Races:</b> Each with distinct abilities and playstyles.</li>
-                <li><b>Turn-Based Strategy:</b> Plan your moves carefully in 3-minute turns.</li>
-                <li><b>Multiplayer Battles:</b> Compete against other players in real-time.</li>
-                <li><b>Tech Tree:</b> Research advanced technologies to gain an edge.</li>
-                <li><b>Resource Management:</b> Balance metal, crystal, and research production.</li>
-                <li><b>Cross-Platform:</b> Play in any modern web browser.</li>
-            </ul>
-        </section>
-
-        <section class="races-preview">
-            <h2>Discover the Races</h2>
-            <p>Choose your path to galactic domination with one of 12 unique factions, each offering distinct advantages, tech paths, and unlock requirements.</p>
-            <div class="race-pods-container">
-                <div class="race-pod">
-                    <img src="images/terran-icon.svg" alt="Terran Empire icon" class="race-icon">
-                    <p>Terran Empire</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/silicon-icon.svg" alt="Silicon Collective icon" class="race-icon">
-                    <p>Silicon Collective</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/zephyr-icon.svg" alt="Zephyr Swarm icon" class="race-icon">
-                    <p>Zephyr Swarm</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/crystalline-icon.svg" alt="Crystalline Entity icon" class="race-icon">
-                    <p>Crystalline Entity</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/void-icon.svg" alt="Void Walkers icon" class="race-icon">
-                    <p>Void Walkers</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/mechanicus-icon.svg" alt="Mechanicus icon" class="race-icon">
-                    <p>Mechanicus</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/bioform-icon.svg" alt="Bioform Collective icon" class="race-icon">
-                    <p>Bioform Collective</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/nomad-icon.svg" alt="Star Nomads icon" class="race-icon">
-                    <p>Star Nomads</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/ancient-icon.svg" alt="Ancients icon" class="race-icon">
-                    <p>The Ancients</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/quantum-icon.svg" alt="Quantum Entities icon" class="race-icon">
-                    <p>Quantum Entities</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/titan-icon.svg" alt="Titan Lords icon" class="race-icon">
-                    <p>Titan Lords</p>
-                </div>
-                <div class="race-pod">
-                    <img src="images/shadow-icon.svg" alt="Shadow Realm icon" class="race-icon">
-                    <p>Shadow Realm</p>
-                </div>
+    <main class="landing">
+        <section class="hero card">
+            <div class="hero-media">
+                <img src="images/radio-galaxy.svg" alt="A fleet preparing for battle beside a luminous radio galaxy." class="hero-art">
+            </div>
+            <div class="hero-copy">
+                <h2>Rewrite the Fate of the Galaxy</h2>
+                <p>Galaxy Conquest is a modern revival of the 2012 Game of Worlds—now rebuilt from the ground up with fast multiplayer turns, streamlined controls, and a refreshed art direction.</p>
+                <p>Command your empire, research bold technologies, and outmaneuver rival players in tense three-minute turns that reward strategy over reflexes.</p>
+                <a class="cta-button" href="/login.html">
+                    Play Free Now
+                    <svg aria-hidden="true" focusable="false" viewBox="0 0 20 20">
+                        <path fill="currentColor" d="M4 9h8.586L9.293 5.707a1 1 0 1 1 1.414-1.414l5.999 6.001a1 1 0 0 1 0 1.412l-6 6a1 1 0 1 1-1.414-1.414L12.586 11H4a1 1 0 1 1 0-2Z"/>
+                    </svg>
+                </a>
             </div>
         </section>
 
-        <a href="/login.html" class="cta-button">Play Now!</a>
-    </div>
+        <section class="card">
+            <h2 class="section-heading">Strategise, Expand, Dominate</h2>
+            <p class="section-subtitle">Every match is a four-dimensional chess match where production, research, diplomacy, and decisive strikes determine the victor.</p>
+            <ul class="feature-list">
+                <li>
+                    <span class="feature-icon">12</span>
+                    <div class="feature-copy">
+                        <h3 class="feature-title">Distinct Factions</h3>
+                        <p class="feature-text">Master twelve asymmetric races, each with unique perks, unlock criteria, and late-game tech spikes.</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="feature-icon">RT</span>
+                    <div class="feature-copy">
+                        <h3 class="feature-title">Three-Minute Turns</h3>
+                        <p class="feature-text">Plot grand strategies while reacting to live opponents in tight, fast-paced turn windows.</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="feature-icon">FX</span>
+                    <div class="feature-copy">
+                        <h3 class="feature-title">Meaningful Combat</h3>
+                        <p class="feature-text">Outfit fleets for orbital sieges, raid supply lines, and counter enemy doctrines with targeted tech picks.</p>
+                    </div>
+                </li>
+                <li>
+                    <span class="feature-icon">PR</span>
+                    <div class="feature-copy">
+                        <h3 class="feature-title">Persistent Progression</h3>
+                        <p class="feature-text">Earn achievements, unlock premium factions, and build your legend with every campaign you finish.</p>
+                    </div>
+                </li>
+            </ul>
+        </section>
 
-    <footer>
-        <p>&copy; 2024 Galaxy Conquest. All rights reserved.</p>
-        <p>Originally by Steve Seguin. Rewritten with AI assistance.</p>
+        <section class="race-gallery card">
+            <h2 class="section-heading">Discover the Races</h2>
+            <p class="section-subtitle">Choose your path to galactic domination with one of twelve factions—each offering distinct advantages, tech paths, and playstyles.</p>
+            <div class="race-grid">
+                <article class="race-card">
+                    <img src="images/terran-icon.svg" alt="Terran Empire icon" class="race-icon">
+                    <p class="race-name">Terran Empire</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/silicon-icon.svg" alt="Silicon Collective icon" class="race-icon">
+                    <p class="race-name">Silicon Collective</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/zephyr-icon.svg" alt="Zephyr Swarm icon" class="race-icon">
+                    <p class="race-name">Zephyr Swarm</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/crystalline-icon.svg" alt="Crystalline Entity icon" class="race-icon">
+                    <p class="race-name">Crystalline Entity</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/void-icon.svg" alt="Void Walkers icon" class="race-icon">
+                    <p class="race-name">Void Walkers</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/mechanicus-icon.svg" alt="Mechanicus icon" class="race-icon">
+                    <p class="race-name">Mechanicus</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/bioform-icon.svg" alt="Bioform Collective icon" class="race-icon">
+                    <p class="race-name">Bioform Collective</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/nomad-icon.svg" alt="Star Nomads icon" class="race-icon">
+                    <p class="race-name">Star Nomads</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/ancient-icon.svg" alt="Ancients icon" class="race-icon">
+                    <p class="race-name">The Ancients</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/quantum-icon.svg" alt="Quantum Entities icon" class="race-icon">
+                    <p class="race-name">Quantum Entities</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/titan-icon.svg" alt="Titan Lords icon" class="race-icon">
+                    <p class="race-name">Titan Lords</p>
+                </article>
+                <article class="race-card">
+                    <img src="images/shadow-icon.svg" alt="Shadow Realm icon" class="race-icon">
+                    <p class="race-name">Shadow Realm</p>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2024 <span>Galaxy Conquest</span>. All rights reserved.</p>
+        <p>Originally created by Steve Seguin and reimagined with AI assistance.</p>
     </footer>
-
 </body>
 </html>
