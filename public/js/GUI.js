@@ -1,5 +1,5 @@
 /**
- * GUI.js - Client-side UI component for Galaxy Conquest
+ * GUI.js - Client-side UI component for Game of Words
  * 
  * Handles the game's main user interface components and interactions.
  * Manages tab navigation, resource display, sectors visualization,

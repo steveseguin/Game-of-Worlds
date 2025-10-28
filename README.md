@@ -1,4 +1,4 @@
-# Game of Worlds - Galaxy Conquest
+# Game of Words (formerly Game of Worlds)
 
 A turn-based multiplayer space strategy game where players compete to dominate the galaxy through colonization, research, and tactical combat.
 

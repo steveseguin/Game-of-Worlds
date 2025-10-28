@@ -1,7 +1,7 @@
 {
   "name": "game-of-worlds",
   "version": "1.0.0",
-  "description": "Galaxy Conquest - A turn-based space strategy game",
+  "description": "Game of Words - A turn-based space strategy game",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

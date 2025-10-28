@@ -51,10 +51,10 @@ const placeholders = [
     // Backgrounds
     { file: '../spacebak.jpg', text: 'Space', width: 800, height: 600, color: '#000033' },
     { file: '../topbar.jpg', text: 'Top Bar', width: 800, height: 50, color: '#222222' },
-    { file: '../title.jpg', text: 'Game of Worlds', width: 600, height: 200, color: '#1a1a3a' },
-    { file: '../title.png', text: 'Game of Worlds', width: 600, height: 200, color: '#1a1a3a' },
-    { file: '../title2.jpg', text: 'Game of Worlds', width: 600, height: 200, color: '#2a2a4a' },
-    { file: '../title2.png', text: 'Game of Worlds', width: 600, height: 200, color: '#2a2a4a' },
+    { file: '../title.jpg', text: 'Game of Words', width: 600, height: 200, color: '#1a1a3a' },
+    { file: '../title.png', text: 'Game of Words', width: 600, height: 200, color: '#1a1a3a' },
+    { file: '../title2.jpg', text: 'Game of Words', width: 600, height: 200, color: '#2a2a4a' },
+    { file: '../title2.png', text: 'Game of Words', width: 600, height: 200, color: '#2a2a4a' },
     
     // Sector types
     { file: '../type0.gif', text: 'Empty', color: '#000000' },

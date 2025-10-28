@@ -21,5 +21,5 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize WebSocket last
     initializeWebSocket();
     
-    console.log('Galaxy Conquest modules loaded successfully');
+    console.log('Game of Words modules loaded successfully');
 });

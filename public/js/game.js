@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Disable selection on game elements
     disableSelection(document);
     
-    console.log('Galaxy Conquest initialized');
+    console.log('Game of Words initialized');
 });
 
 function setupEventListeners() {

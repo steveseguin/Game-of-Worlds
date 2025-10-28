@@ -1,4 +1,4 @@
-# Galaxy Conquest Database and Code Analysis
+# Game of Words Database and Code Analysis
 
 ## Database Structure Overview
 
@@ -278,7 +278,7 @@ function handleReconnection(userId, connection) {
 
 ## Conclusion
 
-The Galaxy Conquest game has a solid foundation with a working database schema and essential gameplay functions. However, several critical components need to be addressed to create a complete user experience:
+The Game of Words game has a solid foundation with a working database schema and essential gameplay functions. However, several critical components need to be addressed to create a complete user experience:
 
 1. **Data Integrity**: Implement transactions for complex operations
 2. **Game History**: Add tables and logic to track game outcomes and player statistics
@@ -286,4 +286,4 @@ The Galaxy Conquest game has a solid foundation with a working database schema a
 4. **Reconnection Handling**: Improve session management for dropped connections
 5. **Game Completion**: Strengthen win condition detection and end-game processing
 
-With these improvements, Galaxy Conquest will offer a more robust multiplayer experience with proper data persistence, tracking player achievements, and ensuring smooth gameplay from start to finish.
+With these improvements, Game of Words will offer a more robust multiplayer experience with proper data persistence, tracking player achievements, and ensuring smooth gameplay from start to finish.

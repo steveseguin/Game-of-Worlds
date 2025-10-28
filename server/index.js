@@ -1,7 +1,7 @@
 /**
  * index.js - Server-side entry point
  * 
- * Main entry point for the Galaxy Conquest server. Sets up HTTP and WebSocket servers,
+ * Main entry point for the Game of Words server. Sets up HTTP and WebSocket servers,
  * handles file serving, database connection, and initializes the game server.
  * 
  * This module is server-side and has full access to database connections

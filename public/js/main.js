@@ -876,7 +876,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Disable selection on game elements
     disableSelection(document);
     
-    console.log('Galaxy Conquest initialized');
+    console.log('Game of Words initialized');
 });
 
 function disableSelection(element) {
@@ -1270,7 +1270,7 @@ function setalpha(element, opacity) {
     
     // Initialize the game
     function initialize() {
-        console.log('Galaxy Conquest initialization');
+        console.log('Game of Words initialization');
         
         // Register modules
         registerModules();
@@ -1281,7 +1281,7 @@ function setalpha(element, opacity) {
         // Set up global event listeners
         setupGlobalEventListeners();
         
-        console.log('Galaxy Conquest initialized successfully');
+        console.log('Game of Words initialized successfully');
     }
     
     // Register all game modules

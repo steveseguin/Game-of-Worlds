@@ -1,5 +1,5 @@
 /**
- * chat.js - Client-side chat system for Galaxy Conquest
+ * chat.js - Client-side chat system for Game of Words
  * 
  * Handles chat message display, history navigation, and message fading.
  * Provides methods for displaying messages, managing chat history, and

@@ -1,4 +1,4 @@
-# Galaxy Conquest (Game of Worlds Rewrite)
+# Game of Words (Game of Worlds Rewrite)
 
 A multiplayer, turn-based strategy game of galactic conquest featuring:
 - Real-time turn-based gameplay with WebSocket communication

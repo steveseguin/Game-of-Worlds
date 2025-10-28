@@ -1,4 +1,4 @@
-# Game of Worlds - Payment Integration Guide
+# Game of Words - Payment Integration Guide
 
 ## Overview
 The game includes a comprehensive monetization system that allows players to purchase premium content while keeping the core game free-to-play.

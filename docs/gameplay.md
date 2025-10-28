@@ -1,8 +1,8 @@
-# Galaxy Conquest Game Review & Improvement Analysis
+# Game of Words Game Review & Improvement Analysis
 
 ## Game Overview
 
-Galaxy Conquest is a multiplayer real-time turn-based strategy game set in space. Players compete to control sectors on a galactic map, manage resources, research technologies, build fleets, and engage in warfare. The ultimate goal is to dominate the galaxy through conquest or technological superiority.
+Game of Words is a multiplayer real-time turn-based strategy game set in space. Players compete to control sectors on a galactic map, manage resources, research technologies, build fleets, and engage in warfare. The ultimate goal is to dominate the galaxy through conquest or technological superiority.
 
 ## Core Game Mechanics
 
@@ -133,7 +133,7 @@ Galaxy Conquest is a multiplayer real-time turn-based strategy game set in space
    ```javascript
    function showTutorial(connection) {
        const tutorialSteps = [
-           { message: "Welcome to Galaxy Conquest! Let's start by selecting your homeworld.", highlight: "#minimapid" },
+           { message: "Welcome to Game of Words! Let's start by selecting your homeworld.", highlight: "#minimapid" },
            { message: "This is your resource panel. You'll need resources to build and expand.", highlight: "#resourceBar" },
            { message: "Build metal extractors to increase your metal production.", highlight: "#build" },
            // More steps...
@@ -578,4 +578,4 @@ Based on the analysis, these are the highest priority improvements needed:
    - Performance optimizations
    - Game balance adjustments
 
-By addressing these issues methodically, Galaxy Conquest can transform from a functional prototype into a polished, engaging multiplayer strategy game with depth and replayability.
+By addressing these issues methodically, Game of Words can transform from a functional prototype into a polished, engaging multiplayer strategy game with depth and replayability.
