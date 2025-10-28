@@ -53,6 +53,12 @@ const REQUIRED_ENV_VARS = {
         pattern: /^\d{1,5}$/,
         description: 'Database port'
     },
+    DB_POOL_SIZE: {
+        required: false,
+        default: '10',
+        pattern: /^\d{1,3}$/,
+        description: 'Database connection pool size'
+    },
     DB_NAME: {
         required: false,
         default: 'game',

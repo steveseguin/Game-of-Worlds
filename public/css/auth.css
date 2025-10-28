@@ -39,10 +39,7 @@ body.auth-body {
     justify-content: center;
     align-items: center;
     padding: clamp(1.5rem, 4vw, 3rem);
-    background: radial-gradient(circle at 20% 20%, rgba(89, 145, 255, 0.32), transparent 55%),
-                radial-gradient(circle at 80% 10%, rgba(255, 153, 102, 0.28), transparent 60%),
-                radial-gradient(circle at 50% 80%, rgba(120, 54, 168, 0.22), transparent 58%),
-                var(--bg);
+    background: linear-gradient(155deg, #060915 0%, #101533 55%, #090d22 100%);
     color: var(--text);
 }
 
@@ -55,8 +52,7 @@ body.auth-body {
     background: linear-gradient(130deg, rgba(16, 20, 37, 0.92), rgba(16, 20, 37, 0.76));
     border-radius: 24px;
     border: 1px solid var(--border);
-    box-shadow: 0 45px 120px rgba(4, 8, 20, 0.65);
-    backdrop-filter: blur(16px);
+    box-shadow: 0 26px 85px rgba(4, 8, 20, 0.5);
 }
 
 .auth-hero {
@@ -104,7 +100,7 @@ body.auth-body {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 14px;
-    box-shadow: 0 18px 40px rgba(6, 9, 21, 0.4);
+    box-shadow: 0 12px 32px rgba(6, 9, 21, 0.35);
 }
 
 .auth-highlights strong {
@@ -129,7 +125,7 @@ body.auth-body {
     border-radius: 18px;
     padding: 1.4rem;
     border: 1px solid var(--border);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 20px 60px rgba(6, 9, 15, 0.5);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 16px 45px rgba(6, 9, 15, 0.45);
 }
 
 .auth-illustration img {
@@ -145,7 +141,7 @@ body.auth-body {
     border-radius: 18px;
     border: 1px solid var(--border);
     padding: clamp(1.75rem, 3vw, 2.25rem);
-    box-shadow: 0 40px 90px rgba(6, 9, 15, 0.6);
+    box-shadow: 0 24px 68px rgba(6, 9, 15, 0.5);
 }
 
 .auth-tabs {
@@ -326,12 +322,15 @@ input:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-        scroll-behavior: auto !important;
+    .auth-tab,
+    .btn,
+    input {
+        transition: none;
+    }
+
+    .btn.primary:hover,
+    .btn.primary:focus-visible {
+        transform: none;
+        box-shadow: 0 20px 40px rgba(255, 217, 94, 0.35);
     }
 }

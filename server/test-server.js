@@ -4,6 +4,11 @@
 const http = require('http');
 const mysql2 = require('mysql2');
 
+if (process.env.NODE_TEST_CONTEXT) {
+    console.log('Skipping manual integration test during node --test run.');
+    process.exit(0);
+}
+
 // Test database connection
 const db = mysql2.createConnection({
     host: '127.0.0.1',

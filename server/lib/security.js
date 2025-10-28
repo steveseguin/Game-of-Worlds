@@ -229,7 +229,7 @@ function checkRateLimit(identifier, action, maxAttempts = 5, windowMs = 60000) {
 }
 
 // Clean old rate limit entries periodically
-setInterval(() => {
+const rateLimitCleanup = setInterval(() => {
     const now = Date.now();
     for (const [key, limit] of rateLimits.entries()) {
         if (now > limit.resetAt) {
@@ -237,6 +237,7 @@ setInterval(() => {
         }
     }
 }, 60000); // Clean every minute
+rateLimitCleanup.unref();
 
 // Validate command data
 function validateCommand(command, data) {

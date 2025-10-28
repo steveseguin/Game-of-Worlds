@@ -38,6 +38,50 @@ function parseDbPort(value) {
     return Number.isFinite(parsed) ? parsed : 3306;
 }
 
+function parsePoolSize(value) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+}
+
+const PUBLIC_ROOT = path.resolve(__dirname, '..', 'public');
+const DEFAULT_DOCUMENT = 'landing.html';
+const CACHEABLE_EXTENSIONS = new Set([
+    '.css',
+    '.js',
+    '.json',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.svg',
+    '.ico',
+    '.webp',
+    '.woff',
+    '.woff2',
+    '.ttf'
+]);
+const CONTENT_TYPE_MAP = {
+    '.html': 'text/html',
+    '.js': 'application/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.webp': 'image/webp',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf'
+};
+const SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'same-origin',
+    'X-Frame-Options': 'SAMEORIGIN'
+};
+
 const PORT = process.env.PORT || 1337;
 const DB_CONFIG = {
     host: process.env.DB_HOST || '127.0.0.1',
@@ -46,6 +90,16 @@ const DB_CONFIG = {
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'game'
 };
+const DB_POOL_SIZE = parsePoolSize(process.env.DB_POOL_SIZE);
+
+function buildPoolConfig() {
+    return {
+        ...DB_CONFIG,
+        waitForConnections: true,
+        connectionLimit: DB_POOL_SIZE,
+        queueLimit: 0
+    };
+}
 
 // Basic offline DB shim to avoid crashes while reconnecting
 function createOfflineDb() {
@@ -58,11 +112,24 @@ function createOfflineDb() {
                 err.code = 'DB_OFFLINE';
                 process.nextTick(() => cb(err));
             }
+        },
+        getConnection(callback) {
+            if (typeof callback === 'function') {
+                const err = new Error('Database connection is not available');
+                err.code = 'DB_OFFLINE';
+                process.nextTick(() => callback(err));
+            }
+        },
+        end(callback) {
+            if (typeof callback === 'function') {
+                process.nextTick(callback);
+            }
         }
     };
 }
 
 let db = createOfflineDb();
+let activePool = null;
 let reconnectTimer = null;
 serverLogic.setDatabase(db);
 
@@ -74,43 +141,85 @@ function scheduleReconnect() {
         reconnectTimer = null;
         connectToDatabase();
     }, 5000);
+    if (typeof reconnectTimer.unref === 'function') {
+        reconnectTimer.unref();
+    }
 }
 
-function setActiveDatabase(connection) {
-    connection.isOffline = false;
-    db = connection;
-    serverLogic.setDatabase(connection);
+function teardownPool(pool, callback) {
+    if (!pool || typeof pool.end !== 'function') {
+        if (typeof callback === 'function') {
+            callback();
+        }
+        return;
+    }
+
+    pool.end(err => {
+        if (err) {
+            console.error('Error closing database pool:', err.message || err);
+        }
+        if (typeof callback === 'function') {
+            callback();
+        }
+    });
+}
+
+function setActiveDatabase(pool) {
+    if (activePool && activePool !== pool) {
+        teardownPool(activePool);
+    }
+    activePool = pool;
+    pool.isOffline = false;
+    db = pool;
+    serverLogic.setDatabase(pool);
 }
 
 function setOfflineDatabase() {
+    if (activePool) {
+        const poolToClose = activePool;
+        activePool = null;
+        teardownPool(poolToClose);
+    }
+
     const offlineDb = createOfflineDb();
     db = offlineDb;
     serverLogic.setDatabase(offlineDb);
 }
 
 function connectToDatabase() {
-    const connection = mysql2.createConnection(DB_CONFIG);
-    
-    connection.connect(err => {
+    const pool = mysql2.createPool(buildPoolConfig());
+
+    pool.getConnection((err, connection) => {
         if (err) {
-            console.error('Error connecting to database:', err.message || err);
-            connection.destroy();
-            setOfflineDatabase();
-            scheduleReconnect();
+            console.error('Error establishing database pool:', err.message || err);
+            teardownPool(pool, () => {
+                setOfflineDatabase();
+                scheduleReconnect();
+            });
             return;
         }
-        console.log('Connected to database');
-        setActiveDatabase(connection);
+
+        connection.ping(pingErr => {
+            connection.release();
+            if (pingErr) {
+                console.error('Database ping failed:', pingErr.message || pingErr);
+                teardownPool(pool, () => {
+                    setOfflineDatabase();
+                    scheduleReconnect();
+                });
+                return;
+            }
+
+            console.log(`Connected to database (pool size: ${DB_POOL_SIZE})`);
+            setActiveDatabase(pool);
+        });
     });
-    
-    connection.on('error', err => {
-        console.error('Database error:', err);
-        if (err.code === 'PROTOCOL_CONNECTION_LOST' || err.fatal) {
-            connection.destroy();
+
+    pool.on('error', err => {
+        console.error('Database pool error:', err);
+        if (activePool === pool) {
             setOfflineDatabase();
             scheduleReconnect();
-        } else {
-            throw err;
         }
     });
 }
@@ -179,7 +288,7 @@ const httpServer = http.createServer((request, response) => {
     
     // Default to index.html for root path
     if (pathname === '/') {
-      pathname = '/landing.html';
+      pathname = `/${DEFAULT_DOCUMENT}`;
     }
     
     // Protected pages that require authentication
@@ -215,57 +324,85 @@ const httpServer = http.createServer((request, response) => {
             }
             
             // Valid authentication, serve the file
-            serveFile(pathname, response);
+            serveFile(pathname, response, request.method);
         });
         return;
     }
     
     // For non-protected pages, serve directly
-    serveFile(pathname, response);
+    serveFile(pathname, response, request.method);
 });
 
 // Helper function to serve files
-function serveFile(pathname, response) {
-    let requestedPath = pathname;
-    if (!requestedPath || requestedPath === '/') {
-        requestedPath = '/index.html';
+function serveFile(pathname, response, method = 'GET') {
+    let requestedPath = pathname || '';
+    if (requestedPath === '' || requestedPath === '/') {
+        requestedPath = `/${DEFAULT_DOCUMENT}`;
     } else if (requestedPath.endsWith('/')) {
         requestedPath = `${requestedPath}index.html`;
     }
 
-    const normalizedPath = path.normalize(requestedPath).replace(/^(\.\.[/\\])+/, '');
-    const ext = path.parse(normalizedPath).ext || '.html';
-    
-    // Map file extensions to content types
-    const contentTypeMap = {
-        '.html': 'text/html',
-        '.js': 'application/javascript',
-        '.css': 'text/css',
-        '.json': 'application/json',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.gif': 'image/gif',
-        '.svg': 'image/svg+xml'
-    };
-    
-    // Get content type
-    const contentType = contentTypeMap[ext] || 'text/plain';
-    
-    // Read the file from public directory
+    const normalizedPath = path.posix.normalize(requestedPath.replace(/\\/g, '/'));
     const relativePath = normalizedPath.startsWith('/') ? normalizedPath.slice(1) : normalizedPath;
-    const filePath = path.join(__dirname, '..', 'public', relativePath);
-    
-    fs.readFile(filePath, (err, data) => {
-        if (err) {
-            // File not found
-            response.writeHead(404);
+    const absolutePath = path.resolve(PUBLIC_ROOT, relativePath);
+    const relativeToRoot = path.relative(PUBLIC_ROOT, absolutePath);
+
+    if (relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) {
+        response.writeHead(403, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            ...SECURITY_HEADERS,
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+        });
+        response.end('Forbidden');
+        return;
+    }
+
+    fs.stat(absolutePath, (statErr, stats) => {
+        if (statErr || !stats.isFile()) {
+            response.writeHead(404, {
+                'Content-Type': 'text/plain; charset=utf-8',
+                ...SECURITY_HEADERS,
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            });
             response.end('File not found');
             return;
         }
-        
-        // File found
-        response.writeHead(200, {'Content-Type': contentType});
-        response.end(data);
+
+        const ext = path.extname(absolutePath).toLowerCase() || '.html';
+        const contentType = CONTENT_TYPE_MAP[ext] || 'application/octet-stream';
+        const headers = {
+            'Content-Type': contentType,
+            ...SECURITY_HEADERS
+        };
+
+        if (CACHEABLE_EXTENSIONS.has(ext)) {
+            headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+            headers['Last-Modified'] = stats.mtime.toUTCString();
+        } else {
+            headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+        }
+
+        if (method === 'HEAD') {
+            headers['Content-Length'] = stats.size;
+            response.writeHead(200, headers);
+            response.end();
+            return;
+        }
+
+        response.writeHead(200, headers);
+        const stream = fs.createReadStream(absolutePath);
+        stream.on('error', err => {
+            console.error('Error streaming file:', err);
+            if (!response.headersSent) {
+                response.writeHead(500, {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    ...SECURITY_HEADERS,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate'
+                });
+            }
+            response.end('Internal server error');
+        });
+        stream.pipe(response);
     });
 }
 

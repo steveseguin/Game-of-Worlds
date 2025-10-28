@@ -445,11 +445,18 @@ function applyShipModifiers(raceId, shipType, baseStats) {
     const race = Object.values(RACE_TYPES).find(r => r.id === raceId);
     if (!race) return baseStats;
     
-    const modifiedStats = { ...baseStats };
+    const baseCost = baseStats.cost || {};
+    const modifiedStats = {
+        ...baseStats,
+        cost: {
+            metal: baseCost.metal ?? 0,
+            crystal: baseCost.crystal ?? 0
+        }
+    };
     
     // Apply general race bonuses
-    modifiedStats.cost.metal = Math.floor(baseStats.cost.metal * race.bonuses.shipCost);
-    modifiedStats.cost.crystal = Math.floor(baseStats.cost.crystal * race.bonuses.shipCost);
+    modifiedStats.cost.metal = Math.floor((baseCost.metal ?? 0) * race.bonuses.shipCost);
+    modifiedStats.cost.crystal = Math.floor((baseCost.crystal ?? 0) * race.bonuses.shipCost);
     modifiedStats.speed = baseStats.speed * race.bonuses.shipSpeed;
     modifiedStats.attack = baseStats.attack * race.bonuses.shipAttack;
     modifiedStats.defense = baseStats.defense * race.bonuses.shipDefense;
