@@ -36,15 +36,16 @@ a {
 	height: 20px;
 
 }
-div {
-	zoom:67%;
+/* Legacy div styles removed - were causing mobile issues with zoom:67% */
+/* Use .legacy-panel class for any elements that need the old styling */
+.legacy-panel {
 	border:0;
 	vertical-align: top;
 	display:inline-block;
 	padding:1em 3em;
-	margin: 0 0px 7px 0; 
+	margin: 0 0px 7px 0;
 	background: #728eaa;
-	background: -moz-linear-gradient(top, #25303C 0%, #728EAA 100%); /* firefox */	
+	background: -moz-linear-gradient(top, #25303C 0%, #728EAA 100%); /* firefox */
 	background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#25303C), color-stop(100%,#728EAA)); /* webkit */
 }
 

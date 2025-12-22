@@ -1,184 +1,623 @@
 /**
  * lobby.js - Client-side game lobby manager
- * 
- * Manages the game lobby interface where players can create and join games.
- * Handles communication with the server for game management.
+ *
+ * Handles lobby UI, websocket messaging, and the pre-game waiting room.
  */
+
+function getWebSocketUrl() {
+    if (window.GAME_SERVER_URL) {
+        return window.GAME_SERVER_URL;
+    }
+
+    const isSecure = window.location.protocol === 'https:';
+    const protocol = isSecure ? 'wss' : 'ws';
+    const hostname = window.location.hostname;
+
+    let port = window.location.port;
+    if (port) {
+        if ((isSecure && port === '443') || (!isSecure && port === '80')) {
+            port = '';
+        }
+    } else if (!isSecure) {
+        port = '1337';
+    }
+
+    const portSegment = port ? `:${port}` : '';
+    return `${protocol}://${hostname}${portSegment}`;
+}
+
+const MIN_AUTO_START_PLAYERS = 1;
+
 let websocket;
 let userId;
 let tempKey;
+let isCreatingGame = false;
+let isAwaitingRaceSelection = false;
+let pendingJoinGameId = null;
 
-// Initialize lobby
-document.addEventListener('DOMContentLoaded', function() {
-    // Get auth credentials from cookies
+let currentGameId = null;
+let currentGameName = '';
+let currentMaxPlayers = 0;
+let currentPlayerCount = 0;
+let currentPlayers = [];
+let isCurrentGameCreator = false;
+let isStartingGame = false;
+let currentRaceId = null;
+let currentRaceName = '';
+let knownRaceMap = {};
+let inviteGameId = null;
+const AI_DIFFICULTY_OPTIONS = ['chill', 'medium', 'aggressive'];
+const AI_STRATEGY_OPTIONS = ['balanced', 'aggressive', 'economic'];
+const GAME_MODE_OPTIONS = [
+    { value: 'quick', label: 'Quick (fast turns)' },
+    { value: 'epic', label: 'Epic (1 turn/day)' }
+];
+let currentPlayerDetails = [];
+let currentGameMode = 'quick';
+let countdownSeconds = null;
+
+function formatModeLabel(mode) {
+    return mode === 'epic' ? 'Epic (1/day turn)' : 'Quick (fast turns)';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
     userId = getCookie('userId');
     tempKey = getCookie('tempKey');
-    
+    const params = new URLSearchParams(window.location.search);
+    inviteGameId = params.get('game') ? Number(params.get('game')) : null;
+
     if (!userId || !tempKey) {
-        // No credentials, redirect to login
         window.location.href = '/login.html';
         return;
     }
-    
-    // Initialize WebSocket connection
+
     initWebSocket();
-    
-    // Set up event handlers
+
     document.getElementById('createGameBtn').addEventListener('click', createGame);
     document.getElementById('refreshGamesBtn').addEventListener('click', refreshGames);
 });
 
 function initWebSocket() {
-    const serverUrl = `ws://${window.location.hostname}:1337`;
-    websocket = new WebSocket(serverUrl);
-    
-    websocket.onopen = function() {
+    websocket = new WebSocket(getWebSocketUrl());
+    window.websocket = websocket;
+
+    websocket.onopen = () => {
         console.log('Connected to server');
-        // Authenticate
         websocket.send(`//auth:${userId}:${tempKey}`);
+        if (inviteGameId && Number.isFinite(inviteGameId)) {
+            joinGame(inviteGameId);
+            inviteGameId = null;
+        }
     };
-    
-    websocket.onmessage = function(evt) {
-        handleMessage(evt.data);
-    };
-    
-    websocket.onerror = function(evt) {
-        console.error('WebSocket error:', evt);
-    };
-    
-    websocket.onclose = function() {
+
+    websocket.onmessage = evt => handleMessage(evt.data);
+    websocket.onerror = evt => console.error('WebSocket error:', evt);
+    websocket.onclose = () => {
         console.log('Disconnected from server');
-        // Try to reconnect after delay
+        window.websocket = null;
+        resetCreateGameState();
+        renderGameListSkeleton('Reconnecting to server…');
         setTimeout(initWebSocket, 3000);
     };
 }
 
 function handleMessage(message) {
     console.log('Received:', message);
-    
-    if (message.indexOf('lobby::') === 0) {
-        // We're in the lobby
+
+    if (message.startsWith('Error:')) {
+        const errorText = message.substring('Error:'.length).trim() || 'An unexpected lobby error occurred.';
+        showToast(errorText, 'error');
+        if (isStartingGame) {
+            isStartingGame = false;
+            updateWaitingView();
+        }
+        return;
+    }
+
+    if (message.startsWith('countdown::')) {
+        const payload = message.split('::')[1];
+        if (payload === 'cancel') {
+            countdownSeconds = null;
+            isStartingGame = false;
+            showToast('Start aborted — a player left or changed.', 'warning');
+        } else {
+            countdownSeconds = parseInt(payload, 10);
+            isStartingGame = true;
+        }
+        updateWaitingView();
+        return;
+    }
+
+    if (message.startsWith('lobby::')) {
+        clearCurrentGameTracking();
         refreshGames();
-    } else if (message.indexOf('gamelist::') === 0) {
-        // Update game list
-        updateGameList(message);
-    } else if (message.indexOf('races::') === 0) {
-        // Handle race data response
+        return;
+    }
+
+    if (message.startsWith('$^$')) {
+        const count = message.substring(3) || '0';
+        const el = document.getElementById('online-count');
+        if (el) {
+            el.textContent = count;
+        }
+        return;
+    }
+
+    if (message.startsWith('gamelist::')) {
+        updateGameList(message.substring('gamelist::'.length));
+        return;
+    }
+
+    if (message.startsWith('creategame::success::')) {
+        resetCreateGameState();
+        const gameId = parseInt(message.split('::')[2], 10);
+        const nameInput = document.getElementById('gameName');
+        if (nameInput) {
+            nameInput.value = '';
+        }
+        showToast('Game created! Select your race to join.', 'success');
+        refreshGames();
+        if (!Number.isNaN(gameId)) {
+            joinGame(gameId);
+        }
+        return;
+    }
+
+    if (message.startsWith('creategame::error::')) {
+        resetCreateGameState();
+        const errorMessage = message.substring('creategame::error::'.length) || 'Unable to create game';
+        showToast(errorMessage, 'error');
+        return;
+    }
+
+    if (message.startsWith('joingame::success::')) {
+        try {
+            const payload = JSON.parse(message.substring('joingame::success::'.length));
+            currentRaceId = Number(payload.raceId) || currentRaceId || null;
+            currentRaceName = payload.raceName || currentRaceName || '';
+            hydrateCurrentGame(payload);
+        } catch (error) {
+            console.error('Failed to parse join success payload:', error);
+        }
+        return;
+    }
+
+    if (message.startsWith('Success: Joined game')) {
+        // Legacy fallback - assign currentGameId before clearing pendingJoinGameId
+        isAwaitingRaceSelection = false;
+        if (!currentGameId && pendingJoinGameId) {
+            currentGameId = pendingJoinGameId;
+        }
+        pendingJoinGameId = null;
+        renderWaitingView();
+        return;
+    }
+
+    if (message.startsWith('joingame::error::')) {
+        const errorMessage = message.substring('joingame::error::'.length) || 'Unable to join game';
+        isAwaitingRaceSelection = false;
+        pendingJoinGameId = null;
+        showToast(errorMessage, 'error');
+        renderGameListSkeleton('Please select a game to join.');
+        return;
+    }
+
+    if (message.startsWith('changerace::success::')) {
+        try {
+            const payload = JSON.parse(message.substring('changerace::success::'.length));
+            currentRaceId = Number(payload.raceId) || currentRaceId;
+            currentRaceName = payload.raceName || currentRaceName;
+            isAwaitingRaceSelection = false;
+            pendingJoinGameId = null;
+            renderWaitingView();
+            showToast(`Race updated to ${currentRaceName || getRaceName(currentRaceId) || 'selected race'}.`, 'success');
+        } catch (error) {
+            console.error('Failed to parse race change payload:', error);
+        }
+        return;
+    }
+
+    if (message.startsWith('changerace::error::')) {
+        const errMsg = message.substring('changerace::error::'.length) || 'Unable to change race';
+        isAwaitingRaceSelection = false;
+        pendingJoinGameId = null;
+        showToast(errMsg, 'error');
+        updateWaitingView();
+        return;
+    }
+
+    if (message.startsWith('addai::success::')) {
+        const aiName = decodeURIComponentSafe(message.substring('addai::success::'.length) || 'AI opponent');
+        showToast(`${aiName} added to your game.`, 'success');
+        refreshGames();
+        updateWaitingView();
+        return;
+    }
+
+    if (message.startsWith('addai::error::')) {
+        const errMsg = message.substring('addai::error::'.length) || 'Unable to add AI';
+        showToast(errMsg, 'error');
+        return;
+    }
+
+    if (message.startsWith('races::')) {
         const raceData = message.substring(7);
-        if (window.RaceSelection) {
+        updateKnownRaces(raceData);
+        if (isAwaitingRaceSelection && pendingJoinGameId && window.RaceSelection) {
             window.RaceSelection.handleUnlockedRaces(raceData);
         }
-    } else if (message.indexOf('startgame::') === 0) {
-        // Game is starting, redirect to game
+        return;
+    }
+
+    if (message.startsWith('pl:')) {
+        updatePlayerList(message.substring(3));
+        return;
+    }
+
+    if (message.startsWith('startgame::')) {
         window.location.href = '/game.html';
-    } else if (message.indexOf('Success: Joined game') === 0) {
-        // Successfully joined a game, wait for start
-        showWaitingMessage();
     }
 }
 
 function createGame() {
-    const gameName = document.getElementById('gameName').value.trim();
+    const nameField = document.getElementById('gameName');
+    const gameName = nameField ? nameField.value.trim() : '';
     if (!gameName) {
-        alert('Please enter a game name');
+        showToast('Please enter a game name', 'warn');
         return;
     }
-    
+
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+        return;
+    }
+
+    if (isCreatingGame) {
+        return;
+    }
+
     const maxPlayers = document.getElementById('maxPlayers').value;
-    
-    // For now, we'll create the game through direct database access
-    // In production, this would be a WebSocket command
-    alert('Game creation requires server-side implementation. For now, use the setup.js script to create games.');
+    const modeSelect = document.getElementById('gameMode');
+    const mode = modeSelect ? modeSelect.value : 'quick';
+    isCreatingGame = true;
+    setCreateGameButtonState(true);
+    websocket.send(`//creategame:${encodeURIComponent(gameName)}:${maxPlayers}:${mode}`);
 }
 
 function refreshGames() {
-    // Request game list from server
+    renderGameListSkeleton('Loading games…');
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send('//gamelist');
     }
-    
-    // For now, show a sample game
-    const gameList = document.getElementById('gameList');
-    gameList.innerHTML = `
-        <tr>
-            <th>Game ID</th>
-            <th>Name</th>
-            <th>Players</th>
-            <th>Status</th>
-            <th>Action</th>
-        </tr>
-        <tr>
-            <td>1</td>
-            <td>Test Game</td>
-            <td>1/4</td>
-            <td>Waiting</td>
-            <td><button onclick="joinGame(1)">Join</button></td>
-        </tr>
-    `;
 }
 
-function joinGame(gameId) {
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-        // Load race selection
-        loadRaceSelectionScript(() => {
-            window.RaceSelection.initialize((raceId) => {
-                // Send join game request with selected race
-                websocket.send(`//joingame:${gameId}:${raceId}`);
-            });
-        });
+function updateGameList(rawPayload) {
+    const entries = rawPayload
+        ? rawPayload.split('|').filter(Boolean)
+        : [];
+
+    let waitingGameUpdated = false;
+    let renderedRows = 0;
+    const rows = [];
+
+    entries.forEach(gameData => {
+        const parts = gameData.split(',');
+        if (parts.length < 5) {
+            return;
+        }
+
+        const gameId = parseInt(parts[0], 10);
+        const name = decodeURIComponentSafe(parts[1] || '');
+        const playerCount = parseInt(parts[2], 10) || 0;
+        const maxPlayers = parseInt(parts[3], 10) || 0;
+        const statusRaw = (parts[4] || 'waiting').toLowerCase();
+        const mode = (parts[5] || 'quick').toLowerCase();
+
+        const safeName = escapeHtml(name || `Game ${gameId}`);
+        const statusLabel = statusRaw === 'waiting'
+            ? (maxPlayers > 0 && playerCount >= maxPlayers ? 'Full' : 'Waiting')
+            : 'In Progress';
+        const canJoin = statusRaw === 'waiting' && (maxPlayers === 0 || playerCount < maxPlayers);
+        const statusBadge = `<span class="chip ${statusRaw === 'waiting' ? 'chip-waiting' : statusRaw === 'full' ? 'chip-error' : 'chip-progress'}">${statusLabel}</span>`;
+        const modeBadge = `<span class="chip chip-mode">${formatModeLabel(mode)}</span>`;
+
+        if (currentGameId === gameId) {
+            currentGameName = safeName;
+            currentMaxPlayers = maxPlayers;
+            currentPlayerCount = playerCount;
+            currentGameMode = mode;
+            waitingGameUpdated = true;
+            return;
+        }
+
+        const inviteUrl = `${window.location.origin}/lobby.html?game=${gameId}`;
+        const action = canJoin && Number.isInteger(gameId)
+            ? `<div class="action-cell">
+                   <button onclick="joinGame(${gameId})">Join</button>
+                   <button onclick="copyInviteLink('${inviteUrl}')" class="ghost small">Invite</button>
+               </div>`
+            : statusBadge;
+        const playersLabel = maxPlayers > 0 ? `${playerCount}/${maxPlayers}` : `${playerCount}`;
+
+        rows.push(`
+            <tr>
+                <td data-label="Game ID">${gameId}</td>
+                <td data-label="Name">${safeName}</td>
+                <td data-label="Players">${playersLabel}</td>
+                <td data-label="Mode">${modeBadge}</td>
+                <td data-label="Status">${statusBadge}</td>
+                <td data-label="Action">${action}</td>
+            </tr>
+        `);
+        renderedRows += 1;
+    });
+
+    if (currentGameId) {
+        if (!waitingGameUpdated) {
+            // Game no longer exists
+            clearCurrentGameTracking();
+            renderGameTable(rows, renderedRows);
+        } else {
+            updateWaitingView();
+        }
+        return;
     }
+
+    renderGameTable(rows, renderedRows);
 }
 
-function updateGameList(message) {
-    // Parse game list from server
-    const games = message.substring(10).split('|');
+function renderGameTable(rows, renderedRows) {
     const gameList = document.getElementById('gameList');
-    
+    if (!gameList) {
+        return;
+    }
+
     let html = `
         <tr>
             <th>Game ID</th>
             <th>Name</th>
             <th>Players</th>
+            <th>Mode</th>
             <th>Status</th>
             <th>Action</th>
         </tr>
     `;
-    
-    if (games.length === 0 || games[0] === '') {
-        html += '<tr><td colspan="5">No games available</td></tr>';
-    } else {
-        games.forEach(gameData => {
-            const [id, name, players, maxPlayers, status] = gameData.split(',');
-            html += `
-                <tr>
-                    <td>${id}</td>
-                    <td>${name}</td>
-                    <td>${players}/${maxPlayers}</td>
-                    <td>${status}</td>
-                    <td>
-                        ${status === 'waiting' ? 
-                            `<button onclick="joinGame(${id})">Join</button>` : 
-                            'In Progress'}
-                    </td>
-                </tr>
-            `;
-        });
+
+    html += rows.join('');
+
+    if (renderedRows === 0) {
+        html += `
+            <tr>
+                <td colspan="6" style="text-align:center;">No games available</td>
+            </tr>
+        `;
     }
-    
+
     gameList.innerHTML = html;
 }
 
-function showWaitingMessage() {
+function renderWaitingView() {
     const gameList = document.getElementById('gameList');
+    if (!gameList) {
+        return;
+    }
+
+    if (!currentGameId) {
+        refreshGames();
+        return;
+    }
+
+    const playersHtml = currentPlayerDetails.length
+        ? `<ul style="list-style:none;padding:0;margin:12px 0 0 0;">${currentPlayerDetails.map(renderPlayerBadge).join('')}</ul>`
+        : '<p style="margin:12px 0 0 0;">Waiting for other players to join…</p>';
+
+    const maxLabel = currentMaxPlayers > 0 ? currentMaxPlayers : '∞';
+    const requiredPlayers = currentMaxPlayers > 0
+        ? Math.min(currentMaxPlayers, MIN_AUTO_START_PLAYERS)
+        : MIN_AUTO_START_PLAYERS;
+    const readyToStart = currentPlayerCount >= requiredPlayers;
+    const countdownActive = countdownSeconds !== null;
+    const hasOpenSeat = currentMaxPlayers === 0 || currentPlayerCount < currentMaxPlayers;
+    const raceLabel = escapeHtml(currentRaceName || getRaceName(currentRaceId) || 'Not selected');
+    const inviteLink = `${window.location.origin}/lobby.html?game=${currentGameId}`;
+    const raceControls = `
+        <div style="margin-top:12px;">
+            <strong>Race:</strong> ${raceLabel}
+            <button onclick="openRaceSelectorForCurrentGame()" style="margin-left:8px;">Choose/Change Race</button>
+        </div>
+    `;
+    const reconnectBtn = `
+        <div style="margin-top:10px;">
+            <a href="/game.html" style="color:#5df5b4; text-decoration:none; font-weight:600;">Open game view</a>
+        </div>
+    `;
+
+    let statusLine;
+    if (isCurrentGameCreator) {
+        statusLine = readyToStart
+            ? 'All required commanders are present. Launch when ready.'
+            : `Waiting for at least ${requiredPlayers} players before launch.`;
+    } else {
+        statusLine = 'Waiting for the game creator to start the match.';
+    }
+    if (countdownActive) {
+        statusLine = `Countdown started — launching in ${countdownSeconds}s`;
+    }
+
+    const modeLabel = formatModeLabel(currentGameMode);
+    const startButton = isCurrentGameCreator
+        ? `<button onclick="startGame()" ${(!readyToStart || isStartingGame || countdownActive) ? 'disabled' : ''} style="margin-top:12px;">
+                ${countdownActive ? `Starting in ${countdownSeconds || 10}s` : (isStartingGame ? 'Starting…' : 'Start Game')}
+           </button>`
+        : '';
+    const aiSandboxButton = isCurrentGameCreator && !countdownActive
+        ? `<button onclick="startAiSandbox()" style="margin-top:8px;">Fill with AI & Start</button>`
+        : '';
+    const aiControls = isCurrentGameCreator && hasOpenSeat && !countdownActive
+        ? `
+            <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+                <label style="display:flex; align-items:center; gap:6px; color:#cfd7ff;">
+                    Difficulty
+                    <select id="aiDifficulty" style="padding:8px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;">
+                        ${AI_DIFFICULTY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
+                    </select>
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; color:#cfd7ff;">
+                    Strategy
+                    <select id="aiStrategy" style="padding:8px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;">
+                        ${AI_STRATEGY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
+                    </select>
+                </label>
+                <button onclick="addAiPlayer()" style="padding:10px 14px;">Add AI Opponent</button>
+            </div>
+          `
+        : '';
+    const countdownNotice = countdownActive
+        ? `<div style="margin-top:10px;color:#ffcc66;font-weight:600;">Launch locked: ${countdownSeconds}s</div>`
+        : '';
+    const inviteBlock = `
+        <div style="margin-top:16px; text-align:left; max-width:520px; margin-inline:auto;">
+            <div style="font-weight:600; margin-bottom:6px;">Invite a friend</div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <input type="text" value="${inviteLink}" readonly style="flex:1; padding:10px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;">
+                <button onclick="copyInviteLink('${inviteLink}')" style="padding:10px 14px;">Copy</button>
+            </div>
+        </div>
+    `;
+
     gameList.innerHTML = `
         <tr>
-            <td colspan="5" style="text-align: center; padding: 20px;">
-                <h3>Joined game successfully!</h3>
-                <p>Waiting for the game creator to start the game...</p>
-                <button onclick="window.location.reload()">Leave Game</button>
+            <td colspan="6" style="text-align: center; padding: 20px;">
+                <h3>🎮 Waiting in Game ${currentGameId}${currentGameName ? ` — ${currentGameName}` : ''}</h3>
+                <p>${statusLine}</p>
+                <p>Players: ${currentPlayerCount}/${maxLabel}</p>
+                ${raceControls}
+                ${reconnectBtn}
+                ${playersHtml}
+                ${aiControls}
+                ${startButton}
+                ${aiSandboxButton}
+                <div style="margin-top:8px; color:#cfd7ff;">Mode: ${modeLabel}</div>
+                ${countdownNotice}
+                ${inviteBlock}
+                <div style="margin-top:16px;">
+                    <button onclick="leaveGame()">Leave Game</button>
+                </div>
             </td>
         </tr>
     `;
+}
+
+function renderGameListSkeleton(message) {
+    const gameList = document.getElementById('gameList');
+    if (!gameList) {
+        return;
+    }
+
+    gameList.innerHTML = `
+        <tr>
+            <th>Game ID</th>
+            <th>Name</th>
+            <th>Players</th>
+            <th>Mode</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+        <tr>
+            <td colspan="6">${escapeHtml(message)}</td>
+        </tr>
+    `;
+}
+
+function setCreateGameButtonState(isLoading) {
+    const button = document.getElementById('createGameBtn');
+    if (!button) {
+        return;
+    }
+
+    if (isLoading) {
+        button.disabled = true;
+        button.textContent = 'Creating…';
+    } else {
+        button.disabled = false;
+        button.textContent = 'Create Game';
+    }
+}
+
+function resetCreateGameState() {
+    if (isCreatingGame) {
+        isCreatingGame = false;
+    }
+    setCreateGameButtonState(false);
+}
+
+function clearCurrentGameTracking() {
+    currentGameId = null;
+    currentGameName = '';
+    currentMaxPlayers = 0;
+    currentPlayerCount = 0;
+    currentPlayers = [];
+    isCurrentGameCreator = false;
+    isStartingGame = false;
+    isAwaitingRaceSelection = false;
+    pendingJoinGameId = null;
+    currentRaceId = null;
+    currentRaceName = '';
+    currentGameMode = 'quick';
+    countdownSeconds = null;
+}
+
+function decodeURIComponentSafe(value) {
+    try {
+        return decodeURIComponent(value);
+    } catch (error) {
+        return value || '';
+    }
+}
+
+function escapeHtml(value) {
+    if (!value) {
+        return '';
+    }
+    return value.replace(/[&<>"']/g, char => {
+        switch (char) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+            default: return char;
+        }
+    });
+}
+
+function updateKnownRaces(rawPayload) {
+    try {
+        const races = typeof rawPayload === 'string' ? JSON.parse(rawPayload) : rawPayload;
+        if (Array.isArray(races)) {
+            knownRaceMap = races.reduce((acc, race) => {
+                if (race && race.id) {
+                    acc[race.id] = race.name || acc[race.id];
+                }
+                return acc;
+            }, { ...knownRaceMap });
+        }
+    } catch (err) {
+        console.error('Failed to cache race data:', err);
+    }
+}
+
+function getRaceName(raceId) {
+    if (!raceId) {
+        return '';
+    }
+    if (knownRaceMap[raceId]) {
+        return knownRaceMap[raceId];
+    }
+    if (raceId === 1) {
+        return 'Terran Empire';
+    }
+    return '';
 }
 
 function getCookie(name) {
@@ -190,21 +629,274 @@ function getCookie(name) {
 
 function loadRaceSelectionScript(callback) {
     if (window.RaceSelection) {
+        requestUnlockedRaces();
         callback();
         return;
     }
-    
+
     const script = document.createElement('script');
-    script.src = 'race-selection.js';
+    script.src = 'js/race-selection.js?v=20251212';
     script.onload = () => {
-        // Request unlocked races from server
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-            websocket.send('//getunlockedraces');
-        }
+        requestUnlockedRaces();
         callback();
+    };
+    script.onerror = () => {
+        console.error('Failed to load race selection script at', script.src);
+        showToast('Unable to load race selection resources. Please refresh and try again.', 'error');
+        isAwaitingRaceSelection = false;
+        pendingJoinGameId = null;
+        updateWaitingView();
     };
     document.head.appendChild(script);
 }
 
-// Make joinGame globally accessible
+function requestUnlockedRaces() {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send('//getunlockedraces');
+    }
+}
+
+function openRaceSelectorForCurrentGame() {
+    if (!currentGameId) {
+        showToast('Join a game before selecting a race.', 'warn');
+        return;
+    }
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+        return;
+    }
+
+    pendingJoinGameId = currentGameId;
+    isAwaitingRaceSelection = true;
+    isStartingGame = false;
+
+    loadRaceSelectionScript(() => {
+        window.RaceSelection.initialize(raceId => {
+            if (!isAwaitingRaceSelection || !pendingJoinGameId) {
+                return;
+            }
+            isAwaitingRaceSelection = false;
+            pendingJoinGameId = null;
+            websocket.send(`//changerace:${raceId}`);
+        }, currentRaceId);
+    });
+}
+
+function joinGame(gameId) {
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+        return;
+    }
+
+    if (isAwaitingRaceSelection && pendingJoinGameId === gameId) {
+        return;
+    }
+
+    pendingJoinGameId = gameId;
+    isAwaitingRaceSelection = true;
+    isStartingGame = false;
+
+    loadRaceSelectionScript(() => {
+        window.RaceSelection.initialize(raceId => {
+            if (!isAwaitingRaceSelection || !pendingJoinGameId) {
+                return;
+            }
+            const targetGame = pendingJoinGameId;
+            isAwaitingRaceSelection = false;
+            pendingJoinGameId = null;
+            websocket.send(`//joingame:${targetGame}:${raceId}`);
+        }, currentRaceId);
+    });
+}
+
+function leaveGame() {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send('//leavegame');
+    } else {
+        window.location.href = '/lobby.html';
+    }
+    clearCurrentGameTracking();
+    renderGameListSkeleton('Leaving game…');
+}
+
+function startGame() {
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+        return;
+    }
+    if (!currentGameId || !isCurrentGameCreator || isStartingGame) {
+        return;
+    }
+
+    const requiredPlayers = currentMaxPlayers > 0
+        ? Math.min(currentMaxPlayers, MIN_AUTO_START_PLAYERS)
+        : MIN_AUTO_START_PLAYERS;
+
+    if (currentPlayerCount < requiredPlayers) {
+        showToast(`You need at least ${requiredPlayers} players to start the game.`, 'warn');
+        return;
+    }
+
+    isStartingGame = true;
+    updateWaitingView();
+    websocket.send('//start');
+}
+
+function hydrateCurrentGame(payload) {
+    currentGameId = Number(payload.gameId);
+    currentGameName = escapeHtml(payload.gameName || '');
+    currentMaxPlayers = Number(payload.maxPlayers) || 0;
+    currentPlayerCount = Number(payload.playerCount) || 1;
+    isCurrentGameCreator = String(payload.creatorId) === String(userId);
+    currentPlayers = [`You (Player ${userId})`];
+    isAwaitingRaceSelection = false;
+    pendingJoinGameId = null;
+    isStartingGame = false;
+    currentRaceId = Number(payload.raceId) || currentRaceId || null;
+    currentRaceName = payload.raceName || currentRaceName || getRaceName(currentRaceId);
+    currentGameMode = (payload.mode || 'quick').toLowerCase();
+    renderWaitingView();
+}
+
+function updatePlayerList(rawList) {
+    if (!currentGameId) {
+        return;
+    }
+
+    const entries = rawList.split(':').filter(Boolean);
+    if (entries.length === 0) {
+        return;
+    }
+
+    const players = entries.map(entry => {
+        const [id, encodedName, isAi, raceIdRaw, aiDiffRaw, aiStratRaw] = entry.split('|');
+        const decodedName = encodedName ? decodeURIComponent(encodedName) : `Player ${id}`;
+        const isSelf = String(id) === String(userId);
+        const raceLabel = getRaceName(Number(raceIdRaw)) || 'Race ?';
+        return {
+            id,
+            name: decodedName,
+            isAi: isAi === '1',
+            race: raceLabel,
+            aiDiff: (aiDiffRaw || 'medium').toLowerCase(),
+            aiStrat: (aiStratRaw || 'balanced').toLowerCase(),
+            isSelf
+        };
+    });
+
+    currentPlayerDetails = players;
+    currentPlayers = players.map(p => p.name);
+    currentPlayerCount = players.length;
+    updateWaitingView();
+}
+
+function updateWaitingView() {
+    if (currentGameId) {
+        renderWaitingView();
+    }
+}
+
+function renderPlayerBadge(player) {
+    const safeName = escapeHtml(player.name);
+    const race = escapeHtml(player.race || 'Race ?');
+    const aiChip = player.isAi
+        ? `<span class="chip ai">${(player.aiDiff || 'ai')}</span><span class="chip ai">${(player.aiStrat || 'balanced')}</span>`
+        : '';
+    const selfLabel = player.isSelf ? '<span class="chip">You</span>' : '';
+    return `<li style="margin:6px 0;">
+        <span class="player-badge">
+            <span>${player.isAi ? '🤖 ' : ''}${safeName}</span>
+            ${selfLabel}
+            <span class="chip">${race}</span>
+            ${aiChip}
+        </span>
+    </li>`;
+}
+
+function addAiPlayer() {
+    if (!isCurrentGameCreator) {
+        showToast('Only the game creator can add AI opponents.', 'warn');
+        return;
+    }
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+        return;
+    }
+    const diffSel = document.getElementById('aiDifficulty');
+    const stratSel = document.getElementById('aiStrategy');
+    const diff = diffSel ? diffSel.value : 'medium';
+    const strat = stratSel ? stratSel.value : 'balanced';
+    websocket.send(`//addai:${diff}:${strat}`);
+    showToast(`Adding AI (${diff}/${strat})…`, 'info');
+}
+
+function startAiSandbox() {
+    if (!isCurrentGameCreator) {
+        showToast('Only the creator can launch an AI sandbox.', 'warn');
+        return;
+    }
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+        return;
+    }
+    const targetSeats = currentMaxPlayers > 0 ? currentMaxPlayers : 4;
+    const needed = Math.max(0, targetSeats - currentPlayerCount);
+    const atLeastOne = currentPlayerCount < 2 ? 1 : 0;
+    const toAdd = Math.max(needed, atLeastOne);
+    for (let i = 0; i < toAdd; i++) {
+        websocket.send('//addai:aggressive:balanced');
+    }
+    setTimeout(() => startGame(), 400);
+}
+
+async function copyInviteLink(link) {
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(link);
+        } else {
+            const tempInput = document.createElement('input');
+            tempInput.value = link;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            tempInput.remove();
+        }
+        showToast('Invite link copied!', 'success');
+    } catch (err) {
+        console.error('Copy failed:', err);
+        showToast('Unable to copy link. Copy manually instead.', 'warn');
+    }
+}
+
+// Toast notifications
+function ensureToastRoot() {
+    let root = document.getElementById('toast-root');
+    if (!root) {
+        root = document.createElement('div');
+        root.id = 'toast-root';
+        document.body.appendChild(root);
+    }
+    return root;
+}
+
+function showToast(message, type = 'info', duration = 2800) {
+    const root = ensureToastRoot();
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    root.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.classList.add('visible');
+    });
+
+    setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 window.joinGame = joinGame;
+window.leaveGame = leaveGame;
+window.startGame = startGame;
+window.openRaceSelectorForCurrentGame = openRaceSelectorForCurrentGame;
+window.addAiPlayer = addAiPlayer;

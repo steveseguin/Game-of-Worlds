@@ -256,3 +256,149 @@ td {
     justify-content: center;
     align-items: center;
 }
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+    body {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #minimapid {
+        width: 100%;
+        max-width: 320px;
+        height: auto;
+        aspect-ratio: 500 / 356;
+        right: 0;
+        bottom: 0;
+        z-index: 100;
+    }
+
+    #avatarbox {
+        width: 140px;
+        height: 130px;
+        bottom: auto;
+        top: 45px;
+        right: 5px;
+    }
+
+    #empireupdates {
+        position: fixed;
+        right: 10px;
+        bottom: auto;
+        top: 180px;
+        width: calc(100% - 20px);
+        max-width: 280px;
+        padding: 8px 12px;
+        font-size: 14px;
+        z-index: 150;
+    }
+
+    #resourceBar {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-height: 35px;
+        padding: 8px;
+        border-radius: 0;
+        font-size: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    #turnTimeBar {
+        width: auto;
+        max-width: 150px;
+        height: auto;
+        min-height: 60px;
+        padding: 8px;
+        font-size: 12px;
+    }
+
+    #chatForm {
+        width: 100%;
+        max-width: 100%;
+        left: 0;
+        bottom: 0;
+        padding: 8px;
+        z-index: 200;
+    }
+
+    #chatForm input {
+        width: calc(100% - 70px);
+        font-size: 14px;
+    }
+
+    #battleGround {
+        left: 5%;
+        top: 5%;
+        width: 90%;
+        height: 90%;
+    }
+
+    #multiMove {
+        left: 5px;
+        bottom: 5px;
+        width: calc(100% - 10px);
+        max-width: 400px;
+        height: auto;
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+
+    #lobbyWindow {
+        left: 5%;
+        top: 5%;
+        width: 90%;
+        height: 90%;
+        padding: 15px;
+    }
+
+    .tab-button {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    .tab-panel {
+        padding: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    #minimapid {
+        max-width: 200px;
+    }
+
+    #avatarbox {
+        width: 100px;
+        height: 90px;
+    }
+
+    #empireupdates {
+        max-width: 100%;
+        left: 10px;
+        right: 10px;
+        width: auto;
+    }
+
+    #turnTimeBar {
+        max-width: 120px;
+        font-size: 11px;
+    }
+
+    .building-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .building-cost {
+        text-align: left;
+        margin-top: 5px;
+    }
+
+    .fleet-selectors {
+        flex-direction: column;
+        gap: 10px;
+    }
+}

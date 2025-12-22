@@ -17,74 +17,338 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Game of Words - Game Lobby</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="icon" type="image/png" href="images/minilogo.png">
     <link rel="stylesheet" href="css/style.css">
     <style>
-        .lobby-container {
-            padding: 20px;
-            max-width: 800px;
-            margin: 0 auto;
+        .chip-mode { background: #1b2a4a; color: #a7c4ff; }
+        .chip-waiting { background: #1f4a2a; color: #a8f0c9; }
+        .chip-progress { background: #4a2a1f; color: #ffd3a8; }
+        .chip-error { background: #4a1f28; color: #ffb3c2; }
+        .action-cell { display: flex; gap: 6px; align-items: center; }
+        .action-cell .small { padding: 6px 10px; font-size: 12px; }
+    </style>
+    <style>
+        body {
+            margin: 0;
+            background: radial-gradient(circle at 20% 20%, rgba(94,129,244,0.18), transparent 30%), radial-gradient(circle at 80% 10%, rgba(90,245,196,0.16), transparent 25%), #0c1021;
+            color: #e8ecff;
+            font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+            min-height: 100vh;
         }
-        
+        .lobby-shell {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+        .hero {
+            background: linear-gradient(120deg, rgba(33,44,92,0.8), rgba(23,30,68,0.9));
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 18px;
+            padding: 24px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            align-items: center;
+        }
+        .hero h1 {
+            margin: 0 0 6px;
+            letter-spacing: 0.5px;
+        }
+        .hero p {
+            margin: 0;
+            color: rgba(232,236,255,0.75);
+        }
+        .cta-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 18px;
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08);
+            color: #cfd7ff;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .panel-grid {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 18px;
+            margin-top: 24px;
+        }
+        @media (max-width: 960px) {
+            .panel-grid {
+                grid-template-columns: 1fr;
+            }
+            .hero {
+                flex-direction: column;
+            }
+        }
+        @media (max-width: 640px) {
+            .lobby-shell {
+                padding: 16px 12px 32px;
+            }
+            .hero {
+                padding: 16px;
+                border-radius: 14px;
+            }
+            .hero h1 {
+                font-size: 1.4rem;
+            }
+            .cta-row {
+                gap: 8px;
+            }
+            .pill {
+                font-size: 12px;
+                padding: 4px 10px;
+            }
+            .card {
+                padding: 14px;
+                border-radius: 12px;
+            }
+            .card h3 {
+                font-size: 16px;
+            }
+            .form-row {
+                flex-direction: column;
+            }
+            .form-row input, .form-row select, .form-row button {
+                width: 100%;
+                padding: 14px 12px;
+            }
+            /* Mobile table: stack cells vertically */
+            .game-list {
+                display: block;
+            }
+            .game-list thead {
+                display: none;
+            }
+            .game-list tr {
+                display: flex;
+                flex-direction: column;
+                padding: 12px;
+                margin-bottom: 10px;
+                background: rgba(20, 26, 48, 0.9);
+                border-radius: 12px;
+                border: 1px solid rgba(255,255,255,0.06);
+            }
+            .game-list td {
+                display: flex;
+                justify-content: space-between;
+                padding: 6px 0;
+                border: none;
+            }
+            .game-list td::before {
+                content: attr(data-label);
+                font-weight: 600;
+                color: rgba(232,236,255,0.6);
+                font-size: 12px;
+            }
+            .action-cell {
+                justify-content: flex-end;
+                margin-top: 8px;
+            }
+            #toast-root {
+                right: 12px;
+                bottom: 12px;
+                left: 12px;
+            }
+            .toast {
+                min-width: auto;
+                width: 100%;
+            }
+        }
+        .card {
+            background: rgba(16,20,38,0.9);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            padding: 18px;
+            box-shadow: 0 14px 28px rgba(0,0,0,0.35);
+        }
+        .card h3 {
+            margin: 0 0 10px;
+            font-size: 18px;
+        }
+        .form-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .form-row input, .form-row select, .form-row button {
+            padding: 12px 12px;
+            border-radius: 10px;
+            border: 1px solid #3b4257;
+            background: #0f1424;
+            color: #e8ecff;
+            font-weight: 600;
+        }
+        .primary {
+            background: linear-gradient(120deg, #42d8c8, #4c7cff);
+            border: none;
+            color: #061024;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 28px rgba(76,124,255,0.4);
+        }
+        .ghost {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: #d6ddff;
+            cursor: pointer;
+        }
         .game-list {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 12px;
+            background: rgba(12,16,32,0.9);
+            border-radius: 12px;
+            overflow: hidden;
         }
-        
         .game-list th, .game-list td {
-            padding: 10px;
-            border: 1px solid #444;
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
             text-align: left;
         }
-        
         .game-list th {
-            background-color: #333;
+            background: rgba(255,255,255,0.04);
+            font-size: 13px;
+            letter-spacing: 0.4px;
         }
-        
-        .game-controls {
-            margin: 20px 0;
+        .game-list tr:hover td {
+            background: rgba(255,255,255,0.02);
+        }
+        #toast-root {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
             display: flex;
+            flex-direction: column;
             gap: 10px;
+            z-index: 3000;
         }
-        
-        .game-controls input, .game-controls select, .game-controls button {
-            padding: 8px;
-            background: #333;
-            border: 1px solid #666;
-            color: white;
+        .toast {
+            min-width: 240px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(22,26,44,0.95);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #e8ecff;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .toast.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .toast-success { border-color: rgba(90,245,196,0.5); }
+        .toast-error { border-color: rgba(255,126,126,0.6); }
+        .toast-warn { border-color: rgba(255,214,102,0.7); }
+        .player-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #e8ecff;
+            font-weight: 600;
+        }
+        .player-badge .chip {
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            background: rgba(90,245,196,0.14);
+            border: 1px solid rgba(90,245,196,0.5);
+            color: #c7fff0;
+        }
+        .player-badge .chip.ai {
+            background: rgba(255,153,102,0.12);
+            border-color: rgba(255,153,102,0.45);
+            color: #ffc9a8;
         }
     </style>
 </head>
 <body>
-    <div class="lobby-container">
-        <h1>Game of Words - Game Lobby</h1>
-        
-        <div class="game-controls">
-            <input type="text" id="gameName" placeholder="Game Name">
-            <select id="maxPlayers">
-                <option value="2">2 Players</option>
-                <option value="3">3 Players</option>
-                <option value="4" selected>4 Players</option>
-                <option value="6">6 Players</option>
-                <option value="8">8 Players</option>
-            </select>
-            <button id="createGameBtn">Create Game</button>
-            <button id="refreshGamesBtn">Refresh Games</button>
+    <div class="lobby-shell">
+        <div class="hero">
+            <div>
+                <h1>Game Lobby</h1>
+                <p>Spin up a match, pick your race, and invite friends or AI opponents.</p>
+                <div class="cta-row">
+                    <div class="pill">Secure websocket</div>
+                    <div class="pill">HTTPS enabled</div>
+                    <div class="pill">Race selection on join</div>
+                </div>
+            </div>
+            <div class="pill">Players online: <span id="online-count">?</span></div>
         </div>
-        
-        <h2>Available Games</h2>
-        <table id="gameList" class="game-list">
-            <tr>
-                <th>Game ID</th>
-                <th>Name</th>
-                <th>Players</th>
-                <th>Status</th>
-                <th>Action</th>
-            </tr>
-            <tr>
-                <td colspan="5">Loading games...</td>
-            </tr>
-        </table>
+
+        <div class="panel-grid">
+            <div class="card">
+                <h3>Create a new game</h3>
+                <div class="form-row" style="margin-bottom:12px;">
+                    <input type="text" id="gameName" placeholder="Game name">
+                </div>
+                <div class="form-row" style="margin-bottom:14px;">
+                    <select id="maxPlayers">
+                        <option value="2">2 Players</option>
+                        <option value="3">3 Players</option>
+                        <option value="4" selected>4 Players</option>
+                        <option value="6">6 Players</option>
+                        <option value="8">8 Players</option>
+                    </select>
+                </div>
+                <div class="form-row" style="margin-bottom:14px;">
+                    <select id="gameMode">
+                        <option value="quick" selected>Quick — fast-paced turns</option>
+                        <option value="epic">Epic — 1 turn per day</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <button id="createGameBtn" class="primary">Create Game</button>
+                    <button id="refreshGamesBtn" class="ghost">Refresh Games</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Tip</h3>
+                <p style="margin:0; color:rgba(232,236,255,0.7); line-height:1.5;">
+                    After creating or joining a game, pick your race in the popup. Creators can add AI opponents and copy an invite link from the waiting view.
+                </p>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+            <h3>Available Games</h3>
+            <table id="gameList" class="game-list">
+                <tr>
+                    <th>Game ID</th>
+                    <th>Name</th>
+                    <th>Players</th>
+                    <th>Mode</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+                <tr>
+                    <td colspan="6">Loading games...</td>
+                </tr>
+            </table>
+        </div>
     </div>
     
     <script>
@@ -107,6 +371,6 @@
             }
         })();
     </script>
-    <script src="js/lobby.js"></script>
+    <script src="js/lobby.js?v=20251212"></script>
 </body>
 </html>
