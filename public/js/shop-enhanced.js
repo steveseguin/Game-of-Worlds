@@ -14,39 +14,222 @@ const Shop = (function() {
     let purchaseHistory = [];
     let ownedItems = new Set();
     let processingPayment = false;
+
+    const PLACEHOLDER_STRIPE_KEY = 'pk_test_YOUR_KEY_HERE';
+    const configState = {
+        stripeKey: null,
+        paymentsEnabled: false,
+        ready: false,
+        loadingPromise: null
+    };
+
+    function hydrateConfigFromWindow() {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const key = typeof window.STRIPE_PUBLISHABLE_KEY === 'string'
+            ? window.STRIPE_PUBLISHABLE_KEY.trim()
+            : null;
+        if (key !== null) {
+            configState.stripeKey = key && key !== PLACEHOLDER_STRIPE_KEY ? key : null;
+            configState.ready = true;
+        }
+
+        if (window.GAME_FEATURES && Object.prototype.hasOwnProperty.call(window.GAME_FEATURES, 'paymentsEnabled')) {
+            const enabled = Boolean(window.GAME_FEATURES.paymentsEnabled);
+            configState.paymentsEnabled = enabled && Boolean(configState.stripeKey);
+            configState.ready = true;
+        } else if (configState.stripeKey && !configState.ready) {
+            configState.paymentsEnabled = true;
+        }
+    }
+
+    function updateWindowConfig() {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        window.STRIPE_PUBLISHABLE_KEY = configState.stripeKey || '';
+        window.GAME_FEATURES = Object.assign({}, window.GAME_FEATURES, {
+            paymentsEnabled: configState.paymentsEnabled
+        });
+    }
+
+    function applyRuntimeConfig(data) {
+        const rawKey = data && typeof data.stripePublishableKey === 'string'
+            ? data.stripePublishableKey.trim()
+            : '';
+        const usableKey = rawKey && rawKey !== PLACEHOLDER_STRIPE_KEY ? rawKey : null;
+        configState.stripeKey = usableKey;
+        configState.paymentsEnabled = Boolean(data && data.paymentsEnabled) && Boolean(usableKey);
+        configState.ready = true;
+        updateWindowConfig();
+        return configState;
+    }
+
+    function markConfigUnavailable(error) {
+        configState.paymentsEnabled = false;
+        configState.ready = true;
+        if (error) {
+            console.error('Failed to load runtime config:', error);
+        }
+        updateWindowConfig();
+        return configState;
+    }
+
+    async function ensureConfigReady() {
+        hydrateConfigFromWindow();
+        if (configState.ready && configState.loadingPromise === null) {
+            return configState;
+        }
+        if (configState.loadingPromise) {
+            return configState.loadingPromise;
+        }
+
+        configState.loadingPromise = fetch('/api/config', {
+            credentials: 'include',
+            cache: 'no-store'
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(applyRuntimeConfig)
+            .catch(markConfigUnavailable)
+            .finally(() => {
+                configState.loadingPromise = null;
+            });
+
+        return configState.loadingPromise;
+    }
+
+    hydrateConfigFromWindow();
     
-    // Get Stripe key from environment or config
-    const STRIPE_KEY = window.STRIPE_PUBLISHABLE_KEY || 'pk_test_YOUR_KEY_HERE';
+    // Notification helpers to keep the module resilient if the enhanced notification
+    // system has not been loaded yet.
+    function notify(message, type = 'info', duration = 5000) {
+        const notifier = window.NotificationSystem;
+        if (notifier && typeof notifier.show === 'function') {
+            notifier.show(message, type, duration);
+            return;
+        }
+        const method = type === 'error' ? 'error' : type === 'warning' ? 'warn' : 'log';
+        console[method](`[Shop] ${message}`);
+    }
+    
+    function notifyConfirm(title, message, onConfirm, onCancel) {
+        const notifier = window.NotificationSystem;
+        if (notifier && typeof notifier.confirm === 'function') {
+            notifier.confirm(title, message, onConfirm, onCancel);
+        } else {
+            if (window.confirm(`${title}\n\n${message}`)) {
+                onConfirm && onConfirm();
+            } else if (onCancel) {
+                onCancel();
+            }
+        }
+    }
+    
+    function notifyLoading(title = 'Loading...', message = '') {
+        const notifier = window.NotificationSystem;
+        if (notifier && typeof notifier.showLoading === 'function') {
+            notifier.showLoading(title, message);
+        } else {
+            console.log(`[Shop] ${title}${message ? ` - ${message}` : ''}`);
+        }
+    }
+    
+    function notifyLoadingEnd() {
+        const notifier = window.NotificationSystem;
+        if (notifier && typeof notifier.hideLoading === 'function') {
+            notifier.hideLoading();
+        }
+    }
+    
+    function notifyPayment(eventName, payload) {
+        const notifier = window.NotificationSystem;
+        if (notifier && notifier.payment && typeof notifier.payment[eventName] === 'function') {
+            notifier.payment[eventName](payload);
+        } else {
+            const tag = eventName.toUpperCase();
+            if (eventName === 'success') {
+                console.log(`[Shop][${tag}] Purchase complete${payload ? `: ${payload}` : ''}`);
+            } else {
+                console.warn(`[Shop][${tag}] ${payload || 'Payment update'}`);
+            }
+        }
+    }
+    
+    function notifyRaceUnlocked(raceId) {
+        const notifier = window.NotificationSystem;
+        if (notifier && notifier.game && typeof notifier.game.raceUnlocked === 'function') {
+            notifier.game.raceUnlocked(raceId);
+        } else {
+            console.log(`[Shop] Race unlocked: ${raceId}`);
+        }
+    }
     
     // Initialize shop with user ID
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) {
+            return parts.pop().split(';').shift();
+        }
+        return null;
+    }
+    
     async function initialize(uid) {
-        userId = uid;
+        const runtimeConfig = await ensureConfigReady();
+        const resolvedStripeKey = runtimeConfig.stripeKey && runtimeConfig.stripeKey !== PLACEHOLDER_STRIPE_KEY
+            ? runtimeConfig.stripeKey
+            : null;
+        const paymentsEnabled = Boolean(runtimeConfig.paymentsEnabled && resolvedStripeKey);
         
-        // Initialize Stripe
-        if (typeof Stripe !== 'undefined' && STRIPE_KEY !== 'pk_test_YOUR_KEY_HERE') {
+        userId = sanitizeUserId(uid || window.gameUserId || getCookie('userId'));
+        if (userId) {
+            window.gameUserId = userId;
+        } else {
+            window.gameUserId = null;
+        }
+        
+        if (paymentsEnabled && typeof Stripe !== 'undefined') {
             try {
-                stripe = Stripe(STRIPE_KEY);
+                stripe = Stripe(resolvedStripeKey);
                 elements = stripe.elements({
                     fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }]
                 });
             } catch (error) {
                 console.error('Failed to initialize Stripe:', error);
-                NotificationSystem.show('Payment system unavailable', 'error');
+                notify('Payment system unavailable', 'error');
             }
+        } else if (paymentsEnabled && typeof Stripe === 'undefined') {
+            console.error('Stripe library failed to load while payments are enabled.');
+            notify('Payment processing is temporarily unavailable. Please refresh and try again.', 'error', 6000);
         } else {
-            console.warn('Stripe not configured. Payment functionality disabled.');
+            console.info('Payments disabled. Showing cosmetics and crystal shop only.');
         }
         
-        createShopUI();
-        await Promise.all([
-            loadUserBalance(),
-            loadOwnedItems(),
-            loadPurchaseHistory()
-        ]);
+        createShopUI(runtimeConfig);
+        
+        if (!userId) {
+            notify('Shop features require a logged-in user.', 'warning', 6000);
+            return;
+        }
+        
+        const tasks = [loadUserBalance()];
+        if (paymentsEnabled) {
+            tasks.push(loadOwnedItems(), loadPurchaseHistory());
+        }
+        await Promise.all(tasks);
     }
     
     // Create enhanced shop UI
-    function createShopUI() {
+    function createShopUI(runtimeConfig) {
+        const paymentsEnabled = Boolean(runtimeConfig && runtimeConfig.paymentsEnabled);
+
         const shopContainer = document.createElement('div');
         shopContainer.id = 'shop-container';
         shopContainer.className = 'shop-hidden';
@@ -65,13 +248,19 @@ const Shop = (function() {
                 </div>
                 
                 <div class="shop-tabs">
-                    <button class="shop-tab active" onclick="Shop.showTab('races')">Premium Races</button>
-                    <button class="shop-tab" onclick="Shop.showTab('crystals')">Crystals</button>
-                    <button class="shop-tab" onclick="Shop.showTab('vip')">VIP Membership</button>
-                    <button class="shop-tab" onclick="Shop.showTab('boosters')">Boosters</button>
-                    <button class="shop-tab" onclick="Shop.showTab('cosmetics')">Cosmetics</button>
-                    <button class="shop-tab" onclick="Shop.showTab('crystal-shop')">Crystal Shop</button>
+                    <button class="shop-tab active" data-tab="races" onclick="Shop.showTab('races', event)">Premium Races</button>
+                    <button class="shop-tab" data-tab="crystals" onclick="Shop.showTab('crystals', event)">Crystals</button>
+                    <button class="shop-tab" data-tab="vip" onclick="Shop.showTab('vip', event)">VIP Membership</button>
+                    <button class="shop-tab" data-tab="boosters" onclick="Shop.showTab('boosters', event)">Boosters</button>
+                    <button class="shop-tab" data-tab="cosmetics" onclick="Shop.showTab('cosmetics', event)">Cosmetics</button>
+                    <button class="shop-tab" data-tab="crystal-shop" onclick="Shop.showTab('crystal-shop', event)">Crystal Shop</button>
                 </div>
+                
+                ${!paymentsEnabled ? `
+                <div class="shop-payments-disabled">
+                    <strong>Payments Offline</strong>
+                    <p>Stripe payments are not configured for this environment. You can still browse cosmetic and crystal options, but purchases are disabled.</p>
+                </div>` : ''}
                 
                 <div class="shop-balance">
                     <img src="./images/crystal.png" alt="Crystals" class="crystal-icon">
@@ -236,6 +425,242 @@ const Shop = (function() {
             </div>
         `).join('');
     }
+
+    function sanitizeUserId(value) {
+        if (value === null || value === undefined) {
+            return null;
+        }
+        const trimmed = String(value).trim();
+        return /^\d+$/.test(trimmed) ? trimmed : null;
+    }
+    
+    function generateCrystalItems() {
+        const packs = [
+            {
+                id: 'crystals_500',
+                name: '500 Crystals',
+                price: '$4.99',
+                description: 'Jump-start your empire with a handy stash.',
+                bonus: 'Perfect for rushing early tech.',
+                badge: ''
+            },
+            {
+                id: 'crystals_1200',
+                name: '1,200 Crystals',
+                price: '$9.99',
+                description: 'More than double the starter pack.',
+                bonus: '+200 bonus crystals',
+                badge: 'BEST VALUE'
+            },
+            {
+                id: 'crystals_2500',
+                name: '2,500 Crystals',
+                price: '$19.99',
+                description: 'Stockpile enough to outfit an entire fleet.',
+                bonus: '+500 bonus crystals',
+                badge: ''
+            },
+            {
+                id: 'crystals_6500',
+                name: '6,500 Crystals',
+                price: '$49.99',
+                description: 'For emperors who never want to wait.',
+                bonus: '+1,500 bonus crystals',
+                badge: 'TOP DEAL'
+            }
+        ];
+        
+        return packs.map(pack => `
+            <div class="shop-item ${pack.badge ? 'popular' : ''}" data-product-id="${pack.id}"
+                 onclick="Shop.purchaseCrystals('${pack.id}')">
+                ${pack.badge ? `<div class="popular-badge">${pack.badge}</div>` : ''}
+                <img src="./images/crystal.png" alt="${pack.name}" loading="lazy">
+                <h4>${pack.name}</h4>
+                <p class="item-description">${pack.description}</p>
+                ${pack.bonus ? `<p class="item-subtext">${pack.bonus}</p>` : ''}
+                <div class="price">${pack.price}</div>
+            </div>
+        `).join('');
+    }
+    
+    function generateVIPItems() {
+        const tiers = [
+            {
+                id: 'vip_bronze',
+                name: 'Bronze VIP',
+                price: '$4.99 / month',
+                description: 'Founders bundle of boosts and flair.',
+                perks: ['+10% resource income', '+10 daily crystals', '+1 build queue', 'Bronze nameplate'],
+                image: './images/buygold.jpg'
+            },
+            {
+                id: 'vip_silver',
+                name: 'Silver VIP',
+                price: '$9.99 / month',
+                description: 'Step into the commander’s lounge.',
+                perks: ['+20% resource income', '+25 daily crystals', '+2 build queues', 'Priority matchmaking', 'Silver holo-banner'],
+                badge: 'RECOMMENDED',
+                image: './images/buygold.jpg'
+            },
+            {
+                id: 'vip_gold',
+                name: 'Gold VIP',
+                price: '$19.99 / month',
+                description: 'Ultimate prestige for galactic rulers.',
+                perks: ['+30% resource income', '+50 daily crystals', '+3 build queues', 'Exclusive skins', 'VIP chat channel'],
+                badge: 'ELITE',
+                image: './images/buygold.jpg'
+            }
+        ];
+        
+        return tiers.map(tier => `
+            <div class="shop-item ${tier.badge ? 'popular' : ''}" data-product-id="${tier.id}"
+                 onclick="Shop.purchaseVIP('${tier.id}')">
+                ${tier.badge ? `<div class="popular-badge">${tier.badge}</div>` : ''}
+                <img src="${tier.image}" alt="${tier.name}" loading="lazy">
+                <h4>${tier.name}</h4>
+                <p class="item-description">${tier.description}</p>
+                <ul class="item-features">
+                    ${tier.perks.map(perk => `<li>• ${perk}</li>`).join('')}
+                </ul>
+                <div class="price">${tier.price}</div>
+            </div>
+        `).join('');
+    }
+    
+    function generateBoosterItems() {
+        const boosters = [
+            {
+                id: 'booster_resource',
+                name: 'Resource Surge (7 days)',
+                price: '$2.99',
+                description: 'Doubles metal & crystal production on all colonized worlds.',
+                perks: ['+100% metal income', '+100% crystal income'],
+                image: './images/probe.png'
+            },
+            {
+                id: 'booster_research',
+                name: 'Research Focus (7 days)',
+                price: '$3.49',
+                description: 'Accelerate your scientists to unlock tech faster.',
+                perks: ['+150% research output', 'Free tech queue slot'],
+                image: './images/probe.png'
+            },
+            {
+                id: 'booster_fleet',
+                name: 'Fleet Rally (3 days)',
+                price: '$1.99',
+                description: 'Your shipyards work overtime for rapid deployment.',
+                perks: ['+50% ship build speed', '-25% movement cost'],
+                image: './images/probe.png'
+            },
+            {
+                id: 'booster_warp',
+                name: 'Warp Gate Express (72 hrs)',
+                price: '$1.49',
+                description: 'Temporary warp network for lightning-fast redeployments.',
+                perks: ['Free warp jumping between owned gates', 'Instant gate cooldown reset once per day'],
+                image: './images/probe.png'
+            }
+        ];
+        
+        return boosters.map(booster => `
+            <div class="shop-item" data-product-id="${booster.id}"
+                 onclick="Shop.purchaseBooster('${booster.id}')">
+                <img src="${booster.image}" alt="${booster.name}" loading="lazy">
+                <h4>${booster.name}</h4>
+                <p class="item-description">${booster.description}</p>
+                <ul class="item-features">
+                    ${booster.perks.map(perk => `<li>• ${perk}</li>`).join('')}
+                </ul>
+                <div class="price">${booster.price}</div>
+            </div>
+        `).join('');
+    }
+    
+    function generateCosmeticItems() {
+        const cosmetics = [
+            {
+                id: 'cosmetic_empire_theme',
+                name: 'Empire Theme Pack',
+                price: '$3.99',
+                description: 'Custom UI skin, avatar frame, and lobby banner.',
+                features: ['Dynamic UI colors', 'Animated banner', 'Unique chat flair'],
+                image: './images/avatar1.jpg'
+            },
+            {
+                id: 'cosmetic_fleet_trails',
+                name: 'Fleet Engine Trails',
+                price: '$2.49',
+                description: 'Leave prismatic trails across the galaxy map.',
+                features: ['Animated fleet trails', 'Custom warp animation'],
+                image: './images/avatar1.jpg'
+            },
+            {
+                id: 'cosmetic_voice_pack',
+                name: 'AI Advisor Voice Pack',
+                price: '$1.99',
+                description: 'New voice lines for alerts and turn reminders.',
+                features: ['20+ voiced notifications', 'Toggle per category'],
+                image: './images/avatar1.jpg'
+            }
+        ];
+        
+        return cosmetics.map(item => `
+            <div class="shop-item" data-product-id="${item.id}"
+                 onclick="Shop.purchaseCosmetic('${item.id}')">
+                <img src="${item.image}" alt="${item.name}" loading="lazy">
+                <h4>${item.name}</h4>
+                <p class="item-description">${item.description}</p>
+                <ul class="item-features">
+                    ${item.features.map(feature => `<li>• ${feature}</li>`).join('')}
+                </ul>
+                <div class="price">${item.price}</div>
+            </div>
+        `).join('');
+    }
+    
+    function generateCrystalShopItems() {
+        const items = [
+            {
+                id: 'crystal_instant_build',
+                name: 'Instant Build',
+                cost: 50,
+                description: 'Finish the current build queue immediately.'
+            },
+            {
+                id: 'crystal_sector_scan',
+                name: 'Deep Sector Scan',
+                cost: 35,
+                description: 'Reveal resources and fleets in any sector.'
+            },
+            {
+                id: 'crystal_warp_refresh',
+                name: 'Warp Gate Refresh',
+                cost: 40,
+                description: 'Reset warp gate cooldowns across your empire.'
+            },
+            {
+                id: 'crystal_emergency_fleet',
+                name: 'Emergency Fleet Draft',
+                cost: 120,
+                description: 'Instantly gain a defensive fleet at your homeworld.'
+            }
+        ];
+        
+        return items.map(item => `
+            <div class="shop-item" data-product-id="${item.id}"
+                 onclick="Shop.spendCrystals('${item.id}')">
+                <img src="./images/crystal.png" alt="${item.name}" loading="lazy">
+                <h4>${item.name}</h4>
+                <p class="item-description">${item.description}</p>
+                <div class="crystal-cost">
+                    <img src="./images/crystal.png" alt="" class="crystal-icon-inline">
+                    ${item.cost}
+                </div>
+            </div>
+        `).join('');
+    }
     
     // Setup card element with real-time validation
     function setupCardElement() {
@@ -275,14 +700,28 @@ const Shop = (function() {
             }
         });
     }
+
+    async function parseJsonResponse(response, contextMessage) {
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error(`${contextMessage} (unexpected response type)`);
+        }
+        try {
+            return await response.json();
+        } catch (error) {
+            throw new Error(`${contextMessage} (invalid JSON)`);
+        }
+    }
     
     // Load user balance with error handling
     async function loadUserBalance() {
         try {
-            const response = await fetch(`/api/user/${userId}/balance`);
+            const response = await fetch(`/api/user/${userId}/balance`, {
+                credentials: 'include'
+            });
             if (!response.ok) throw new Error('Failed to load balance');
             
-            const data = await response.json();
+            const data = await parseJsonResponse(response, 'Failed to load balance');
             updateBalanceDisplay(data.crystals || 0);
         } catch (error) {
             console.error('Failed to load balance:', error);
@@ -303,10 +742,12 @@ const Shop = (function() {
     // Load owned items
     async function loadOwnedItems() {
         try {
-            const response = await fetch(`/api/user/${userId}/owned-items`);
+            const response = await fetch(`/api/user/${userId}/owned-items`, {
+                credentials: 'include'
+            });
             if (!response.ok) throw new Error('Failed to load owned items');
             
-            const data = await response.json();
+            const data = await parseJsonResponse(response, 'Failed to load owned items');
             ownedItems = new Set(data.items || []);
             updateOwnedItemsDisplay();
         } catch (error) {
@@ -317,10 +758,12 @@ const Shop = (function() {
     // Load purchase history
     async function loadPurchaseHistory() {
         try {
-            const response = await fetch(`/api/user/${userId}/purchase-history`);
+            const response = await fetch(`/api/user/${userId}/purchase-history`, {
+                credentials: 'include'
+            });
             if (!response.ok) throw new Error('Failed to load history');
             
-            const data = await response.json();
+            const data = await parseJsonResponse(response, 'Failed to load purchase history');
             purchaseHistory = data.history || [];
         } catch (error) {
             console.error('Failed to load purchase history:', error);
@@ -330,7 +773,7 @@ const Shop = (function() {
     // Purchase race with enhanced flow
     async function purchaseRace(productId) {
         if (ownedItems.has(productId)) {
-            NotificationSystem.show('You already own this race!', 'warning');
+            notify('You already own this race!', 'warning');
             return;
         }
         
@@ -338,7 +781,7 @@ const Shop = (function() {
             onSuccess: () => {
                 ownedItems.add(productId);
                 updateOwnedItemsDisplay();
-                NotificationSystem.game.raceUnlocked(productId);
+                notifyRaceUnlocked(productId);
             }
         });
     }
@@ -346,16 +789,12 @@ const Shop = (function() {
     // Enhanced purchase process
     async function processPurchase(productId, type, options = {}) {
         if (!stripe) {
-            NotificationSystem.show(
-                'Payment system not available. Please contact support.',
-                'error',
-                8000
-            );
+            notify('Payment system not available. Please contact support.', 'error', 8000);
             return;
         }
         
         if (processingPayment) {
-            NotificationSystem.show('Please wait for current payment to complete', 'warning');
+            notify('Please wait for current payment to complete', 'warning');
             return;
         }
         
@@ -363,7 +802,7 @@ const Shop = (function() {
         
         // Show confirmation for high-value purchases
         if (shouldConfirmPurchase(productId)) {
-            NotificationSystem.confirm(
+            notifyConfirm(
                 'Confirm Purchase',
                 `Are you sure you want to purchase ${getProductName(productId)}?`,
                 () => startPurchaseFlow(productId, type, options),
@@ -378,11 +817,12 @@ const Shop = (function() {
     async function startPurchaseFlow(productId, type, options) {
         try {
             processingPayment = true;
-            NotificationSystem.showLoading('Preparing checkout...', 'Please wait');
+            notifyLoading('Preparing checkout...', 'Please wait');
             
             // Create payment intent
             const response = await fetch('/api/payment/create-intent', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: userId,
@@ -398,13 +838,13 @@ const Shop = (function() {
             
             const paymentData = await response.json();
             
-            NotificationSystem.hideLoading();
+            notifyLoadingEnd();
             showPaymentModal(productId, paymentData, options);
             
         } catch (error) {
             processingPayment = false;
-            NotificationSystem.hideLoading();
-            NotificationSystem.payment.error(error.message);
+            notifyLoadingEnd();
+            notifyPayment('error', error.message);
             
             // Log error for debugging
             console.error('Purchase error:', error);
@@ -497,11 +937,11 @@ const Shop = (function() {
             if (error) {
                 // Handle specific error types
                 if (error.type === 'card_error') {
-                    NotificationSystem.payment.declined();
+                    notifyPayment('declined');
                 } else if (error.type === 'validation_error') {
-                    NotificationSystem.show('Please check your card details', 'error');
+                    notify('Please check your card details', 'error');
                 } else {
-                    NotificationSystem.payment.error(error.message);
+                    notifyPayment('error', error.message);
                 }
                 
                 // Re-enable button
@@ -511,7 +951,7 @@ const Shop = (function() {
             } else {
                 // Payment successful
                 closePayment();
-                NotificationSystem.payment.success(currentProduct.productId);
+                notifyPayment('success', currentProduct.productId);
                 
                 // Execute success callback
                 if (options.onSuccess) {
@@ -533,7 +973,7 @@ const Shop = (function() {
             
         } catch (error) {
             console.error('Payment error:', error);
-            NotificationSystem.payment.error('An unexpected error occurred');
+            notifyPayment('error', 'An unexpected error occurred');
             
             submitButton.disabled = false;
             buttonText.classList.remove('hidden');
@@ -548,15 +988,16 @@ const Shop = (function() {
         const item = getCrystalShopItem(itemId);
         if (!item) return;
         
-        NotificationSystem.confirm(
+        notifyConfirm(
             'Confirm Purchase',
             `Spend ${item.cost} crystals on ${item.name}?`,
             async () => {
                 try {
-                    NotificationSystem.showLoading('Processing purchase...');
+                    notifyLoading('Processing purchase...');
                     
                     const response = await fetch('/api/payment/spend-crystals', {
                         method: 'POST',
+                        credentials: 'include',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             userId: userId,
@@ -565,12 +1006,12 @@ const Shop = (function() {
                     });
                     
                     const data = await response.json();
-                    NotificationSystem.hideLoading();
+                    notifyLoadingEnd();
                     
                     if (data.error) {
-                        NotificationSystem.show(data.error, 'error');
+                        notify(data.error, 'error');
                     } else {
-                        NotificationSystem.show(`Purchased ${item.name}!`, 'success');
+                        notify(`Purchased ${item.name}!`, 'success');
                         updateBalanceDisplay(data.newBalance);
                         
                         // Execute item effect
@@ -580,8 +1021,8 @@ const Shop = (function() {
                     }
                     
                 } catch (error) {
-                    NotificationSystem.hideLoading();
-                    NotificationSystem.show('Purchase failed', 'error');
+                    notifyLoadingEnd();
+                    notify('Purchase failed', 'error');
                 }
             }
         );
@@ -612,7 +1053,74 @@ const Shop = (function() {
     function addEnhancedStyles() {
         const style = document.createElement('style');
         style.textContent = `
+            /* Shop container base styles */
+            #shop-container {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 9999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            #shop-container.shop-hidden {
+                display: none !important;
+            }
+
+            .shop-overlay {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+            }
+
+            .shop-window {
+                position: relative;
+                background: #1a1a2e;
+                border-radius: 12px;
+                max-width: 900px;
+                max-height: 80vh;
+                width: 90%;
+                overflow-y: auto;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            }
+
             /* Previous styles enhanced with: */
+
+            .shop-item {
+                position: relative;
+            }
+            
+            .shop-item.popular {
+                border: 2px solid rgba(241, 196, 15, 0.6);
+                box-shadow: 0 0 12px rgba(241, 196, 15, 0.3);
+            }
+            
+            .popular-badge {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                background: #f1c40f;
+                color: #1a1a2e;
+                padding: 4px 8px;
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: bold;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            
+            .item-subtext {
+                font-size: 13px;
+                color: #f1c40f;
+                margin-top: -6px;
+                margin-bottom: 10px;
+            }
             
             .shop-item.owned {
                 opacity: 0.7;
@@ -637,6 +1145,23 @@ const Shop = (function() {
                 margin: 10px 0;
                 font-size: 14px;
                 text-align: left;
+            }
+
+            .crystal-cost {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                font-size: 18px;
+                font-weight: bold;
+                color: #00d8ff;
+                margin-top: 12px;
+            }
+            
+            .crystal-icon-inline {
+                width: 20px;
+                height: 20px;
+                object-fit: contain;
             }
             
             .payment-product {
@@ -753,7 +1278,11 @@ const Shop = (function() {
                 justify-content: center;
                 z-index: 100;
             }
-            
+
+            .history-modal.hidden {
+                display: none;
+            }
+
             .history-content {
                 background: #1a1a2e;
                 padding: 30px;
@@ -857,13 +1386,38 @@ const Shop = (function() {
                 name: 'Instant Build',
                 cost: 50,
                 onPurchase: () => {
-                    // Trigger instant build
-                    if (window.GameActions) {
+                    if (window.GameActions?.completeCurrentBuilding) {
                         window.GameActions.completeCurrentBuilding();
                     }
                 }
+            },
+            'crystal_sector_scan': {
+                name: 'Deep Sector Scan',
+                cost: 35,
+                onPurchase: () => {
+                    if (window.GameActions?.requestSectorScan) {
+                        window.GameActions.requestSectorScan();
+                    }
+                }
+            },
+            'crystal_warp_refresh': {
+                name: 'Warp Gate Refresh',
+                cost: 40,
+                onPurchase: () => {
+                    if (window.GameActions?.refreshWarpGates) {
+                        window.GameActions.refreshWarpGates();
+                    }
+                }
+            },
+            'crystal_emergency_fleet': {
+                name: 'Emergency Fleet Draft',
+                cost: 120,
+                onPurchase: () => {
+                    if (window.GameActions?.spawnEmergencyFleet) {
+                        window.GameActions.spawnEmergencyFleet();
+                    }
+                }
             }
-            // Add more items...
         };
         return items[itemId];
     }
@@ -894,11 +1448,16 @@ const Shop = (function() {
     return {
         initialize,
         open: () => {
-            document.getElementById('shop-container').classList.remove('shop-hidden');
+            const container = document.getElementById('shop-container');
+            if (!container) return;
+            container.classList.remove('shop-hidden');
             loadUserBalance(); // Refresh on open
         },
         close: () => {
-            document.getElementById('shop-container').classList.add('shop-hidden');
+            const container = document.getElementById('shop-container');
+            if (container) {
+                container.classList.add('shop-hidden');
+            }
         },
         closePayment: () => {
             const modal = document.getElementById('payment-modal');
@@ -908,18 +1467,24 @@ const Shop = (function() {
             }
             processingPayment = false;
         },
-        showTab: (tabName) => {
+        showTab: (tabName, evt) => {
             // Update tab buttons
             document.querySelectorAll('.shop-tab').forEach(tab => {
                 tab.classList.remove('active');
             });
-            event.target.classList.add('active');
+            
+            const target = evt?.currentTarget;
+            if (target) {
+                target.classList.add('active');
+            } else {
+                document.querySelector(`.shop-tab[data-tab="${tabName}"]`)?.classList.add('active');
+            }
             
             // Update content sections
             document.querySelectorAll('.shop-section').forEach(section => {
                 section.classList.remove('active');
             });
-            document.getElementById(`shop-${tabName}`).classList.add('active');
+            document.getElementById(`shop-${tabName}`)?.classList.add('active');
         },
         purchaseRace,
         purchaseCrystals: (productId) => processPurchase(productId, 'crystals'),
@@ -932,7 +1497,9 @@ const Shop = (function() {
         showHistory,
         hideHistory: () => {
             document.getElementById('purchase-history-modal').classList.add('hidden');
-        }
+        },
+        getConfig: () => ({ ...configState }),
+        ensureConfig: ensureConfigReady
     };
 })();
 

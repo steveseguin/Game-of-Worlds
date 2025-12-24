@@ -402,6 +402,40 @@ const NotificationSystem = (function() {
             return show('Payment cancelled.', 'warning', 3000);
         }
     };
+
+    function modal(title, bodyHtml, actions = []) {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-modal-overlay';
+        const modalEl = document.createElement('div');
+        modalEl.className = 'confirm-modal';
+        modalEl.innerHTML = `
+            <h3>${title}</h3>
+            <div class="confirm-modal-content">${bodyHtml}</div>
+        `;
+        const buttons = document.createElement('div');
+        buttons.className = 'confirm-modal-buttons';
+        const safeActions = Array.isArray(actions) && actions.length ? actions : [{ label: 'Close', action: null }];
+        safeActions.forEach(action => {
+            const btn = document.createElement('button');
+            btn.className = action.primary ? 'btn-confirm' : 'btn-cancel';
+            btn.textContent = action.label || 'Close';
+            btn.onclick = () => {
+                overlay.remove();
+                if (typeof action.action === 'function') {
+                    action.action();
+                }
+            };
+            buttons.appendChild(btn);
+        });
+        modalEl.appendChild(buttons);
+        overlay.appendChild(modalEl);
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) {
+                overlay.remove();
+            }
+        });
+        document.body.appendChild(overlay);
+    }
     
     // Game-specific notifications
     const game = {
@@ -423,7 +457,8 @@ const NotificationSystem = (function() {
         hideLoading,
         confirm,
         payment,
-        game
+        game,
+        modal
     };
 })();
 

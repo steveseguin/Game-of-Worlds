@@ -190,6 +190,7 @@ connection.connect(err => {
                         started TINYINT DEFAULT 0,
                         turn INT DEFAULT 0,
                         winner INT DEFAULT NULL,
+                        mode VARCHAR(16) DEFAULT 'quick',
                         status VARCHAR(32) DEFAULT 'waiting',
                         created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (creator) REFERENCES users(id)
@@ -362,6 +363,9 @@ function createNewGame() {
                         CREATE TABLE players${gameId} (
                             userid INT PRIMARY KEY,
                             race_id INT DEFAULT 1,
+                            is_ai TINYINT(1) DEFAULT 0,
+                            ai_difficulty VARCHAR(16) DEFAULT 'medium',
+                            ai_strategy VARCHAR(16) DEFAULT 'balanced',
                             alliance_id INT DEFAULT NULL,
                             metal INT DEFAULT 100,
                             crystal INT DEFAULT 100,

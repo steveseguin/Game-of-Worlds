@@ -337,7 +337,7 @@ function endGame(gameId, winnerId, winCondition, gameState, db, callback) {
                             }
                             
                             // Clean up game state
-                            cleanupGame(gameId, gameState);
+                            cleanupGame(gameId, gameState, db);
                             
                             callback(null, {
                                 winner: winnerId,
@@ -382,17 +382,30 @@ function updatePlayerStats(gameId, winnerId, scores, db, callback) {
 }
 
 // Clean up game resources
-function cleanupGame(gameId, gameState) {
+function cleanupGame(gameId, gameState, db) {
     // Stop turn timer
     if (gameState.gameTimer[gameId]) {
         clearInterval(gameState.gameTimer[gameId]);
         delete gameState.gameTimer[gameId];
     }
-    
+
     // Remove from active games
     delete gameState.activeGames[gameId];
     delete gameState.turns[gameId];
-    
+
+    // Clear currentgame for all players in this game
+    if (db) {
+        db.query(
+            'UPDATE users SET currentgame = NULL WHERE currentgame = ?',
+            [gameId],
+            (err) => {
+                if (err) {
+                    console.error('Error clearing currentgame for game', gameId, ':', err);
+                }
+            }
+        );
+    }
+
     // Disconnect players from this game
     gameState.clients.forEach(client => {
         if (client.gameid === gameId) {

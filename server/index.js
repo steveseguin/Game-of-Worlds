@@ -47,7 +47,6 @@ const PUBLIC_ROOT = path.resolve(__dirname, '..', 'public');
 const DEFAULT_DOCUMENT = 'landing.html';
 const CACHEABLE_EXTENSIONS = new Set([
     '.css',
-    '.js',
     '.json',
     '.png',
     '.jpg',
@@ -91,6 +90,7 @@ const DB_CONFIG = {
     database: process.env.DB_NAME || 'game'
 };
 const DB_POOL_SIZE = parsePoolSize(process.env.DB_POOL_SIZE);
+const USE_MOCK_DB = /^(true|1|yes)$/i.test((process.env.USE_MOCK_DB || '').trim());
 
 function buildPoolConfig() {
     return {
@@ -224,15 +224,27 @@ function connectToDatabase() {
     });
 }
 
-connectToDatabase();
+function initializeDatabase() {
+    if (USE_MOCK_DB) {
+        const { createMockDatabase } = require('./lib/mock-db');
+        const mockDb = createMockDatabase();
+        mockDb.isOffline = false;
+        db = mockDb;
+        serverLogic.setDatabase(mockDb);
+        console.log('Using in-memory mock database');
+        return;
+    }
+
+    connectToDatabase();
+}
+
+initializeDatabase();
 
 // Create HTTP server
 const httpServer = http.createServer((request, response) => {
-    console.log(`${new Date()} Received request for ${request.url}`);
-    
-    // Parse URL
     const parsedUrl = url.parse(request.url);
     let pathname = parsedUrl.pathname;
+    console.log(`${new Date()} Received request for ${request.url}`);
     
     // Handle API endpoints
     if (pathname === '/login' && request.method === 'POST') {
@@ -265,24 +277,113 @@ const httpServer = http.createServer((request, response) => {
         return;
     }
     
+    if (pathname === '/config.js') {
+        const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
+        const paymentsEnabled = Boolean(process.env.STRIPE_SECRET_KEY && publishableKey);
+        const payload = [
+            `window.STRIPE_PUBLISHABLE_KEY = ${JSON.stringify(publishableKey)};`,
+            `window.GAME_FEATURES = Object.assign({ paymentsEnabled: ${paymentsEnabled} }, window.GAME_FEATURES || {});`
+        ].join('\n');
+        const headers = {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            ...SECURITY_HEADERS,
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Content-Length': Buffer.byteLength(payload, 'utf8')
+        };
+        response.writeHead(200, headers);
+        if (request.method === 'HEAD') {
+            response.end();
+            return;
+        }
+        response.end(payload);
+        return;
+    }
+
+    if (pathname === '/api/config') {
+        const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
+        const paymentsEnabled = Boolean(process.env.STRIPE_SECRET_KEY && publishableKey);
+        const body = JSON.stringify({
+            stripePublishableKey: publishableKey,
+            paymentsEnabled
+        });
+        const headers = {
+            'Content-Type': 'application/json; charset=utf-8',
+            ...SECURITY_HEADERS,
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Content-Length': Buffer.byteLength(body, 'utf8')
+        };
+        response.writeHead(200, headers);
+        if (request.method === 'HEAD') {
+            response.end();
+            return;
+        }
+        response.end(body);
+        return;
+    }
+
+    // Helper to parse cookies
+    const parseCookies = (req) => {
+        return req.headers.cookie ? req.headers.cookie.split(';').reduce((acc, cookie) => {
+            const [key, value] = cookie.trim().split('=');
+            acc[key] = value;
+            return acc;
+        }, {}) : {};
+    };
+
+    // Helper to verify user auth for API endpoints
+    const verifyApiAuth = (req, res, requestedUserId, callback) => {
+        const cookies = parseCookies(req);
+        const authUserId = cookies.userId;
+        const tempKey = cookies.tempKey;
+
+        if (!authUserId || !tempKey) {
+            res.writeHead(401, {'Content-Type': 'application/json'});
+            res.end(JSON.stringify({ error: 'Authentication required' }));
+            return;
+        }
+
+        // User can only access their own data
+        if (authUserId !== requestedUserId) {
+            res.writeHead(403, {'Content-Type': 'application/json'});
+            res.end(JSON.stringify({ error: 'Access denied' }));
+            return;
+        }
+
+        // Verify credentials
+        db.query('SELECT tempkey FROM users WHERE id = ?', [authUserId], (err, results) => {
+            if (err || results.length === 0 || results[0].tempkey !== tempKey) {
+                res.writeHead(401, {'Content-Type': 'application/json'});
+                res.end(JSON.stringify({ error: 'Invalid credentials' }));
+                return;
+            }
+            callback();
+        });
+    };
+
     // Handle balance query
     const balanceMatch = pathname.match(/^\/api\/user\/(\d+)\/balance$/);
     if (balanceMatch && request.method === 'GET') {
-        serverLogic.handleGetBalance(request, response, balanceMatch[1]);
+        verifyApiAuth(request, response, balanceMatch[1], () => {
+            serverLogic.handleGetBalance(request, response, balanceMatch[1]);
+        });
         return;
     }
-    
+
     // Handle owned items query
     const ownedMatch = pathname.match(/^\/api\/user\/(\d+)\/owned-items$/);
     if (ownedMatch && request.method === 'GET') {
-        serverLogic.handleGetOwnedItems(request, response, ownedMatch[1]);
+        verifyApiAuth(request, response, ownedMatch[1], () => {
+            serverLogic.handleGetOwnedItems(request, response, ownedMatch[1]);
+        });
         return;
     }
-    
+
     // Handle purchase history query
     const historyMatch = pathname.match(/^\/api\/user\/(\d+)\/purchase-history$/);
     if (historyMatch && request.method === 'GET') {
-        serverLogic.handleGetPurchaseHistory(request, response, historyMatch[1]);
+        verifyApiAuth(request, response, historyMatch[1], () => {
+            serverLogic.handleGetPurchaseHistory(request, response, historyMatch[1]);
+        });
         return;
     }
     
@@ -290,9 +391,31 @@ const httpServer = http.createServer((request, response) => {
     if (pathname === '/') {
       pathname = `/${DEFAULT_DOCUMENT}`;
     }
+
+    if (pathname === '/race-selection.js') {
+        const legacyPath = path.resolve(PUBLIC_ROOT, 'js', 'race-selection.js');
+        fs.readFile(legacyPath, (readErr, data) => {
+            if (readErr) {
+                response.writeHead(404, {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    ...SECURITY_HEADERS,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate'
+                });
+                response.end('File not found');
+                return;
+            }
+            response.writeHead(200, {
+                'Content-Type': 'application/javascript',
+                ...SECURITY_HEADERS,
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            });
+            response.end(data);
+        });
+        return;
+    }
     
     // Protected pages that require authentication
-    const protectedPages = ['/index.html', '/game.html', '/lobby.html', '/purchase-race.html'];
+    const protectedPages = ['/game.html', '/lobby.html', '/purchase-race.html'];
     
     // Check if the requested page is protected
     if (protectedPages.includes(pathname)) {
@@ -462,6 +585,10 @@ wsServer.on('request', request => {
     
     // Connection close handler
     connection.on('close', (reasonCode, description) => {
+        if (connection.gameid) {
+            serverLogic.handlePlayerDisconnect(connection);
+        }
+
         const index = clients.indexOf(connection);
         if (index !== -1) {
             clients.splice(index, 1);
@@ -504,6 +631,9 @@ function handleCommand(data, connection) {
         case "buybuilding":
             serverLogic.buyBuilding(data, connection);
             break;
+        case "creategame":
+            serverLogic.handleCreateGame(data, connection);
+            break;
         case "move":
             serverLogic.moveFleet(data, connection);
             break;
@@ -519,11 +649,29 @@ function handleCommand(data, connection) {
         case "update":
             serverLogic.updateResources(connection);
             break;
+        case "gamelist":
+            serverLogic.handleGameList(connection);
+            break;
         case "joingame":
             serverLogic.handleJoinGame(data, connection);
             break;
+        case "leavegame":
+            serverLogic.handleLeaveGame(connection);
+            break;
+        case "addai":
+            serverLogic.handleAddAi(data, connection);
+            break;
         case "getunlockedraces":
             serverLogic.handleGetUnlockedRaces(connection);
+            break;
+        case "changerace":
+            serverLogic.handleChangeRace(data, connection);
+            break;
+        case "standingorders":
+            serverLogic.handleStandingOrders(data, connection);
+            break;
+        case "applyorders":
+            serverLogic.handleApplyStandingOrders(connection);
             break;
         default:
             connection.sendUTF(`Unknown command: ${command}`);
@@ -598,15 +746,21 @@ function authUser(message, connection) {
         
         const user = results[0];
         
-        if (user.tempkey === tempKey && user.currentgame) {
-            // Authentication successful
-            connection.name = playerId;
-            connection.gameid = user.currentgame;
-            clientMap[playerId] = connection;
-            
+        if (user.tempkey !== tempKey) {
+            connection.sendUTF("Invalid credentials");
+            console.log("Wrong credentials. Authentication failed.");
+            connection.close();
+            return;
+        }
+
+        // Authentication successful - establish connection mapping
+        connection.name = playerId;
+        connection.gameid = user.currentgame || null;
+        clientMap[playerId] = connection;
+        
+        if (user.currentgame) {
             console.log(`Player ${playerId} authenticated, joining game ${user.currentgame}`);
             
-            // Handle game state
             if (turns[connection.gameid] > 0) {
                 connection.sendUTF("You have re-connected to a game that is already in progress.");
                 serverLogic.updateResources(connection);
@@ -616,16 +770,11 @@ function authUser(message, connection) {
                 connection.sendUTF("The game has yet to begin. Welcome.");
             }
             
-            // Broadcast player list to all players in the game
             broadcastPlayerList(connection.gameid);
-        } else if (!user.currentgame) {
-            connection.sendUTF("Please join a game first.");
-            console.log("No game set for player. Authentication failed.");
-            connection.close();
         } else {
-            connection.sendUTF("Invalid credentials");
-            console.log("Wrong credentials. Authentication failed.");
-            connection.close();
+            console.log(`Player ${playerId} authenticated for lobby access`);
+            connection.sendUTF("lobby::");
+            serverLogic.handleGameList(connection);
         }
     });
 }

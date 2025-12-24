@@ -53,37 +53,59 @@ window.GalaxyMap = (function() {
 
     // Internal state
     let state = {
+        initialized: false,
         width: 14,
         height: 8,
         sectors: {},
         selectedSector: null,
-        containerElement: null
+        containerElement: null,
+        tooltip: null,
+        lastHoverSound: 0
     };
 
     // Initialize the map
     function initialize(width, height, containerId) {
+        // Prevent multiple initializations
+        if (state.initialized) {
+            console.log('GalaxyMap already initialized, skipping');
+            return;
+        }
+
         state.width = width || 14;
         state.height = height || 8;
         state.containerElement = document.getElementById(containerId);
-        
+
         if (!state.containerElement) {
             console.error(`Container element ${containerId} not found`);
             return;
         }
-        
+
+        state.initialized = true;
+
         // Clear existing content
         state.containerElement.innerHTML = '';
+        createTooltip();
         
-        // Calculate optimal hex size
+        // Calculate optimal hex size to fill container
         const containerWidth = state.containerElement.clientWidth;
         const containerHeight = state.containerElement.clientHeight;
-        
-        // Horizontal and vertical spacing for hexagons
-        const hexWidth = containerWidth / (state.width + 0.5);
-        const hexHeight = (containerHeight - 10) / (state.height * 0.75 + 0.25);
-        
-        // Use the smaller dimension to ensure proper fit
-        const hexSize = Math.min(hexWidth / 2, hexHeight / 2);
+
+        // For flat-top hexagons:
+        // - Total width = hexWidth * (0.75 * columns + 0.25)
+        // - Total height = hexHeight * (rows + 0.5) for column offset
+        // Where hexWidth = 2 * hexSize, hexHeight = sqrt(3) * hexSize
+
+        const cols = state.width;
+        const rows = state.height;
+
+        // Calculate hexSize from width constraint
+        const hexSizeFromWidth = containerWidth / (2 * (0.75 * cols + 0.25));
+
+        // Calculate hexSize from height constraint
+        const hexSizeFromHeight = containerHeight / (Math.sqrt(3) * (rows + 0.5));
+
+        // Use the smaller to ensure grid fits
+        const hexSize = Math.min(hexSizeFromWidth, hexSizeFromHeight);
         
         // Create sectors
         let id = 1;
@@ -105,6 +127,25 @@ window.GalaxyMap = (function() {
         });
         
         return true;
+    }
+
+    function createTooltip() {
+        if (state.tooltip) return;
+        const tip = document.createElement('div');
+        tip.id = 'sector-tooltip';
+        tip.style.position = 'fixed';
+        tip.style.pointerEvents = 'none';
+        tip.style.background = 'rgba(10,12,20,0.92)';
+        tip.style.border = '1px solid rgba(255,255,255,0.08)';
+        tip.style.borderRadius = '10px';
+        tip.style.padding = '8px 10px';
+        tip.style.color = '#e8ecff';
+        tip.style.fontSize = '12px';
+        tip.style.boxShadow = '0 8px 20px rgba(0,0,0,0.35)';
+        tip.style.zIndex = 2000;
+        tip.style.display = 'none';
+        document.body.appendChild(tip);
+        state.tooltip = tip;
     }
 	
 	function fade(from, to, element) {
@@ -131,42 +172,48 @@ window.GalaxyMap = (function() {
     // Create a hexagon
     function createHexagon(id, gridX, gridY, hexSize) {
         const svgNS = "http://www.w3.org/2000/svg";
-        
-        // Calculate center position
-        let centerX, centerY;
-        
-        // Offset every other row
-        if (gridY % 2 === 0) {
-            centerX = (gridX * 2 + 1) * hexSize;
-        } else {
-            centerX = (gridX * 2 + 2) * hexSize;
-        }
-        
-        centerY = (gridY * 1.5 + 1) * hexSize;
-        
+
+        // Flat-top hexagon dimensions
+        const hexWidth = hexSize * 2;
+        const hexHeight = hexSize * Math.sqrt(3);
+
+        // Horizontal spacing: 3/4 of hex width for proper tessellation
+        const horizSpacing = hexWidth * 0.75;
+        // Vertical spacing: full hex height
+        const vertSpacing = hexHeight;
+
+        // Calculate position - offset odd columns by half height
+        const xPos = gridX * horizSpacing;
+        const yPos = gridY * vertSpacing + (gridX % 2 === 1 ? vertSpacing / 2 : 0);
+
         // Create SVG element
+        // Use viewBox that matches hex proportions: width=100, height=100*sqrt(3)/2 = 86.6
         const svg = document.createElementNS(svgNS, "svg");
         svg.setAttribute("id", `tileholder${id}`);
-        svg.setAttribute("viewBox", "0 0 110 100");
-        svg.setAttribute("width", `${hexSize * 2}px`);
-        svg.setAttribute("height", `${Math.sqrt(3) * hexSize}px`);
+        svg.setAttribute("viewBox", "0 0 100 86.6");
+        svg.setAttribute("width", `${hexWidth}px`);
+        svg.setAttribute("height", `${hexHeight}px`);
         svg.style.position = "absolute";
-        svg.style.left = `${centerX - hexSize}px`;
-        svg.style.top = `${centerY - hexSize}px`;
-        
+        svg.style.left = `${xPos}px`;
+        svg.style.top = `${yPos}px`;
+
         // Create hexagon path
         const hexPath = document.createElementNS(svgNS, "path");
         hexPath.setAttribute("id", `tile${id}`);
         hexPath.setAttribute("fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
         hexPath.setAttribute("stroke", STROKE_COLORS[SECTOR_STATUS.UNKNOWN]);
-        hexPath.setAttribute("stroke-width", "4");
-        
-        // Calculate hexagon points
+        hexPath.setAttribute("stroke-width", "2");
+
+        // Flat-top hexagon that fills the viewBox exactly
+        // ViewBox is 100 x 86.6, hex radius = 50, centered at (50, 43.3)
         const points = [];
+        const hexRadius = 50;
+        const centerX = 50;
+        const centerY = 43.3;
         for (let i = 0; i < 6; i++) {
             const angle = (Math.PI / 3) * i;
-            const x = 55 + 50 * Math.cos(angle);
-            const y = 50 + 45 * Math.sin(angle);
+            const x = centerX + hexRadius * Math.cos(angle);
+            const y = centerY + hexRadius * Math.sin(angle);
             points.push(`${x},${y}`);
         }
         
@@ -182,6 +229,10 @@ window.GalaxyMap = (function() {
             window.tilefading = "";
             fade("bbbbbb", "dddddd", evt.target);
         });
+        hexPath.addEventListener("mousemove", function(evt) {
+            showTooltip(evt, id);
+        });
+        hexPath.addEventListener("mouseleave", hideTooltip);
         
         hexPath.addEventListener("mousedown", function(evt) {
             evt.target.setAttribute("fill", "#888888");
@@ -194,10 +245,10 @@ window.GalaxyMap = (function() {
         // Add sector ID text
         const text = document.createElementNS(svgNS, "text");
         text.setAttribute("id", `textid${id}`);
-        text.setAttribute("x", "55");
-        text.setAttribute("y", "43");
+        text.setAttribute("x", "50");
+        text.setAttribute("y", "40");
         text.setAttribute("text-anchor", "middle");
-        text.setAttribute("font-size", "13");
+        text.setAttribute("font-size", "12");
         text.setAttribute("font-weight", "bold");
         text.setAttribute("fill", "#000000");
         text.textContent = id.toString(16).toUpperCase();
@@ -212,6 +263,10 @@ window.GalaxyMap = (function() {
             window.tilefading = "";
             fade("bbbbbb", "dddddd", document.getElementById(`tile${id}`));
         });
+        text.addEventListener("mousemove", function(evt) {
+            showTooltip(evt, id);
+        });
+        text.addEventListener("mouseleave", hideTooltip);
         
         text.addEventListener("mousedown", function(evt) {
             document.getElementById(`tile${id}`).setAttribute("fill", "#888888");
@@ -225,8 +280,8 @@ window.GalaxyMap = (function() {
         // Add fleet size text (hidden by default)
         const fleetText = document.createElementNS(svgNS, "text");
         fleetText.setAttribute("id", `txtfleetid${id}`);
-        fleetText.setAttribute("x", "55");
-        fleetText.setAttribute("y", "60");
+        fleetText.setAttribute("x", "50");
+        fleetText.setAttribute("y", "55");
         fleetText.setAttribute("text-anchor", "middle");
         fleetText.setAttribute("font-size", "10");
         fleetText.setAttribute("font-weight", "bold");
@@ -237,10 +292,10 @@ window.GalaxyMap = (function() {
         // Add colonized indicator text (hidden by default)
         const colonizedText = document.createElementNS(svgNS, "text");
         colonizedText.setAttribute("id", `colonizedtxt${id}`);
-        colonizedText.setAttribute("x", "55");
-        colonizedText.setAttribute("y", "75");
+        colonizedText.setAttribute("x", "50");
+        colonizedText.setAttribute("y", "68");
         colonizedText.setAttribute("text-anchor", "middle");
-        colonizedText.setAttribute("font-size", "12");
+        colonizedText.setAttribute("font-size", "10");
         colonizedText.setAttribute("font-weight", "bold");
         colonizedText.setAttribute("fill", "#FFFFFF");
         colonizedText.style.display = "none";
@@ -255,8 +310,10 @@ window.GalaxyMap = (function() {
             fleetText: fleetText,
             colonizedText: colonizedText,
             status: SECTOR_STATUS.UNKNOWN,
-            x: centerX - hexSize,
-            y: centerY - hexSize
+            x: xPos,
+            y: yPos,
+            owner: null,
+            buildings: []
         };
         
         // Add to container
@@ -267,6 +324,10 @@ window.GalaxyMap = (function() {
     function selectSector(sectorId) {
         state.selectedSector = sectorId;
         changeSector(sectorId.toString(16).toUpperCase());
+        hideTooltip();
+        if (window.MediaManager?.playSfx) {
+            window.MediaManager.playSfx('click');
+        }
     }
     
     // Update sector status
@@ -276,6 +337,12 @@ window.GalaxyMap = (function() {
         
         // Update status
         sector.status = status;
+        if (details.owner !== undefined) {
+            sector.owner = details.owner;
+        }
+        if (details.buildings !== undefined) {
+            sector.buildings = details.buildings;
+        }
         
         // Update colors
         sector.path.setAttribute("fill", STATUS_COLORS[status]);
@@ -301,62 +368,142 @@ window.GalaxyMap = (function() {
             }
         }
     }
-    
+
     // Resize handler
     function resize() {
         if (!state.containerElement) return;
-        
-        // Calculate new hex size
+
+        // Calculate new hex size (same logic as initialize)
         const containerWidth = state.containerElement.clientWidth;
         const containerHeight = state.containerElement.clientHeight;
-        
-        const hexWidth = containerWidth / (state.width + 0.5);
-        const hexHeight = (containerHeight - 10) / (state.height * 0.75 + 0.25);
-        
-        const hexSize = Math.min(hexWidth / 2, hexHeight / 2);
-        
+
+        const cols = state.width;
+        const rows = state.height;
+
+        // Calculate hexSize from width constraint
+        const hexSizeFromWidth = containerWidth / (2 * (0.75 * cols + 0.25));
+
+        // Calculate hexSize from height constraint
+        const hexSizeFromHeight = containerHeight / (Math.sqrt(3) * (rows + 0.5));
+
+        // Use the smaller to ensure grid fits
+        const hexSize = Math.min(hexSizeFromWidth, hexSizeFromHeight);
+
+        // Calculate spacing (same as createHexagon)
+        const actualHexWidth = hexSize * 2;
+        const actualHexHeight = hexSize * Math.sqrt(3);
+        const horizSpacing = actualHexWidth * 0.75;
+        const vertSpacing = actualHexHeight;
+
         // Update size and position of all hexagons
         let id = 1;
         for (let y = 0; y < state.height; y++) {
             for (let x = 0; x < state.width; x++) {
-                let centerX, centerY;
-                
-                // Offset every other row
-                if (y % 2 === 0) {
-                    centerX = (x * 2 + 1) * hexSize;
-                } else {
-                    centerX = (x * 2 + 2) * hexSize;
-                }
-                
-                centerY = (y * 1.5 + 1) * hexSize;
-                
+                // Same positioning as createHexagon - offset odd columns
+                const xPos = x * horizSpacing;
+                const yPos = y * vertSpacing + (x % 2 === 1 ? vertSpacing / 2 : 0);
+
                 const sector = state.sectors[id];
                 if (sector && sector.element) {
-                    sector.element.setAttribute("width", `${hexSize * 2}px`);
-                    sector.element.setAttribute("height", `${Math.sqrt(3) * hexSize}px`);
-                    sector.element.style.left = `${centerX - hexSize}px`;
-                    sector.element.style.top = `${centerY - hexSize}px`;
+                    sector.element.setAttribute("width", `${actualHexWidth}px`);
+                    sector.element.setAttribute("height", `${actualHexHeight}px`);
+                    sector.element.style.left = `${xPos}px`;
+                    sector.element.style.top = `${yPos}px`;
                 }
-                
+
                 id++;
             }
         }
     }
-    
+
+    function hideTooltip() {
+        if (state.tooltip) {
+            state.tooltip.style.display = 'none';
+        }
+    }
+
+    function normalizeBuildingCounts(buildings) {
+        const counts = { 0: 0, 1: 0, 2: 0 };
+        if (Array.isArray(buildings)) {
+            buildings.forEach(entry => {
+                const type = typeof entry === 'object' ? Number(entry.type) : Number(entry);
+                if (Number.isFinite(type)) {
+                    counts[type] = (counts[type] || 0) + 1;
+                }
+            });
+        } else if (buildings && typeof buildings === 'object') {
+            const mapping = {
+                metalExtractor: 0,
+                crystalRefinery: 1,
+                researchAcademy: 2
+            };
+            Object.keys(mapping).forEach(key => {
+                const type = mapping[key];
+                const value = Number(buildings[key]) || 0;
+                if (value > 0) counts[type] = value;
+            });
+        }
+        return counts;
+    }
+
+    function estimateProduction(counts) {
+        const metal = (counts[0] || 0) * 10;
+        const crystal = (counts[1] || 0) * 10;
+        const research = (counts[2] || 0) * 5;
+        return { metal, crystal, research };
+    }
+
+    function showTooltip(evt, sectorId) {
+        if (!state.tooltip) return;
+        const sector = state.sectors[sectorId];
+        if (!sector) return;
+        const x = evt.clientX + 12;
+        const y = evt.clientY + 12;
+        const owner = sector.owner || 'Unknown';
+        const statusLabel = Object.keys(SECTOR_STATUS).find(key => SECTOR_STATUS[key] === sector.status) || 'Unknown';
+        const fleetText = sector.fleetText && sector.fleetText.textContent ? sector.fleetText.textContent : 'None';
+        const buildingCounts = normalizeBuildingCounts(sector.buildings);
+        const projections = estimateProduction(buildingCounts);
+        const buildingLabel = Object.values(buildingCounts).some(v => v > 0)
+            ? `Buildings: ${buildingCounts[0] || 0} metal, ${buildingCounts[1] || 0} crystal, ${buildingCounts[2] || 0} research`
+            : '';
+        state.tooltip.style.left = `${x}px`;
+        state.tooltip.style.top = `${y}px`;
+        state.tooltip.innerHTML = `
+            <div style="font-weight:700;margin-bottom:4px;">Sector ${sectorId}</div>
+            <div>Owner: ${owner}</div>
+            <div>Status: ${statusLabel}</div>
+            <div>Fleet: ${fleetText}</div>
+            ${buildingLabel ? `<div>${buildingLabel}</div>` : ''}
+            <div style="margin-top:4px;opacity:0.85;">Est. yields/turn: M ${projections.metal} · C ${projections.crystal} · R ${projections.research}</div>
+        `;
+        state.tooltip.style.display = 'block';
+        if (window.MediaManager?.playSfx) {
+            const now = Date.now();
+            if (now - state.lastHoverSound > 300) {
+                window.MediaManager.playSfx('hover');
+                state.lastHoverSound = now;
+            }
+        }
+    }
+
     // Return public API
     return {
         initialize,
         selectSector,
         updateSectorStatus,
-        SECTOR_STATUS
+        SECTOR_STATUS,
+        highlightSector: function(sectorId) {
+            const sector = state.sectors[sectorId];
+            if (!sector) return;
+            sector.path.setAttribute('stroke', '#ffd166');
+            sector.path.setAttribute('stroke-width', '3');
+            setTimeout(() => {
+                sector.path.setAttribute('stroke-width', '1');
+                sector.path.setAttribute('stroke', STROKE_COLORS[sector.status] || '#555');
+            }, 1800);
+        }
     };
 })();
 
-// Initialize map when document is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Check if minimap container exists
-    const minimapContainer = document.getElementById('minimapid');
-    if (minimapContainer) {
-        window.GalaxyMap.initialize(14, 8, 'minimapid');
-    }
-});
+// Map initialization is handled by game.js to ensure proper ordering

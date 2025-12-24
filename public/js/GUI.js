@@ -369,5 +369,5 @@ const GameUI = (function() {
 	};
 })();
 
-// Initialize when document is loaded
-document.addEventListener('DOMContentLoaded', GameUI.initialize);
+// Export to window for connect.js and game.js access
+window.GameUI = GameUI;

@@ -56,4 +56,4 @@ ecosystem.config.js
 backup/
 
 # Claude
-.claude/
+.claude/secrets/
