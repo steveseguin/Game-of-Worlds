@@ -35,18 +35,25 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize websocket connection
     initializeWebSocket();
+
+    // Initialize combat telemetry panel
+    if (window.CombatAnalytics) {
+        CombatAnalytics.initialize();
+    }
     
     // Initialize shop system
     if (window.Shop) {
-        // Get user ID from session or auth
-        const userId = window.gameUserId || localStorage.getItem('userId');
+        // Get user ID from session/auth sources used by login/register flows.
+        const userId = window.gameUserId || localStorage.getItem('userId') || getCookie('userId');
         if (userId) {
             Shop.initialize(userId);
         }
     }
     
-    // Initialize sound system
-    if (window.SoundSystem) {
+    // Prefer MediaManager for game music to avoid overlapping tracks.
+    if (window.MediaManager?.playMusic) {
+        window.MediaManager.playMusic('spaceAmbient');
+    } else if (window.SoundSystem) {
         SoundSystem.initialize();
         SoundSystem.playContextualMusic('menu');
     }
@@ -141,12 +148,34 @@ function adjustViewport() {
 
 function disableSelection(element) {
     if (!element) return;
-    
-    element.onselectstart = function() { return false; };
-    element.style.userSelect = "none";
-    
-    const children = element.getElementsByTagName('*');
-    for (let i = 0; i < children.length; i++) {
-        disableSelection(children[i]);
+
+    const queue = [element];
+    while (queue.length > 0) {
+        const current = queue.pop();
+        if (!current) continue;
+
+        if (typeof current.onselectstart !== 'undefined') {
+            current.onselectstart = function() { return false; };
+        }
+
+        // Document nodes do not have style; only apply to element nodes.
+        if (current.nodeType === Node.ELEMENT_NODE && current.style) {
+            current.style.userSelect = "none";
+            current.style.webkitUserSelect = "none";
+            current.style.msUserSelect = "none";
+        }
+
+        if (current.children && current.children.length) {
+            for (let i = 0; i < current.children.length; i++) {
+                queue.push(current.children[i]);
+            }
+        }
     }
+}
+
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
 }

@@ -29,6 +29,7 @@ const GameUI = (function() {
         
         // Initial UI state
         updateUIState();
+        hideMultiMoveDialog();
     }
     
     // Set up responsive sizing
@@ -60,30 +61,43 @@ const GameUI = (function() {
 		document.getElementById('fleettab')?.addEventListener('click', () => switchTab('fleet'));
 		document.getElementById('techtab')?.addEventListener('click', () => switchTab('techtree'));
 		document.getElementById('colonizetab')?.addEventListener('click', () => switchTab('colonize'));
+		document.getElementById('analyticstab')?.addEventListener('click', () => switchTab('analytics'));
 	}
     
     // Switch tabs
     function switchTab(tabName) {
         state.selectedTab = tabName;
-        
+        hideMultiMoveDialog();
+
+        const tabs = [
+            { panelId: 'build', buttonId: 'buildtab' },
+            { panelId: 'fleet', buttonId: 'fleettab' },
+            { panelId: 'techtree', buttonId: 'techtab' },
+            { panelId: 'colonize', buttonId: 'colonizetab' },
+            { panelId: 'analytics', buttonId: 'analyticstab' }
+        ];
+
         // Hide all panels
-        const panels = ['build', 'fleet', 'techtree', 'colonize'];
-        panels.forEach(panel => {
-            const element = document.getElementById(panel);
-            if (element) element.classList.add('hidden');
+        tabs.forEach(tab => {
+            const panel = document.getElementById(tab.panelId);
+            if (panel) {
+                panel.classList.add('hidden');
+            }
         });
-        
+
         // Show selected panel
         const selectedPanel = document.getElementById(tabName);
-        if (selectedPanel) selectedPanel.classList.remove('hidden');
-        
+        if (selectedPanel) {
+            selectedPanel.classList.remove('hidden');
+        }
+
         // Update tab buttons
-        panels.forEach(panel => {
-            const button = document.getElementById(`${panel}tab`);
-            if (button) {
-                button.classList.remove('active');
-                if (panel === tabName) button.classList.add('active');
+        tabs.forEach(tab => {
+            const button = document.getElementById(tab.buttonId);
+            if (!button) {
+                return;
             }
+            button.classList.toggle('active', tab.panelId === tabName);
         });
     }
     
@@ -91,6 +105,13 @@ const GameUI = (function() {
     function updateUIState() {
         // Make sure the correct tab is displayed
         switchTab(state.selectedTab);
+    }
+
+    function hideMultiMoveDialog() {
+        const multiMove = document.getElementById('multiMove');
+        if (multiMove) {
+            multiMove.style.display = 'none';
+        }
     }
     
     // Update resource display
@@ -114,18 +135,56 @@ const GameUI = (function() {
             }
         }
     }
+
+    function getNumericValue(source, paths, fallback = 0) {
+        if (!source || typeof source !== 'object') {
+            return fallback;
+        }
+
+        for (let i = 0; i < paths.length; i++) {
+            const path = paths[i];
+            const segments = path.split('.');
+            let value = source;
+
+            for (let j = 0; j < segments.length; j++) {
+                if (value == null || typeof value !== 'object') {
+                    value = undefined;
+                    break;
+                }
+                value = value[segments[j]];
+            }
+
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) {
+                return parsed;
+            }
+        }
+
+        return fallback;
+    }
+
+    function getSectorType(sectorData) {
+        return getNumericValue(
+            sectorData,
+            ['type', 'sectortype', 'sectorType', 'sector.type', 'sector.sectortype'],
+            0
+        );
+    }
     
     // Update sector display
     function updateSectorDisplay(sectorData) {
         if (!sectorData) return;
+
+        const sectorType = getSectorType(sectorData);
+        const ownerName = sectorData.owner || sectorData?.sector?.owner || 'N/A';
         
         // Update basic sector info
         document.getElementById('sectorid').textContent = `Sector ${sectorData.id || 'N/A'}`;
-        document.getElementById('planetowner').textContent = `Owner: ${sectorData.owner || 'N/A'}`;
+        document.getElementById('planetowner').textContent = `Owner: ${ownerName}`;
         
         // Set sector type
         let planetType = 'Unknown';
-        switch (sectorData.type) {
+        switch (sectorType) {
             case 1: planetType = 'Asteroid Belt'; break;
             case 2: planetType = 'Black Hole'; break;
             case 3: planetType = 'Unstable Star'; break;
@@ -140,29 +199,45 @@ const GameUI = (function() {
         document.getElementById('planettype').textContent = `Type: ${planetType}`;
         
         // Update resource bonuses
-        if (sectorData.type > 5) {
+        if (sectorType > 5) {
+            const metalPercent = Math.round(getNumericValue(
+                sectorData,
+                ['metalBonus', 'metalbonus', 'sector.metalBonus', 'sector.metalbonus'],
+                100
+            ));
+            const crystalPercent = Math.round(getNumericValue(
+                sectorData,
+                ['crystalBonus', 'crystalbonus', 'sector.crystalBonus', 'sector.crystalbonus'],
+                100
+            ));
+            const terraformRequirement = Math.round(getNumericValue(
+                sectorData,
+                ['terraformLevel', 'terraformlvl', 'sector.terraformLevel', 'sector.terraformlvl'],
+                0
+            ));
+
             // Set metal bonus
             const metalBonus = document.getElementById('metalbonus');
-            let metalColor = 'yellow';
-            if (sectorData.metalBonus < 100) {
-                metalColor = 'red';
-            } else if (sectorData.metalBonus >= 200) {
-                metalColor = 'green';
+            let metalColor = '#ffe28a';
+            if (metalPercent < 100) {
+                metalColor = '#ff8a8a';
+            } else if (metalPercent >= 200) {
+                metalColor = '#84f5a7';
             }
-            metalBonus.innerHTML = `Metal Production: <font color="${metalColor}">${sectorData.metalBonus}%</font>`;
+            metalBonus.innerHTML = `Metal Production: <span style="color:${metalColor};font-weight:700;">${metalPercent}%</span>`;
             
             // Set crystal bonus
             const crystalBonus = document.getElementById('crystalbonus');
-            let crystalColor = 'yellow';
-            if (sectorData.crystalBonus < 100) {
-                crystalColor = 'red';
-            } else if (sectorData.crystalBonus >= 200) {
-                crystalColor = 'green';
+            let crystalColor = '#ffe28a';
+            if (crystalPercent < 100) {
+                crystalColor = '#ff8a8a';
+            } else if (crystalPercent >= 200) {
+                crystalColor = '#84f5a7';
             }
-            crystalBonus.innerHTML = `Crystal Production: <font color="${crystalColor}">${sectorData.crystalBonus}%</font>`;
+            crystalBonus.innerHTML = `Crystal Production: <span style="color:${crystalColor};font-weight:700;">${crystalPercent}%</span>`;
             
             // Set terraform requirement
-            document.getElementById('terraformlvl').textContent = `Terraform Req: ${sectorData.terraformLevel || 0}`;
+            document.getElementById('terraformlvl').textContent = `Terraform Req: ${terraformRequirement}`;
         } else {
             // Non-colonizable sector
             document.getElementById('metalbonus').textContent = 'Metal Production: N/A';
@@ -173,7 +248,9 @@ const GameUI = (function() {
         // Update sector image
         const sectorImg = document.getElementById('sectorimg');
         if (sectorImg) {
-            sectorImg.style.backgroundImage = `url(./images/type${sectorData.type}.gif)`;
+            const rawType = Number(sectorType);
+            const imageType = Number.isFinite(rawType) && rawType >= 1 && rawType <= 10 ? rawType : 1;
+            sectorImg.style.backgroundImage = `url(./images/type${imageType}.gif)`;
         }
     }
     
@@ -369,5 +446,5 @@ const GameUI = (function() {
 	};
 })();
 
-// Export to window for connect.js and game.js access
+// Export to window for connect.js and game.js access.
 window.GameUI = GameUI;

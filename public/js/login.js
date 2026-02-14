@@ -177,6 +177,10 @@ const LoginSystem = (function() {
                 // Store auth tokens in cookies
                 document.cookie = `userId=${data.userId}; path=/; max-age=86400`;
                 document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
+
+                // Keep registration path consistent with login path for in-game features.
+                localStorage.setItem('userId', data.userId);
+                localStorage.setItem('username', username);
                 
                 // Show success and redirect
                 successEl.textContent = 'Registration successful!';

@@ -79,6 +79,35 @@ const GAME_TABLE_SUFFIXES = [
     'game_snapshots'
 ];
 
+function ensureGamesModeColumn() {
+    if (hasEnsuredGameModeColumn || !db || db.isOffline || typeof db.query !== 'function') {
+        return;
+    }
+
+    hasEnsuredGameModeColumn = true;
+
+    if (db.isMock) {
+        return;
+    }
+
+    db.query("SHOW COLUMNS FROM games LIKE 'mode'", (showErr, rows) => {
+        if (showErr) {
+            console.warn('Unable to verify games.mode column:', showErr.message || showErr);
+            return;
+        }
+
+        if (Array.isArray(rows) && rows.length > 0) {
+            return;
+        }
+
+        db.query("ALTER TABLE games ADD COLUMN mode VARCHAR(16) DEFAULT 'quick'", alterErr => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.warn('Unable to ensure games.mode column:', alterErr.message || alterErr);
+            }
+        });
+    });
+}
+
 // Set the database connection
 function setDatabase(database) {
     db = database;
@@ -96,18 +125,6 @@ function setDatabase(database) {
     ensureGamesModeColumn();
 }
 
-function queryAsync(sql, params = []) {
-    return new Promise((resolve, reject) => {
-        db.query(sql, params, (err, rows) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(rows);
-            }
-        });
-    });
-}
-
 // Authentication functions
 function hashPassword(password, salt) {
     return crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
@@ -121,29 +138,215 @@ function generateTempKey() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-function normalizeGameMode(mode) {
-    const lowered = typeof mode === 'string' ? mode.toLowerCase().trim() : '';
-    return lowered === 'epic' ? 'epic' : 'quick';
-}
-
-function getTurnInterval(mode) {
-    const normalized = normalizeGameMode(mode);
-    return TURN_SPEEDS_MS[normalized] || TURN_SPEEDS_MS[DEFAULT_GAME_MODE];
-}
-
-function ensureGamesModeColumn(callback = () => {}) {
-    if (hasEnsuredGameModeColumn || !db || db.isOffline || db.isMock) {
-        callback(null);
-        return;
-    }
-    const ddl = "ALTER TABLE games ADD COLUMN mode VARCHAR(16) NOT NULL DEFAULT 'quick'";
-    db.query(ddl, err => {
-        if (err && !(err.code === 'ER_DUP_FIELDNAME' || /duplicate/i.test(err.message || ''))) {
-            console.warn('Could not ensure games.mode column (continuing with default=quick):', err.message || err);
+const LOBBY_LIST_LIMIT = 200;
+const AI_DIFFICULTIES = new Set(['chill', 'medium', 'aggressive']);
+const AI_STRATEGIES = new Set(['balanced', 'aggressive', 'economic']);
+const BATTLE_VISIBILITY_CONFIG = Object.freeze({
+    OVERWHELMING_FORCE_RATIO: 4.5,
+    OVERWHELMING_MIN_SHIPS: 8,
+    STEALTH_CONCEALMENT_THRESHOLD: 0.45
+});
+const SHIP_TYPE_MODIFIER_KEYS = Object.freeze({
+    1: 'frigate',
+    2: 'destroyer',
+    3: 'scout',
+    4: 'cruiser',
+    5: 'battleship',
+    6: 'colony',
+    7: 'dreadnought',
+    8: 'intruder',
+    9: 'carrier'
+});
+const SHIP_TYPE_IDS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+const SHIP_TYPE_NAME_BY_ID = Object.freeze(
+    Object.values(combatSystem.SHIP_TYPES).reduce((acc, ship) => {
+        if (ship && ship.id) {
+            acc[ship.id] = ship.name || `Ship ${ship.id}`;
         }
-        hasEnsuredGameModeColumn = true;
-        callback(null);
-    });
+        return acc;
+    }, {})
+);
+const COMBAT_TELEMETRY_RECENT_BATTLES = 120;
+const COMBAT_TELEMETRY_MAX_GAMES = 64;
+const combatTelemetryStore = new Map();
+
+function parsePositiveInt(value, fallback) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseSectorToken(value) {
+    if (value === undefined || value === null) {
+        return NaN;
+    }
+    const raw = String(value).trim();
+    if (!raw) {
+        return NaN;
+    }
+
+    // Client map labels and selection protocol use hexadecimal sector IDs.
+    const parsedHex = Number.parseInt(raw, 16);
+    return Number.isFinite(parsedHex) ? parsedHex : NaN;
+}
+
+function formatSectorToken(sectorId) {
+    return Number(sectorId).toString(16).toUpperCase();
+}
+
+function getAdjacentSectorIds(sectorId, width = 14, height = 8) {
+    const id = Number(sectorId);
+    if (!Number.isFinite(id) || id < 0 || id >= width * height) {
+        return [];
+    }
+
+    const x = id % width;
+    const y = Math.floor(id / width);
+    const adjacent = [];
+
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+            adjacent.push((ny * width) + nx);
+        }
+    }
+
+    return adjacent;
+}
+
+function normalizeMode(mode) {
+    return mode === 'epic' ? 'epic' : 'quick';
+}
+
+function normalizeAiDifficulty(raw) {
+    const value = (raw || '').toLowerCase();
+    return AI_DIFFICULTIES.has(value) ? value : 'medium';
+}
+
+function normalizeAiStrategy(raw) {
+    const value = (raw || '').toLowerCase();
+    return AI_STRATEGIES.has(value) ? value : 'balanced';
+}
+
+function getRaceById(raceId) {
+    return Object.values(raceSystem.RACE_TYPES).find(race => race.id === raceId) || raceSystem.RACE_TYPES.TERRAN;
+}
+
+function safeDecodeURIComponent(value, fallback = '') {
+    if (typeof value !== 'string') {
+        return fallback;
+    }
+    try {
+        return decodeURIComponent(value);
+    } catch (error) {
+        return fallback;
+    }
+}
+
+function createGameTables(gameId, callback) {
+    const statements = [
+        `CREATE TABLE IF NOT EXISTS map${gameId} (
+            sectorid INT PRIMARY KEY,
+            x INT NOT NULL,
+            y INT NOT NULL,
+            type INT DEFAULT 0,
+            owner INT DEFAULT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS players${gameId} (
+            userid INT PRIMARY KEY,
+            race_id INT DEFAULT 1,
+            is_ai TINYINT DEFAULT 0,
+            ai_difficulty VARCHAR(16) DEFAULT 'medium',
+            ai_strategy VARCHAR(16) DEFAULT 'balanced',
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            alliance_id INT DEFAULT NULL,
+            metal INT DEFAULT 100,
+            crystal INT DEFAULT 100,
+            research INT DEFAULT 50,
+            tech VARCHAR(255) DEFAULT '',
+            homeworld INT DEFAULT NULL,
+            currentsector INT DEFAULT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS ships${gameId} (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            owner INT NOT NULL,
+            type INT NOT NULL,
+            sectorid INT NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS buildings${gameId} (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            sectorid INT NOT NULL,
+            type INT NOT NULL,
+            owner INT NOT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS wonders${gameId} (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            owner INT NOT NULL,
+            type VARCHAR(64) NOT NULL,
+            turn_built INT DEFAULT 0
+        )`
+    ];
+
+    let index = 0;
+    const runNext = () => {
+        if (index >= statements.length) {
+            callback(null);
+            return;
+        }
+
+        const sql = statements[index++];
+        db.query(sql, err => {
+            if (err) {
+                callback(err);
+                return;
+            }
+            runNext();
+        });
+    };
+
+    runNext();
+}
+
+function ensurePlayerTableColumns(gameId, callback) {
+    const requiredColumns = [
+        { name: 'joined_at', sql: `ALTER TABLE players${gameId} ADD COLUMN joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` },
+        { name: 'is_ai', sql: `ALTER TABLE players${gameId} ADD COLUMN is_ai TINYINT DEFAULT 0` },
+        { name: 'ai_difficulty', sql: `ALTER TABLE players${gameId} ADD COLUMN ai_difficulty VARCHAR(16) DEFAULT 'medium'` },
+        { name: 'ai_strategy', sql: `ALTER TABLE players${gameId} ADD COLUMN ai_strategy VARCHAR(16) DEFAULT 'balanced'` }
+    ];
+
+    let idx = 0;
+    const ensureNext = () => {
+        if (idx >= requiredColumns.length) {
+            callback(null);
+            return;
+        }
+
+        const column = requiredColumns[idx++];
+        db.query(`SHOW COLUMNS FROM players${gameId} LIKE '${column.name}'`, (showErr, rows) => {
+            if (showErr) {
+                callback(showErr);
+                return;
+            }
+
+            if (rows && rows.length > 0) {
+                ensureNext();
+                return;
+            }
+
+            db.query(column.sql, alterErr => {
+                if (alterErr) {
+                    callback(alterErr);
+                    return;
+                }
+                ensureNext();
+            });
+        });
+    };
+
+    ensureNext();
 }
 
 // Handle login endpoint
@@ -294,310 +497,227 @@ async function handleRegister(request, response) {
 }
 
 // Game command handlers
-function handleGameStart(connection) {
-    if (!connection.gameid) {
-        connection.sendUTF("Error: Not in a game");
+function handleCreateGame(data, connection) {
+    if (!connection || !connection.name || connection.name === 'unknown') {
         return;
     }
 
-    const gameId = Number(connection.gameid);
-    const playerId = Number(connection.name);
-
-    if (!Number.isFinite(gameId) || !Number.isFinite(playerId)) {
-        connection.sendUTF("Error: Unable to verify game context");
+    if (connection.gameid) {
+        connection.sendUTF('creategame::error::Leave your current game before creating another.');
         return;
     }
 
-    verifyStartConditions(gameId, playerId, err => {
-        if (err) {
-            if (typeof err === 'string') {
-                connection.sendUTF(err);
-            } else {
-                console.error('Error verifying start conditions:', err);
-                connection.sendUTF("Error: Unable to start game");
-            }
-            return;
-        }
+    const parts = data.split(':');
+    const encodedName = parts[1] || '';
+    const gameName = safeDecodeURIComponent(encodedName, '').trim();
+    const maxPlayers = Math.max(2, Math.min(8, parsePositiveInt(parts[2], 4)));
+    const mode = normalizeMode(parts[3]);
+    const creatorId = Number(connection.name);
 
-        // Prevent multiple countdowns
-        const active = ensureActiveGameState(gameId);
-        if (active.countdown) {
-            connection.sendUTF("Error: Start countdown already running");
-            return;
-        }
+    if (!gameName) {
+        connection.sendUTF('creategame::error::Game name is required.');
+        return;
+    }
 
-        // In tests/mock DB, start immediately to keep suites fast
-        if (db.isMock) {
-            initializeGame(gameId, connection);
-            return;
-        }
-
-        // Lock lobby (no joins/changes), broadcast countdown, then start
-        startCountdown(gameId, connection);
-    });
-}
-
-function verifyStartConditions(gameId, playerId, callback) {
     db.query(
-        'SELECT creator, maxplayers, started FROM games WHERE id = ? LIMIT 1',
-        [gameId],
-        (gameErr, rows) => {
-            if (gameErr) {
-                callback(gameErr);
+        'INSERT INTO games (name, creator, maxplayers, status) VALUES (?, ?, ?, ?)',
+        [gameName, creatorId, maxPlayers, 'waiting'],
+        (err, result) => {
+            if (err || !result || !result.insertId) {
+                connection.sendUTF('creategame::error::Unable to create game.');
                 return;
             }
 
-            if (!rows || rows.length === 0) {
-                callback("Error: Game not found");
-                return;
-            }
-
-            const game = rows[0];
-            if (game.started) {
-                callback("Error: Game has already started");
-                return;
-            }
-
-            loadWaitingGameRoster(gameId, (rosterErr, roster) => {
-                if (rosterErr) {
-                    callback(rosterErr);
+            const gameId = result.insertId;
+            createGameTables(gameId, tableErr => {
+                if (tableErr) {
+                    connection.sendUTF('creategame::error::Unable to initialize game data.');
                     return;
                 }
 
-                if (!Array.isArray(roster) || roster.length === 0) {
-                    callback("Error: No players remain in this game");
-                    return;
-                }
+                ensurePlayerTableColumns(gameId, ensureErr => {
+                    if (ensureErr) {
+                        connection.sendUTF('creategame::error::Unable to prepare player table.');
+                        return;
+                    }
 
-                const normalizedPlayerId = Number(playerId);
-                if (!Number.isFinite(normalizedPlayerId)) {
-                    callback("Error: Unable to verify player identity");
-                    return;
-                }
+                    gameState.activeGames[gameId] = {
+                        mode,
+                        creator: creatorId,
+                        status: 'waiting'
+                    };
 
-                const rosterIds = roster
-                    .map(entry => entry.userId)
-                    .filter(Number.isFinite);
-
-                if (!rosterIds.includes(normalizedPlayerId)) {
-                    callback("Error: You are no longer part of this game's lobby");
-                    return;
-                }
-
-                const canonicalCreator = roster[0].userId;
-                if (!Number.isFinite(canonicalCreator)) {
-                    callback("Error: Unable to determine game creator");
-                    return;
-                }
-
-                if (normalizedPlayerId !== canonicalCreator) {
-                    console.warn(`[startgame] Player ${normalizedPlayerId} denied for game ${gameId}. Expected creator ${canonicalCreator}, roster=${rosterIds.join(',')}`);
-                    callback("Error: Only the game creator can start the game");
-                    return;
-                }
-
-                const normalizedCreator = Number(game.creator);
-                if (!Number.isFinite(normalizedCreator) || normalizedCreator !== canonicalCreator) {
-                    db.query(
-                        'UPDATE games SET creator = ? WHERE id = ?',
-                        [canonicalCreator, gameId],
-                        updateErr => {
-                            if (updateErr) {
-                                console.error(`Failed to update creator for game ${gameId}:`, updateErr);
-                            }
-                        }
-                    );
-                }
-
-                const readinessError = validateRosterReady(roster, game);
-                if (readinessError) {
-                    callback(readinessError);
-                    return;
-                }
-
-                callback(null);
+                    connection.sendUTF(`creategame::success::${gameId}`);
+                    handleGameList(connection);
+                });
             });
         }
     );
 }
 
-function loadWaitingGameRoster(gameId, callback) {
-    ensurePlayerTableSchema(gameId, schemaErr => {
-        if (schemaErr) {
-            callback(schemaErr);
-            return;
-        }
-
-        const tableName = mysql2.escapeId(`players${gameId}`);
-        db.query(
-            `SELECT userid, race_id, joined_at FROM ${tableName} ORDER BY joined_at ASC, userid ASC`,
-            (playerErr, rows) => {
-                if (playerErr) {
-                    callback(playerErr);
-                    return;
-                }
-
-                if (!Array.isArray(rows)) {
-                    callback(null, []);
-                    return;
-                }
-
-                const roster = rows
-                    .map(row => ({
-                        userId: Number(row.userid),
-                        raceId: row.race_id === null ? null : Number(row.race_id),
-                        joinedAt: row.joined_at || null
-                    }))
-                    .filter(entry => Number.isFinite(entry.userId));
-
-                callback(null, roster);
+function handleGameList(connection) {
+    db.query(
+        'SELECT id, name, maxplayers, started, status FROM games WHERE started = 0 ORDER BY created DESC LIMIT ?',
+        [LOBBY_LIST_LIMIT],
+        (err, games) => {
+            if (err || !Array.isArray(games) || games.length === 0) {
+                connection.sendUTF('gamelist::');
+                return;
             }
-        );
-    });
-}
 
-function validateRosterReady(roster, game) {
-    const maxPlayers = Number(game.maxplayers);
-    const requiredPlayers = Number.isFinite(maxPlayers) && maxPlayers > 0
-        ? Math.min(maxPlayers, MIN_PLAYERS_TO_START)
-        : MIN_PLAYERS_TO_START;
+            const rows = new Array(games.length);
+            let pending = games.length;
 
-    if (roster.length < requiredPlayers) {
-        return `Error: At least ${requiredPlayers} players required to start the game`;
-    }
+            games.forEach((game, index) => {
+                db.query(`SELECT COUNT(*) AS count FROM players${game.id}`, (countErr, counts) => {
+                    const rawCount = counts && counts[0]
+                        ? (counts[0].count ?? counts[0].c ?? 0)
+                        : 0;
+                    const playerCount = Number.isFinite(Number(rawCount)) ? Number(rawCount) : 0;
+                    const maxPlayers = parsePositiveInt(game.maxplayers, 0);
+                    const mode = normalizeMode(
+                        (gameState.activeGames[game.id] && gameState.activeGames[game.id].mode) || game.mode
+                    );
+                    const gameStatus = countErr
+                        ? 'waiting'
+                        : (maxPlayers > 0 && playerCount >= maxPlayers ? 'full' : 'waiting');
 
-    const hasMissingRace = roster.some(player => !Number.isFinite(player.raceId) || player.raceId <= 0);
-    if (hasMissingRace) {
-        return "Error: All players must select a race before starting";
-    }
+                    rows[index] = [
+                        game.id,
+                        encodeURIComponent(game.name || `Game ${game.id}`),
+                        playerCount,
+                        maxPlayers,
+                        gameStatus,
+                        mode
+                    ].join(',');
 
-    return null;
-}
-
-function startCountdown(gameId, connection, seconds = 10) {
-    const state = ensureActiveGameState(gameId);
-    let remaining = seconds;
-    const broadcast = () => broadcastToGame(gameId, `countdown::${remaining}`);
-    broadcast();
-    state.countdown = setInterval(() => {
-        remaining -= 1;
-        if (remaining <= 0) {
-            clearInterval(state.countdown);
-            state.countdown = null;
-            initializeGame(gameId, connection);
-        } else {
-            broadcast();
-        }
-    }, 1000);
-}
-
-function cancelCountdown(gameId) {
-    const state = ensureActiveGameState(gameId);
-    if (state.countdown) {
-        clearInterval(state.countdown);
-        state.countdown = null;
-        broadcastToGame(gameId, "countdown::cancel");
-    }
-}
-
-function initializeGame(gameId, connection) {
-    db.query('UPDATE games SET started = 1 WHERE id = ?', [gameId], err => {
-        if (err) {
-            connection.sendUTF("Error: Failed to start game");
-            return;
-        }
-
-        getGameModeOrDefault(gameId, (modeErr, mode) => {
-            if (modeErr) {
-                console.error('Error loading game mode (defaulting to quick):', modeErr);
-            }
-            const normalizedMode = normalizeGameMode(mode || DEFAULT_GAME_MODE);
-            const activeState = ensureActiveGameState(gameId);
-            activeState.mode = normalizedMode;
-            if (activeState.countdown) {
-                clearInterval(activeState.countdown);
-                activeState.countdown = null;
-            }
-            hydrateStandingOrdersDefaults(gameId, normalizedMode);
-            gameState.turns[gameId] = 1;
-
-            // Fetch map size from game settings (with defaults)
-            db.query('SELECT mapwidth, mapheight FROM games WHERE id = ?', [gameId], (mapErr, mapResults) => {
-                const mapSize = {
-                    width: mapResults?.[0]?.mapwidth || 14,
-                    height: mapResults?.[0]?.mapheight || 8
-                };
-
-                db.query(`SELECT userid FROM players${gameId}`, (playerErr, results) => {
-                if (playerErr) {
-                    console.error("Error getting players:", playerErr);
-                    return;
-                }
-
-                const playerCount = Array.isArray(results) && results.length > 0 ? results.length : 1;
-                const generatedMap = mapSystem.generateMap(mapSize.width, mapSize.height, playerCount);
-                const mapSectors = Array.isArray(generatedMap)
-                    ? generatedMap
-                    : (generatedMap && Array.isArray(generatedMap.sectors) ? generatedMap.sectors : []);
-                const homeworlds = generatedMap && Array.isArray(generatedMap.homeworlds)
-                    ? generatedMap.homeworlds
-                    : [];
-
-                // Insert all map sectors first
-                const mapInsertPromises = mapSectors.map((sector, index) => {
-                    const x = index % mapSize.width;
-                    const y = Math.floor(index / mapSize.width);
-                    const sectorType = Number.isFinite(sector?.sectortype) ? sector.sectortype : Number(sector?.type) || 0;
-
-                    return queryAsync(
-                        `INSERT INTO map${gameId} (sectorid, x, y, type, sectortype) VALUES (?, ?, ?, ?, ?)`,
-                        [index, x, y, sectorType, sectorType]
-                    ).catch(insertErr => {
-                        console.error("Error inserting map sector:", insertErr);
-                    });
-                });
-
-                // Wait for all map sectors to be created before assigning ownership
-                Promise.all(mapInsertPromises).then(() => {
-                    // Now assign homeworlds and ownership
-                    const playerUpdatePromises = results.map((row, index) => {
-                        const homeworld = Number(homeworlds[index]) || assignHomeworld(index, mapSize);
-
-                        const playerUpdate = queryAsync(
-                            `UPDATE players${gameId} SET
-                             metal = 100, crystal = 100, research = 50,
-                             homeworld = ?, currentsector = ?
-                             WHERE userid = ?`,
-                            [homeworld, homeworld, row.userid]
-                        ).catch(updateErr => {
-                            console.error("Error updating player:", updateErr);
-                        });
-
-                        const ownershipUpdate = queryAsync(
-                            `UPDATE map${gameId} SET owner = ?, ownerid = ? WHERE sectorid = ?`,
-                            [row.userid, row.userid, homeworld]
-                        ).catch(ownershipErr => {
-                            console.error("Error updating map ownership:", ownershipErr);
-                        });
-
-                        return Promise.all([playerUpdate, ownershipUpdate]);
-                    });
-
-                    // Wait for all player and ownership updates to complete
-                    return Promise.all(playerUpdatePromises);
-                }).then(() => {
-                    // Now safe to start the game
-                    startTurnTimer(gameId, normalizedMode);
-                    broadcastToGame(gameId, 'startgame::');
-                    // Kick off AI loop if AI seats are present
-                    hydrateAiPlayers(gameId);
-                }).catch(err => {
-                    console.error("Error during game initialization:", err);
-                });
+                    pending -= 1;
+                    if (pending === 0) {
+                        connection.sendUTF(`gamelist::${rows.filter(Boolean).join('|')}`);
+                    }
                 });
             });
+        }
+    );
+}
+
+function handleGameStart(connection) {
+    if (!connection.gameid) {
+        connection.sendUTF("Error: Not in a game");
+        return;
+    }
+    
+    const gameId = connection.gameid;
+
+    db.query('SELECT creator, maxplayers, started FROM games WHERE id = ? LIMIT 1', [gameId], (err, results) => {
+        if (err || results.length === 0) {
+            connection.sendUTF("Error: Game not found");
+            return;
+        }
+
+        const game = results[0];
+        const creatorId = String(game.creator);
+        const isStarted = Number(game.started) === 1;
+
+        if (isStarted) {
+            if (!gameState.turns[gameId]) {
+                gameState.turns[gameId] = 1;
+            }
+            processTurn(gameId);
+            return;
+        }
+
+        if (creatorId !== String(connection.name)) {
+            connection.sendUTF("Error: Only the game creator can start the game");
+            return;
+        }
+
+        initializeGame(gameId, connection);
+    });
+}
+
+function queryDb(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.query(sql, params, (err, rows) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(rows);
         });
     });
+}
+
+async function initializeGame(gameId, connection) {
+    try {
+        await queryDb('UPDATE games SET started = 1 WHERE id = ?', [gameId]);
+
+        // Initialize turn counter.
+        gameState.turns[gameId] = 1;
+        gameState.activeGames[gameId] = {
+            ...(gameState.activeGames[gameId] || {}),
+            status: 'in-progress'
+        };
+
+        // Create and persist the game map before players can interact with sectors.
+        const mapSize = { width: 14, height: 8 };
+        const generatedMap = mapSystem.generateMap(mapSize.width, mapSize.height);
+        const map = Array.isArray(generatedMap)
+            ? generatedMap
+            : (generatedMap && Array.isArray(generatedMap.sectors) ? generatedMap.sectors : []);
+
+        await Promise.all(map.map((sector, index) => {
+            const x = index % mapSize.width;
+            const y = Math.floor(index / mapSize.width);
+            const sectorType = Number(sector && sector.type) || 0;
+            return queryDb(
+                `INSERT INTO map${gameId} (sectorid, x, y, type) VALUES (?, ?, ?, ?)`,
+                [index, x, y, sectorType]
+            );
+        }));
+
+        // Initialize players in deterministic join order so homeworld assignment is stable.
+        const players = await queryDb(
+            `SELECT userid FROM players${gameId} ORDER BY joined_at ASC, userid ASC`
+        );
+
+        await Promise.all((players || []).map((row, index) => {
+            const homeworld = assignHomeworld(index, mapSize);
+            return (async () => {
+                await queryDb(
+                    `UPDATE players${gameId} SET 
+                     metal = 100, crystal = 100, research = 50,
+                     homeworld = ?, currentsector = ?
+                     WHERE userid = ?`,
+                    [homeworld, homeworld, row.userid]
+                );
+                await queryDb(
+                    `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
+                    [row.userid, homeworld]
+                );
+                // Spawn starter ships so players can take actions immediately.
+                await queryDb(
+                    `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
+                    [row.userid, 3, homeworld]
+                );
+                await queryDb(
+                    `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
+                    [row.userid, 5, homeworld]
+                );
+            })();
+        }));
+
+        // Start turn timer after setup is complete.
+        startTurnTimer(gameId);
+
+        // Notify players only once the world is fully initialized.
+        broadcastToGame(gameId, "The game has started!");
+        broadcastToGame(gameId, "startgame::");
+        broadcastToGame(gameId, `newturn::${gameState.turns[gameId]}`);
+    } catch (error) {
+        console.error("Error initializing game:", error);
+        connection.sendUTF("Error: Failed to start game");
+    }
 }
 
 function assignHomeworld(playerIndex, mapSize) {
@@ -611,19 +731,17 @@ function assignHomeworld(playerIndex, mapSize) {
     return positions[playerIndex % positions.length];
 }
 
-function startTurnTimer(gameId, mode = DEFAULT_GAME_MODE) {
-    const interval = getTurnInterval(mode);
+function startTurnTimer(gameId) {
     if (gameState.gameTimer[gameId]) {
         clearInterval(gameState.gameTimer[gameId]);
     }
     gameState.gameTimer[gameId] = setInterval(() => {
         processTurn(gameId);
-    }, interval);
+    }, 180000); // 3 minutes per turn
 }
 
 function processTurn(gameId) {
     gameState.turns[gameId]++;
-    triggerAiTurn(gameId);
     
     // Process resource generation with race modifiers
     db.query(`SELECT * FROM players${gameId}`, (err, players) => {
@@ -659,13 +777,7 @@ function processTurn(gameId) {
                     crystalGen = Math.floor(crystalGen * race.bonuses.crystalProduction);
                     researchGen = Math.floor(researchGen * race.bonuses.researchSpeed);
                     
-            // Update resources and stats
-                    const mode = (gameState.activeGames[gameId]?.mode) || DEFAULT_GAME_MODE;
-                    const resourceFactor = mode === 'epic' ? EPIC_RESOURCE_MULTIPLIER : 1;
-                    metalGen = Math.floor(metalGen * resourceFactor);
-                    crystalGen = Math.floor(crystalGen * resourceFactor);
-                    researchGen = Math.floor(researchGen * resourceFactor);
-
+                    // Update resources and stats
                     db.query(
                         `UPDATE players${gameId} SET 
                          metal = metal + ?,
@@ -689,16 +801,10 @@ function processTurn(gameId) {
                     } else if (race.id === 7) { // Bioform evolution
                         evolveShips(gameId, player.userid);
                     }
-
-                    if (mode === 'epic' && EPIC_AUTO_BUILD_ENABLED) {
-                        applyEpicEconomyAssist(gameId, player.userid, player.homeworld);
-                    }
                 }
             );
         });
     });
-
-    applyStandingOrdersForGame(gameId);
     
     // Process battles
     processBattles(gameId);
@@ -739,71 +845,598 @@ function processBattles(gameId) {
     );
 }
 
-function buildFleetFromRows(rows, extras = {}) {
-    const fleet = { ...extras };
-    (rows || []).forEach(row => {
-        const type = Number(row.type);
-        const count = Number(row.count) || 0;
-        if (Number.isFinite(type)) {
-            fleet[`ship${type}`] = count;
-        }
+function normalizeShipRows(rows) {
+    if (!Array.isArray(rows)) return [];
+    return rows
+        .map(row => ({
+            type: Number(row.type),
+            count: Number(row.count)
+        }))
+        .filter(row => Number.isFinite(row.type) && row.type >= 1 && row.type <= 9 && Number.isFinite(row.count) && row.count > 0);
+}
+
+function sumShipRows(rows) {
+    return normalizeShipRows(rows).reduce((sum, row) => sum + row.count, 0);
+}
+
+function sumFleetCounts(countMap) {
+    if (!countMap || typeof countMap !== 'object') return 0;
+    let total = 0;
+    for (let i = 1; i <= 9; i++) {
+        total += Number(countMap[i]) || 0;
+    }
+    return total;
+}
+
+function getShipCount(rows, typeId) {
+    const match = normalizeShipRows(rows).find(row => row.type === typeId);
+    return match ? match.count : 0;
+}
+
+function buildFleetFromRows(rows) {
+    const fleet = {};
+    for (let i = 1; i <= 9; i++) {
+        fleet[`ship${i}`] = 0;
+    }
+
+    normalizeShipRows(rows).forEach(row => {
+        fleet[`ship${row.type}`] = row.count;
     });
+
+    fleet.groundTurret = 0;
+    fleet.orbitalTurret = 0;
     return fleet;
 }
 
-async function resolveBattle(gameId, sectorId, player1, player2) {
-    const owners = [Number(player1), Number(player2)].filter(Number.isFinite);
-    if (owners.length < 2) return;
-    try {
-        const mapRows = await queryAsync(
-            `SELECT ownerid, orbitalturret, groundturret FROM map${gameId} WHERE sectorid = ? LIMIT 1`,
-            [sectorId]
-        );
-        const mapOwner = mapRows?.[0]?.ownerid;
-        const defenderId = owners.includes(mapOwner) ? mapOwner : owners[0];
-        const attackerId = owners.find(id => id !== defenderId) || defenderId;
-        const [attackerShips, defenderShips] = await Promise.all([
-            getPlayerShips(gameId, sectorId, attackerId),
-            getPlayerShips(gameId, sectorId, defenderId)
-        ]);
+function parseBattleTech(techCsv) {
+    const techSet = new Set(
+        String(techCsv || '')
+            .split(',')
+            .map(value => Number.parseInt(value, 10))
+            .filter(Number.isFinite)
+    );
 
-        const attackerFleet = buildFleetFromRows(attackerShips);
-        const defenderFleet = buildFleetFromRows(defenderShips, {
-            orbitalTurret: mapRows?.[0]?.orbitalturret || 0,
-            groundTurret: mapRows?.[0]?.groundturret || 0
+    return {
+        weapons: techSet.has(4) ? 1 : 0,
+        hull: techSet.has(5) ? 1 : 0,
+        shields: techSet.has(6) ? 1 : 0
+    };
+}
+
+function getRaceStealthScore(raceId, shipRows) {
+    const race = getRaceById(Number(raceId) || 1);
+    const modifiers = race && race.unitModifiers ? race.unitModifiers : {};
+    const allStealth = modifiers.all && Number.isFinite(Number(modifiers.all.stealth))
+        ? Number(modifiers.all.stealth)
+        : 0;
+
+    const rows = normalizeShipRows(shipRows);
+    const totalShips = sumShipRows(rows);
+    if (totalShips <= 0) return 0;
+
+    let weightedStealth = 0;
+    rows.forEach(row => {
+        const key = SHIP_TYPE_MODIFIER_KEYS[row.type];
+        const unitMods = key ? modifiers[key] : null;
+        const unitStealth = unitMods && Number.isFinite(Number(unitMods.stealth))
+            ? Number(unitMods.stealth)
+            : 0;
+        const shipStealth = Math.min(0.95, Math.max(0, allStealth + unitStealth));
+        weightedStealth += shipStealth * row.count;
+    });
+
+    return weightedStealth / totalShips;
+}
+
+function getDetectionScore(shipRows) {
+    const rows = normalizeShipRows(shipRows);
+    const totalShips = sumShipRows(rows);
+    if (totalShips <= 0) return 0.15;
+
+    const scoutRatio = getShipCount(rows, 3) / totalShips;
+    const intruderRatio = getShipCount(rows, 8) / totalShips;
+    return Math.min(0.85, 0.15 + scoutRatio * 0.5 + intruderRatio * 0.2);
+}
+
+function getBattleViewModes(attackerRows, defenderRows, attackerRaceId, defenderRaceId) {
+    const attackerTotal = sumShipRows(attackerRows);
+    const defenderTotal = sumShipRows(defenderRows);
+    const largerFleet = Math.max(attackerTotal, defenderTotal);
+    const smallerFleet = Math.max(1, Math.min(attackerTotal, defenderTotal));
+    const forceRatio = largerFleet / smallerFleet;
+
+    if (largerFleet >= BATTLE_VISIBILITY_CONFIG.OVERWHELMING_MIN_SHIPS &&
+        forceRatio >= BATTLE_VISIBILITY_CONFIG.OVERWHELMING_FORCE_RATIO) {
+        return {
+            attacker: { mode: 'summary', reason: `overwhelming force (${forceRatio.toFixed(1)}x)` },
+            defender: { mode: 'summary', reason: `overwhelming force (${forceRatio.toFixed(1)}x)` },
+            forceRatio
+        };
+    }
+
+    const attackerStealth = getRaceStealthScore(attackerRaceId, attackerRows);
+    const defenderStealth = getRaceStealthScore(defenderRaceId, defenderRows);
+    const attackerDetection = getDetectionScore(attackerRows);
+    const defenderDetection = getDetectionScore(defenderRows);
+
+    const attackerSeesSummary = defenderStealth - attackerDetection >= BATTLE_VISIBILITY_CONFIG.STEALTH_CONCEALMENT_THRESHOLD;
+    const defenderSeesSummary = attackerStealth - defenderDetection >= BATTLE_VISIBILITY_CONFIG.STEALTH_CONCEALMENT_THRESHOLD;
+
+    return {
+        attacker: {
+            mode: attackerSeesSummary ? 'summary' : 'full',
+            reason: attackerSeesSummary ? 'enemy stealth signature concealed battle telemetry' : 'full telemetry'
+        },
+        defender: {
+            mode: defenderSeesSummary ? 'summary' : 'full',
+            reason: defenderSeesSummary ? 'enemy stealth signature concealed battle telemetry' : 'full telemetry'
+        },
+        forceRatio
+    };
+}
+
+function formatBattleSummaryMessage({
+    sectorId,
+    reason,
+    winnerId,
+    attackerLosses,
+    defenderLosses,
+    forceRatio,
+    result
+}) {
+    const sectorHex = Number(sectorId).toString(16).toUpperCase();
+    return `battle_summary::${sectorHex}::${encodeURIComponent(reason)}::${winnerId}::${attackerLosses}::${defenderLosses}::${forceRatio.toFixed(2)}::${result}`;
+}
+
+function createEmptyShipTypeCounterMap() {
+    const counters = {};
+    SHIP_TYPE_IDS.forEach(typeId => {
+        counters[typeId] = 0;
+    });
+    return counters;
+}
+
+function createPlayerTelemetryRecord(playerId, raceId) {
+    const byType = {};
+    SHIP_TYPE_IDS.forEach(typeId => {
+        byType[typeId] = {
+            typeId,
+            name: SHIP_TYPE_NAME_BY_ID[typeId] || `Ship ${typeId}`,
+            deployed: 0,
+            survivors: 0,
+            losses: 0,
+            kills: 0,
+            shots: 0,
+            hits: 0,
+            damage: 0,
+            battles: 0
+        };
+    });
+
+    return {
+        playerId: Number(playerId),
+        raceId: Number(raceId) || 1,
+        byType,
+        orbitalTurret: {
+            shots: 0,
+            hits: 0,
+            damage: 0,
+            kills: 0
+        },
+        battles: 0,
+        updatedAt: null
+    };
+}
+
+function getOrCreateGameTelemetryRecord(gameId) {
+    const normalizedGameId = Number(gameId);
+    if (!combatTelemetryStore.has(normalizedGameId)) {
+        if (combatTelemetryStore.size >= COMBAT_TELEMETRY_MAX_GAMES) {
+            const oldestKey = combatTelemetryStore.keys().next().value;
+            if (oldestKey !== undefined) {
+                combatTelemetryStore.delete(oldestKey);
+            }
+        }
+
+        combatTelemetryStore.set(normalizedGameId, {
+            gameId: normalizedGameId,
+            battles: 0,
+            updatedAt: null,
+            players: {},
+            recentBattles: []
+        });
+    }
+
+    return combatTelemetryStore.get(normalizedGameId);
+}
+
+function getOrCreatePlayerTelemetryRecord(gameTelemetry, playerId, raceId) {
+    const normalizedPlayerId = Number(playerId);
+    if (!gameTelemetry.players[normalizedPlayerId]) {
+        gameTelemetry.players[normalizedPlayerId] = createPlayerTelemetryRecord(normalizedPlayerId, raceId);
+    }
+
+    const playerTelemetry = gameTelemetry.players[normalizedPlayerId];
+    if (raceId) {
+        playerTelemetry.raceId = Number(raceId) || playerTelemetry.raceId;
+    }
+    return playerTelemetry;
+}
+
+function getTypeMetric(counterMap, typeId) {
+    return Number(counterMap && counterMap[typeId]) || 0;
+}
+
+function addSideTelemetryToPlayerRecord(playerTelemetry, sideTelemetry) {
+    if (!playerTelemetry || !sideTelemetry) {
+        return;
+    }
+
+    let touchedThisBattle = false;
+
+    SHIP_TYPE_IDS.forEach(typeId => {
+        const stat = playerTelemetry.byType[typeId];
+        const deployed = getTypeMetric(sideTelemetry.deployedByType, typeId);
+        const survivors = getTypeMetric(sideTelemetry.survivorsByType, typeId);
+        const losses = getTypeMetric(sideTelemetry.lossesByType, typeId);
+        const kills = getTypeMetric(sideTelemetry.killCreditsByType, typeId);
+        const shots = getTypeMetric(sideTelemetry.shotsByType, typeId);
+        const hits = getTypeMetric(sideTelemetry.hitsByType, typeId);
+        const damage = getTypeMetric(sideTelemetry.damageByType, typeId);
+
+        stat.deployed += deployed;
+        stat.survivors += survivors;
+        stat.losses += losses;
+        stat.kills += kills;
+        stat.shots += shots;
+        stat.hits += hits;
+        stat.damage += damage;
+
+        if (deployed > 0 || shots > 0 || hits > 0 || damage > 0 || kills > 0 || losses > 0) {
+            stat.battles += 1;
+            touchedThisBattle = true;
+        }
+    });
+
+    playerTelemetry.orbitalTurret.shots += Number(sideTelemetry.orbitalTurretShots) || 0;
+    playerTelemetry.orbitalTurret.hits += Number(sideTelemetry.orbitalTurretHits) || 0;
+    playerTelemetry.orbitalTurret.damage += Number(sideTelemetry.orbitalTurretDamage) || 0;
+    playerTelemetry.orbitalTurret.kills += Number(sideTelemetry.orbitalTurretKillCredits) || 0;
+
+    if ((Number(sideTelemetry.orbitalTurretShots) || 0) > 0) {
+        touchedThisBattle = true;
+    }
+
+    if (touchedThisBattle) {
+        playerTelemetry.battles += 1;
+    }
+    playerTelemetry.updatedAt = new Date().toISOString();
+}
+
+function deriveTopShipTelemetry(sideTelemetry) {
+    if (!sideTelemetry) {
+        return null;
+    }
+
+    let best = null;
+    SHIP_TYPE_IDS.forEach(typeId => {
+        const kills = getTypeMetric(sideTelemetry.killCreditsByType, typeId);
+        const damage = getTypeMetric(sideTelemetry.damageByType, typeId);
+        const losses = getTypeMetric(sideTelemetry.lossesByType, typeId);
+        const shots = getTypeMetric(sideTelemetry.shotsByType, typeId);
+        const hits = getTypeMetric(sideTelemetry.hitsByType, typeId);
+        const deployed = getTypeMetric(sideTelemetry.deployedByType, typeId);
+
+        if (deployed <= 0 && shots <= 0 && kills <= 0 && damage <= 0 && losses <= 0) {
+            return;
+        }
+
+        const score = (kills * 100) + damage + (hits * 2);
+        if (!best || score > best.score) {
+            best = {
+                typeId,
+                shipName: SHIP_TYPE_NAME_BY_ID[typeId] || `Ship ${typeId}`,
+                kills,
+                losses,
+                shots,
+                hits,
+                damage,
+                score
+            };
+        }
+    });
+
+    if (!best) {
+        return null;
+    }
+
+    const hitRate = best.shots > 0 ? best.hits / best.shots : 0;
+    const killPerLoss = best.losses > 0 ? best.kills / best.losses : null;
+
+    return {
+        typeId: best.typeId,
+        shipName: best.shipName,
+        kills: Number(best.kills.toFixed(3)),
+        losses: Number(best.losses.toFixed(3)),
+        shots: best.shots,
+        hits: best.hits,
+        damage: Number(best.damage.toFixed(3)),
+        hitRate: Number(hitRate.toFixed(3)),
+        killPerLoss: killPerLoss === null ? null : Number(killPerLoss.toFixed(3))
+    };
+}
+
+function formatShipTelemetryHint(sideTelemetry, prefix = 'Telemetry') {
+    const topShip = deriveTopShipTelemetry(sideTelemetry);
+    if (!topShip) {
+        return `${prefix}: no ship telemetry available for this battle.`;
+    }
+
+    const killPerLossText = topShip.killPerLoss === null
+        ? (topShip.kills > 0 ? `${topShip.kills.toFixed(2)}/0` : '0.00')
+        : topShip.killPerLoss.toFixed(2);
+    const hitRatePct = (topShip.hitRate * 100).toFixed(0);
+
+    return `${prefix}: ${topShip.shipName} led your fleet (K/L ${killPerLossText}, hit ${hitRatePct}%, dmg ${topShip.damage.toFixed(1)}).`;
+}
+
+function recordCombatTelemetry({
+    gameId,
+    sectorId,
+    attackerId,
+    defenderId,
+    attackerRaceId,
+    defenderRaceId,
+    winnerId,
+    attackerLosses,
+    defenderLosses,
+    battleLog
+}) {
+    if (!battleLog || !battleLog.telemetry) {
+        return;
+    }
+
+    const gameTelemetry = getOrCreateGameTelemetryRecord(gameId);
+    const attackerTelemetry = getOrCreatePlayerTelemetryRecord(gameTelemetry, attackerId, attackerRaceId);
+    const defenderTelemetry = getOrCreatePlayerTelemetryRecord(gameTelemetry, defenderId, defenderRaceId);
+
+    addSideTelemetryToPlayerRecord(attackerTelemetry, battleLog.telemetry.attacker);
+    addSideTelemetryToPlayerRecord(defenderTelemetry, battleLog.telemetry.defender);
+
+    gameTelemetry.battles += 1;
+    gameTelemetry.updatedAt = new Date().toISOString();
+
+    const recentEntry = {
+        timestamp: gameTelemetry.updatedAt,
+        sector: formatSectorToken(sectorId),
+        attackerId: Number(attackerId),
+        defenderId: Number(defenderId),
+        winnerId: Number(winnerId),
+        attackerLosses: Number(attackerLosses) || 0,
+        defenderLosses: Number(defenderLosses) || 0,
+        attackerTopShip: deriveTopShipTelemetry(battleLog.telemetry.attacker),
+        defenderTopShip: deriveTopShipTelemetry(battleLog.telemetry.defender),
+        result: battleLog.result || 'unknown'
+    };
+
+    gameTelemetry.recentBattles.push(recentEntry);
+    if (gameTelemetry.recentBattles.length > COMBAT_TELEMETRY_RECENT_BATTLES) {
+        gameTelemetry.recentBattles.splice(0, gameTelemetry.recentBattles.length - COMBAT_TELEMETRY_RECENT_BATTLES);
+    }
+
+    const attackerTop = recentEntry.attackerTopShip ? recentEntry.attackerTopShip.shipName : 'n/a';
+    const defenderTop = recentEntry.defenderTopShip ? recentEntry.defenderTopShip.shipName : 'n/a';
+    console.log(
+        `[CombatTelemetry] game=${gameId} sector=${recentEntry.sector} winner=P${winnerId} losses(A:${recentEntry.attackerLosses},D:${recentEntry.defenderLosses}) top(A:${attackerTop},D:${defenderTop})`
+    );
+}
+
+function buildShipTelemetryView(stat) {
+    const hitRate = stat.shots > 0 ? stat.hits / stat.shots : 0;
+    const damagePerShot = stat.shots > 0 ? stat.damage / stat.shots : 0;
+    const killPerLoss = stat.losses > 0 ? stat.kills / stat.losses : null;
+
+    return {
+        shipTypeId: stat.typeId,
+        shipName: stat.name,
+        deployed: stat.deployed,
+        survivors: stat.survivors,
+        losses: stat.losses,
+        kills: Number(stat.kills.toFixed(3)),
+        shots: stat.shots,
+        hits: stat.hits,
+        damage: Number(stat.damage.toFixed(3)),
+        battles: stat.battles,
+        hitRate: Number(hitRate.toFixed(3)),
+        damagePerShot: Number(damagePerShot.toFixed(3)),
+        killPerLoss: killPerLoss === null ? null : Number(killPerLoss.toFixed(3))
+    };
+}
+
+function getCombatTelemetrySnapshot(gameId) {
+    const normalizedGameId = Number(gameId);
+    const gameTelemetry = combatTelemetryStore.get(normalizedGameId);
+    if (!gameTelemetry) {
+        return {
+            gameId: normalizedGameId,
+            battles: 0,
+            updatedAt: null,
+            recentBattles: [],
+            players: []
+        };
+    }
+
+    const players = Object.values(gameTelemetry.players)
+        .sort((a, b) => a.playerId - b.playerId)
+        .map(player => {
+            const shipStats = SHIP_TYPE_IDS
+                .map(typeId => buildShipTelemetryView(player.byType[typeId]))
+                .filter(stat => stat.deployed > 0 || stat.shots > 0 || stat.kills > 0 || stat.losses > 0);
+
+            return {
+                playerId: player.playerId,
+                raceId: player.raceId,
+                raceName: getRaceById(player.raceId).name,
+                battles: player.battles,
+                orbitalTurret: {
+                    shots: player.orbitalTurret.shots,
+                    hits: player.orbitalTurret.hits,
+                    damage: Number(player.orbitalTurret.damage.toFixed(3)),
+                    kills: Number(player.orbitalTurret.kills.toFixed(3)),
+                    hitRate: player.orbitalTurret.shots > 0
+                        ? Number((player.orbitalTurret.hits / player.orbitalTurret.shots).toFixed(3))
+                        : 0
+                },
+                shipStats
+            };
         });
 
-        const attackerTech = { weapons: 0, hull: 0, shields: 0 };
-        const defenderTech = { weapons: 0, hull: 0, shields: 0 };
-        const battleLog = combatSystem.conductBattle(attackerFleet, defenderFleet, attackerTech, defenderTech);
-        const winnerId = battleLog.result === "attackerVictory" ? attackerId : defenderId;
+    return {
+        gameId: gameTelemetry.gameId,
+        battles: gameTelemetry.battles,
+        updatedAt: gameTelemetry.updatedAt,
+        recentBattles: gameTelemetry.recentBattles.slice(-25),
+        players
+    };
+}
 
-        await applyBattleOutcome(gameId, sectorId, {
+function handleGetCombatTelemetry(request, response, gameId) {
+    const parsedGameId = parsePositiveInt(gameId, 0);
+    if (!parsedGameId) {
+        response.writeHead(400, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Invalid game ID' }));
+        return;
+    }
+
+    const payload = getCombatTelemetrySnapshot(parsedGameId);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(payload));
+}
+
+async function resolveBattle(gameId, sectorId, player1, player2) {
+    const attackerId = Number(player1);
+    const defenderId = Number(player2);
+    if (!Number.isFinite(attackerId) || !Number.isFinite(defenderId) || attackerId === defenderId) {
+        return;
+    }
+
+    try {
+        const [attackerRows, defenderRows, attackerProfile, defenderProfile] = await Promise.all([
+            getPlayerShips(gameId, sectorId, attackerId),
+            getPlayerShips(gameId, sectorId, defenderId),
+            getPlayerBattleProfile(gameId, attackerId),
+            getPlayerBattleProfile(gameId, defenderId)
+        ]);
+
+        const attackerShips = normalizeShipRows(attackerRows);
+        const defenderShips = normalizeShipRows(defenderRows);
+        if (sumShipRows(attackerShips) === 0 || sumShipRows(defenderShips) === 0) {
+            return;
+        }
+
+        const battleLog = combatSystem.conductBattle(
+            buildFleetFromRows(attackerShips),
+            buildFleetFromRows(defenderShips),
+            parseBattleTech(attackerProfile.tech),
+            parseBattleTech(defenderProfile.tech)
+        );
+
+        const attackerSurvivors = finalFleetToRows(battleLog.final && battleLog.final.attackers);
+        const defenderSurvivors = finalFleetToRows(battleLog.final && battleLog.final.defenders);
+
+        await Promise.all([
+            replaceShipsAfterBattle(gameId, sectorId, attackerId, attackerSurvivors),
+            replaceShipsAfterBattle(gameId, sectorId, defenderId, defenderSurvivors)
+        ]);
+
+        updateSector2(gameId, sectorId);
+
+        const fullBattleMessage = combatSystem.formatBattleMessage(battleLog);
+        const viewModes = getBattleViewModes(
+            attackerShips,
+            defenderShips,
+            attackerProfile.race_id,
+            defenderProfile.race_id
+        );
+        const winnerId = battleLog.result === 'attackerVictory' ? attackerId : defenderId;
+        const attackerLosses = Math.max(0, sumShipRows(attackerShips) - sumFleetCounts(battleLog.final && battleLog.final.attackers));
+        const defenderLosses = Math.max(0, sumShipRows(defenderShips) - sumFleetCounts(battleLog.final && battleLog.final.defenders));
+        recordCombatTelemetry({
+            gameId,
+            sectorId,
             attackerId,
             defenderId,
+            attackerRaceId: attackerProfile.race_id,
+            defenderRaceId: defenderProfile.race_id,
             winnerId,
+            attackerLosses,
+            defenderLosses,
             battleLog
         });
 
-        const summary = [
-            `${battleLog.rounds?.length || 0} combat rounds`,
-            battleLog.result === "attackerVictory" ? "Attacker seized control" : "Defender held the line"
-        ];
+        const attackerMessage = viewModes.attacker.mode === 'full'
+            ? fullBattleMessage
+            : formatBattleSummaryMessage({
+                sectorId,
+                reason: viewModes.attacker.reason,
+                winnerId,
+                attackerLosses,
+                defenderLosses,
+                forceRatio: viewModes.forceRatio,
+                result: battleLog.result
+            });
+        const defenderMessage = viewModes.defender.mode === 'full'
+            ? fullBattleMessage
+            : formatBattleSummaryMessage({
+                sectorId,
+                reason: viewModes.defender.reason,
+                winnerId,
+                attackerLosses,
+                defenderLosses,
+                forceRatio: viewModes.forceRatio,
+                result: battleLog.result
+            });
 
-        broadcastToGame(gameId, `battlereport::${JSON.stringify({
-            sector: sectorId,
-            winner: winnerId,
+        notifyPlayer(attackerId, attackerMessage);
+        notifyPlayer(defenderId, defenderMessage);
+
+        const sectorHex = Number(sectorId).toString(16).toUpperCase();
+        notifyPlayer(
             attackerId,
+            battleLog.result === 'attackerVictory'
+                ? `Battle report: Victory in sector ${sectorHex}. Enemy losses ${defenderLosses}, your losses ${attackerLosses}.`
+                : `Battle report: Defeat in sector ${sectorHex}. Enemy losses ${defenderLosses}, your losses ${attackerLosses}.`
+        );
+        notifyPlayer(
             defenderId,
-            summary,
-            survivors: {
-                attacker: battleLog.final?.attackers || {},
-                defender: battleLog.final?.defenders || {}
-            }
-        })}`);
-    } catch (err) {
-        console.error(`Battle resolution failed for game ${gameId}, sector ${sectorId}:`, err.message || err);
+            battleLog.result === 'defenderVictory'
+                ? `Battle report: Victory in sector ${sectorHex}. Enemy losses ${attackerLosses}, your losses ${defenderLosses}.`
+                : `Battle report: Defeat in sector ${sectorHex}. Enemy losses ${attackerLosses}, your losses ${defenderLosses}.`
+        );
+        notifyPlayer(attackerId, formatShipTelemetryHint(battleLog.telemetry && battleLog.telemetry.attacker, 'Fleet telemetry'));
+        notifyPlayer(defenderId, formatShipTelemetryHint(battleLog.telemetry && battleLog.telemetry.defender, 'Fleet telemetry'));
+    } catch (error) {
+        console.error(`Error resolving battle in game ${gameId}, sector ${sectorId}:`, error);
     }
+}
+
+function getPlayerBattleProfile(gameId, playerId) {
+    return new Promise(resolve => {
+        db.query(
+            `SELECT race_id, tech FROM players${gameId} WHERE userid = ?`,
+            [playerId],
+            (err, rows) => {
+                if (err || !rows || rows.length === 0) {
+                    resolve({ race_id: 1, tech: '' });
+                    return;
+                }
+                resolve({
+                    race_id: Number(rows[0].race_id) || 1,
+                    tech: rows[0].tech || ''
+                });
+            }
+        );
+    });
 }
 
 function getPlayerShips(gameId, sectorId, playerId) {
@@ -821,79 +1454,78 @@ function getPlayerShips(gameId, sectorId, playerId) {
     });
 }
 
-function updateShipsAfterBattle(gameId, sectorId, playerId, ships) {
+function finalFleetToRows(finalFleet) {
+    const rows = [];
+    if (!finalFleet || typeof finalFleet !== 'object') {
+        return rows;
+    }
+
+    for (let i = 1; i <= 9; i++) {
+        const count = Number(finalFleet[i]) || 0;
+        if (count > 0) {
+            rows.push({ type: i, count });
+        }
+    }
+    return rows;
+}
+
+function replaceShipsAfterBattle(gameId, sectorId, playerId, ships) {
+    return new Promise((resolve, reject) => {
+        updateShipsAfterBattle(gameId, sectorId, playerId, ships, err => {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+}
+
+function updateShipsAfterBattle(gameId, sectorId, playerId, ships, callback = () => {}) {
+    const survivors = normalizeShipRows(ships);
+
     // Remove all ships first
     db.query(
         `DELETE FROM ships${gameId} WHERE sectorid = ? AND owner = ?`,
         [sectorId, playerId],
         (err) => {
-            if (err) return;
-            
-            // Add surviving ships
-            ships.forEach(ship => {
-                if (ship.count > 0) {
-                    for (let i = 0; i < ship.count; i++) {
-                        db.query(
-                            `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                            [playerId, ship.type, sectorId]
-                        );
-                    }
+            if (err) {
+                callback(err);
+                return;
+            }
+
+            const inserts = [];
+            survivors.forEach(ship => {
+                const count = Math.floor(ship.count);
+                for (let i = 0; i < count; i++) {
+                    inserts.push([playerId, ship.type, sectorId]);
                 }
+            });
+
+            if (inserts.length === 0) {
+                callback(null);
+                return;
+            }
+
+            let remaining = inserts.length;
+            let failed = false;
+            inserts.forEach(params => {
+                db.query(
+                    `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
+                    params,
+                    insertErr => {
+                        if (failed) return;
+                        if (insertErr) {
+                            failed = true;
+                            callback(insertErr);
+                            return;
+                        }
+                        remaining -= 1;
+                        if (remaining === 0) {
+                            callback(null);
+                        }
+                    }
+                );
             });
         }
     );
-}
-
-async function applyBattleOutcome(gameId, sectorId, context) {
-    const { attackerId, defenderId, winnerId, battleLog } = context;
-    const shipsTable = mysql2.escapeId(`ships${gameId}`);
-    const mapTable = mysql2.escapeId(`map${gameId}`);
-    const winnerShips = battleLog.result === "attackerVictory"
-        ? (battleLog.final?.attackers || {})
-        : (battleLog.final?.defenders || {});
-
-    await queryAsync(
-        `DELETE FROM ${shipsTable} WHERE sectorid = ? AND owner IN (?, ?)`,
-        [sectorId, attackerId, defenderId]
-    );
-
-    for (const key of Object.keys(winnerShips)) {
-        const type = Number(key);
-        const count = Number(winnerShips[key]) || 0;
-        if (!Number.isFinite(type) || count <= 0) continue;
-        for (let i = 0; i < count; i++) {
-            // eslint-disable-next-line no-await-in-loop
-            await queryAsync(
-                `INSERT INTO ${shipsTable} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                [winnerId, type, sectorId]
-            );
-        }
-    }
-
-    const survivors = [];
-    for (let i = 1; i <= 9; i++) {
-        survivors.push(Number(winnerShips[i]) || 0);
-    }
-    const orbitalTurrets = battleLog.result === "defenderVictory"
-        ? (battleLog.final?.orbitalTurrets || 0)
-        : 0;
-    const groundTurrets = battleLog.result === "defenderVictory"
-        ? (battleLog.final?.groundTurrets || 0)
-        : 0;
-
-    const updateSql = `
-        UPDATE ${mapTable}
-        SET ownerid = ?, colonized = 1,
-            orbitalturret = ?, groundturret = ?,
-            ${survivors.map((_, idx) => `totalship${idx + 1} = ?`).join(', ')}
-        WHERE sectorid = ?`;
-    await queryAsync(updateSql, [
-        winnerId,
-        orbitalTurrets,
-        groundTurrets,
-        ...survivors,
-        sectorId
-    ]);
 }
 
 // Implement missing game functions
@@ -946,8 +1578,8 @@ function colonizePlanet(connection) {
                             
                             // Colonize the planet
                             db.query(
-                                `UPDATE map${gameId} SET owner = ?, ownerid = ? WHERE sectorid = ?`,
-                                [playerId, playerId, sectorId],
+                                `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
+                                [playerId, sectorId],
                                 (err) => {
                                     if (err) {
                                         connection.sendUTF("Error: Failed to colonize");
@@ -984,7 +1616,6 @@ function buyTech(data, connection) {
         connection.sendUTF("Error: Invalid technology");
         return;
     }
-    const techCost = Number.isFinite(tech.cost) ? tech.cost : (Number.isFinite(tech.baseCost) ? tech.baseCost : 100);
     
     // Check if player has enough research
     db.query(
@@ -1004,7 +1635,7 @@ function buyTech(data, connection) {
                 return;
             }
             
-            if (player.research < techCost) {
+            if (player.research < tech.cost) {
                 connection.sendUTF("Error: Not enough research points");
                 return;
             }
@@ -1015,25 +1646,19 @@ function buyTech(data, connection) {
                 return;
             }
             
-            // Buy the tech with atomic resource check
+            // Buy the tech
             playerTech.push(techId);
             const newTech = playerTech.join(',');
-
+            
             db.query(
-                `UPDATE players${gameId} SET research = research - ?, tech = ?
-                 WHERE userid = ? AND research >= ?`,
-                [techCost, newTech, playerId, techCost],
-                (err, result) => {
+                `UPDATE players${gameId} SET research = research - ?, tech = ? WHERE userid = ?`,
+                [tech.cost, newTech, playerId],
+                (err) => {
                     if (err) {
                         connection.sendUTF("Error: Failed to buy technology");
                         return;
                     }
-
-                    if (result.affectedRows === 0) {
-                        connection.sendUTF("Error: Not enough research points");
-                        return;
-                    }
-
+                    
                     connection.sendUTF(`Success: Purchased ${tech.name}`);
                     updateResources(connection);
                 }
@@ -1119,7 +1744,7 @@ function buyShip(data, connection) {
     
     // Get player data
     db.query(
-        `SELECT metal, crystal, currentsector, tech FROM players${gameId} WHERE userid = ?`,
+        `SELECT metal, crystal, currentsector, tech, race_id FROM players${gameId} WHERE userid = ?`,
         [playerId],
         (err, results) => {
             if (err || results.length === 0) {
@@ -1158,36 +1783,22 @@ function buyShip(data, connection) {
                         return;
                     }
                     
-                    // Buy the ship with atomic resource check and deduction
-                    // This prevents race conditions where resources could go negative
+                    // Buy the ship with race-modified costs
                     db.query(
-                        `UPDATE players${gameId} SET metal = metal - ?, crystal = crystal - ?
-                         WHERE userid = ? AND metal >= ? AND crystal >= ?`,
-                        [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId,
-                         modifiedShip.cost.metal, modifiedShip.cost.crystal],
-                        (err, result) => {
+                        `UPDATE players${gameId} SET metal = metal - ?, crystal = crystal - ? WHERE userid = ?`,
+                        [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId],
+                        (err) => {
                             if (err) {
                                 connection.sendUTF("Error: Failed to deduct resources");
                                 return;
                             }
-
-                            // Check if update succeeded (resources were sufficient)
-                            if (result.affectedRows === 0) {
-                                connection.sendUTF("Error: Not enough resources");
-                                return;
-                            }
-
+                            
                             // Create the ship
                             db.query(
                                 `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
                                 [playerId, shipType, player.currentsector],
                                 (err) => {
                                     if (err) {
-                                        // Rollback the resource deduction on failure
-                                        db.query(
-                                            `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
-                                            [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId]
-                                        );
                                         connection.sendUTF("Error: Failed to create ship");
                                         return;
                                     }
@@ -1211,7 +1822,17 @@ function buyBuilding(data, connection) {
     const playerId = connection.name;
     const gameId = connection.gameid;
     
-    const building = BUILDING_COSTS[buildingType];
+    // Define building costs
+    const buildingCosts = {
+        0: { name: "Metal Extractor", metal: 50, crystal: 20 },
+        1: { name: "Crystal Refinery", metal: 40, crystal: 30 },
+        2: { name: "Research Academy", metal: 60, crystal: 40 },
+        3: { name: "Spaceport", metal: 100, crystal: 50 },
+        4: { name: "Orbital Turret", metal: 80, crystal: 60 },
+        5: { name: "Warp Gate", metal: 200, crystal: 150 }
+    };
+    
+    const building = buildingCosts[buildingType];
     if (!building) {
         connection.sendUTF("Error: Invalid building type");
         return;
@@ -1255,37 +1876,26 @@ function buyBuilding(data, connection) {
                                 return;
                             }
                             
-                            // Buy the building with atomic resource check
+                            // Buy the building
                             db.query(
-                                `UPDATE players${gameId} SET metal = metal - ?, crystal = crystal - ?
-                                 WHERE userid = ? AND metal >= ? AND crystal >= ?`,
-                                [building.metal, building.crystal, playerId, building.metal, building.crystal],
-                                (err, result) => {
+                                `UPDATE players${gameId} SET metal = metal - ?, crystal = crystal - ? WHERE userid = ?`,
+                                [building.metal, building.crystal, playerId],
+                                (err) => {
                                     if (err) {
                                         connection.sendUTF("Error: Failed to deduct resources");
                                         return;
                                     }
-
-                                    if (result.affectedRows === 0) {
-                                        connection.sendUTF("Error: Not enough resources");
-                                        return;
-                                    }
-
+                                    
                                     // Create the building
                                     db.query(
                                         `INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`,
                                         [player.currentsector, buildingType, playerId],
                                         (err) => {
                                             if (err) {
-                                                // Rollback resource deduction
-                                                db.query(
-                                                    `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
-                                                    [building.metal, building.crystal, playerId]
-                                                );
                                                 connection.sendUTF("Error: Failed to create building");
                                                 return;
                                             }
-
+                                            
                                             connection.sendUTF(`Success: Built ${building.name}`);
                                             updateResources(connection);
                                             updateSector2(gameId, player.currentsector);
@@ -1303,8 +1913,8 @@ function buyBuilding(data, connection) {
 
 function moveFleet(data, connection) {
     const parts = data.split(":");
-    const fromSector = parseInt(parts[1]);
-    const toSector = parseInt(parts[2]);
+    const fromSector = parseSectorToken(parts[1]);
+    const toSector = parseSectorToken(parts[2]);
     const shipTypes = parts[3].split(",").map(Number);
     const shipCounts = parts[4].split(",").map(Number);
     const playerId = connection.name;
@@ -1346,11 +1956,10 @@ function moveFleet(data, connection) {
                         [playerId, fromSector, type, count],
                         (err, ships) => {
                             if (!err && ships.length > 0) {
-                                const shipIds = ships.map(s => s.id);
-                                const placeholders = shipIds.map(() => '?').join(',');
+                                const shipIds = ships.map(s => s.id).join(',');
                                 db.query(
-                                    `UPDATE ships${gameId} SET sectorid = ? WHERE id IN (${placeholders})`,
-                                    [toSector, ...shipIds],
+                                    `UPDATE ships${gameId} SET sectorid = ? WHERE id IN (${shipIds})`,
+                                    [toSector],
                                     (err) => {
                                         if (!err) {
                                             moved += ships.length;
@@ -1379,25 +1988,32 @@ function moveFleet(data, connection) {
     );
 }
 
-function areAdjacentSectors(sector1, sector2, mapWidth = 14) {
+function areAdjacentSectors(sector1, sector2) {
+    const mapWidth = 14;
     const x1 = sector1 % mapWidth;
     const y1 = Math.floor(sector1 / mapWidth);
     const x2 = sector2 % mapWidth;
     const y2 = Math.floor(sector2 / mapWidth);
-
+    
     const dx = Math.abs(x1 - x2);
     const dy = Math.abs(y1 - y2);
-
+    
     // Check if adjacent (including diagonals)
     return dx <= 1 && dy <= 1 && (dx + dy) > 0;
 }
 
 function updateSector(data, connection) {
     const parts = data.split(":");
-    const sectorId = parseInt(parts[1]);
+    const sectorId = parseSectorToken(parts[1]);
     const gameId = connection.gameid;
-    
+
+    if (!Number.isFinite(sectorId)) {
+        connection.sendUTF("Error: Invalid sector");
+        return;
+    }
+
     updateSector2(gameId, sectorId);
+    sendMultiMoveOptions(connection, gameId, sectorId);
 }
 
 function updateSector2(gameId, sectorId) {
@@ -1446,125 +2062,227 @@ function surroundShips(data, connection) {
     connection.sendUTF("Error: Multi-move not yet implemented");
 }
 
-function preMoveFleet(data, connection) {
-    // This appears to be for validating fleet movements
-    const parts = data.split(":");
-    const fromSector = parseInt(parts[1]);
-    const toSector = parseInt(parts[2]);
-    
-    if (areAdjacentSectors(fromSector, toSector)) {
-        connection.sendUTF(`premove::valid::${fromSector}::${toSector}`);
-    } else {
-        connection.sendUTF(`premove::invalid::${fromSector}::${toSector}`);
-    }
-}
-
-function updateResources(connection) {
-    const playerId = connection.name;
-    const gameId = connection.gameid;
-
-    console.log(`[updateResources] playerId=${playerId}, gameId=${gameId}`);
-
-    if (!gameId) {
-        console.log(`[updateResources] No gameId set for player ${playerId}`);
+function sendMultiMoveOptions(connection, gameId, targetSector) {
+    const playerId = Number(connection.name);
+    const adjacentIds = getAdjacentSectorIds(targetSector);
+    if (!Number.isFinite(playerId) || adjacentIds.length === 0) {
         return;
     }
 
     db.query(
-        `SELECT metal, crystal, research, homeworld FROM players${gameId} WHERE userid = ?`,
-        [playerId],
-        (err, results) => {
-            if (err) {
-                console.error(`[updateResources] DB error:`, err);
-                return;
-            }
-            if (!results || results.length === 0) {
-                console.log(`[updateResources] No results for player ${playerId} in game ${gameId}`);
+        `SELECT owner FROM map${gameId} WHERE sectorid = ?`,
+        [targetSector],
+        (sectorErr, sectorRows) => {
+            if (sectorErr || !sectorRows || sectorRows.length === 0) {
                 return;
             }
 
-            const resources = results[0];
-            console.log(`[updateResources] Sending resources to player ${playerId}: metal=${resources.metal}, crystal=${resources.crystal}`);
-            connection.sendUTF(`resources::${resources.metal}::${resources.crystal}::${resources.research}`);
-
-            // Also send full map state to this player
-            sendMapStateToPlayer(gameId, playerId, results[0].homeworld, connection);
-
-            // Send tech levels
-            sendTechLevelsToPlayer(gameId, playerId, connection);
-        }
-    );
-}
-
-function sendMapStateToPlayer(gameId, playerId, homeworld, connection) {
-    console.log(`[sendMapStateToPlayer] gameId=${gameId}, playerId=${playerId}, homeworld=${homeworld}`);
-    // Get all sectors with their ownership and type
-    db.query(
-        `SELECT sectorid, owner, ownerid, type, sectortype FROM map${gameId} ORDER BY sectorid`,
-        (err, sectors) => {
-            if (err) {
-                console.error(`[sendMapStateToPlayer] Map query error:`, err);
-                return;
-            }
-            console.log(`[sendMapStateToPlayer] Found ${sectors?.length || 0} sectors`);
-
-            // Get ships per sector
             db.query(
-                `SELECT sectorid, owner, COUNT(*) as count FROM ships${gameId} GROUP BY sectorid, owner`,
-                (shipErr, ships) => {
-                    const shipsBySector = {};
-                    if (!shipErr && ships) {
-                        ships.forEach(s => {
-                            if (!shipsBySector[s.sectorid]) shipsBySector[s.sectorid] = {};
-                            shipsBySector[s.sectorid][s.owner] = s.count;
-                        });
+                `SELECT sectorid, type, COUNT(*) as count FROM ships${gameId} WHERE owner = ? GROUP BY sectorid, type`,
+                [playerId],
+                (shipsErr, shipRows) => {
+                    if (shipsErr || !Array.isArray(shipRows) || shipRows.length === 0) {
+                        return;
                     }
 
-                    // Build compact map state: sectorId:status:fleetSize
-                    const mapData = sectors.map(sector => {
-                        let status = 'neutral';
-                        const sectorType = sector.sectortype || sector.type || 0;
-
-                        // Check ownership FIRST, then sector type for unowned sectors
-                        if (sector.ownerid == playerId) {
-                            if (sector.sectorid == homeworld) {
-                                status = 'homeworld';
-                            } else {
-                                status = 'owned';
-                            }
-                        } else if (sector.ownerid && sector.ownerid != playerId) {
-                            status = 'enemy';
-                        } else {
-                            // Only check sector type for unowned sectors
-                            if (sectorType === 0 || sectorType === 10) {
-                                status = 'blackhole';
-                            } else if (sectorType === 1 || sectorType === 3) {
-                                status = 'hazard';
-                            }
+                    const bySector = new Map();
+                    shipRows.forEach(row => {
+                        const sectorId = Number(row.sectorid);
+                        const type = Number(row.type);
+                        const count = Number(row.count) || 0;
+                        if (!adjacentIds.includes(sectorId) || count <= 0 || type < 1 || type > 9) {
+                            return;
                         }
 
-                        // Get fleet size for this player in this sector
-                        const fleetSize = shipsBySector[sector.sectorid]?.[playerId] || 0;
-
-                        return `${sector.sectorid}:${status}:${fleetSize}`;
+                        if (!bySector.has(sectorId)) {
+                            bySector.set(sectorId, new Array(9).fill(0));
+                        }
+                        bySector.get(sectorId)[type - 1] += count;
                     });
 
-                    connection.sendUTF(`mapstate::${mapData.join(',')}`);
+                    if (bySector.size === 0) {
+                        return;
+                    }
+
+                    const payload = ['mmoptions', formatSectorToken(targetSector)];
+                    Array.from(bySector.entries())
+                        .sort((a, b) => a[0] - b[0])
+                        .forEach(([sectorId, counts]) => {
+                            payload.push(formatSectorToken(sectorId));
+                            counts.forEach(count => payload.push(String(count)));
+                        });
+
+                    connection.sendUTF(payload.join(':'));
                 }
             );
         }
     );
 }
 
-function sendTechLevelsToPlayer(gameId, playerId, connection) {
+function preMoveFleet(data, connection) {
+    const parts = data.split(":");
+    const playerId = Number(connection.name);
+    const gameId = connection.gameid;
+    const targetSector = parseSectorToken(parts[1]);
+
+    if (!Number.isFinite(playerId) || !gameId || !Number.isFinite(targetSector)) {
+        connection.sendUTF("Error: Invalid fleet order");
+        return;
+    }
+
+    const requestedMoves = new Map();
+    for (let i = 2; i + 2 < parts.length; i += 3) {
+        const sourceSector = parseSectorToken(parts[i]);
+        const shipType = Number.parseInt(parts[i + 1], 10);
+        if (!Number.isFinite(sourceSector) || !Number.isFinite(shipType) || shipType < 1 || shipType > 9) {
+            continue;
+        }
+
+        const key = `${sourceSector}:${shipType}`;
+        requestedMoves.set(key, (requestedMoves.get(key) || 0) + 1);
+    }
+
+    if (requestedMoves.size === 0) {
+        connection.sendUTF("Error: No ships selected");
+        return;
+    }
+
+    const moveEntries = Array.from(requestedMoves.entries()).map(([key, count]) => {
+        const [sourceSector, shipType] = key.split(':').map(Number);
+        return { sourceSector, shipType, count };
+    });
+
+    for (const entry of moveEntries) {
+        if (!areAdjacentSectors(entry.sourceSector, targetSector)) {
+            connection.sendUTF(`Error: Sector ${formatSectorToken(entry.sourceSector)} is not adjacent to ${formatSectorToken(targetSector)}`);
+            return;
+        }
+    }
+
+    const totalShips = moveEntries.reduce((sum, entry) => sum + entry.count, 0);
+
     db.query(
-        `SELECT weapons, hulls, shields, engines FROM players${gameId} WHERE userid = ?`,
+        `SELECT crystal FROM players${gameId} WHERE userid = ?`,
+        [playerId],
+        (resourceErr, resourceRows) => {
+            if (resourceErr || !resourceRows || resourceRows.length === 0) {
+                connection.sendUTF("Error: Could not get player data");
+                return;
+            }
+
+            const crystals = Number(resourceRows[0].crystal) || 0;
+            if (crystals < totalShips) {
+                connection.sendUTF("Error: Not enough crystal for movement");
+                return;
+            }
+
+            db.query(
+                `SELECT id, sectorid, type FROM ships${gameId} WHERE owner = ?`,
+                [playerId],
+                (shipErr, shipRows) => {
+                    if (shipErr || !Array.isArray(shipRows)) {
+                        connection.sendUTF("Error: Could not verify fleet");
+                        return;
+                    }
+
+                    const available = new Map();
+                    shipRows.forEach(row => {
+                        const source = Number(row.sectorid);
+                        const type = Number(row.type);
+                        const id = Number(row.id);
+                        if (!Number.isFinite(source) || !Number.isFinite(type) || !Number.isFinite(id)) return;
+                        const key = `${source}:${type}`;
+                        if (!available.has(key)) {
+                            available.set(key, []);
+                        }
+                        available.get(key).push(id);
+                    });
+
+                    for (const entry of moveEntries) {
+                        const key = `${entry.sourceSector}:${entry.shipType}`;
+                        const candidates = available.get(key) || [];
+                        if (candidates.length < entry.count) {
+                            connection.sendUTF(`Error: Not enough ships in sector ${formatSectorToken(entry.sourceSector)}`);
+                            return;
+                        }
+                    }
+
+                    const selectedIds = [];
+                    const touchedSectors = new Set();
+                    moveEntries.forEach(entry => {
+                        const key = `${entry.sourceSector}:${entry.shipType}`;
+                        const ids = available.get(key).slice(0, entry.count);
+                        ids.forEach(id => selectedIds.push(id));
+                        touchedSectors.add(entry.sourceSector);
+                    });
+
+                    if (selectedIds.length === 0) {
+                        connection.sendUTF("Error: No valid ships selected");
+                        return;
+                    }
+
+                    let completed = 0;
+                    let failed = false;
+                    const finishMovement = () => {
+                        if (failed) return;
+                        completed += 1;
+                        if (completed !== selectedIds.length) return;
+
+                        db.query(
+                            `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ?`,
+                            [selectedIds.length, playerId],
+                            deductErr => {
+                                if (deductErr) {
+                                    connection.sendUTF("Error: Failed to finalize movement");
+                                    return;
+                                }
+
+                                updateResources(connection);
+                                updateSector2(gameId, targetSector);
+                                touchedSectors.forEach(sectorId => {
+                                    if (sectorId !== targetSector) {
+                                        updateSector2(gameId, sectorId);
+                                    }
+                                });
+
+                                connection.sendUTF(`Success: Fleet moved to sector ${formatSectorToken(targetSector)}`);
+                            }
+                        );
+                    };
+
+                    selectedIds.forEach(id => {
+                        db.query(
+                            `UPDATE ships${gameId} SET sectorid = ? WHERE id = ?`,
+                            [targetSector, id],
+                            updateErr => {
+                                if (failed) return;
+                                if (updateErr) {
+                                    failed = true;
+                                    connection.sendUTF("Error: Failed moving fleet");
+                                    return;
+                                }
+                                finishMovement();
+                            }
+                        );
+                    });
+                }
+            );
+        }
+    );
+}
+
+function updateResources(connection) {
+    const playerId = connection.name;
+    const gameId = connection.gameid;
+    
+    db.query(
+        `SELECT metal, crystal, research FROM players${gameId} WHERE userid = ?`,
         [playerId],
         (err, results) => {
             if (err || results.length === 0) return;
-
-            const tech = results[0];
-            connection.sendUTF(`tech:${tech.weapons || 0}:${tech.hulls || 0}:${tech.shields || 0}:${tech.engines || 0}`);
+            
+            const resources = results[0];
+            connection.sendUTF(`resources::${resources.metal}::${resources.crystal}::${resources.research}`);
         }
     );
 }
@@ -1584,1098 +2302,380 @@ function updateAllSectors(gameId, connection) {
 }
 
 function handleJoinGame(data, connection) {
-    if (!db || db.isOffline) {
-        connection.sendUTF("joingame::error::Service unavailable");
-        return;
-    }
-
     const parts = data.split(":");
-    const gameId = parseInt(parts[1], 10);
-    const raceId = parseInt(parts[2], 10) || DEFAULT_CREATOR_RACE_ID;
-    const playerId = parseInt(connection.name, 10);
+    const gameId = parsePositiveInt(parts[1], 0);
+    const raceId = parsePositiveInt(parts[2], 1);
+    const playerId = Number(connection.name);
 
-    if (!Number.isInteger(gameId)) {
-        connection.sendUTF("joingame::error::Invalid game selection");
+    if (!gameId || !playerId) {
+        connection.sendUTF('joingame::error::Invalid join request.');
         return;
     }
 
-    if (!Number.isInteger(playerId)) {
-        connection.sendUTF("joingame::error::Authentication required");
+    if (connection.gameid && Number(connection.gameid) !== gameId) {
+        connection.sendUTF('joingame::error::Leave your current game before joining another one.');
         return;
     }
 
-    db.query(
-        'SELECT id, name, maxplayers, started, creator FROM games WHERE id = ? AND started = 0',
-        [gameId],
-        (gameErr, games) => {
-            if (gameErr || !games || games.length === 0) {
-                connection.sendUTF("joingame::error::Game not found or already started");
+    ensurePlayerTableColumns(gameId, tableErr => {
+        if (tableErr) {
+            connection.sendUTF('joingame::error::Game is not ready yet. Please try again.');
+            return;
+        }
+
+        db.query('SELECT id, name, maxplayers, started, creator FROM games WHERE id = ? AND started = 0', [gameId], (err, games) => {
+            if (err || !games || games.length === 0) {
+                connection.sendUTF('joingame::error::Game not found or already started.');
                 return;
             }
 
             const game = games[0];
-            const safeName = sanitizeGameName(game.name || '');
-            const active = ensureActiveGameState(gameId);
-            if (active.countdown) {
-                connection.sendUTF("joingame::error::Game is preparing to start; cannot join now");
+
+            db.query(`SELECT COUNT(*) AS count FROM players${gameId}`, (countErr, counts) => {
+                if (countErr) {
+                    connection.sendUTF('joingame::error::Unable to check available seats.');
+                    return;
+                }
+
+                const playerCount = Number((counts && counts[0] && (counts[0].count ?? counts[0].c)) || 0);
+                const maxPlayers = parsePositiveInt(game.maxplayers, 0);
+                if (maxPlayers > 0 && playerCount >= maxPlayers) {
+                    connection.sendUTF('joingame::error::Game is already full.');
+                    return;
+                }
+
+                db.query(`SELECT * FROM players${gameId} WHERE userid = ? LIMIT 1`, [playerId], (existingErr, existing) => {
+                    if (!existingErr && existing && existing.length > 0) {
+                        connection.gameid = gameId;
+                        connection.raceid = existing[0].race_id || raceId;
+                        sendJoinSuccess(connection, game, connection.raceid, playerCount);
+                        broadcastPlayerList(gameId);
+                        return;
+                    }
+
+                    getUserStats(playerId, (statsErr, userStats) => {
+                        if (statsErr) {
+                            connection.sendUTF('joingame::error::Unable to load your account stats.');
+                            return;
+                        }
+
+                        raceSystem.isRaceUnlocked(playerId, raceId, userStats, db, unlocked => {
+                            if (!unlocked) {
+                                connection.sendUTF('joingame::error::Race not unlocked.');
+                                return;
+                            }
+
+                            const race = getRaceById(raceId);
+                            const startingResources = {
+                                metal: Math.floor(100 * race.bonuses.metalProduction),
+                                crystal: Math.floor(100 * race.bonuses.crystalProduction),
+                                research: Math.floor(50 * race.bonuses.researchSpeed)
+                            };
+
+                            db.query(
+                                `INSERT INTO players${gameId} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                                [playerId, raceId, startingResources.metal, startingResources.crystal, startingResources.research, 0, 'medium', 'balanced'],
+                                insertErr => {
+                                    if (insertErr) {
+                                        connection.sendUTF('joingame::error::Unable to join this game.');
+                                        return;
+                                    }
+
+                                    db.query(
+                                        'UPDATE users SET currentgame = ? WHERE id = ?',
+                                        [gameId, playerId],
+                                        updateErr => {
+                                            if (updateErr) {
+                                                connection.sendUTF('joingame::error::Unable to update user state.');
+                                                return;
+                                            }
+
+                                            connection.gameid = gameId;
+                                            connection.raceid = raceId;
+                                            sendJoinSuccess(connection, game, raceId, playerCount + 1);
+                                            broadcastPlayerList(gameId);
+                                        }
+                                    );
+                                }
+                            );
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+function sendJoinSuccess(connection, game, raceId, playerCount) {
+    const payload = {
+        gameId: Number(game.id),
+        gameName: game.name || `Game ${game.id}`,
+        maxPlayers: parsePositiveInt(game.maxplayers, 0),
+        playerCount: parsePositiveInt(playerCount, 1),
+        creatorId: Number(game.creator),
+        raceId,
+        raceName: getRaceById(raceId).name,
+        mode: normalizeMode((gameState.activeGames[game.id] && gameState.activeGames[game.id].mode) || game.mode)
+    };
+
+    connection.sendUTF(`joingame::success::${JSON.stringify(payload)}`);
+}
+
+function handleChangeRace(data, connection) {
+    if (!connection.gameid) {
+        connection.sendUTF('changerace::error::Join a game before changing race.');
+        return;
+    }
+
+    const parts = data.split(':');
+    const raceId = parsePositiveInt(parts[1], 1);
+    const playerId = Number(connection.name);
+    const gameId = Number(connection.gameid);
+
+    getUserStats(playerId, (statsErr, userStats) => {
+        if (statsErr) {
+            connection.sendUTF('changerace::error::Unable to load your account stats.');
+            return;
+        }
+
+        raceSystem.isRaceUnlocked(playerId, raceId, userStats, db, unlocked => {
+            if (!unlocked) {
+                connection.sendUTF('changerace::error::Race not unlocked.');
                 return;
             }
 
             db.query(
-                `SELECT * FROM players${gameId} WHERE userid = ? LIMIT 1`,
-                [playerId],
-                (playerErr, existingRows) => {
-                    if (playerErr) {
-                        console.error('Error checking existing player:', playerErr);
-                        connection.sendUTF("joingame::error::Unable to verify player state");
+                `UPDATE players${gameId} SET race_id = ? WHERE userid = ?`,
+                [raceId, playerId],
+                err => {
+                    if (err) {
+                        connection.sendUTF('changerace::error::Failed to update race.');
                         return;
                     }
 
-                    const isExisting = Array.isArray(existingRows) && existingRows.length > 0;
-
-                    db.query(
-                        `SELECT COUNT(*) AS count FROM players${gameId}`,
-                        (countErr, counts) => {
-                            if (countErr) {
-                                console.error('Error counting players:', countErr);
-                                connection.sendUTF("joingame::error::Unable to verify game capacity");
-                                return;
-                            }
-
-                            const playerCount = counts && counts[0] ? counts[0].count : 0;
-
-                            if (!isExisting && game.maxplayers && playerCount >= game.maxplayers) {
-                                connection.sendUTF("joingame::error::Game is full");
-                                return;
-                            }
-
-                            getUserStats(playerId, (statsErr, userStats) => {
-                                if (statsErr) {
-                                    connection.sendUTF("joingame::error::Failed to get user stats");
-                                    return;
-                                }
-
-                                raceSystem.isRaceUnlocked(playerId, raceId, userStats, db, unlocked => {
-                                    if (!unlocked) {
-                                        connection.sendUTF("joingame::error::Race not unlocked");
-                                        return;
-                                    }
-
-                                    const finalizeJoin = () => {
-                                        connection.gameid = gameId;
-                                        connection.raceid = raceId;
-                                        getGameModeOrDefault(gameId, (modeErr, mode) => {
-                                            if (modeErr) {
-                                                console.error('Error fetching game mode:', modeErr);
-                                            }
-                                            sendJoinSuccess(connection, {
-                                                gameId,
-                                                gameName: safeName,
-                                                maxPlayers: game.maxplayers || 0,
-                                                playerCount: isExisting ? playerCount : playerCount + 1,
-                                                creatorId: game.creator,
-                                                raceId: raceId,
-                                                mode
-                                            });
-                                            broadcastPlayerList(gameId);
-                                            sendGameList();
-                                        });
-                                    };
-
-                                    if (isExisting) {
-                                        updatePlayerRaceForGame(gameId, playerId, raceId, updateErr => {
-                                            if (updateErr) {
-                                                console.error('Error updating race selection:', updateErr);
-                                                connection.sendUTF("joingame::error::Failed to update race selection");
-                                                return;
-                                            }
-                                            finalizeJoin();
-                                        });
-                                        return;
-                                    }
-
-                                    createPlayerEntryForGame(gameId, playerId, raceId, insertErr => {
-                                        if (insertErr) {
-                                            console.error('Error adding player to game:', insertErr);
-                                            connection.sendUTF("joingame::error::Failed to join game");
-                                            return;
-                                        }
-                                        finalizeJoin();
-                                    });
-                                });
-                            });
-                        }
-                    );
-                }
-            );
-        }
-    );
-}
-
-function sendJoinSuccess(connection, details) {
-    const payload = {
-        gameId: Number(details.gameId) || 0,
-        gameName: sanitizeGameName(details.gameName || ''),
-        maxPlayers: Number(details.maxPlayers) || 0,
-        playerCount: Number(details.playerCount) || 0,
-        creatorId: String(details.creatorId ?? ''),
-        raceId: Number(details.raceId ?? connection.raceid ?? DEFAULT_CREATOR_RACE_ID) || DEFAULT_CREATOR_RACE_ID,
-        raceName: getRaceById(Number(details.raceId ?? connection.raceid ?? DEFAULT_CREATOR_RACE_ID))?.name || getRaceById(DEFAULT_CREATOR_RACE_ID)?.name || 'Unknown',
-        mode: normalizeGameMode(details.mode || DEFAULT_GAME_MODE)
-    };
-    connection.sendUTF(`joingame::success::${JSON.stringify(payload)}`);
-    connection.sendUTF("Success: Joined game");
-}
-
-function handleCreateGame(data, connection) {
-    if (!db || db.isOffline) {
-        connection.sendUTF("creategame::error::Service unavailable");
-        return;
-    }
-
-    const creatorId = parseInt(connection.name, 10);
-    if (!Number.isInteger(creatorId)) {
-        connection.sendUTF("creategame::error::Authentication required");
-        return;
-    }
-
-    const parts = data.split(":");
-    const rawName = decodeCommandValue(parts[1] || "");
-    const gameName = sanitizeGameName(rawName);
-    if (!gameName) {
-        connection.sendUTF("creategame::error::Please provide a valid game name");
-        return;
-    }
-
-    const requestedMax = parseInt(parts[2], 10);
-    const maxPlayers = VALID_LOBBY_PLAYER_COUNTS.has(requestedMax) ? requestedMax : DEFAULT_MAX_PLAYERS;
-    const requestedMode = normalizeGameMode(parts[3] || DEFAULT_GAME_MODE);
-
-    db.query('SELECT currentgame FROM users WHERE id = ? LIMIT 1', [creatorId], (userErr, users) => {
-        if (userErr) {
-            console.error('Error checking user state before creating game:', userErr);
-            connection.sendUTF("creategame::error::Unable to verify account");
-            return;
-        }
-
-        if (!users || users.length === 0) {
-            connection.sendUTF("creategame::error::User account not found");
-            return;
-        }
-
-        if (users[0].currentgame) {
-            const gameId = users[0].currentgame;
-            // Check if the game actually exists and is active - it may be stale or completed
-            db.query('SELECT id, status, started FROM games WHERE id = ?', [gameId], (gameCheckErr, gameRows) => {
-                if (gameCheckErr || !gameRows || gameRows.length === 0) {
-                    // Game doesn't exist, clear the stale reference
-                    db.query('UPDATE users SET currentgame = NULL WHERE id = ?', [creatorId], (clearErr) => {
-                        if (clearErr) {
-                            console.error('Error clearing stale currentgame:', clearErr);
-                        }
-                        proceedWithGameCreation();
-                    });
-                    return;
-                }
-
-                const game = gameRows[0];
-
-                // If game is completed, clear the reference and allow creation
-                if (game.status === 'completed') {
-                    db.query('UPDATE users SET currentgame = NULL WHERE id = ?', [creatorId], (clearErr) => {
-                        if (clearErr) {
-                            console.error('Error clearing completed game reference:', clearErr);
-                        }
-                        proceedWithGameCreation();
-                    });
-                    return;
-                }
-
-                // Check if user is actually in this game's player table
-                const playerTable = mysql2.escapeId(`players${gameId}`);
-                db.query(`SELECT userid FROM ${playerTable} WHERE userid = ? LIMIT 1`, [creatorId], (playerErr, playerRows) => {
-                    if (playerErr || !playerRows || playerRows.length === 0) {
-                        // User not in player table, clear stale reference
-                        db.query('UPDATE users SET currentgame = NULL WHERE id = ?', [creatorId], (clearErr) => {
-                            if (clearErr) {
-                                console.error('Error clearing orphaned currentgame:', clearErr);
-                            }
-                            proceedWithGameCreation();
-                        });
-                        return;
-                    }
-                    // User is actually in an active game, block creation
-                    connection.sendUTF("creategame::error::Leave your current game before creating a new one");
-                });
-            });
-            return;
-        }
-
-        proceedWithGameCreation();
-    });
-
-    function proceedWithGameCreation() {
-
-        ensureGamesModeColumn(() => {
-            const insertWithMode = 'INSERT INTO games (name, creator, maxplayers, status, mode) VALUES (?, ?, ?, ?, ?)';
-            db.query(
-                insertWithMode,
-                [gameName, creatorId, maxPlayers, 'waiting', requestedMode],
-                (insertErr, result) => {
-                    if (insertErr && insertErr.code === 'ER_BAD_FIELD_ERROR') {
-                        // Fallback for legacy schema
-                        db.query(
-                            'INSERT INTO games (name, creator, maxplayers, status) VALUES (?, ?, ?, ?)',
-                            [gameName, creatorId, maxPlayers, 'waiting'],
-                            (legacyErr, legacyResult) => {
-                                handlePostCreate(legacyErr, legacyResult, 'quick');
-                            }
-                        );
-                        return;
-                    }
-                    handlePostCreate(insertErr, result, requestedMode);
+                    connection.raceid = raceId;
+                    const race = getRaceById(raceId);
+                    connection.sendUTF(`changerace::success::${JSON.stringify({
+                        raceId,
+                        raceName: race.name
+                    })}`);
+                    broadcastPlayerList(gameId);
                 }
             );
         });
-
-        function handlePostCreate(insertErr, result, modeUsed) {
-            if (insertErr) {
-                console.error('Error creating game:', insertErr);
-                connection.sendUTF("creategame::error::Failed to create game");
-                return;
-            }
-
-            const gameId = result.insertId;
-            createGameTables(gameId, tableErr => {
-                if (tableErr) {
-                    console.error(`Error preparing tables for game ${gameId}:`, tableErr);
-                    db.query('DELETE FROM games WHERE id = ?', [gameId]);
-                    sendGameList();
-                    connection.sendUTF("creategame::error::Failed to prepare game resources");
-                    return;
-                }
-
-                createPlayerEntryForGame(gameId, creatorId, DEFAULT_CREATOR_RACE_ID, joinErr => {
-                    if (joinErr) {
-                        console.error(`Error auto-joining creator for game ${gameId}:`, joinErr);
-                        cleanupGame(gameId, cleanupErr => {
-                            if (cleanupErr) {
-                                console.error(`Error cleaning up game ${gameId} after failed join:`, cleanupErr);
-                            }
-                            sendGameList();
-                        });
-                        connection.sendUTF("creategame::error::Failed to join new game");
-                        return;
-                    }
-
-                    connection.gameid = gameId;
-                    connection.raceid = DEFAULT_CREATOR_RACE_ID;
-                    connection.sendUTF(`creategame::success::${gameId}`);
-                    sendJoinSuccess(connection, {
-                        gameId,
-                        gameName,
-                        maxPlayers,
-                        playerCount: 1,
-                        creatorId: creatorId,
-                        mode: modeUsed
-                    });
-                    broadcastPlayerList(gameId);
-                    sendGameList();
-                });
-            });
-        }
-    }
-}
-
-function handleGameList(connection) {
-    sendGameList(connection);
+    });
 }
 
 function handleLeaveGame(connection) {
-    if (!db || db.isOffline) {
-        connection.sendUTF("Error: Service unavailable");
+    if (!connection || !connection.gameid) {
+        connection.sendUTF('lobby::');
         return;
     }
 
-    const playerId = parseInt(connection.name, 10);
-    const gameId = parseInt(connection.gameid, 10);
-
-    if (!Number.isInteger(playerId) || !Number.isInteger(gameId)) {
-        connection.sendUTF("Error: You are not currently in a lobby game");
-        return;
-    }
-
-    db.query(
-        'SELECT id, creator, started FROM games WHERE id = ? LIMIT 1',
-        [gameId],
-        (gameErr, games) => {
-            if (gameErr || !games || games.length === 0) {
-                connection.sendUTF("Error: Game not found");
-                connection.gameid = null;
-                connection.raceid = null;
-                return;
-            }
-
-            const game = games[0];
-
-            if (game.started) {
-                // Allow forfeiting a started game
-                db.query(
-                    'UPDATE users SET currentgame = NULL WHERE id = ?',
-                    [playerId],
-                    (updateErr) => {
-                        if (updateErr) {
-                            console.error('Error clearing player game:', updateErr);
-                            connection.sendUTF("Error: Failed to leave game");
-                            return;
-                        }
-
-                        connection.gameid = null;
-                        connection.raceid = null;
-                        connection.sendUTF("lobby::");
-                        connection.sendUTF("You have forfeited the game.");
-                        handleGameList(connection);
-
-                        // Check if game should end (only 1 player remaining)
-                        victorySystem.checkVictoryConditions(db, game.id);
-                    }
-                );
-                return;
-            }
-
-            removePlayerFromWaitingGame(game, playerId, (removeErr, result) => {
-                if (removeErr) {
-                    console.error('Error removing player from game:', removeErr);
-                    connection.sendUTF("Error: Failed to leave game");
-                    return;
-                }
-
-                connection.gameid = null;
-                connection.raceid = null;
-                connection.sendUTF("lobby::");
-                handleGameList(connection);
-                broadcastPlayerList(game.id);
-                sendGameList();
-                cancelCountdown(game.id);
-
-                if (result && result.newCreator) {
-                    console.log(`Player ${playerId} left game ${game.id}. Reassigned creator to player ${result.newCreator}.`);
-                } else if (result && result.clearedGame) {
-                    console.log(`Game ${game.id} closed because all players left.`);
-                }
-            });
-        }
-    );
-}
-
-function handlePlayerDisconnect(connection) {
-    if (!db || db.isOffline) {
-        return;
-    }
-
-    const playerId = parseInt(connection.name, 10);
-    const gameId = parseInt(connection.gameid, 10);
-
-    if (!Number.isInteger(playerId) || !Number.isInteger(gameId)) {
-        return;
-    }
-
-    db.query(
-        'SELECT id, creator, started FROM games WHERE id = ? LIMIT 1',
-        [gameId],
-        (gameErr, games) => {
-            if (gameErr || !games || games.length === 0) {
-                return;
-            }
-
-            const game = games[0];
-
-            if (game.started) {
-                return;
-            }
-
-            removePlayerFromWaitingGame(game, playerId, (removeErr, result) => {
-                if (removeErr) {
-                    console.error('Error cleaning up player after disconnect:', removeErr);
-                    return;
-                }
-
-                sendGameList();
-                broadcastPlayerList(game.id);
-                cancelCountdown(game.id);
-
-                if (result && result.newCreator) {
-                    console.log(`Player ${playerId} disconnected from game ${game.id}. Reassigned creator to player ${result.newCreator}.`);
-                } else if (result && result.clearedGame) {
-                    console.log(`Game ${game.id} closed because all players disconnected.`);
-                }
-            });
-        }
-    );
-}
-
-function loadGamesWithMode(callback) {
-    ensureGamesModeColumn(() => {
-        const withModeSql = `SELECT id, name, maxplayers, started, status, mode 
-            FROM games 
-            WHERE started = 0 
-            ORDER BY created DESC 
-            LIMIT ?`;
-        db.query(withModeSql, [GAME_LIST_LIMIT], (err, rows) => {
-            if (err && err.code === 'ER_BAD_FIELD_ERROR') {
-                db.query(
-                    `SELECT id, name, maxplayers, started, status 
-                     FROM games 
-                     WHERE started = 0 
-                     ORDER BY created DESC 
-                     LIMIT ?`,
-                    [GAME_LIST_LIMIT],
-                    (fallbackErr, fallbackRows) => {
-                        const normalized = (fallbackRows || []).map(r => ({
-                            ...r,
-                            mode: DEFAULT_GAME_MODE
-                        }));
-                        callback(fallbackErr, normalized);
-                    }
-                );
-                return;
-            }
-            const normalized = (rows || []).map(r => ({
-                ...r,
-                mode: normalizeGameMode(r.mode || DEFAULT_GAME_MODE)
-            }));
-            callback(err, normalized);
-        });
-    });
-}
-
-function getGameModeOrDefault(gameId, callback) {
-    if (!db || db.isOffline || db.isMock) {
-        callback(null, DEFAULT_GAME_MODE);
-        return;
-    }
-    ensureGamesModeColumn(() => {
-        db.query('SELECT mode FROM games WHERE id = ? LIMIT 1', [gameId], (err, rows) => {
-            if (err) {
-                if (err.code === 'ER_BAD_FIELD_ERROR') {
-                    callback(null, DEFAULT_GAME_MODE);
-                    return;
-                }
-                callback(err);
-                return;
-            }
-            const mode = normalizeGameMode(rows && rows[0] ? rows[0].mode : DEFAULT_GAME_MODE);
-            callback(null, mode);
-        });
-    });
-}
-
-function sendGameList(targetConnection = null) {
-    if (!db || db.isOffline) {
-        if (targetConnection) {
-            targetConnection.sendUTF("gamelist::");
-        }
-        return;
-    }
-
-    loadGamesWithMode((gameErr, games) => {
-        if (gameErr) {
-            console.error('Error loading game list:', gameErr);
-            if (targetConnection) {
-                targetConnection.sendUTF("gamelist::");
-            }
-            return;
-        }
-
-        if (!games || games.length === 0) {
-            const emptyMessage = "gamelist::";
-            if (targetConnection) {
-                targetConnection.sendUTF(emptyMessage);
-            } else {
-                gameState.clients.forEach(client => {
-                    if (client && client.connected !== false) {
-                        client.sendUTF(emptyMessage);
-                    }
-                });
-            }
-            return;
-        }
-
-        db.query(
-            `SELECT currentgame AS gameId, COUNT(*) AS count 
-             FROM users 
-             WHERE currentgame IS NOT NULL 
-             GROUP BY currentgame`,
-            (countErr, counts) => {
-                const countMap = {};
-                if (!countErr && Array.isArray(counts)) {
-                    counts.forEach(row => {
-                        countMap[row.gameId] = row.count;
-                    });
-                }
-
-                const payload = games.map(game => {
-                    const safeName = encodeURIComponent(game.name || `Game ${game.id}`);
-                    const playerCount = countMap[game.id] || 0;
-                    const status = (game.status || (game.started ? 'in-progress' : 'waiting')).toLowerCase();
-                    const maxPlayers = game.maxplayers || DEFAULT_MAX_PLAYERS;
-                    const mode = normalizeGameMode(game.mode || DEFAULT_GAME_MODE);
-                    return `${game.id},${safeName},${playerCount},${maxPlayers},${status},${mode}`;
-                }).join("|");
-
-                const message = `gamelist::${payload}`;
-
-                if (targetConnection) {
-                    targetConnection.sendUTF(message);
-                } else {
-                    gameState.clients.forEach(client => {
-                        if (client && client.connected !== false) {
-                            client.sendUTF(message);
-                        }
-                    });
-                }
-            }
-        );
-    });
-}
-
-function handleAddAi(data, connection) {
-    if (!db || db.isOffline) {
-        connection.sendUTF("addai::error::Service unavailable");
-        return;
-    }
-    const playerId = Number(connection.name);
     const gameId = Number(connection.gameid);
-    if (!Number.isFinite(playerId) || !Number.isFinite(gameId)) {
-        connection.sendUTF("addai::error::Join a game before adding AI");
-        return;
-    }
-    const active = ensureActiveGameState(gameId);
-    if (active.countdown) {
-        connection.sendUTF("addai::error::Cannot add AI during start countdown");
-        return;
-    }
-
-    const parts = data ? data.split(':').slice(1) : [];
-    const difficulty = typeof parts[0] === 'string' && parts[0].trim() ? parts[0].trim().toLowerCase() : 'medium';
-    const strategy = typeof parts[1] === 'string' && parts[1].trim() ? parts[1].trim().toLowerCase() : 'balanced';
+    const playerId = Number(connection.name);
 
     db.query('SELECT creator, maxplayers, started FROM games WHERE id = ? LIMIT 1', [gameId], (gameErr, games) => {
         if (gameErr || !games || games.length === 0) {
-            connection.sendUTF("addai::error::Game not found");
+            connection.gameid = null;
+            connection.raceid = null;
+            connection.sendUTF('lobby::');
             return;
         }
+
         const game = games[0];
-        if (game.started) {
-            connection.sendUTF("addai::error::Cannot add AI after the game has started");
-            return;
-        }
-        if (Number(game.creator) !== playerId) {
-            connection.sendUTF("addai::error::Only the game creator can add AI opponents");
-            return;
-        }
 
-        ensurePlayerTableSchema(gameId, schemaErr => {
-            if (schemaErr) {
-                connection.sendUTF("addai::error::Unable to prepare game for AI");
-                return;
-            }
+        db.query(`DELETE FROM players${gameId} WHERE userid = ?`, [playerId], () => {
+            db.query('UPDATE users SET currentgame = NULL WHERE id = ? AND currentgame = ?', [playerId, gameId], () => {
+                connection.gameid = null;
+                connection.raceid = null;
+                connection.sendUTF('lobby::');
 
-            const tableName = mysql2.escapeId(`players${gameId}`);
-            db.query(`SELECT COUNT(*) AS count FROM ${tableName}`, (countErr, counts) => {
-                if (countErr) {
-                    connection.sendUTF("addai::error::Unable to check seats");
-                    return;
-                }
-                const currentCount = counts && counts[0] ? Number(counts[0].count) : 0;
-                if (game.maxplayers && currentCount >= game.maxplayers) {
-                    connection.sendUTF("addai::error::Game is already full");
-                    return;
-                }
-
-                createAiUser(gameId, (aiErr, aiUser) => {
-                    if (aiErr || !aiUser) {
-                        console.error('Failed to create AI user:', aiErr);
-                        connection.sendUTF("addai::error::Unable to add AI");
+                db.query(`SELECT userid, is_ai FROM players${gameId} ORDER BY joined_at ASC, userid ASC`, (playersErr, remainingRows) => {
+                    if (playersErr) {
+                        broadcastPlayerList(gameId);
                         return;
                     }
 
-                    const raceId = DEFAULT_CREATOR_RACE_ID;
-                    const resources = computeStartingResources(getRaceById(raceId));
-
-                    db.query(
-                        `INSERT INTO ${tableName} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
-                        [aiUser.id, raceId, resources.metal, resources.crystal, resources.research, difficulty, strategy],
-                        insertErr => {
-                            if (insertErr) {
-                                console.error('Failed to add AI to players table:', insertErr);
-                                connection.sendUTF("addai::error::Unable to seat AI");
-                                return;
-                            }
-                            db.query('UPDATE users SET currentgame = ? WHERE id = ?', [gameId, aiUser.id], () => {});
-                            trackAiProfile(gameId, aiUser.id, difficulty, strategy);
-                            broadcastPlayerList(gameId);
-                            sendGameList();
-                            connection.sendUTF(`addai::success::${aiUser.username}`);
+                    const remaining = Array.isArray(remainingRows) ? remainingRows : [];
+                    if (remaining.length === 0) {
+                        db.query('DELETE FROM games WHERE id = ?', [gameId], () => {});
+                        if (gameState.gameTimer[gameId]) {
+                            clearInterval(gameState.gameTimer[gameId]);
+                            delete gameState.gameTimer[gameId];
                         }
-                    );
+                        delete gameState.turns[gameId];
+                        delete gameState.activeGames[gameId];
+                        return;
+                    }
+
+                    if (String(game.creator) === String(playerId)) {
+                        const nextCreator = remaining.find(player => Number(player.is_ai) !== 1) || remaining[0];
+                        db.query('UPDATE games SET creator = ? WHERE id = ?', [nextCreator.userid, gameId], () => {});
+                    }
+
+                    broadcastPlayerList(gameId);
                 });
             });
         });
     });
 }
 
-function createGameTables(gameId, callback) {
-    const statements = [
-        `CREATE TABLE IF NOT EXISTS map${gameId} (
-            sectorid INT PRIMARY KEY,
-            x INT NOT NULL,
-            y INT NOT NULL,
-            sectortype INT DEFAULT 0,
-            type INT DEFAULT 0,
-            ownerid INT DEFAULT NULL,
-            owner INT DEFAULT NULL,
-            colonized TINYINT DEFAULT 0,
-            artifact INT DEFAULT 0,
-            metalbonus INT DEFAULT 100,
-            crystalbonus INT DEFAULT 100,
-            orbitalturret INT DEFAULT 0,
-            groundturret INT DEFAULT 0,
-            warpgate INT DEFAULT 0,
-            academylvl INT DEFAULT 0,
-            shipyardlvl INT DEFAULT 0,
-            metallvl INT DEFAULT 0,
-            crystallvl INT DEFAULT 0,
-            terraformlvl INT DEFAULT 0,
-            totalship1 INT DEFAULT 0,
-            totalship2 INT DEFAULT 0,
-            totalship3 INT DEFAULT 0,
-            totalship4 INT DEFAULT 0,
-            totalship5 INT DEFAULT 0,
-            totalship6 INT DEFAULT 0,
-            totalship7 INT DEFAULT 0,
-            totalship8 INT DEFAULT 0,
-            totalship9 INT DEFAULT 0,
-            totship1build INT DEFAULT 0,
-            totship2build INT DEFAULT 0,
-            totship3build INT DEFAULT 0,
-            totship4build INT DEFAULT 0,
-            totship5build INT DEFAULT 0,
-            totship6build INT DEFAULT 0,
-            totship7build INT DEFAULT 0,
-            totship8build INT DEFAULT 0,
-            totship9build INT DEFAULT 0,
-            totship1coming INT DEFAULT 0,
-            totship2coming INT DEFAULT 0,
-            totship3coming INT DEFAULT 0,
-            totship4coming INT DEFAULT 0,
-            totship5coming INT DEFAULT 0,
-            totship6coming INT DEFAULT 0,
-            totship7coming INT DEFAULT 0,
-            totship8coming INT DEFAULT 0,
-            totship9coming INT DEFAULT 0,
-            FOREIGN KEY (ownerid) REFERENCES users(id)
-        )`,
-        `CREATE TABLE IF NOT EXISTS players${gameId} (
-            userid INT PRIMARY KEY,
-            race_id INT DEFAULT 1,
-            alliance_id INT DEFAULT NULL,
-            metal INT DEFAULT 100,
-            crystal INT DEFAULT 100,
-            research INT DEFAULT 50,
-            tech VARCHAR(255) DEFAULT '',
-            homeworld INT DEFAULT NULL,
-            currentsector INT DEFAULT NULL,
-            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (userid) REFERENCES users(id)
-        )`,
-        `CREATE TABLE IF NOT EXISTS ships${gameId} (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            owner INT NOT NULL,
-            type INT NOT NULL,
-            sectorid INT NOT NULL,
-            FOREIGN KEY (owner) REFERENCES users(id)
-        )`,
-        `CREATE TABLE IF NOT EXISTS buildings${gameId} (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            sectorid INT NOT NULL,
-            type INT NOT NULL,
-            owner INT NOT NULL,
-            FOREIGN KEY (owner) REFERENCES users(id)
-        )`,
-        `CREATE TABLE IF NOT EXISTS diplomacy${gameId} (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            player1_id INT NOT NULL,
-            player2_id INT NOT NULL,
-            status VARCHAR(32) DEFAULT 'neutral',
-            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (player1_id) REFERENCES users(id),
-            FOREIGN KEY (player2_id) REFERENCES users(id),
-            UNIQUE KEY unique_relationship (player1_id, player2_id)
-        )`,
-        `CREATE TABLE IF NOT EXISTS wonders${gameId} (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            owner_id INT NOT NULL,
-            wonder_type VARCHAR(64) NOT NULL,
-            level INT DEFAULT 1,
-            sector_id INT NOT NULL,
-            completed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (owner_id) REFERENCES users(id)
-        )`,
-        `CREATE TABLE IF NOT EXISTS game_snapshots${gameId} (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            turn INT NOT NULL,
-            snapshot_data JSON,
-            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_turn (turn)
-        )`
-    ];
-
-    runSequentialQueries(statements, callback);
-}
-
-function runSequentialQueries(statements, callback, index = 0) {
-    if (index >= statements.length) {
-        callback(null);
-        return;
-    }
-
-    db.query(statements[index], err => {
-        if (err) {
-            callback(err);
-            return;
-        }
-        runSequentialQueries(statements, callback, index + 1);
-    });
-}
-
-function ensurePlayerTableSchema(gameId, callback) {
-    const tableName = mysql2.escapeId(`players${gameId}`);
-    db.query(`SHOW COLUMNS FROM ${tableName} LIKE 'joined_at'`, (err, results) => {
-        if (err) {
-            callback(err);
-            return;
-        }
-        const ensureJoinedAt = cb => {
-            if (results && results.length > 0) {
-                cb(null);
-                return;
-            }
-            db.query(
-                `ALTER TABLE ${tableName} ADD COLUMN joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
-                cb
-            );
-        };
-
-        ensureJoinedAt(joinedErr => {
-            if (joinedErr) {
-                callback(joinedErr);
-                return;
-            }
-            db.query(`SHOW COLUMNS FROM ${tableName} LIKE 'is_ai'`, (aiErr, aiCols) => {
-                if (aiErr) {
-                    callback(aiErr);
-                    return;
-                }
-                const ensureIsAi = cb => {
-                    if (aiCols && aiCols.length > 0) {
-                        cb(null);
-                        return;
-                    }
-                    db.query(
-                        `ALTER TABLE ${tableName} ADD COLUMN is_ai TINYINT(1) DEFAULT 0`,
-                        cb
-                    );
-                };
-
-                ensureIsAi(isAiErr => {
-                    if (isAiErr) {
-                        callback(isAiErr);
-                        return;
-                    }
-                    db.query(`SHOW COLUMNS FROM ${tableName} LIKE 'ai_difficulty'`, (diffErr, diffCols) => {
-                        if (diffErr) {
-                            callback(diffErr);
-                            return;
-                        }
-                        const ensureDifficulty = cb => {
-                            if (diffCols && diffCols.length > 0) {
-                                cb(null);
-                                return;
-                            }
-                            db.query(
-                                `ALTER TABLE ${tableName} ADD COLUMN ai_difficulty VARCHAR(16) DEFAULT 'medium'`,
-                                cb
-                            );
-                        };
-
-                        ensureDifficulty(diffAddErr => {
-                            if (diffAddErr) {
-                                callback(diffAddErr);
-                                return;
-                            }
-                            db.query(`SHOW COLUMNS FROM ${tableName} LIKE 'ai_strategy'`, (stratErr, stratCols) => {
-                                if (stratErr) {
-                                    callback(stratErr);
-                                    return;
-                                }
-                                if (stratCols && stratCols.length > 0) {
-                                    callback(null);
-                                    return;
-                                }
-                                db.query(
-                                    `ALTER TABLE ${tableName} ADD COLUMN ai_strategy VARCHAR(16) DEFAULT 'balanced'`,
-                                    callback
-                                );
-                            });
-                        });
-                    });
-                });
-            });
-        });
-    });
-}
-
-function getRaceById(raceId) {
-    return Object.values(raceSystem.RACE_TYPES).find(race => race.id === raceId) || null;
-}
-
-function computeStartingResources(race) {
-    const base = {
-        metal: 100,
-        crystal: 100,
-        research: 50
-    };
-
-    if (!race || !race.bonuses) {
-        return { ...base };
-    }
-
-    return {
-        metal: Math.floor(base.metal * (race.bonuses.metalProduction || 1)),
-        crystal: Math.floor(base.crystal * (race.bonuses.crystalProduction || 1)),
-        research: Math.floor(base.research * (race.bonuses.researchSpeed || 1))
-    };
-}
-
-function createAiUser(gameId, callback) {
-    const rand = crypto.randomBytes(3).toString('hex');
-    const username = `AI_${gameId}_${rand}`;
+function createAiUser(callback) {
+    const suffix = crypto.randomBytes(3).toString('hex');
+    const username = `AI_${suffix}`;
     const salt = generateSalt();
-    const password = generateTempKey();
-    const hashedPassword = hashPassword(password, salt);
+    const password = hashPassword(generateTempKey(), salt);
+    const email = `${username.toLowerCase()}@ai.local`;
     const tempKey = generateTempKey();
 
     db.query(
         'INSERT INTO users (username, password, salt, email, tempkey) VALUES (?, ?, ?, ?, ?)',
-        [username, hashedPassword, salt, null, tempKey],
+        [username, password, salt, email, tempKey],
         (err, result) => {
-            if (err) {
-                callback(err);
+            if (err || !result || !result.insertId) {
+                callback(err || new Error('Failed to create AI user'));
                 return;
             }
-            callback(null, { id: result.insertId, username, tempKey });
+
+            const userId = Number(result.insertId);
+            db.query('INSERT INTO user_stats (user_id) VALUES (?)', [userId], () => {
+                callback(null, {
+                    id: userId,
+                    username
+                });
+            });
         }
     );
 }
 
-function createPlayerEntryForGame(gameId, playerId, raceId, callback) {
-    ensurePlayerTableSchema(gameId, schemaErr => {
-        if (schemaErr) {
-            callback(schemaErr);
+function handleAddAi(data, connection) {
+    if (!connection.gameid) {
+        connection.sendUTF('addai::error::Join a game first.');
+        return;
+    }
+
+    const gameId = Number(connection.gameid);
+    const creatorId = Number(connection.name);
+    const parts = data.split(':');
+    const aiDifficulty = normalizeAiDifficulty(parts[1]);
+    const aiStrategy = normalizeAiStrategy(parts[2]);
+
+    db.query('SELECT creator, maxplayers, started FROM games WHERE id = ? LIMIT 1', [gameId], (gameErr, games) => {
+        if (gameErr || !games || games.length === 0) {
+            connection.sendUTF('addai::error::Game not found.');
             return;
         }
 
-        const tableName = mysql2.escapeId(`players${gameId}`);
-        const race = getRaceById(raceId);
-        const resources = computeStartingResources(race);
-
-        db.query(
-            `INSERT INTO ${tableName} (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)`,
-            [playerId, raceId, resources.metal, resources.crystal, resources.research],
-            insertErr => {
-                if (insertErr) {
-                    callback(insertErr);
-                    return;
-                }
-
-                db.query(
-                    'UPDATE users SET currentgame = ? WHERE id = ?',
-                    [gameId, playerId],
-                    updateErr => {
-                        if (updateErr) {
-                            callback(updateErr);
-                            return;
-                        }
-                        callback(null, { raceId, resources });
-                    }
-                );
-            }
-        );
-    });
-}
-
-function updatePlayerRaceForGame(gameId, playerId, raceId, callback) {
-    ensurePlayerTableSchema(gameId, schemaErr => {
-        if (schemaErr) {
-            callback(schemaErr);
+        const game = games[0];
+        if (String(game.creator) !== String(creatorId)) {
+            connection.sendUTF('addai::error::Only the game creator can add AI opponents.');
+            return;
+        }
+        if (Number(game.started) === 1) {
+            connection.sendUTF('addai::error::Cannot add AI after game start.');
             return;
         }
 
-        const tableName = mysql2.escapeId(`players${gameId}`);
-        const race = getRaceById(raceId);
-        const resources = computeStartingResources(race);
-
-        db.query(
-            `UPDATE ${tableName} SET race_id = ?, metal = ?, crystal = ?, research = ? WHERE userid = ?`,
-            [raceId, resources.metal, resources.crystal, resources.research, playerId],
-            updateErr => {
-                if (updateErr) {
-                    callback(updateErr);
-                    return;
-                }
-                db.query(
-                    'UPDATE users SET currentgame = ? WHERE id = ?',
-                    [gameId, playerId],
-                    userErr => {
-                        if (userErr) {
-                            callback(userErr);
-                            return;
-                        }
-                        callback(null, { raceId, resources });
-                    }
-                );
-            }
-        );
-    });
-}
-
-function cleanupGame(gameId, callback) {
-    const dropStatements = GAME_TABLE_SUFFIXES.map(suffix =>
-        `DROP TABLE IF EXISTS ${mysql2.escapeId(`${suffix}${gameId}`)}`
-    );
-
-    runSequentialQueries(dropStatements, err => {
-        if (err) {
-            callback(err);
-            return;
-        }
-
-        db.query('DELETE FROM games WHERE id = ?', [gameId], deleteErr => {
-            if (deleteErr) {
-                callback(deleteErr);
+        db.query(`SELECT COUNT(*) AS count FROM players${gameId}`, (countErr, counts) => {
+            if (countErr) {
+                connection.sendUTF('addai::error::Unable to check lobby capacity.');
                 return;
             }
 
-            if (gameState.gameTimer[gameId]) {
-                clearInterval(gameState.gameTimer[gameId]);
-                delete gameState.gameTimer[gameId];
+            const playerCount = Number((counts && counts[0] && (counts[0].count ?? counts[0].c)) || 0);
+            const maxPlayers = parsePositiveInt(game.maxplayers, 0);
+            if (maxPlayers > 0 && playerCount >= maxPlayers) {
+                connection.sendUTF('addai::error::Game is already full.');
+                return;
             }
 
-            delete gameState.turns[gameId];
-            delete gameState.activeGames[gameId];
-            callback(null);
-        });
-    });
-}
-
-function removePlayerFromWaitingGame(game, playerId, callback) {
-    ensurePlayerTableSchema(game.id, schemaErr => {
-        if (schemaErr) {
-            callback(schemaErr);
-            return;
-        }
-
-        const tableName = mysql2.escapeId(`players${game.id}`);
-        db.query(
-            `DELETE FROM ${tableName} WHERE userid = ?`,
-            [playerId],
-            deleteErr => {
-                if (deleteErr) {
-                    callback(deleteErr);
+            createAiUser((createErr, aiUser) => {
+                if (createErr || !aiUser) {
+                    connection.sendUTF('addai::error::Unable to create AI opponent.');
                     return;
                 }
 
                 db.query(
-                    'UPDATE users SET currentgame = NULL WHERE id = ? AND currentgame = ?',
-                    [playerId, game.id],
-                    updateErr => {
-                        if (updateErr) {
-                            callback(updateErr);
+                    `INSERT INTO players${gameId} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [aiUser.id, 1, 100, 100, 50, 1, aiDifficulty, aiStrategy],
+                    insertErr => {
+                        if (insertErr) {
+                            connection.sendUTF('addai::error::Unable to add AI opponent.');
                             return;
                         }
 
                         db.query(
-                            `SELECT userid FROM ${tableName} ORDER BY joined_at ASC`,
-                            (listErr, rows) => {
-                                if (listErr) {
-                                    callback(listErr);
-                                    return;
-                                }
-
-                                if (!rows || rows.length === 0) {
-                                    cleanupGame(game.id, cleanupErr => {
-                                        if (cleanupErr) {
-                                            callback(cleanupErr);
-                                            return;
-                                        }
-                                        callback(null, { clearedGame: true });
-                                    });
-                                    return;
-                                }
-
-                                const normalizedCreator = Number(game.creator);
-                                const normalizedPlayer = Number(playerId);
-
-                                if (Number.isFinite(normalizedCreator) && normalizedCreator === normalizedPlayer) {
-                                    const firstRemainingId = Number(rows[0].userid);
-                                    if (!Number.isFinite(firstRemainingId)) {
-                                        callback(null, { remainingPlayers: rows.length });
-                                        return;
-                                    }
-                                    const newCreator = firstRemainingId;
-                                    db.query(
-                                        'UPDATE games SET creator = ? WHERE id = ?',
-                                        [newCreator, game.id],
-                                        creatorErr => {
-                                            if (creatorErr) {
-                                                callback(creatorErr);
-                                                return;
-                                            }
-                                            callback(null, {
-                                                newCreator,
-                                                remainingPlayers: rows.length
-                                            });
-                                        }
-                                    );
-                                    return;
-                                }
-
-                                callback(null, { remainingPlayers: rows.length });
+                            'UPDATE users SET currentgame = ? WHERE id = ?',
+                            [gameId, aiUser.id],
+                            () => {
+                                connection.sendUTF(`addai::success::${encodeURIComponent(aiUser.username)}`);
+                                broadcastPlayerList(gameId);
                             }
                         );
                     }
                 );
-            }
-        );
+            });
+        });
     });
 }
 
-function sanitizeGameName(name) {
-    if (!name) {
-        return "";
+function handleSurrender(connection) {
+    if (!connection || !connection.gameid) {
+        connection.sendUTF('Error: Not in a game');
+        return;
     }
-    const trimmed = name.replace(/[|]/g, " ").replace(/[\r\n]+/g, " ").trim();
-    return trimmed.substring(0, 64);
-}
 
-function decodeCommandValue(value) {
-    try {
-        return decodeURIComponent(value);
-    } catch (err) {
-        return "";
-    }
+    const gameId = Number(connection.gameid);
+    const surrenderingId = Number(connection.name);
+    const reason = 'Surrender';
+
+    db.query(`SELECT userid FROM players${gameId}`, (winnerErr, winnerRows) => {
+        if (winnerErr) {
+            connection.sendUTF('Error: Unable to process surrender');
+            return;
+        }
+
+        const winner = Array.isArray(winnerRows)
+            ? winnerRows.find(row => Number(row.userid) !== surrenderingId)
+            : null;
+        const winnerId = winner ? Number(winner.userid) : null;
+        db.query(
+            'UPDATE games SET status = ? WHERE id = ?',
+            ['completed', gameId],
+            () => {
+                if (gameState.gameTimer[gameId]) {
+                    clearInterval(gameState.gameTimer[gameId]);
+                    delete gameState.gameTimer[gameId];
+                }
+                delete gameState.turns[gameId];
+                delete gameState.activeGames[gameId];
+
+                db.query(`SELECT userid FROM players${gameId}`, (playersErr, players) => {
+                    const playerIds = playersErr
+                        ? []
+                        : players.map(row => Number(row.userid)).filter(Number.isFinite);
+
+                    playerIds.forEach(playerId => {
+                        db.query(
+                            'UPDATE users SET currentgame = NULL WHERE id = ? AND currentgame = ?',
+                            [playerId, gameId],
+                            () => {}
+                        );
+                    });
+
+                    const finalMessage = `gameover::${winnerId || ''}::${encodeURIComponent(reason)}`;
+                    gameState.clients.forEach(client => {
+                        if (Number(client.gameid) === gameId) {
+                            client.sendUTF(finalMessage);
+                            client.gameid = null;
+                            client.raceid = null;
+                        }
+                    });
+                });
+            }
+        );
+    });
 }
 
 // Get user stats helper
@@ -2728,106 +2728,6 @@ function handleGetUnlockedRaces(connection) {
     });
 }
 
-function handleChangeRace(data, connection) {
-    if (!db || db.isOffline) {
-        connection.sendUTF("changerace::error::Service unavailable");
-        return;
-    }
-
-    const playerId = parseInt(connection.name, 10);
-    const raceId = parseInt(data.split(":")[1], 10);
-    if (!Number.isInteger(playerId)) {
-        connection.sendUTF("changerace::error::Authentication required");
-        return;
-    }
-    if (!Number.isInteger(raceId)) {
-        connection.sendUTF("changerace::error::Invalid race selection");
-        return;
-    }
-
-    const resolveGameId = callback => {
-        const gameId = Number(connection.gameid);
-        if (Number.isFinite(gameId)) {
-            callback(null, gameId);
-            return;
-        }
-        db.query('SELECT currentgame FROM users WHERE id = ? LIMIT 1', [playerId], (err, rows) => {
-            if (err) {
-                callback(err);
-                return;
-            }
-            const derivedId = rows && rows[0] ? Number(rows[0].currentgame) : null;
-            if (!Number.isFinite(derivedId)) {
-                callback(new Error('No active game found'));
-                return;
-            }
-            callback(null, derivedId);
-        });
-    };
-
-    resolveGameId((gameErr, gameId) => {
-        if (gameErr || !Number.isFinite(gameId)) {
-            connection.sendUTF("changerace::error::Unable to determine game context");
-            return;
-        }
-
-        db.query('SELECT id, started FROM games WHERE id = ? LIMIT 1', [gameId], (lookupErr, rows) => {
-            if (lookupErr || !rows || rows.length === 0) {
-                connection.sendUTF("changerace::error::Game not found");
-                return;
-            }
-            if (rows[0].started) {
-                connection.sendUTF("changerace::error::Cannot change race after the game has started");
-                return;
-            }
-
-            ensurePlayerTableSchema(gameId, schemaErr => {
-                if (schemaErr) {
-                    connection.sendUTF("changerace::error::Unable to update race");
-                    return;
-                }
-                const tableName = mysql2.escapeId(`players${gameId}`);
-                db.query(`SELECT race_id FROM ${tableName} WHERE userid = ? LIMIT 1`, [playerId], (playerErr, players) => {
-                    if (playerErr) {
-                        connection.sendUTF("changerace::error::Unable to verify player");
-                        return;
-                    }
-                    if (!players || players.length === 0) {
-                        connection.sendUTF("changerace::error::Join a game before selecting a race");
-                        return;
-                    }
-
-                    getUserStats(playerId, (statsErr, userStats) => {
-                        if (statsErr) {
-                            connection.sendUTF("changerace::error::Unable to verify unlocks");
-                            return;
-                        }
-
-                        raceSystem.isRaceUnlocked(playerId, raceId, userStats, db, unlocked => {
-                            if (!unlocked) {
-                                connection.sendUTF("changerace::error::Race not unlocked");
-                                return;
-                            }
-
-                            updatePlayerRaceForGame(gameId, playerId, raceId, updateErr => {
-                                if (updateErr) {
-                                    console.error('Error updating race selection:', updateErr);
-                                    connection.sendUTF("changerace::error::Failed to update race");
-                                    return;
-                                }
-                                const raceName = getRaceById(raceId)?.name || 'Unknown';
-                                connection.raceid = raceId;
-                                connection.sendUTF(`changerace::success::${JSON.stringify({ raceId, raceName })}`);
-                                broadcastPlayerList(gameId);
-                            });
-                        });
-                    });
-                });
-            });
-        });
-    });
-}
-
 // Helper functions
 function broadcastToGame(gameId, message) {
     gameState.clients.forEach(client => {
@@ -2838,38 +2738,39 @@ function broadcastToGame(gameId, message) {
 }
 
 function broadcastPlayerList(gameId) {
-    const tableName = mysql2.escapeId(`players${gameId}`);
+    if (!gameId) {
+        return;
+    }
+
     db.query(
-        `SELECT p.userid, p.is_ai, p.race_id, p.ai_difficulty, p.ai_strategy, u.username 
-         FROM ${tableName} p 
+        `SELECT p.userid, p.is_ai, p.race_id, p.ai_difficulty, p.ai_strategy, u.username
+         FROM players${gameId} p
          LEFT JOIN users u ON u.id = p.userid
          ORDER BY p.joined_at ASC, p.userid ASC`,
         (err, rows) => {
-            let payload = "pl";
-
-            if (!err && Array.isArray(rows)) {
-                rows.forEach(row => {
-                    const username = row.username || `Player ${row.userid}`;
-                    const token = [
-                        row.userid,
-                        encodeURIComponent(username),
-                        row.is_ai ? 1 : 0,
-                        row.race_id || 0,
-                        row.ai_difficulty || '',
-                        row.ai_strategy || ''
-                    ].join('|');
-                    payload += `:${token}`;
-                });
-            } else {
+            if (err || !rows || rows.length === 0) {
+                const fallback = 'pl';
                 gameState.clients.forEach(client => {
-                    if (client.gameid === gameId) {
-                        payload += `:${client.name}|Player ${client.name}|0`;
+                    if (Number(client.gameid) === Number(gameId)) {
+                        client.sendUTF(fallback);
                     }
                 });
+                return;
             }
 
+            const entries = rows.map(row => {
+                const username = row.username || `Player ${row.userid}`;
+                const encodedName = encodeURIComponent(username);
+                const isAi = Number(row.is_ai) === 1 ? 1 : 0;
+                const raceId = parsePositiveInt(row.race_id, 1);
+                const aiDifficulty = normalizeAiDifficulty(row.ai_difficulty);
+                const aiStrategy = normalizeAiStrategy(row.ai_strategy);
+                return `${row.userid}|${encodedName}|${isAi}|${raceId}|${aiDifficulty}|${aiStrategy}`;
+            });
+
+            const payload = `pl:${entries.join(':')}`;
             gameState.clients.forEach(client => {
-                if (client.gameid === gameId) {
+                if (Number(client.gameid) === Number(gameId)) {
                     client.sendUTF(payload);
                 }
             });
@@ -2884,541 +2785,6 @@ function notifyPlayer(playerId, message) {
     }
 }
 
-function ensureActiveGameState(gameId) {
-    if (!gameState.activeGames[gameId]) {
-        gameState.activeGames[gameId] = {};
-    }
-    const state = gameState.activeGames[gameId];
-    if (!state.aiProfiles) {
-        state.aiProfiles = new Map();
-    }
-    if (!state.countdown) {
-        state.countdown = null;
-    }
-    if (!state.standingOrders) {
-        state.standingOrders = {};
-    }
-    return state;
-}
-
-function defaultStandingOrders(mode = DEFAULT_GAME_MODE) {
-    const normalized = normalizeGameMode(mode);
-    return {
-        ...DEFAULT_STANDING_ORDERS,
-        autoRebuild: normalized === 'epic',
-        autoScout: normalized === 'epic'
-    };
-}
-
-function getStandingOrders(gameId, playerId) {
-    const state = ensureActiveGameState(gameId);
-    if (!state.standingOrders[playerId]) {
-        state.standingOrders[playerId] = defaultStandingOrders(state.mode || DEFAULT_GAME_MODE);
-    }
-    return state.standingOrders[playerId];
-}
-
-function setStandingOrders(gameId, playerId, incoming = {}) {
-    const state = ensureActiveGameState(gameId);
-    const current = getStandingOrders(gameId, playerId);
-    state.standingOrders[playerId] = {
-        ...current,
-        autoRebuild: Boolean(incoming.autoRebuild),
-        autoScout: Boolean(incoming.autoScout),
-        targetScouts: Number.isFinite(incoming.targetScouts) ? Math.max(0, Math.min(6, incoming.targetScouts)) : (current.targetScouts || 2)
-    };
-    return state.standingOrders[playerId];
-}
-
-async function applyStandingOrdersForPlayer(gameId, playerId) {
-    const orders = getStandingOrders(gameId, playerId);
-    const summary = [];
-    if (!orders) return summary;
-
-    const playersTable = mysql2.escapeId(`players${gameId}`);
-    const mapTable = mysql2.escapeId(`map${gameId}`);
-    const buildingsTable = mysql2.escapeId(`buildings${gameId}`);
-    const shipsTable = mysql2.escapeId(`ships${gameId}`);
-
-    try {
-        const playerRows = await queryAsync(
-            `SELECT metal, crystal, homeworld FROM ${playersTable} WHERE userid = ? LIMIT 1`,
-            [playerId]
-        );
-        if (!playerRows || playerRows.length === 0) {
-            return summary;
-        }
-        const player = playerRows[0];
-        let metal = Number(player.metal) || 0;
-        let crystal = Number(player.crystal) || 0;
-        const homeworld = Number(player.homeworld);
-        if (!Number.isFinite(homeworld)) {
-            return summary;
-        }
-
-        if (orders.autoRebuild) {
-            const sectorRows = await queryAsync(
-                `SELECT ownerid FROM ${mapTable} WHERE sectorid = ? LIMIT 1`,
-                [homeworld]
-            );
-            if (sectorRows?.[0]?.ownerid === Number(playerId)) {
-                const buildingRows = await queryAsync(
-                    `SELECT type, COUNT(*) as count FROM ${buildingsTable} WHERE sectorid = ? AND owner = ? GROUP BY type`,
-                    [homeworld, playerId]
-                );
-                const buildingCounts = {};
-                (buildingRows || []).forEach(row => {
-                    buildingCounts[row.type] = row.count;
-                });
-                const needsMetal = !buildingCounts[0];
-                const needsCrystal = !buildingCounts[1];
-                if (needsMetal) {
-                    const cost = BUILDING_COSTS[0];
-                    if (metal >= cost.metal && crystal >= cost.crystal) {
-                        metal -= cost.metal;
-                        crystal -= cost.crystal;
-                        await queryAsync(
-                            `UPDATE ${playersTable} SET metal = ?, crystal = ? WHERE userid = ?`,
-                            [metal, crystal, playerId]
-                        );
-                        await queryAsync(
-                            `INSERT INTO ${buildingsTable} (sectorid, type, owner) VALUES (?, ?, ?)`,
-                            [homeworld, 0, playerId]
-                        );
-                        summary.push('Auto-built metal extractor on homeworld');
-                    }
-                }
-                if (needsCrystal) {
-                    const cost = BUILDING_COSTS[1];
-                    if (metal >= cost.metal && crystal >= cost.crystal) {
-                        metal -= cost.metal;
-                        crystal -= cost.crystal;
-                        await queryAsync(
-                            `UPDATE ${playersTable} SET metal = ?, crystal = ? WHERE userid = ?`,
-                            [metal, crystal, playerId]
-                        );
-                        await queryAsync(
-                            `INSERT INTO ${buildingsTable} (sectorid, type, owner) VALUES (?, ?, ?)`,
-                            [homeworld, 1, playerId]
-                        );
-                        summary.push('Auto-built crystal refinery on homeworld');
-                    }
-                }
-            }
-        }
-
-        if (orders.autoScout) {
-            const scoutCost = combatSystem.SHIP_TYPES?.SCOUT?.cost || { metal: 200, crystal: 0 };
-            const scoutCountRows = await queryAsync(
-                `SELECT COUNT(*) as count FROM ${shipsTable} WHERE owner = ? AND type = ?`,
-                [playerId, SCOUT_SHIP_ID]
-            );
-            const currentScouts = scoutCountRows?.[0]?.count || 0;
-            const desiredScouts = Number.isFinite(orders.targetScouts) ? orders.targetScouts : 2;
-            if (currentScouts < desiredScouts && metal >= scoutCost.metal && crystal >= scoutCost.crystal) {
-                const hasSpaceportRows = await queryAsync(
-                    `SELECT COUNT(*) as count FROM ${buildingsTable} WHERE owner = ? AND sectorid = ? AND type = 3`,
-                    [playerId, homeworld]
-                );
-                const hasSpaceport = (hasSpaceportRows?.[0]?.count || 0) > 0;
-                if (hasSpaceport) {
-                    metal -= scoutCost.metal;
-                    crystal -= scoutCost.crystal;
-                    await queryAsync(
-                        `UPDATE ${playersTable} SET metal = ?, crystal = ? WHERE userid = ?`,
-                        [metal, crystal, playerId]
-                    );
-                    await queryAsync(
-                        `INSERT INTO ${shipsTable} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                        [playerId, SCOUT_SHIP_ID, homeworld]
-                    );
-                    summary.push('Auto-built scout to keep vision online');
-                }
-            }
-        }
-    } catch (err) {
-        console.warn(`Standing orders failed for player ${playerId} in game ${gameId}:`, err.message || err);
-    }
-
-    return summary;
-}
-
-function hydrateStandingOrdersDefaults(gameId, mode) {
-    const state = ensureActiveGameState(gameId);
-    const tableName = mysql2.escapeId(`players${gameId}`);
-    db.query(
-        `SELECT userid FROM ${tableName}`,
-        (err, rows) => {
-            if (err || !Array.isArray(rows)) {
-                return;
-            }
-            rows.forEach(row => {
-                const playerId = Number(row.userid);
-                if (!Number.isFinite(playerId) || state.standingOrders[playerId]) {
-                    return;
-                }
-                state.standingOrders[playerId] = defaultStandingOrders(mode);
-            });
-        }
-    );
-}
-
-async function handleApplyStandingOrders(connection) {
-    if (!connection.gameid || !connection.name) return;
-    try {
-        const summary = await applyStandingOrdersForPlayer(connection.gameid, connection.name);
-        if (Array.isArray(summary) && summary.length > 0) {
-            connection.sendUTF(`standingorders::applied::${JSON.stringify(summary)}`);
-        } else {
-            connection.sendUTF("standingorders::noop");
-        }
-    } catch (err) {
-        console.error('Failed to apply standing orders:', err);
-        connection.sendUTF("standingorders::error::Unable to run standing orders right now");
-    }
-}
-
-function handleStandingOrders(data, connection) {
-    if (!connection.gameid || !connection.name) {
-        connection.sendUTF("standingorders::error::Missing game context");
-        return;
-    }
-    const payload = data.substring("//standingorders:".length);
-    if (payload === "get") {
-        const orders = getStandingOrders(connection.gameid, connection.name);
-        connection.sendUTF(`standingorders::state::${JSON.stringify(orders)}`);
-        return;
-    }
-    try {
-        const parsed = JSON.parse(payload);
-        const updated = setStandingOrders(connection.gameid, connection.name, parsed);
-        connection.sendUTF(`standingorders::state::${JSON.stringify(updated)}`);
-    } catch (err) {
-        console.error('Failed to parse standing orders payload:', err);
-        connection.sendUTF("standingorders::error::Invalid payload");
-    }
-}
-
-function applyStandingOrdersForGame(gameId) {
-    const tableName = mysql2.escapeId(`players${gameId}`);
-    db.query(
-        `SELECT userid FROM ${tableName}`,
-        (err, rows) => {
-            if (err || !Array.isArray(rows)) {
-                return;
-            }
-            rows.forEach(row => {
-                applyStandingOrdersForPlayer(gameId, row.userid).catch(err => {
-                    console.warn(`Standing orders tick failed for player ${row.userid} in game ${gameId}:`, err.message || err);
-                });
-            });
-        }
-    );
-}
-
-function trackAiProfile(gameId, playerId, difficulty = 'medium', strategy = 'balanced') {
-    const state = ensureActiveGameState(gameId);
-    state.aiProfiles.set(Number(playerId), {
-        difficulty: (difficulty || 'medium').toLowerCase(),
-        strategy: (strategy || 'balanced').toLowerCase(),
-        lastTurn: 0
-    });
-}
-
-function hydrateAiPlayers(gameId) {
-    const tableName = mysql2.escapeId(`players${gameId}`);
-    db.query(
-        `SELECT userid, ai_difficulty, ai_strategy FROM ${tableName} WHERE is_ai = 1`,
-        (err, rows) => {
-            if (err || !Array.isArray(rows)) {
-                return;
-            }
-            rows.forEach(row => {
-                trackAiProfile(gameId, row.userid, row.ai_difficulty, row.ai_strategy);
-            });
-        }
-    );
-}
-
-function triggerAiTurn(gameId) {
-    const tableName = mysql2.escapeId(`players${gameId}`);
-    db.query(
-        `SELECT userid, ai_difficulty, ai_strategy FROM ${tableName} WHERE is_ai = 1`,
-        (err, rows) => {
-            if (err || !Array.isArray(rows) || rows.length === 0) {
-                return;
-            }
-
-            rows.forEach(row => {
-                trackAiProfile(gameId, row.userid, row.ai_difficulty, row.ai_strategy);
-                runAiActions(gameId, row.userid, row.ai_difficulty, row.ai_strategy);
-            });
-        }
-    );
-}
-
-function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 'balanced') {
-    const diff = (difficulty || 'medium').toLowerCase();
-    const strat = (strategy || 'balanced').toLowerCase();
-    const aggressiveness = strat === 'aggressive' ? 1.2 : strat === 'chill' ? 0.6 : 1.0;
-    const economyBias = strat === 'economic' ? 1.2 : 1.0;
-
-    const connection = {
-        name: String(playerId),
-        gameid: gameId,
-        sendUTF() {}
-    };
-
-    db.query(
-        `SELECT userid, homeworld, metal, crystal, research FROM ${mysql2.escapeId(`players${gameId}`)} WHERE userid = ? LIMIT 1`,
-        [playerId],
-        (err, rows) => {
-            if (err || !rows || rows.length === 0) return;
-            const player = rows[0];
-            const homeworld = Number(player.homeworld);
-            if (!Number.isFinite(homeworld)) {
-                return;
-            }
-
-            // Build extractors if affordable
-            if (player.metal >= 50 * economyBias) {
-                buyBuilding(`//buybuilding:0:${homeworld}`, connection);
-            }
-
-            // Build crystal refiners if crystal lags
-            if (player.metal >= 50 * economyBias && player.crystal < player.metal * 0.6) {
-                buyBuilding(`//buybuilding:1:${homeworld}`, connection);
-            }
-
-            // Build scout
-            if (player.metal >= 120 * aggressiveness) {
-                buyShip(`//buyship:1:${homeworld}`, connection);
-            }
-
-            // Build destroyer for light offense
-            if (player.metal >= 200 * aggressiveness) {
-                buyShip(`//buyship:2:${homeworld}`, connection);
-            }
-
-            // Build colony ship for expansion
-            if (player.metal >= 800 && player.crystal >= 200) {
-                buyShip(`//buyship:5:${homeworld}`, connection);
-            }
-
-            handleAiExpansion(gameId, playerId, homeworld);
-            handleAiHarass(gameId, playerId, homeworld);
-            aiResearchAndDefend(gameId, playerId);
-        }
-    );
-}
-
-function getAdjacentSectorIds(sectorId, mapWidth = 14, mapHeight = 8) {
-    const x = sectorId % mapWidth;
-    const y = Math.floor(sectorId / mapWidth);
-    const ids = [];
-    for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-            if (dx === 0 && dy === 0) continue;
-            const nx = x + dx;
-            const ny = y + dy;
-            if (nx < 0 || ny < 0 || nx >= mapWidth || ny >= mapHeight) continue;
-            ids.push(ny * mapWidth + nx);
-        }
-    }
-    return ids;
-}
-
-function handleAiExpansion(gameId, playerId, homeSector) {
-    const mapTable = mysql2.escapeId(`map${gameId}`);
-    const shipsTable = mysql2.escapeId(`ships${gameId}`);
-
-    // Find nearest neutral sector
-    db.query(
-        `SELECT sectorid FROM ${mapTable} WHERE owner IS NULL AND type BETWEEN 1 AND 10 LIMIT 25`,
-        (err, rows) => {
-            if (err || !Array.isArray(rows) || rows.length === 0) return;
-            const target = rows
-                .map(r => r.sectorid)
-                .reduce((best, sector) => {
-                    const dist = manhattanDistance(sector, homeSector);
-                    if (!best || dist < best.dist) return { sector, dist };
-                    return best;
-                }, null);
-            if (!target) return;
-
-            // Locate colony ship
-            db.query(
-                `SELECT sectorid, id FROM ${shipsTable} WHERE owner = ? AND type = 5 LIMIT 1`,
-                [playerId],
-                (shipErr, ships) => {
-                    if (shipErr || !ships || ships.length === 0) return;
-                    const colony = ships[0];
-                    const current = Number(colony.sectorid);
-                    if (current === target.sector) {
-                        // Colonize immediately
-                        db.query(`DELETE FROM ${shipsTable} WHERE id = ?`, [colony.id]);
-                        db.query(
-                            `UPDATE ${mapTable} SET owner = ?, ownerid = ? WHERE sectorid = ? AND owner IS NULL`,
-                            [playerId, playerId, target.sector],
-                            () => {
-                                db.query(
-                                    `UPDATE ${mysql2.escapeId(`players${gameId}`)} SET metal = metal + 50, crystal = crystal + 50 WHERE userid = ?`,
-                                    [playerId]
-                                );
-                                updateSector2(gameId, target.sector);
-                            }
-                        );
-                        return;
-                    }
-                    const nextStep = nextStepTowards(current, target.sector);
-                    moveFleet(`//move:${current}:${nextStep}:5:1`, connectionStub(playerId, gameId));
-                }
-            );
-        }
-    );
-}
-
-function handleAiHarass(gameId, playerId, homeSector) {
-    const mapTable = mysql2.escapeId(`map${gameId}`);
-    const shipsTable = mysql2.escapeId(`ships${gameId}`);
-
-    db.query(
-        `SELECT sectorid, owner FROM ${mapTable} WHERE owner IS NOT NULL AND owner <> ? LIMIT 50`,
-        [playerId],
-        (err, rows) => {
-            if (err || !Array.isArray(rows) || rows.length === 0) return;
-            // pick nearest enemy sector
-            const target = rows.reduce((best, row) => {
-                const dist = manhattanDistance(row.sectorid, homeSector);
-                if (!best || dist < best.dist) return { sector: row.sectorid, dist };
-                return best;
-            }, null);
-            if (!target) return;
-
-            db.query(
-                `SELECT sectorid, type, COUNT(*) AS count FROM ${shipsTable} WHERE owner = ? GROUP BY sectorid, type`,
-                [playerId],
-                (shipErr, shipRows) => {
-                    if (shipErr || !Array.isArray(shipRows) || shipRows.length === 0) return;
-                    // choose a sector with ships closest to target
-                    const bestStack = shipRows.reduce((best, row) => {
-                        const dist = manhattanDistance(row.sectorid, target.sector);
-                        if (!best || dist < best.dist) {
-                            return { sector: row.sectorid, type: row.type, count: row.count, dist };
-                        }
-                        return best;
-                    }, null);
-                    if (!bestStack) return;
-                    const nextStep = nextStepTowards(bestStack.sector, target.sector);
-                    moveFleet(`//move:${bestStack.sector}:${nextStep}:${bestStack.type}:1`, connectionStub(playerId, gameId));
-                }
-            );
-        }
-    );
-}
-
-function connectionStub(playerId, gameId) {
-    return {
-        name: String(playerId),
-        gameid: gameId,
-        sendUTF() {}
-    };
-}
-
-function manhattanDistance(sectorA, sectorB, width = 14) {
-    const ax = sectorA % width;
-    const ay = Math.floor(sectorA / width);
-    const bx = sectorB % width;
-    const by = Math.floor(sectorB / width);
-    return Math.abs(ax - bx) + Math.abs(ay - by);
-}
-
-function nextStepTowards(current, target, width = 14, height = 8) {
-    if (current === target) return current;
-    const cx = current % width;
-    const cy = Math.floor(current / width);
-    const tx = target % width;
-    const ty = Math.floor(target / width);
-    const stepX = cx === tx ? 0 : (cx < tx ? 1 : -1);
-    const stepY = cy === ty ? 0 : (cy < ty ? 1 : -1);
-    const nx = Math.min(Math.max(cx + stepX, 0), width - 1);
-    const ny = Math.min(Math.max(cy + stepY, 0), height - 1);
-    return ny * width + nx;
-}
-
-function aiResearchAndDefend(gameId, playerId) {
-    const playersTable = mysql2.escapeId(`players${gameId}`);
-    db.query(
-        `SELECT research, tech, homeworld, metal FROM ${playersTable} WHERE userid = ? LIMIT 1`,
-        [playerId],
-        (err, rows) => {
-            if (err || !rows || rows.length === 0) return;
-            const player = rows[0];
-            const techs = parsePlayerTech(player.tech);
-            const affordable = pickAffordableTech(techs, player.research);
-            if (affordable) {
-                buyTech(`//buytech:${affordable.id}`, connectionStub(playerId, gameId));
-            }
-            // Defend home if enemy adjacent: build destroyer if affordable
-            if (Number.isFinite(player.homeworld)) {
-                db.query(
-                    `SELECT owner FROM ${mysql2.escapeId(`map${gameId}`)} WHERE sectorid IN (?) AND owner IS NOT NULL AND owner <> ? LIMIT 1`,
-                    [getAdjacentSectorIds(player.homeworld), playerId],
-                    (adjErr, foes) => {
-                        if (adjErr || !Array.isArray(foes) || foes.length === 0) return;
-                        if (player.metal >= 200) {
-                            buyShip(`//buyship:2:${player.homeworld}`, connectionStub(playerId, gameId));
-                        }
-                    }
-                );
-            }
-        }
-    );
-}
-
-function parsePlayerTech(techString) {
-    if (!techString) return {};
-    return techString.split(',')
-        .map(x => x.trim())
-        .filter(Boolean)
-        .reduce((acc, val) => {
-            const id = Number(val);
-            if (Number.isFinite(id)) acc[id] = 1;
-            return acc;
-        }, {});
-}
-
-function pickAffordableTech(currentTechs, researchPoints) {
-    const techModule = techSystem; // alias
-    const candidates = Object.values(techModule.TECHNOLOGIES).map(t => ({
-        id: t.id,
-        key: Object.keys(techModule.TECHNOLOGIES).find(k => techModule.TECHNOLOGIES[k].id === t.id),
-        tier: t.tier,
-        baseCost: t.baseCost,
-        prerequisites: t.prerequisites
-    }));
-
-    const ownedIds = new Set(Object.keys(currentTechs).map(Number));
-    const affordable = candidates.filter(c => {
-        if (ownedIds.has(c.id)) return false;
-        const prereqsMet = (c.prerequisites || []).every(pr => ownedIds.has(techModule.TECHNOLOGIES[pr]?.id));
-        const cost = techModule.calculateTechCost ? techModule.calculateTechCost(c.key, 0) : c.baseCost || 100;
-        return prereqsMet && researchPoints >= cost;
-    });
-
-    if (affordable.length === 0) return null;
-    // Pick the cheapest, prefer lower tier
-    affordable.sort((a, b) => {
-        const costA = techModule.calculateTechCost ? techModule.calculateTechCost(a.key, 0) : a.baseCost || 100;
-        const costB = techModule.calculateTechCost ? techModule.calculateTechCost(b.key, 0) : b.baseCost || 100;
-        if (costA !== costB) return costA - costB;
-        return (a.tier || 0) - (b.tier || 0);
-    });
-    const selected = affordable[0];
-    const cost = techModule.calculateTechCost ? techModule.calculateTechCost(selected.key, 0) : selected.baseCost || 100;
-    return { id: selected.id, cost };
-}
-
 // Special race ability functions
 function autoRepairShips(gameId, playerId) {
     // Mechanicus auto-repair: 5% hull repair per turn
@@ -3430,63 +2796,6 @@ function evolveShips(gameId, playerId) {
     // Bioform evolution: Ships gain 2% stats per turn
     // This would need ship age tracking
     // For now, just a placeholder
-}
-
-function applyEpicEconomyAssist(gameId, playerId, homeworld) {
-    const costs = {
-        0: { metal: 50, crystal: 20 }, // Metal Extractor
-        1: { metal: 40, crystal: 30 }  // Crystal Refinery
-    };
-    if (!Number.isFinite(homeworld)) return;
-
-    db.query(
-        `SELECT owner FROM ${mysql2.escapeId(`map${gameId}`)} WHERE sectorid = ?`,
-        [homeworld],
-        (mapErr, mapRows) => {
-            if (mapErr || !mapRows || mapRows.length === 0 || mapRows[0].owner !== playerId) {
-                return;
-            }
-            db.query(
-                `SELECT type FROM ${mysql2.escapeId(`buildings${gameId}`)} WHERE sectorid = ?`,
-                [homeworld],
-                (bErr, buildings) => {
-                    if (bErr) return;
-                    const count = buildings?.length || 0;
-                    if (count >= 3) return;
-                    const hasMetal = buildings?.some(b => b.type === 0);
-                    const hasCrystal = buildings?.some(b => b.type === 1);
-                    let targetType = null;
-                    if (!hasMetal) targetType = 0;
-                    else if (!hasCrystal) targetType = 1;
-                    else return;
-                    const cost = costs[targetType];
-                    db.query(
-                        `SELECT metal, crystal FROM ${mysql2.escapeId(`players${gameId}`)} WHERE userid = ? LIMIT 1`,
-                        [playerId],
-                        (pErr, players) => {
-                            if (pErr || !players || players.length === 0) return;
-                            const player = players[0];
-                            if (player.metal < cost.metal || player.crystal < cost.crystal) return;
-                            db.query(
-                                `UPDATE ${mysql2.escapeId(`players${gameId}`)} SET metal = metal - ?, crystal = crystal - ? WHERE userid = ?`,
-                                [cost.metal, cost.crystal, playerId],
-                                updateErr => {
-                                    if (updateErr) return;
-                                    db.query(
-                                        `INSERT INTO ${mysql2.escapeId(`buildings${gameId}`)} (sectorid, type, owner) VALUES (?, ?, ?)`,
-                                        [homeworld, targetType, playerId],
-                                        () => {
-                                            updateSector2(gameId, homeworld);
-                                        }
-                                    );
-                                }
-                            );
-                        }
-                    );
-                }
-            );
-        }
-    );
 }
 
 // Payment handler functions - delegate to enhanced endpoints
@@ -3556,12 +2865,49 @@ async function handleGetPurchaseHistory(request, response, userId) {
     return paymentEndpoints.handleGetPurchaseHistory(request, response, userId);
 }
 
+function handleGetCurrentGame(request, response, userId) {
+    const parsedUserId = parsePositiveInt(userId, 0);
+    if (!parsedUserId) {
+        response.writeHead(400, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Invalid user ID' }));
+        return;
+    }
+
+    db.query(
+        'SELECT currentgame FROM users WHERE id = ? LIMIT 1',
+        [parsedUserId],
+        (err, rows) => {
+            if (err) {
+                response.writeHead(500, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify({ error: 'Database error' }));
+                return;
+            }
+
+            const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+            const currentGameId = parsePositiveInt(row && row.currentgame, 0);
+
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify({
+                userId: parsedUserId,
+                currentGame: currentGameId || null
+            }));
+        }
+    );
+}
+
 // Export functions for use by index.js
 module.exports = {
     setDatabase,
     handleLogin,
     handleRegister,
+    handleCreateGame,
+    handleGameList,
+    handleLeaveGame,
+    handleAddAi,
+    handleChangeRace,
+    handleSurrender,
     handleGameStart,
+    processTurn,
     colonizePlanet,
     buyTech,
     probeSector,
@@ -3574,13 +2920,8 @@ module.exports = {
     updateResources,
     updateAllSectors,
     handleJoinGame,
-    handleCreateGame,
-    handleAddAi,
-    handleGameList,
-    handleLeaveGame,
-    handlePlayerDisconnect,
     handleGetUnlockedRaces,
-    handleChangeRace,
+    broadcastPlayerList,
     handleCreatePaymentIntent,
     handleCreateSubscription,
     handlePaymentWebhook,
@@ -3588,11 +2929,7 @@ module.exports = {
     handleGetBalance,
     handleGetOwnedItems,
     handleGetPurchaseHistory,
-    handleStandingOrders,
-    handleApplyStandingOrders,
-    applyStandingOrdersForPlayer,
-    defaultStandingOrders,
-    gameState,
-    // Test utilities
-    processTurn
+    handleGetCurrentGame,
+    handleGetCombatTelemetry,
+    gameState
 };

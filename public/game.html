@@ -4,56 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game of Worlds</title>
-    <link rel="stylesheet" href="css/style.css?v=20251223c">
-    <style>
-        /* Critical layout fixes */
-        html, body {
-            width: 100vw;
-            max-width: 100vw;
-            overflow-x: hidden;
-        }
-        #minimapid {
-            position: fixed !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            z-index: 100;
-        }
-        #avatarbox {
-            position: fixed !important;
-            right: 10px !important;
-            top: 100px !important;
-            z-index: 90;
-        }
-        #controlPadGUI {
-            position: fixed !important;
-        }
-        #sectordisplay {
-            position: fixed !important;
-        }
-    </style>
+    <title>Game of Words</title>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <!-- Utility buttons - positioned near turn bar -->
-    <div id="utilityButtons" style="position:fixed;right:310px;top:8px;z-index:250;display:flex;gap:8px;align-items:center;">
-        <button id="audioBtn" style="width:32px;height:32px;border-radius:50%;border:none;background:linear-gradient(120deg,#ffb347,#ffcc33);color:#0c1021;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);" title="Toggle sound">🔊</button>
-        <button id="helpBtn" style="width:32px;height:32px;border-radius:50%;border:none;background:linear-gradient(120deg,#42d8c8,#4c7cff);color:#071021;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);" title="Help">?</button>
-    </div>
-    <div id="helpOverlay" style="display:none;position:fixed;inset:0;background:rgba(5,8,16,0.78);backdrop-filter:blur(6px);z-index:2999;align-items:center;justify-content:center;padding:20px;">
-        <div style="max-width:720px;width:100%;background:#0f1424;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px;color:#e8ecff;box-shadow:0 18px 40px rgba(0,0,0,0.45);">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <h3 style="margin:0;font-size:20px;">Quick Help</h3>
-                <button id="helpClose" style="background:transparent;border:none;color:#cfd7ff;font-size:18px;cursor:pointer;">✕</button>
-            </div>
-            <ul style="line-height:1.6;margin:12px 0 0 16px;color:rgba(232,236,255,0.8);">
-                <li>Turns advance every 3 minutes; use the Next Turn button when ready.</li>
-                <li>Resources: build extractors/refineries on owned sectors; research unlocks tech and better ships.</li>
-                <li>Colonize: build a colony ship (Fleet tab), move it to an unowned sector, then colonize.</li>
-                <li>Combat: fleets in the same sector auto-resolve each turn; build scouts early for vision.</li>
-                <li>Need a refresher? Reopen this help with the ? button.</li>
-            </ul>
-        </div>
-    </div>
     <!-- Resource Bar -->
     <div id="resourceBar">
         <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:-25px;" alt="Metal"/></div><span id="metalresource"> 0 Metal,</span>
@@ -69,15 +23,15 @@
     </div>
     
     <!-- Connection Info -->
-    <div id="connectionInfo" style="position:absolute;top:0;left:550px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <span><span id="status">Not connected</span>, Users: <span id="connected">-</span></span>
+    <div style="position:fixed;top:8px;left:520px;z-index:260;display:flex;align-items:center;gap:8px;">
+        <span id="status">Not connected</span>, Users connected: <span id="connected">-</span>
         <button onclick="Shop.open()" style="padding:5px 10px;background:#f39c12;border:none;color:white;cursor:pointer;border-radius:5px;">Shop</button>
-        <button id="leaveGameBtn" style="padding:5px 10px;background:#c0392b;border:none;color:white;cursor:pointer;border-radius:5px;">Leave</button>
+        <button id="surrenderBtn" onclick="surrenderGame()" style="padding:5px 10px;background:#b64040;border:none;color:white;cursor:pointer;border-radius:5px;">Surrender</button>
     </div>
     
-    <!-- Sector Display Background -->
-    <div id="sectorimg" style="z-index:-2;background-repeat:no-repeat;position:fixed;width:calc(100% - 300px);height:calc(100% - 70px);top:70px;left:300px;pointer-events:none;"></div>
-    <div id="sectordisplay" style="position:fixed; top:80px;left:10px;display:block;z-index:50;">
+    <!-- Sector Display -->
+    <div id="sectorimg" style="z-index:-2;background-repeat:no-repeat;position:absolute;width:100%;height:100%; top:70px;left:300px;"></div>
+    <div id="sectordisplay" style="position:absolute; top:80px;left:270px;display:block;">
         <table border="0px">
             <tr><td>Sector ID:</td><td><div style="display:inline-block" id="sectorid">N/A</div></td></tr>
             <tr><td>Owner:</td><td><div style="display:inline-block" id="planetowner">N/A</div></td></tr>
@@ -126,74 +80,49 @@
         </table>
     </div>
     
-    <!-- Old log area - hidden, replaced by avatar notifications -->
-    <div id="avatarbox" style="display:none;">
+    <!-- Avatar Box and Chat -->
+    <div id="avatarbox">
+        <button style="position:absolute;right:1px;top:15px;width:25px;height:40px;" id="chatHistoryUp"><h1>^</h1></button>
+        <button style="position:absolute;right:1px;top:75px;width:25px;height:40px;" id="chatHistoryDown"><h2>v</h2></button>
         <div id="empireupdates">
-            <p id="log" style="margin:0;color:#333;font-size:13px;"></p>
-            <p id="timeSince" style="margin:4px 0 0 0;color:#666;font-size:11px;font-style:italic;"></p>
+            <img style="position:absolute;right:-15px;top:15px;" src="./images/bubblebox.png" />
+            <font color="black" size="2">
+                <p id="log">
+                    Welcome to Game of Words, Emperor. <br />The game is yet to begin. Please wait for all intended players to join before clicking 'Game Start'.
+                </p>
+            </font>
+            <font color="#555" size="1"><i><p id="timeSince" style="position:absolute;right:25px;bottom:-8px;">Have Fun!</p></i></font>
         </div>
+        <img style="z-index:-1;position:absolute;right:37px;top:0px;" src="./images/avatar1.jpg" />
+        <img style="z-index:-1;position:absolute;right:0;top:126px;width:525px;height:59px;" src="./images/topofmap.png" />
+        <img style="z-index:-1;position:absolute;right:500px;top:184px;width:40px;" src="./images/mapleftside.png" />
+        <img style="z-index:-1;position:absolute;right:40px;top:140px;" src="./images/orbital.gif" />
     </div>
     
     <!-- Control Pad -->
-    <div id="controlPadGUI" style="position:fixed;left:0;bottom:40px;width:500px;height:320px;z-index:100;background:rgba(20,24,40,0.98);">
+    <div id="controlPadGUI" style="position:absolute;left:0;bottom:0;width:500px;height:360px;">
         <!-- Tab Buttons -->
-        <div style="display:flex;margin-bottom:-1px;">
+        <div style="display:flex;flex-wrap:wrap;margin-bottom:-1px;">
             <button id="buildtab" class="tab-button active">Build</button>
             <button id="fleettab" class="tab-button">Fleet</button>
             <button id="techtab" class="tab-button">Research</button>
             <button id="colonizetab" class="tab-button">Colonize</button>
+            <button id="analyticstab" class="tab-button">Combat</button>
         </div>
         
         <!-- Build Tab -->
         <div id="build" class="tab-panel">
-            <div style="font-weight:bold;margin-bottom:10px;">Economy Buildings</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
-                <button id="bb1" class="building-button">Metal Extractor <span id="bbb1">0</span><br><small style="color:#888;">50M 20C</small></button>
-                <button id="bb2" class="building-button">Crystal Refinery <span id="bbb2">0</span><br><small style="color:#888;">40M 30C</small></button>
-                <button id="bb3" class="building-button">Research Academy <span id="bbb3">0</span><br><small style="color:#888;">60M 40C</small></button>
-                <button id="bb4" class="building-button">Spaceport <span id="bbb4">0</span><br><small style="color:#888;">100M 50C</small></button>
-            </div>
-            <div style="font-weight:bold;margin-bottom:10px;">Defense & Special</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
-                <button id="bb5" class="defense-button">Orbital Turret <span id="bbb5">0</span><br><small style="color:#ccc;">80M 60C</small></button>
-                <button id="bb6" class="defense-button">Warp Gate <span id="bbb6">0</span><br><small style="color:#ccc;">200M 150C</small></button>
-            </div>
-            <div style="font-weight:bold;margin-bottom:10px;">Build Ships</div>
-            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;">
-                <button class="ship-button" data-ship-id="3">Scout<br><small style="color:#888;">200M</small></button>
-                <button class="ship-button" data-ship-id="1">Frigate<br><small style="color:#888;">300M</small></button>
-                <button class="ship-button" data-ship-id="2">Destroyer<br><small style="color:#888;">500M</small></button>
-                <button class="ship-button" data-ship-id="4">Cruiser<br><small style="color:#888;">900M</small></button>
-                <button class="ship-button" data-ship-id="5">Battleship<br><small style="color:#888;">1600M</small></button>
-                <button class="ship-button" data-ship-id="6">Colony Ship<br><small style="color:#888;">1000M</small></button>
-            </div>
+            <!-- Building buttons -->
         </div>
-
+        
         <!-- Fleet Tab -->
         <div id="fleet" class="tab-panel hidden">
-            <div style="font-weight:bold;margin-bottom:10px;">Fleet in Current Sector</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:13px;">
-                <div>Scouts: <span id="fleet-scouts">0</span></div>
-                <div>Frigates: <span id="fleet-frigates">0</span></div>
-                <div>Destroyers: <span id="fleet-destroyers">0</span></div>
-                <div>Cruisers: <span id="fleet-cruisers">0</span></div>
-                <div>Battleships: <span id="fleet-battleships">0</span></div>
-                <div>Colony Ships: <span id="fleet-colony">0</span></div>
-            </div>
-            <div style="margin-top:15px;font-weight:bold;margin-bottom:10px;">Move Fleet</div>
-            <div style="font-size:13px;color:#aaa;">Click a sector on the map to move ships there</div>
+            <!-- Fleet management UI -->
         </div>
-
+        
         <!-- Tech Tab -->
         <div id="techtree" class="tab-panel hidden">
-            <div style="font-weight:bold;margin-bottom:10px;">Research Technologies</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <button class="tech-button" onclick="buyTech(1)">Weapons Lvl <span id="tech1">0</span><br><small style="color:#888;">100R base</small></button>
-                <button class="tech-button" onclick="buyTech(2)">Hulls Lvl <span id="tech2">0</span><br><small style="color:#888;">100R base</small></button>
-                <button class="tech-button" onclick="buyTech(3)">Shields Lvl <span id="tech3">0</span><br><small style="color:#888;">100R base</small></button>
-                <button class="tech-button" onclick="buyTech(4)">Engines Lvl <span id="tech4">0</span><br><small style="color:#888;">100R base</small></button>
-            </div>
-            <div style="margin-top:10px;font-size:12px;color:#aaa;">Cost scales with level (100 x 1.5^level)</div>
+            <!-- Tech tree UI -->
         </div>
         
         <!-- Colonize Tab -->
@@ -204,6 +133,37 @@
             -You need a terraform tech level equal or greater to the sector's terraform requirement<br /><br />
             -The sector must contain a planet
         </div>
+
+        <!-- Combat Analytics Tab -->
+        <div id="analytics" class="tab-panel hidden">
+            <div class="analytics-header-row">
+                <div>
+                    <h3 class="analytics-title">Combat Analytics</h3>
+                    <p class="analytics-subtitle">Live balance telemetry from real player battles in this match.</p>
+                </div>
+                <button id="combatAnalyticsRefresh" class="analytics-refresh-btn">Refresh</button>
+            </div>
+            <div class="analytics-summary-grid">
+                <div class="analytics-summary-card">
+                    <div class="analytics-label">Game</div>
+                    <div id="combatAnalyticsGameId" class="analytics-value">-</div>
+                </div>
+                <div class="analytics-summary-card">
+                    <div class="analytics-label">Battles Tracked</div>
+                    <div id="combatAnalyticsBattleCount" class="analytics-value">0</div>
+                </div>
+                <div class="analytics-summary-card">
+                    <div class="analytics-label">Updated</div>
+                    <div id="combatAnalyticsUpdatedAt" class="analytics-value">-</div>
+                </div>
+            </div>
+            <div id="combatAnalyticsStatus" class="analytics-status analytics-status-idle">Waiting for telemetry...</div>
+            <div id="combatAnalyticsPlayers" class="analytics-players"></div>
+            <div class="analytics-recent-block">
+                <h4>Recent Battles</h4>
+                <div id="combatAnalyticsRecent" class="analytics-recent-list"></div>
+            </div>
+        </div>
     </div>
     
     <!-- Mini Map -->
@@ -211,25 +171,18 @@
     
     <!-- Multi-Move Dialog -->
     <div id="multiMove">
-        <div class="multi-move-header" style="padding:15px 15px 10px;">
-            <b>Fleet Move Menu</b><br>
-            <span style="font-size:13px;">Select ships to move to <i>sector <span id="sectorofattack">-</span></i></span>
-        </div>
-        <div class="multi-move-content" style="display:flex;flex-wrap:wrap;gap:10px;padding:0 15px 15px;">
-            <select id="shipsFromNearBy" multiple="yes" style="font-size:110%;min-height:200px;flex:1;min-width:250px;"></select>
-            <div class="multi-move-buttons" style="display:flex;flex-direction:column;gap:8px;min-width:100px;">
-                <button id="moveAttackShips" style="padding:12px 15px;">Move Attack Ships</button>
-                <button id="moveAllShips" style="padding:12px 15px;">Move All Ships</button>
-                <button id="moveSelectedShips" style="padding:12px 15px;">Move Selected</button>
-                <button id="closeMultiMove" style="padding:12px 15px;background:#666;">Close</button>
-            </div>
-        </div>
+        <span style="position:relative;top:20px;left:20px;"><b>Fleet Move Menu</b><br />Select the nearby ships you wish to move to <i>sector <span id="sectorofattack">-</span></i></span>
+        <select id="shipsFromNearBy" multiple="yes" style="font-size:130%;height:300px;position:absolute; left:11px; bottom: 11px; width: 385px;"></select>
+        <button style="z-index:10;position:absolute; left: 420px; bottom: 10px; width: 70px; height: 30px;" id="closeMultiMove">Close</button>
+        <button style="z-index:10;position:absolute; left: 420px; bottom: 80px; width: 70px; height: 60px;" id="moveSelectedShips">Move Selected Ships</button>
+        <button style="z-index:10;position:absolute; left: 420px; bottom: 150px; width: 70px; height: 60px;" id="moveAllShips">Move All Ships</button>
+        <button style="z-index:10;position:absolute; left: 420px; bottom: 220px; width: 70px; height: 60px;" id="moveAttackShips">Move Attack Ships</button>
     </div>
     
     <!-- Chat Input -->
-    <div id="chatContainer" style="position:fixed;bottom:0;left:0;width:500px;max-width:100%;height:40px;z-index:150;background:rgba(10,14,28,0.95);padding:5px 10px;box-sizing:border-box;">
-        <form id="chatForm" style="margin:0;height:100%;">
-            <input id="chat" type="text" style="width:100%;height:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(20,25,40,0.9);color:#e8ecff;font-size:14px;" placeholder="Type and press enter to chat" />
+    <div style="position:absolute;bottom:0;left:0;width:500px;height:30px;z-index:100;">
+        <form id="chatForm">
+            <input id="chat" type="text" style="width:480px;" placeholder="Type and press enter to chat" />
         </form>
     </div>
     
@@ -237,11 +190,21 @@
     <div id="lobbyWindow" style="display:none;">
         <center><br /><br /><h1>THE CONNECTION WAS LOST</h1><br />Please refresh the page to reconnect.<br /><br /><button onclick="location.reload(true)" style="padding:20px;">Refresh this page</button></center>
     </div>
+
+    <!-- Game Over Modal -->
+    <div id="gameOverModal" class="game-over-modal hidden">
+        <div class="game-over-card">
+            <h2 id="gameOverTitle">Game Over</h2>
+            <p id="gameOverBody">The match has ended.</p>
+            <button id="returnToLobbyBtn" onclick="returnToLobby()">Return to Lobby</button>
+        </div>
+    </div>
     
     <!-- Scripts -->
-    <script src="js/ui.js?v=20251223e"></script>
-    <script src="js/minimap.js?v=20251105"></script>
-    <script src="js/GUI.js?v=20251223e"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/minimap.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/GUI.js"></script>
     <script>
         // Authentication check for static hosting
         (function() {
@@ -262,52 +225,15 @@
             }
         })();
     </script>
-    <script src="js/build.js?v=20251105"></script>
-    <script src="js/battle.js?v=20251105"></script>
-    <script src="js/chat.js?v=20251105"></script>
-    <script src="js/controlpad.js?v=20251105"></script>
-    <script src="js/sound.js?v=20251105"></script>
-    <script src="js/notification-system.js?v=20251105"></script>
-    <script src="js/avatar-notifications.js?v=20251223"></script>
-    <script src="js/media.js?v=20251105"></script>
-    <script src="/config.js?v=20251105"></script>
-    <script src="js/shop-enhanced.js?v=20251105"></script>
+    <script src="js/battle.js"></script>
+    <script src="js/controlpad.js"></script>
+    <script src="js/connect.js"></script>
+    <script src="js/notification-system.js"></script>
+    <script src="js/combat-analytics.js"></script>
+    <script src="js/shop-enhanced.js"></script>
+    <script src="js/sound.js"></script>
+    <script src="js/game.js"></script>
+    <!-- Stripe.js for payments -->
     <script src="https://js.stripe.com/v3/"></script>
-    <script src="js/connect.js?v=20251223f"></script>
-    <script src="js/tour.js?v=20251105"></script>
-    <script src="js/game.js?v=20251105"></script>
-    <script src="js/loader.js?v=20251105"></script>
-    <script>
-        (function() {
-            const btn = document.getElementById('helpBtn');
-            const overlay = document.getElementById('helpOverlay');
-            const close = document.getElementById('helpClose');
-            const audioBtn = document.getElementById('audioBtn');
-            function toggle(show) {
-                if (!overlay) return;
-                overlay.style.display = show ? 'flex' : 'none';
-            }
-            if (btn && overlay) {
-                btn.addEventListener('click', () => toggle(true));
-            }
-            if (close) {
-                close.addEventListener('click', () => toggle(false));
-            }
-            if (overlay) {
-                overlay.addEventListener('click', e => {
-                    if (e.target === overlay) toggle(false);
-                });
-            }
-            if (audioBtn) {
-                audioBtn.addEventListener('click', () => {
-                    if (window.MediaManager) {
-                        const enabled = window.MediaManager.toggleMusic();
-                        window.MediaManager.toggleSfx(); // keep sfx in sync for simplicity
-                        audioBtn.textContent = enabled ? '🔊' : '🔈';
-                    }
-                });
-            }
-        })();
-    </script>
 </body>
 </html>

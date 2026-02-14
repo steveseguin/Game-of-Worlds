@@ -34,6 +34,7 @@ let tempKey;
 let isCreatingGame = false;
 let isAwaitingRaceSelection = false;
 let pendingJoinGameId = null;
+let isLobbyReady = false;
 
 let currentGameId = null;
 let currentGameName = '';
@@ -60,6 +61,39 @@ function formatModeLabel(mode) {
     return mode === 'epic' ? 'Epic (1/day turn)' : 'Quick (fast turns)';
 }
 
+function setLobbyConnectionState(state, message) {
+    const normalizedState = state || 'connecting';
+    isLobbyReady = normalizedState === 'ready';
+
+    const labels = {
+        connecting: 'Lobby: Connecting…',
+        authorizing: 'Lobby: Authorizing…',
+        ready: 'Lobby: Connected',
+        disconnected: 'Lobby: Reconnecting…'
+    };
+
+    const pill = document.getElementById('lobbyConnectionState');
+    if (pill) {
+        pill.dataset.state = normalizedState;
+        pill.textContent = message || labels[normalizedState] || labels.connecting;
+    }
+
+    setCreateGameButtonState(isCreatingGame);
+    const refreshBtn = document.getElementById('refreshGamesBtn');
+    if (refreshBtn) {
+        refreshBtn.disabled = !isLobbyReady;
+        refreshBtn.title = isLobbyReady ? '' : 'Waiting for lobby authentication';
+    }
+}
+
+function canSendLobbyCommand(showToastOnFailure = false) {
+    const ready = !!(isLobbyReady && websocket && websocket.readyState === WebSocket.OPEN);
+    if (!ready && showToastOnFailure) {
+        showToast('Lobby connection is still syncing. Please wait a moment.', 'warn');
+    }
+    return ready;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     userId = getCookie('userId');
     tempKey = getCookie('tempKey');
@@ -71,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    setLobbyConnectionState('connecting');
     initWebSocket();
 
     document.getElementById('createGameBtn').addEventListener('click', createGame);
@@ -83,18 +118,19 @@ function initWebSocket() {
 
     websocket.onopen = () => {
         console.log('Connected to server');
+        setLobbyConnectionState('authorizing');
         websocket.send(`//auth:${userId}:${tempKey}`);
-        if (inviteGameId && Number.isFinite(inviteGameId)) {
-            joinGame(inviteGameId);
-            inviteGameId = null;
-        }
     };
 
     websocket.onmessage = evt => handleMessage(evt.data);
-    websocket.onerror = evt => console.error('WebSocket error:', evt);
+    websocket.onerror = evt => {
+        console.error('WebSocket error:', evt);
+        setLobbyConnectionState('connecting', 'Lobby: Connection issue');
+    };
     websocket.onclose = () => {
         console.log('Disconnected from server');
         window.websocket = null;
+        setLobbyConnectionState('disconnected');
         resetCreateGameState();
         renderGameListSkeleton('Reconnecting to server…');
         setTimeout(initWebSocket, 3000);
@@ -130,7 +166,13 @@ function handleMessage(message) {
 
     if (message.startsWith('lobby::')) {
         clearCurrentGameTracking();
+        setLobbyConnectionState('ready');
         refreshGames();
+        if (inviteGameId && Number.isFinite(inviteGameId)) {
+            const targetInviteId = inviteGameId;
+            inviteGameId = null;
+            joinGame(targetInviteId);
+        }
         return;
     }
 
@@ -144,6 +186,7 @@ function handleMessage(message) {
     }
 
     if (message.startsWith('gamelist::')) {
+        setLobbyConnectionState('ready');
         updateGameList(message.substring('gamelist::'.length));
         return;
     }
@@ -171,6 +214,7 @@ function handleMessage(message) {
     }
 
     if (message.startsWith('joingame::success::')) {
+        setLobbyConnectionState('ready');
         try {
             const payload = JSON.parse(message.substring('joingame::success::'.length));
             currentRaceId = Number(payload.raceId) || currentRaceId || null;
@@ -267,8 +311,7 @@ function createGame() {
         return;
     }
 
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+    if (!canSendLobbyCommand(true)) {
         return;
     }
 
@@ -285,6 +328,10 @@ function createGame() {
 }
 
 function refreshGames() {
+    if (!canSendLobbyCommand()) {
+        renderGameListSkeleton('Authenticating lobby session…');
+        return;
+    }
     renderGameListSkeleton('Loading games…');
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send('//gamelist');
@@ -331,10 +378,11 @@ function updateGameList(rawPayload) {
         }
 
         const inviteUrl = `${window.location.origin}/lobby.html?game=${gameId}`;
+        const actionDisabled = !isLobbyReady ? 'disabled title="Waiting for lobby authentication"' : '';
         const action = canJoin && Number.isInteger(gameId)
             ? `<div class="action-cell">
-                   <button onclick="joinGame(${gameId})">Join</button>
-                   <button onclick="copyInviteLink('${inviteUrl}')" class="ghost small">Invite</button>
+                   <button onclick="joinGame(${gameId})" ${actionDisabled}>Join</button>
+                   <button onclick="copyInviteLink('${inviteUrl}')" class="ghost small" ${actionDisabled}>Invite</button>
                </div>`
             : statusBadge;
         const playersLabel = maxPlayers > 0 ? `${playerCount}/${maxPlayers}` : `${playerCount}`;
@@ -423,7 +471,7 @@ function renderWaitingView() {
     const raceControls = `
         <div style="margin-top:12px;">
             <strong>Race:</strong> ${raceLabel}
-            <button onclick="openRaceSelectorForCurrentGame()" style="margin-left:8px;">Choose/Change Race</button>
+            <button onclick="openRaceSelectorForCurrentGame()" style="margin-left:8px;" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Choose/Change Race</button>
         </div>
     `;
     const reconnectBtn = `
@@ -446,29 +494,29 @@ function renderWaitingView() {
 
     const modeLabel = formatModeLabel(currentGameMode);
     const startButton = isCurrentGameCreator
-        ? `<button onclick="startGame()" ${(!readyToStart || isStartingGame || countdownActive) ? 'disabled' : ''} style="margin-top:12px;">
+        ? `<button onclick="startGame()" ${(!readyToStart || isStartingGame || countdownActive || !isLobbyReady) ? 'disabled' : ''} style="margin-top:12px;">
                 ${countdownActive ? `Starting in ${countdownSeconds || 10}s` : (isStartingGame ? 'Starting…' : 'Start Game')}
            </button>`
         : '';
     const aiSandboxButton = isCurrentGameCreator && !countdownActive
-        ? `<button onclick="startAiSandbox()" style="margin-top:8px;">Fill with AI & Start</button>`
+        ? `<button onclick="startAiSandbox()" style="margin-top:8px;" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Fill with AI & Start</button>`
         : '';
     const aiControls = isCurrentGameCreator && hasOpenSeat && !countdownActive
         ? `
             <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
                 <label style="display:flex; align-items:center; gap:6px; color:#cfd7ff;">
                     Difficulty
-                    <select id="aiDifficulty" style="padding:8px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;">
+                    <select id="aiDifficulty" style="padding:8px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;" ${isLobbyReady ? '' : 'disabled'}>
                         ${AI_DIFFICULTY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
                     </select>
                 </label>
                 <label style="display:flex; align-items:center; gap:6px; color:#cfd7ff;">
                     Strategy
-                    <select id="aiStrategy" style="padding:8px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;">
+                    <select id="aiStrategy" style="padding:8px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;" ${isLobbyReady ? '' : 'disabled'}>
                         ${AI_STRATEGY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
                     </select>
                 </label>
-                <button onclick="addAiPlayer()" style="padding:10px 14px;">Add AI Opponent</button>
+                <button onclick="addAiPlayer()" style="padding:10px 14px;" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Add AI Opponent</button>
             </div>
           `
         : '';
@@ -539,8 +587,9 @@ function setCreateGameButtonState(isLoading) {
         button.disabled = true;
         button.textContent = 'Creating…';
     } else {
-        button.disabled = false;
+        button.disabled = !isLobbyReady;
         button.textContent = 'Create Game';
+        button.title = isLobbyReady ? '' : 'Waiting for lobby authentication';
     }
 }
 
@@ -651,7 +700,7 @@ function loadRaceSelectionScript(callback) {
 }
 
 function requestUnlockedRaces() {
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
+    if (canSendLobbyCommand()) {
         websocket.send('//getunlockedraces');
     }
 }
@@ -661,8 +710,7 @@ function openRaceSelectorForCurrentGame() {
         showToast('Join a game before selecting a race.', 'warn');
         return;
     }
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+    if (!canSendLobbyCommand(true)) {
         return;
     }
 
@@ -683,8 +731,7 @@ function openRaceSelectorForCurrentGame() {
 }
 
 function joinGame(gameId) {
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+    if (!canSendLobbyCommand(true)) {
         return;
     }
 
@@ -720,7 +767,7 @@ function leaveGame() {
 }
 
 function startGame() {
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+    if (!canSendLobbyCommand(true)) {
         return;
     }
     if (!currentGameId || !isCurrentGameCreator || isStartingGame) {
@@ -817,8 +864,7 @@ function addAiPlayer() {
         showToast('Only the game creator can add AI opponents.', 'warn');
         return;
     }
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+    if (!canSendLobbyCommand(true)) {
         return;
     }
     const diffSel = document.getElementById('aiDifficulty');
@@ -834,8 +880,7 @@ function startAiSandbox() {
         showToast('Only the creator can launch an AI sandbox.', 'warn');
         return;
     }
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-        showToast('Unable to reach the server. Please wait for the connection to be restored.', 'error');
+    if (!canSendLobbyCommand(true)) {
         return;
     }
     const targetSeats = currentMaxPlayers > 0 ? currentMaxPlayers : 4;

@@ -20,7 +20,7 @@ const SHIP_TYPES = {
         hull: 1,
         shields: 1,
         movement: 2,
-        cost: { metal: 300, crystal: 0 },
+        cost: { metal: 430, crystal: 0 },
         buildSlots: 3,
         movementCost: 200
     },
@@ -31,7 +31,7 @@ const SHIP_TYPES = {
         hull: 2,
         shields: 1,
         movement: 3,
-        cost: { metal: 500, crystal: 0 },
+        cost: { metal: 780, crystal: 0 },
         buildSlots: 5,
         movementCost: 300
     },
@@ -49,22 +49,22 @@ const SHIP_TYPES = {
     CRUISER: {
         id: 4,
         name: "Cruiser",
-        attack: 1,
-        hull: 2,
-        shields: 1,
+        attack: 3,
+        hull: 3,
+        shields: 2,
         movement: 2,
-        cost: { metal: 900, crystal: 0 },
+        cost: { metal: 980, crystal: 120 },
         buildSlots: 8,
         movementCost: 200
     },
     BATTLESHIP: {
         id: 5,
         name: "Battleship",
-        attack: 3,
-        hull: 3,
-        shields: 2,
+        attack: 5,
+        hull: 6,
+        shields: 3,
         movement: 3,
-        cost: { metal: 1600, crystal: 0 },
+        cost: { metal: 1650, crystal: 220 },
         buildSlots: 12,
         movementCost: 300
     },
@@ -82,34 +82,34 @@ const SHIP_TYPES = {
     DREADNOUGHT: {
         id: 7,
         name: "Dreadnought",
-        attack: 16,
+        attack: 11,
         hull: 16,
         shields: 5,
-        movement: 5,
-        cost: { metal: 4400, crystal: 0 },
-        buildSlots: 20,
-        movementCost: 500
+        movement: 4,
+        cost: { metal: 3200, crystal: 450 },
+        buildSlots: 24,
+        movementCost: 650
     },
     INTRUDER: {
         id: 8,
         name: "Intruder",
-        attack: 8,
-        hull: 1,
-        shields: 10,
+        attack: 5,
+        hull: 4,
+        shields: 4,
         movement: 2,
-        cost: { metal: 1200, crystal: 0 },
-        buildSlots: 5,
-        movementCost: 200
+        cost: { metal: 1950, crystal: 133 },
+        buildSlots: 7,
+        movementCost: 240
     },
     CARRIER: {
         id: 9,
         name: "Carrier",
-        attack: 4,
-        hull: 8,
-        shields: 3,
+        attack: 6,
+        hull: 12,
+        shields: 5,
         movement: 3,
-        cost: { metal: 3000, crystal: 0 },
-        buildSlots: 15,
+        cost: { metal: 3000, crystal: 80 },
+        buildSlots: 16,
         movementCost: 300,
         requiresWarpGate: true
     }
@@ -125,14 +125,15 @@ const SHIP_TYPES = {
 function createShips(count, shipType, techLevel) {
     const ships = [];
     const hullBonus = Math.pow(1.1, techLevel);
+    const effectiveHull = (shipType.hull + (shipType.shields * 0.85)) * hullBonus;
     
     for (let i = 0; i < count; i++) {
         ships.push({
             type: shipType.id,
             name: shipType.name,
             attack: shipType.attack,
-            hull: shipType.hull * hullBonus,
-            maxHull: shipType.hull * hullBonus,
+            hull: effectiveHull,
+            maxHull: effectiveHull,
             shields: shipType.shields,
             destroyed: false
         });
@@ -147,8 +148,8 @@ function createShips(count, shipType, techLevel) {
  * @return {number} - Hit chance (0.0 to 1.0)
  */
 function calculateHitChance(shieldTech) {
-    // Base hit chance is 90%, reduced by 5% per shield tech level
-    return 0.9 * Math.pow(0.95, shieldTech);
+    // Slightly lower baseline hit chance produces longer, less swingy combats.
+    return Math.max(0.4, 0.85 * Math.pow(0.96, shieldTech));
 }
 
 /**
@@ -169,6 +170,413 @@ function calculateDamage(baseAttack, weaponTech) {
  */
 function shotHits(shieldTech) {
     return Math.random() < calculateHitChance(shieldTech);
+}
+
+const COMBAT_TARGET_PRIORITY = Object.freeze([
+    SHIP_TYPES.FRIGATE.id,
+    SHIP_TYPES.DESTROYER.id,
+    SHIP_TYPES.CRUISER.id,
+    SHIP_TYPES.INTRUDER.id,
+    SHIP_TYPES.CARRIER.id,
+    SHIP_TYPES.BATTLESHIP.id,
+    SHIP_TYPES.DREADNOUGHT.id,
+    SHIP_TYPES.SCOUT.id,
+    SHIP_TYPES.COLONY_SHIP.id
+]);
+
+const SHIP_CLASSES = Object.freeze({
+    LIGHT: 'light',
+    MEDIUM: 'medium',
+    HEAVY: 'heavy'
+});
+
+const SHIP_CLASS_BY_TYPE = Object.freeze({
+    [SHIP_TYPES.FRIGATE.id]: SHIP_CLASSES.LIGHT,
+    [SHIP_TYPES.DESTROYER.id]: SHIP_CLASSES.LIGHT,
+    [SHIP_TYPES.SCOUT.id]: SHIP_CLASSES.LIGHT,
+    [SHIP_TYPES.COLONY_SHIP.id]: SHIP_CLASSES.LIGHT,
+    [SHIP_TYPES.CRUISER.id]: SHIP_CLASSES.MEDIUM,
+    [SHIP_TYPES.INTRUDER.id]: SHIP_CLASSES.HEAVY,
+    [SHIP_TYPES.BATTLESHIP.id]: SHIP_CLASSES.HEAVY,
+    [SHIP_TYPES.DREADNOUGHT.id]: SHIP_CLASSES.HEAVY,
+    [SHIP_TYPES.CARRIER.id]: SHIP_CLASSES.HEAVY
+});
+
+const SHIP_TYPE_IDS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+const DAMAGE_MATRIX = Object.freeze({
+    [SHIP_CLASSES.LIGHT]: Object.freeze({
+        [SHIP_CLASSES.LIGHT]: 1.0,
+        [SHIP_CLASSES.MEDIUM]: 0.93,
+        [SHIP_CLASSES.HEAVY]: 0.75
+    }),
+    [SHIP_CLASSES.MEDIUM]: Object.freeze({
+        [SHIP_CLASSES.LIGHT]: 1.1,
+        [SHIP_CLASSES.MEDIUM]: 1.0,
+        [SHIP_CLASSES.HEAVY]: 0.98
+    }),
+    [SHIP_CLASSES.HEAVY]: Object.freeze({
+        [SHIP_CLASSES.LIGHT]: 1.2,
+        [SHIP_CLASSES.MEDIUM]: 1.06,
+        [SHIP_CLASSES.HEAVY]: 1.0
+    })
+});
+
+const TARGET_PRIORITY_BY_CLASS = Object.freeze({
+    [SHIP_CLASSES.LIGHT]: Object.freeze([
+        SHIP_TYPES.DREADNOUGHT.id,
+        SHIP_TYPES.BATTLESHIP.id,
+        SHIP_TYPES.CARRIER.id,
+        SHIP_TYPES.INTRUDER.id,
+        SHIP_TYPES.CRUISER.id,
+        SHIP_TYPES.DESTROYER.id,
+        SHIP_TYPES.FRIGATE.id,
+        SHIP_TYPES.SCOUT.id,
+        SHIP_TYPES.COLONY_SHIP.id
+    ]),
+    [SHIP_CLASSES.MEDIUM]: Object.freeze([
+        SHIP_TYPES.CRUISER.id,
+        SHIP_TYPES.DESTROYER.id,
+        SHIP_TYPES.FRIGATE.id,
+        SHIP_TYPES.BATTLESHIP.id,
+        SHIP_TYPES.INTRUDER.id,
+        SHIP_TYPES.CARRIER.id,
+        SHIP_TYPES.DREADNOUGHT.id,
+        SHIP_TYPES.SCOUT.id,
+        SHIP_TYPES.COLONY_SHIP.id
+    ]),
+    [SHIP_CLASSES.HEAVY]: Object.freeze([
+        SHIP_TYPES.CRUISER.id,
+        SHIP_TYPES.FRIGATE.id,
+        SHIP_TYPES.DESTROYER.id,
+        SHIP_TYPES.SCOUT.id,
+        SHIP_TYPES.INTRUDER.id,
+        SHIP_TYPES.CARRIER.id,
+        SHIP_TYPES.BATTLESHIP.id,
+        SHIP_TYPES.DREADNOUGHT.id,
+        SHIP_TYPES.COLONY_SHIP.id
+    ])
+});
+
+const TARGET_PRIORITY_BY_TYPE = Object.freeze({
+    [SHIP_TYPES.CARRIER.id]: Object.freeze([
+        SHIP_TYPES.DREADNOUGHT.id,
+        SHIP_TYPES.BATTLESHIP.id,
+        SHIP_TYPES.CARRIER.id,
+        SHIP_TYPES.INTRUDER.id,
+        SHIP_TYPES.CRUISER.id,
+        SHIP_TYPES.DESTROYER.id,
+        SHIP_TYPES.FRIGATE.id,
+        SHIP_TYPES.SCOUT.id,
+        SHIP_TYPES.COLONY_SHIP.id
+    ]),
+    [SHIP_TYPES.INTRUDER.id]: Object.freeze([
+        SHIP_TYPES.CRUISER.id,
+        SHIP_TYPES.INTRUDER.id,
+        SHIP_TYPES.DESTROYER.id,
+        SHIP_TYPES.FRIGATE.id,
+        SHIP_TYPES.BATTLESHIP.id,
+        SHIP_TYPES.CARRIER.id,
+        SHIP_TYPES.DREADNOUGHT.id,
+        SHIP_TYPES.SCOUT.id,
+        SHIP_TYPES.COLONY_SHIP.id
+    ])
+});
+
+function getAliveShips(ships) {
+    return ships.filter(ship => !ship.destroyed);
+}
+
+function createEmptyTypeStatMap() {
+    const map = {};
+    SHIP_TYPE_IDS.forEach(typeId => {
+        map[typeId] = 0;
+    });
+    return map;
+}
+
+function createSideTelemetry(deployedByType = null) {
+    return {
+        deployedByType: deployedByType ? { ...deployedByType } : createEmptyTypeStatMap(),
+        survivorsByType: createEmptyTypeStatMap(),
+        lossesByType: createEmptyTypeStatMap(),
+        shotsByType: createEmptyTypeStatMap(),
+        hitsByType: createEmptyTypeStatMap(),
+        damageByType: createEmptyTypeStatMap(),
+        killCreditsByType: createEmptyTypeStatMap(),
+        orbitalTurretShots: 0,
+        orbitalTurretHits: 0,
+        orbitalTurretDamage: 0,
+        orbitalTurretKillCredits: 0
+    };
+}
+
+function normalizeFleetCountsByType(fleetData) {
+    const normalized = createEmptyTypeStatMap();
+    SHIP_TYPE_IDS.forEach(typeId => {
+        const count = Number(fleetData && fleetData[`ship${typeId}`]) || 0;
+        normalized[typeId] = Math.max(0, Math.floor(count));
+    });
+    return normalized;
+}
+
+function countFleetShots(ships) {
+    return ships.reduce((total, ship) => total + Math.max(0, Number(ship.attack) || 0), 0);
+}
+
+function getShipClass(typeId) {
+    return SHIP_CLASS_BY_TYPE[typeId] || SHIP_CLASSES.MEDIUM;
+}
+
+function getDamageMultiplier(attackerTypeId, targetTypeId) {
+    const attackerClass = getShipClass(attackerTypeId);
+    const targetClass = getShipClass(targetTypeId);
+    const row = DAMAGE_MATRIX[attackerClass];
+    if (!row) {
+        return 1.0;
+    }
+    return row[targetClass] || 1.0;
+}
+
+function getTargetPriorityForAttackerType(attackerTypeId, fallbackPriority) {
+    const typePriority = TARGET_PRIORITY_BY_TYPE[attackerTypeId];
+    if (typePriority) {
+        return typePriority;
+    }
+    const attackerClass = getShipClass(attackerTypeId);
+    const classPriority = TARGET_PRIORITY_BY_CLASS[attackerClass];
+    return classPriority || fallbackPriority || COMBAT_TARGET_PRIORITY;
+}
+
+function mergeDamageMaps(baseMap, additionalMap) {
+    additionalMap.forEach((damage, target) => {
+        baseMap.set(target, (baseMap.get(target) || 0) + damage);
+    });
+}
+
+function mergeContributionByTarget(baseMap, additionalMap) {
+    additionalMap.forEach((contribMap, target) => {
+        let currentMap = baseMap.get(target);
+        if (!currentMap) {
+            currentMap = new Map();
+            baseMap.set(target, currentMap);
+        }
+
+        contribMap.forEach((damage, attackerTypeId) => {
+            currentMap.set(attackerTypeId, (currentMap.get(attackerTypeId) || 0) + damage);
+        });
+    });
+}
+
+function createTargetQueue(targetShips, targetOrder) {
+    const orderedTargets = [];
+    targetOrder.forEach(targetTypeId => {
+        const typeTargets = targetShips.filter(ship => ship.type === targetTypeId);
+        orderedTargets.push(...typeTargets);
+    });
+    return orderedTargets;
+}
+
+function getNextPriorityTarget(targetShips, virtualHull, targetOrder) {
+    const orderedTargets = createTargetQueue(targetShips, targetOrder);
+    for (const target of orderedTargets) {
+        if ((virtualHull.get(target) || 0) > 0) {
+            return target;
+        }
+    }
+    return null;
+}
+
+function queueVolleyDamage({ firingShips, weaponTech, targetShieldTech, targetShips, targetOrder, telemetry }) {
+    const pendingDamage = new Map();
+    const contributionByTarget = new Map();
+    const virtualHull = new Map();
+    const totalShots = countFleetShots(firingShips);
+    let shotsSpentOnShips = 0;
+
+    targetShips.forEach(ship => {
+        virtualHull.set(ship, ship.hull);
+    });
+    let totalDamage = 0;
+
+    for (const attacker of firingShips) {
+        let attackerShots = Math.max(0, Number(attacker.attack) || 0);
+        const attackerPriority = getTargetPriorityForAttackerType(attacker.type, targetOrder);
+
+        while (attackerShots > 0) {
+            const target = getNextPriorityTarget(targetShips, virtualHull, attackerPriority);
+            if (!target) {
+                return {
+                    pendingDamage,
+                    totalDamage,
+                    shotsRemaining: Math.max(0, totalShots - shotsSpentOnShips)
+                };
+            }
+
+            attackerShots -= 1;
+            shotsSpentOnShips += 1;
+            if (telemetry && telemetry.shotsByType) {
+                telemetry.shotsByType[attacker.type] = (telemetry.shotsByType[attacker.type] || 0) + 1;
+            }
+
+            // Ship-class shield values contribute to evasion in addition to global tech.
+            if (!shotHits(targetShieldTech + (target.shields * 0.5))) {
+                continue;
+            }
+
+            const damage = calculateDamage(1, weaponTech) * getDamageMultiplier(attacker.type, target.type);
+            totalDamage += damage;
+            pendingDamage.set(target, (pendingDamage.get(target) || 0) + damage);
+            if (telemetry && telemetry.hitsByType && telemetry.damageByType) {
+                telemetry.hitsByType[attacker.type] = (telemetry.hitsByType[attacker.type] || 0) + 1;
+                telemetry.damageByType[attacker.type] = (telemetry.damageByType[attacker.type] || 0) + damage;
+            }
+            let targetContrib = contributionByTarget.get(target);
+            if (!targetContrib) {
+                targetContrib = new Map();
+                contributionByTarget.set(target, targetContrib);
+            }
+            targetContrib.set(attacker.type, (targetContrib.get(attacker.type) || 0) + damage);
+
+            const remainingHull = (virtualHull.get(target) || 0) - damage;
+            virtualHull.set(target, remainingHull);
+        }
+    }
+
+    return {
+        pendingDamage,
+        contributionByTarget,
+        totalDamage,
+        shotsRemaining: Math.max(0, totalShots - shotsSpentOnShips)
+    };
+}
+
+function queueOrbitalTurretVolley({ shots, weaponTech, targetShieldTech, targetShips, targetOrder, telemetry }) {
+    const pendingDamage = new Map();
+    const contributionByTarget = new Map();
+    const virtualHull = new Map();
+    const orderedTargets = createTargetQueue(targetShips, targetOrder);
+    let shotsRemaining = Math.max(0, Number(shots) || 0);
+    let targetIndex = 0;
+    let totalDamage = 0;
+
+    targetShips.forEach(ship => {
+        virtualHull.set(ship, ship.hull);
+    });
+
+    while (shotsRemaining > 0 && targetIndex < orderedTargets.length) {
+        shotsRemaining -= 1;
+        if (telemetry) {
+            telemetry.orbitalTurretShots += 1;
+        }
+        const target = orderedTargets[targetIndex];
+
+        if (!shotHits(targetShieldTech + (target.shields * 0.5))) {
+            continue;
+        }
+
+        const damage = calculateDamage(1, weaponTech);
+        totalDamage += damage;
+        pendingDamage.set(target, (pendingDamage.get(target) || 0) + damage);
+        if (telemetry) {
+            telemetry.orbitalTurretHits += 1;
+            telemetry.orbitalTurretDamage += damage;
+        }
+        let targetContrib = contributionByTarget.get(target);
+        if (!targetContrib) {
+            targetContrib = new Map();
+            contributionByTarget.set(target, targetContrib);
+        }
+        targetContrib.set(0, (targetContrib.get(0) || 0) + damage);
+
+        const remainingHull = (virtualHull.get(target) || 0) - damage;
+        virtualHull.set(target, remainingHull);
+        if (remainingHull <= 0) {
+            targetIndex += 1;
+        }
+    }
+
+    return {
+        pendingDamage,
+        contributionByTarget,
+        totalDamage,
+        shotsRemaining
+    };
+}
+
+function queueTurretDamage({ shots, targetShieldTech, groundTurrets, orbitalTurrets }) {
+    let shotsRemaining = Math.max(0, Number(shots) || 0);
+    let groundLoss = 0;
+    let orbitalLoss = 0;
+
+    while (shotsRemaining > 0 && (groundTurrets - groundLoss) > 0) {
+        shotsRemaining -= 1;
+        if (shotHits(targetShieldTech)) {
+            groundLoss += 1;
+        }
+    }
+
+    while (shotsRemaining > 0 && (groundTurrets - groundLoss) <= 0 && (orbitalTurrets - orbitalLoss) > 0) {
+        shotsRemaining -= 1;
+        if (shotHits(targetShieldTech)) {
+            orbitalLoss += 1;
+        }
+    }
+
+    return {
+        shotsRemaining,
+        groundLoss,
+        orbitalLoss,
+        turretsDestroyed: groundLoss + orbitalLoss
+    };
+}
+
+function applyQueuedDamage(targetShips, pendingDamage, contributionByTarget, telemetry) {
+    let destroyed = 0;
+
+    targetShips.forEach(ship => {
+        if (ship.destroyed) {
+            return;
+        }
+
+        const damage = pendingDamage.get(ship) || 0;
+        if (damage <= 0) {
+            return;
+        }
+
+        ship.hull -= damage;
+        if (ship.hull <= 0) {
+            ship.destroyed = true;
+            destroyed += 1;
+
+            if (contributionByTarget && telemetry && telemetry.killCreditsByType) {
+                const contributionMap = contributionByTarget.get(ship);
+                if (contributionMap && contributionMap.size > 0) {
+                    let totalContrib = 0;
+                    contributionMap.forEach(value => {
+                        totalContrib += Number(value) || 0;
+                    });
+
+                    if (totalContrib > 0) {
+                        contributionMap.forEach((value, attackerTypeId) => {
+                            const fraction = (Number(value) || 0) / totalContrib;
+                            if (!Number.isFinite(fraction) || fraction <= 0) {
+                                return;
+                            }
+
+                            if (attackerTypeId >= 1 && attackerTypeId <= 9) {
+                                telemetry.killCreditsByType[attackerTypeId] = (telemetry.killCreditsByType[attackerTypeId] || 0) + fraction;
+                            } else if (attackerTypeId === 0) {
+                                telemetry.orbitalTurretKillCredits += fraction;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    });
+
+    return destroyed;
 }
 
 /**
@@ -201,14 +609,16 @@ function conductBattle(attackerFleet, defenderFleet, attackerTech, defenderTech)
     });
     
     // Get orbital turrets and ground defenses
-    const orbitalTurrets = defenderFleet.orbitalTurret || 0;
-    const groundTurrets = defenderFleet.groundTurret || 0;
+    let orbitalTurrets = defenderFleet.orbitalTurret || 0;
+    let groundTurrets = defenderFleet.groundTurret || 0;
     
     // Battle round counter
     let round = 0;
     const maxRounds = 20; // Prevent infinite battles
     
     // Battle log for display
+    const attackerDeployedByType = normalizeFleetCountsByType(attackerFleet);
+    const defenderDeployedByType = normalizeFleetCountsByType(defenderFleet);
     const battleLog = {
         initial: {
             attackers: JSON.parse(JSON.stringify(attackers.map(ship => ({
@@ -223,15 +633,29 @@ function conductBattle(attackerFleet, defenderFleet, attackerTech, defenderTech)
             groundTurrets
         },
         rounds: [],
-        result: null
+        result: null,
+        telemetry: {
+            attacker: createSideTelemetry(attackerDeployedByType),
+            defender: createSideTelemetry(defenderDeployedByType)
+        }
     };
     
-    // Battle continues until one side is destroyed or max rounds reached
-    while (
-        attackers.some(ship => !ship.destroyed) && 
-        (defenders.some(ship => !ship.destroyed) || orbitalTurrets > 0 || groundTurrets > 0) && 
-        round < maxRounds
-    ) {
+    // Simultaneous-volley rounds avoid heavy first-strike bias and produce fairer fights.
+    while (round < maxRounds) {
+        const liveAttackers = getAliveShips(attackers);
+        const liveDefenders = getAliveShips(defenders);
+        const hasAttackers = liveAttackers.length > 0;
+        const hasDefenses = liveDefenders.length > 0 || orbitalTurrets > 0 || groundTurrets > 0;
+
+        if (!hasAttackers) {
+            battleLog.result = "defenderVictory";
+            break;
+        }
+        if (!hasDefenses) {
+            battleLog.result = "attackerVictory";
+            break;
+        }
+
         round++;
         const roundResult = {
             round,
@@ -241,147 +665,93 @@ function conductBattle(attackerFleet, defenderFleet, attackerTech, defenderTech)
             defendersDestroyed: 0,
             turretsDestroyed: 0
         };
-        
-        // Attackers fire
-        if (attackers.some(ship => !ship.destroyed && ship.attack > 0)) {
-            // Calculate total attack shots
-            const attackShots = attackers
-                .filter(ship => !ship.destroyed && ship.attack > 0)
-                .reduce((total, ship) => total + ship.attack, 0);
-            
-            let shotsRemaining = attackShots;
-            
-            // First target enemy ships in order of combat priority
-            const targetOrder = [
-                SHIP_TYPES.BATTLESHIP.id,
-                SHIP_TYPES.DESTROYER.id,
-                SHIP_TYPES.CRUISER.id,
-                SHIP_TYPES.FRIGATE.id,
-                SHIP_TYPES.CARRIER.id,
-                SHIP_TYPES.INTRUDER.id,
-                SHIP_TYPES.SCOUT.id,
-                SHIP_TYPES.COLONY_SHIP.id,
-                SHIP_TYPES.DREADNOUGHT.id,
-            ];
-            
-            // Target enemy ships in priority order
-            for (const targetTypeId of targetOrder) {
-                const targets = defenders.filter(ship => !ship.destroyed && ship.type === targetTypeId);
-                
-                while (shotsRemaining > 0 && targets.length > 0) {
-                    const target = targets[0]; // Target first ship of this type
-                    
-                    if (shotHits(defenderTech.shields)) {
-                        const damage = calculateDamage(1, attackerTech.weapons);
-                        target.hull -= damage;
-                        roundResult.defenderDamage += damage;
-                        
-                        if (target.hull <= 0) {
-                            target.destroyed = true;
-                            roundResult.defendersDestroyed++;
-                            targets.shift(); // Remove destroyed ship from targets
-                        }
-                    }
-                    
-                    shotsRemaining--;
-                }
-                
-                if (shotsRemaining <= 0) break;
-            }
-            
-            // If there are shots remaining and all ships are destroyed, target ground defenses
-            if (shotsRemaining > 0 && groundTurrets > 0) {
-                while (shotsRemaining > 0 && groundTurrets > 0) {
-                    if (shotHits(defenderTech.shields)) {
-                        const damage = calculateDamage(1, attackerTech.weapons);
-                        groundTurrets -= 1; // Each turret has 1 HP
-                        roundResult.turretsDestroyed += 1;
-                    }
-                    shotsRemaining--;
-                }
-            }
-            
-            // If there are still shots and ground turrets are gone, target orbital turrets
-            if (shotsRemaining > 0 && orbitalTurrets > 0 && groundTurrets <= 0) {
-                while (shotsRemaining > 0 && orbitalTurrets > 0) {
-                    if (shotHits(defenderTech.shields)) {
-                        const damage = calculateDamage(1, attackerTech.weapons);
-                        orbitalTurrets -= 1; // Each turret has 1 HP
-                        roundResult.turretsDestroyed += 1;
-                    }
-                    shotsRemaining--;
-                }
-            }
+        const attackerVolley = queueVolleyDamage({
+            firingShips: liveAttackers,
+            weaponTech: attackerTech.weapons,
+            targetShieldTech: defenderTech.shields,
+            targetShips: liveDefenders,
+            targetOrder: COMBAT_TARGET_PRIORITY,
+            telemetry: battleLog.telemetry.attacker
+        });
+
+        let turretResult = {
+            shotsRemaining: attackerVolley.shotsRemaining,
+            groundLoss: 0,
+            orbitalLoss: 0,
+            turretsDestroyed: 0
+        };
+        if (attackerVolley.shotsRemaining > 0 && (groundTurrets > 0 || orbitalTurrets > 0)) {
+            turretResult = queueTurretDamage({
+                shots: attackerVolley.shotsRemaining,
+                targetShieldTech: defenderTech.shields,
+                groundTurrets,
+                orbitalTurrets
+            });
         }
-        
-        // Check if defenders are all destroyed
-        if (!defenders.some(ship => !ship.destroyed) && orbitalTurrets <= 0 && groundTurrets <= 0) {
-            battleLog.result = "attackerVictory";
-            break;
+
+        const defenderVolley = queueVolleyDamage({
+            firingShips: liveDefenders,
+            weaponTech: defenderTech.weapons,
+            targetShieldTech: attackerTech.shields,
+            targetShips: liveAttackers,
+            targetOrder: COMBAT_TARGET_PRIORITY,
+            telemetry: battleLog.telemetry.defender
+        });
+
+        let orbitalVolley = {
+            pendingDamage: new Map(),
+            contributionByTarget: new Map(),
+            totalDamage: 0,
+            shotsRemaining: 0
+        };
+        if (orbitalTurrets > 0 && liveAttackers.length > 0) {
+            orbitalVolley = queueOrbitalTurretVolley({
+                shots: orbitalTurrets,
+                weaponTech: defenderTech.weapons,
+                targetShieldTech: attackerTech.shields,
+                targetShips: liveAttackers,
+                targetOrder: COMBAT_TARGET_PRIORITY,
+                telemetry: battleLog.telemetry.defender
+            });
         }
-        
-        // Defenders fire
-        if (defenders.some(ship => !ship.destroyed && ship.attack > 0) || orbitalTurrets > 0) {
-            // Calculate total attack shots from ships
-            const defenseShots = defenders
-                .filter(ship => !ship.destroyed && ship.attack > 0)
-                .reduce((total, ship) => total + ship.attack, 0);
-            
-            // Add shots from orbital turrets (each turret fires 1 shot)
-            const totalDefenseShots = defenseShots + orbitalTurrets;
-            let shotsRemaining = totalDefenseShots;
-            
-            // Target attackers in priority order
-            const targetOrder = [
-                SHIP_TYPES.BATTLESHIP.id,
-                SHIP_TYPES.DREADNOUGHT.id,
-                SHIP_TYPES.CARRIER.id,
-                SHIP_TYPES.CRUISER.id,
-                SHIP_TYPES.DESTROYER.id,
-                SHIP_TYPES.FRIGATE.id,
-                SHIP_TYPES.INTRUDER.id,
-                SHIP_TYPES.SCOUT.id,
-                SHIP_TYPES.COLONY_SHIP.id,
-            ];
-            
-            for (const targetTypeId of targetOrder) {
-                const targets = attackers.filter(ship => !ship.destroyed && ship.type === targetTypeId);
-                
-                while (shotsRemaining > 0 && targets.length > 0) {
-                    const target = targets[0];
-                    
-                    if (shotHits(attackerTech.shields)) {
-                        // Orbital turrets do fixed damage, ships do damage based on defender tech
-                        const damage = calculateDamage(1, defenderTech.weapons);
-                        target.hull -= damage;
-                        roundResult.attackerDamage += damage;
-                        
-                        if (target.hull <= 0) {
-                            target.destroyed = true;
-                            roundResult.attackersDestroyed++;
-                            targets.shift(); // Remove destroyed ship
-                        }
-                    }
-                    
-                    shotsRemaining--;
-                }
-                
-                if (shotsRemaining <= 0) break;
-            }
-        }
-        
-        // Check if attackers are all destroyed
-        if (!attackers.some(ship => !ship.destroyed)) {
+
+        roundResult.defenderDamage = attackerVolley.totalDamage;
+        roundResult.attackerDamage = defenderVolley.totalDamage + orbitalVolley.totalDamage;
+        roundResult.defendersDestroyed = applyQueuedDamage(
+            liveDefenders,
+            attackerVolley.pendingDamage,
+            attackerVolley.contributionByTarget,
+            battleLog.telemetry.attacker
+        );
+        mergeDamageMaps(defenderVolley.pendingDamage, orbitalVolley.pendingDamage);
+        mergeContributionByTarget(defenderVolley.contributionByTarget, orbitalVolley.contributionByTarget);
+        roundResult.attackersDestroyed = applyQueuedDamage(
+            liveAttackers,
+            defenderVolley.pendingDamage,
+            defenderVolley.contributionByTarget,
+            battleLog.telemetry.defender
+        );
+        roundResult.turretsDestroyed = turretResult.turretsDestroyed;
+
+        groundTurrets = Math.max(0, groundTurrets - turretResult.groundLoss);
+        orbitalTurrets = Math.max(0, orbitalTurrets - turretResult.orbitalLoss);
+
+        battleLog.rounds.push(roundResult);
+
+        const attackersStillAlive = getAliveShips(attackers).length > 0;
+        const defendersStillAlive = getAliveShips(defenders).length > 0 || orbitalTurrets > 0 || groundTurrets > 0;
+        if (!attackersStillAlive) {
             battleLog.result = "defenderVictory";
             break;
         }
-        
-        // Record this round's result
-        battleLog.rounds.push(roundResult);
+        if (!defendersStillAlive) {
+            battleLog.result = "attackerVictory";
+            break;
+        }
     }
     
     // If max rounds reached without conclusion, defender wins (stalemate favors defender)
-    if (round >= maxRounds && !battleLog.result) {
+    if (!battleLog.result) {
         battleLog.result = "defenderVictory";
     }
     
@@ -410,6 +780,19 @@ function conductBattle(attackerFleet, defenderFleet, attackerTech, defenderTech)
         orbitalTurrets,
         groundTurrets
     };
+
+    SHIP_TYPE_IDS.forEach(typeId => {
+        const attackerSurvivors = Number(remainingAttackers[typeId]) || 0;
+        const defenderSurvivors = Number(remainingDefenders[typeId]) || 0;
+
+        battleLog.telemetry.attacker.survivorsByType[typeId] = attackerSurvivors;
+        battleLog.telemetry.defender.survivorsByType[typeId] = defenderSurvivors;
+
+        const attackerDeployed = Number(attackerDeployedByType[typeId]) || 0;
+        const defenderDeployed = Number(defenderDeployedByType[typeId]) || 0;
+        battleLog.telemetry.attacker.lossesByType[typeId] = Math.max(0, attackerDeployed - attackerSurvivors);
+        battleLog.telemetry.defender.lossesByType[typeId] = Math.max(0, defenderDeployed - defenderSurvivors);
+    });
     
     return battleLog;
 }

@@ -292,25 +292,81 @@ class MockDatabase {
                     return this._async(callback, null, { affectedRows: 0 });
                 }
 
+                // Params are ordered: SET clause params first, then WHERE clause params
                 const paramsCopy = Array.isArray(params) ? [...params] : [];
-                const whereValue = typeof paramsCopy[paramsCopy.length - 1] === 'number'
-                    ? paramsCopy.pop()
-                    : Number(paramsCopy.pop());
-                const player = players.get(Number(whereValue));
-                if (!player) {
-                    return this._async(callback, null, { affectedRows: 0 });
-                }
 
                 const setClause = normalized
                     .replace(/^UPDATE `?players\d+`? SET /i, '')
                     .split(' WHERE ')[0];
                 const assignments = setClause.split(',').map(part => part.trim());
 
+                // Count SET clause placeholders (count all ? in SET clause)
+                let setParamCount = 0;
+                assignments.forEach(assignment => {
+                    const matches = assignment.match(/\?/g);
+                    if (matches) setParamCount += matches.length;
+                });
+
+                // Extract SET params and WHERE params
+                const setParams = paramsCopy.slice(0, setParamCount);
+                const whereParams = paramsCopy.slice(setParamCount);
+
+                // Parse WHERE clause to find userid and conditions
+                const whereMatch = normalized.match(/WHERE (.+)$/i);
+                const whereClause = whereMatch ? whereMatch[1] : '';
+                const conditions = whereClause.split(/\s+AND\s+/i);
+
+                let userId = null;
+                const conditionalChecks = [];
+                let whereParamIdx = 0;
+
+                conditions.forEach(cond => {
+                    if (/userid = \?/i.test(cond)) {
+                        userId = Number(whereParams[whereParamIdx++]);
+                        return;
+                    }
+
+                    const gteMatch = cond.match(/([a-z_]+) >= \?/i);
+                    if (gteMatch) {
+                        conditionalChecks.push({ field: gteMatch[1], op: '>=', value: Number(whereParams[whereParamIdx++]) });
+                        return;
+                    }
+
+                    const gtMatch = cond.match(/([a-z_]+) > \?/i);
+                    if (gtMatch) {
+                        conditionalChecks.push({ field: gtMatch[1], op: '>', value: Number(whereParams[whereParamIdx++]) });
+                        return;
+                    }
+                });
+
+                // Fallback for simple WHERE userid = ?
+                if (userId === null && whereParams.length > 0) {
+                    userId = Number(whereParams[0]);
+                }
+
+                const player = players.get(userId);
+                if (!player) {
+                    return this._async(callback, null, { affectedRows: 0 });
+                }
+
+                // Check conditional WHERE clauses
+                for (const check of conditionalChecks) {
+                    const fieldValue = Number(player[check.field] || 0);
+                    if (check.op === '>=' && fieldValue < check.value) {
+                        return this._async(callback, null, { affectedRows: 0 });
+                    }
+                    if (check.op === '>' && fieldValue <= check.value) {
+                        return this._async(callback, null, { affectedRows: 0 });
+                    }
+                }
+
+                // Apply SET clause assignments
+                let setParamIdx = 0;
                 assignments.forEach(assignment => {
                     const directMatch = assignment.match(/^([a-z_]+) = \?/i);
                     if (directMatch) {
                         const field = directMatch[1];
-                        player[field] = paramsCopy.shift();
+                        player[field] = setParams[setParamIdx++];
                         return;
                     }
 
@@ -325,7 +381,7 @@ class MockDatabase {
                     if (selfAddMatch) {
                         const field = selfAddMatch[1];
                         const source = selfAddMatch[2];
-                        const delta = Number(paramsCopy.shift());
+                        const delta = Number(setParams[setParamIdx++]);
                         player[field] = Number(player[source] || 0) + delta;
                         return;
                     }
@@ -334,7 +390,7 @@ class MockDatabase {
                     if (selfSubMatch) {
                         const field = selfSubMatch[1];
                         const source = selfSubMatch[2];
-                        const delta = Number(paramsCopy.shift());
+                        const delta = Number(setParams[setParamIdx++]);
                         player[field] = Number(player[source] || 0) - delta;
                         return;
                     }
@@ -402,7 +458,15 @@ class MockDatabase {
                 const { gameId } = this._extractPlayerTable(normalized);
                 const players = this._playerTables.get(gameId);
                 const rows = players
-                    ? Array.from(players.values()).map(player => ({ userid: player.userid }))
+                    ? Array.from(players.values())
+                        .sort((a, b) => {
+                            const timeDiff = new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+                            if (timeDiff !== 0) {
+                                return timeDiff;
+                            }
+                            return a.userid - b.userid;
+                        })
+                        .map(player => ({ userid: player.userid }))
                     : [];
                 return this._async(callback, null, rows);
             }
@@ -526,9 +590,14 @@ class MockDatabase {
                 const map = this._ensureMap(gameId);
 
                 if (/^INSERT INTO `?map\d+`?/i.test(normalized)) {
-                    if (Array.isArray(params) && params.length >= 5) {
-                        const [sectorid, x, y, type, sectortype] = params.map(Number);
-                        map.set(Number(sectorid), this._buildMapRow(sectorid, x, y, type, sectortype));
+                    if (Array.isArray(params) && params.length >= 4) {
+                        const numericParams = params.map(Number);
+                        const sectorid = Number(numericParams[0]);
+                        const x = Number(numericParams[1]);
+                        const y = Number(numericParams[2]);
+                        const type = Number(numericParams[3]) || 0;
+                        const sectortype = Number.isFinite(numericParams[4]) ? Number(numericParams[4]) : type;
+                        map.set(sectorid, this._buildMapRow(sectorid, x, y, type, sectortype));
                     } else {
                         const [, valuesPart] = normalized.split(/VALUES/i);
                         if (valuesPart) {
@@ -889,6 +958,14 @@ class MockDatabase {
             }
 
             if (/^SELECT \* FROM premium_purchases WHERE user_id = \? AND race_id = \? AND status = "completed"/i.test(normalized)) {
+                return this._async(callback, null, []);
+            }
+
+            if (/^SELECT DISTINCT product_id FROM premium_purchases WHERE user_id = \? AND status = 'completed' UNION SELECT CONCAT\('race_', race_id\) as product_id FROM premium_purchases WHERE user_id = \? AND status = 'completed'/i.test(normalized)) {
+                return this._async(callback, null, []);
+            }
+
+            if (/FROM payment_transactions pt LEFT JOIN product_catalog pp ON pt\.product_id = pp\.id WHERE pt\.user_id = \? ORDER BY pt\.created_at DESC LIMIT \?/i.test(normalized)) {
                 return this._async(callback, null, []);
             }
 

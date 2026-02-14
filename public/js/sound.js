@@ -57,19 +57,10 @@ const SoundSystem = (function() {
     // Audio buffer cache
     const audioBuffers = new Map();
     const audioElements = new Map();
+    let audioContextCreationFailed = false;
     
     // Initialize the sound system
     function initialize() {
-        // Create audio context
-        try {
-            window.AudioContext = window.AudioContext || window.webkitAudioContext;
-            audioContext = new AudioContext();
-        } catch (e) {
-            console.warn('Web Audio API not supported:', e);
-            enabled = false;
-            return;
-        }
-        
         // Load saved preferences
         loadPreferences();
         
@@ -84,6 +75,27 @@ const SoundSystem = (function() {
         
         // Create UI controls
         createVolumeControls();
+    }
+
+    function ensureAudioContext() {
+        if (audioContext || audioContextCreationFailed) {
+            return audioContext;
+        }
+
+        try {
+            const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextCtor) {
+                audioContextCreationFailed = true;
+                return null;
+            }
+
+            audioContext = new AudioContextCtor();
+            return audioContext;
+        } catch (error) {
+            audioContextCreationFailed = true;
+            console.warn('Unable to initialize audio context:', error);
+            return null;
+        }
     }
     
     // Load saved preferences
@@ -329,13 +341,14 @@ const SoundSystem = (function() {
     
     // Placeholder sound generation (for missing audio files)
     function generatePlaceholderSound(type) {
-        if (!audioContext) return;
+        const ctx = ensureAudioContext();
+        if (!ctx) return;
         
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
         
         oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
+        gainNode.connect(ctx.destination);
         
         // Different sound types
         switch (type) {
@@ -361,10 +374,10 @@ const SoundSystem = (function() {
         }
         
         oscillator.start();
-        oscillator.stop(audioContext.currentTime + 0.1);
+        oscillator.stop(ctx.currentTime + 0.1);
         
         // Fade out
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
     }
     
     return {

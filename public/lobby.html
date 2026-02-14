@@ -63,6 +63,12 @@
             margin: 0;
             color: rgba(232,236,255,0.75);
         }
+        .hero-status-col {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-end;
+        }
         .cta-row {
             display: flex;
             gap: 12px;
@@ -79,6 +85,22 @@
             font-weight: 600;
             font-size: 14px;
         }
+        .pill-connection[data-state="ready"] {
+            background: rgba(93, 245, 180, 0.18);
+            border: 1px solid rgba(93, 245, 180, 0.5);
+            color: #bdfce3;
+        }
+        .pill-connection[data-state="authorizing"] {
+            background: rgba(255, 213, 108, 0.16);
+            border: 1px solid rgba(255, 213, 108, 0.45);
+            color: #ffe4a4;
+        }
+        .pill-connection[data-state="connecting"],
+        .pill-connection[data-state="disconnected"] {
+            background: rgba(255, 153, 153, 0.14);
+            border: 1px solid rgba(255, 153, 153, 0.42);
+            color: #ffd1d1;
+        }
         .panel-grid {
             display: grid;
             grid-template-columns: 380px 1fr;
@@ -91,6 +113,10 @@
             }
             .hero {
                 flex-direction: column;
+            }
+            .hero-status-col {
+                width: 100%;
+                align-items: flex-start;
             }
         }
         @media (max-width: 640px) {
@@ -295,7 +321,10 @@
                     <div class="pill">Race selection on join</div>
                 </div>
             </div>
-            <div class="pill">Players online: <span id="online-count">?</span></div>
+            <div class="hero-status-col">
+                <div class="pill">Players online: <span id="online-count">?</span></div>
+                <div id="lobbyConnectionState" class="pill pill-connection" data-state="connecting">Lobby: Connecting…</div>
+            </div>
         </div>
 
         <div class="panel-grid">

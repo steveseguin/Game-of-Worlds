@@ -27,6 +27,7 @@ const url = require('url');
 
 // Import server logic
 const serverLogic = require('./server');
+const { createMockDatabase } = require('./lib/mock-db');
 
 // Use shared game state from server.js
 const { gameState } = serverLogic;
@@ -224,27 +225,21 @@ function connectToDatabase() {
     });
 }
 
-function initializeDatabase() {
-    if (USE_MOCK_DB) {
-        const { createMockDatabase } = require('./lib/mock-db');
-        const mockDb = createMockDatabase();
-        mockDb.isOffline = false;
-        db = mockDb;
-        serverLogic.setDatabase(mockDb);
-        console.log('Using in-memory mock database');
-        return;
-    }
-
+if (USE_MOCK_DB) {
+    const mockDb = createMockDatabase();
+    setActiveDatabase(mockDb);
+    console.log('Using in-memory mock database (USE_MOCK_DB=1)');
+} else {
     connectToDatabase();
 }
 
-initializeDatabase();
-
 // Create HTTP server
 const httpServer = http.createServer((request, response) => {
+    console.log(`${new Date()} Received request for ${request.url}`);
+    
+    // Parse URL
     const parsedUrl = url.parse(request.url);
     let pathname = parsedUrl.pathname;
-    console.log(`${new Date()} Received request for ${request.url}`);
     
     // Handle API endpoints
     if (pathname === '/login' && request.method === 'POST') {
@@ -276,7 +271,6 @@ const httpServer = http.createServer((request, response) => {
         serverLogic.handleSpendCrystals(request, response);
         return;
     }
-    
     if (pathname === '/config.js') {
         const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
         const paymentsEnabled = Boolean(process.env.STRIPE_SECRET_KEY && publishableKey);
@@ -284,13 +278,12 @@ const httpServer = http.createServer((request, response) => {
             `window.STRIPE_PUBLISHABLE_KEY = ${JSON.stringify(publishableKey)};`,
             `window.GAME_FEATURES = Object.assign({ paymentsEnabled: ${paymentsEnabled} }, window.GAME_FEATURES || {});`
         ].join('\n');
-        const headers = {
+        response.writeHead(200, {
             'Content-Type': 'application/javascript; charset=utf-8',
             ...SECURITY_HEADERS,
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Content-Length': Buffer.byteLength(payload, 'utf8')
-        };
-        response.writeHead(200, headers);
+        });
         if (request.method === 'HEAD') {
             response.end();
             return;
@@ -299,91 +292,55 @@ const httpServer = http.createServer((request, response) => {
         return;
     }
 
-    if (pathname === '/api/config') {
+    if (pathname === '/api/config' && request.method === 'GET') {
         const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
         const paymentsEnabled = Boolean(process.env.STRIPE_SECRET_KEY && publishableKey);
         const body = JSON.stringify({
             stripePublishableKey: publishableKey,
             paymentsEnabled
         });
-        const headers = {
+        response.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
             ...SECURITY_HEADERS,
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Content-Length': Buffer.byteLength(body, 'utf8')
-        };
-        response.writeHead(200, headers);
-        if (request.method === 'HEAD') {
-            response.end();
-            return;
-        }
+        });
         response.end(body);
         return;
     }
-
-    // Helper to parse cookies
-    const parseCookies = (req) => {
-        return req.headers.cookie ? req.headers.cookie.split(';').reduce((acc, cookie) => {
-            const [key, value] = cookie.trim().split('=');
-            acc[key] = value;
-            return acc;
-        }, {}) : {};
-    };
-
-    // Helper to verify user auth for API endpoints
-    const verifyApiAuth = (req, res, requestedUserId, callback) => {
-        const cookies = parseCookies(req);
-        const authUserId = cookies.userId;
-        const tempKey = cookies.tempKey;
-
-        if (!authUserId || !tempKey) {
-            res.writeHead(401, {'Content-Type': 'application/json'});
-            res.end(JSON.stringify({ error: 'Authentication required' }));
-            return;
-        }
-
-        // User can only access their own data
-        if (authUserId !== requestedUserId) {
-            res.writeHead(403, {'Content-Type': 'application/json'});
-            res.end(JSON.stringify({ error: 'Access denied' }));
-            return;
-        }
-
-        // Verify credentials
-        db.query('SELECT tempkey FROM users WHERE id = ?', [authUserId], (err, results) => {
-            if (err || results.length === 0 || results[0].tempkey !== tempKey) {
-                res.writeHead(401, {'Content-Type': 'application/json'});
-                res.end(JSON.stringify({ error: 'Invalid credentials' }));
-                return;
-            }
-            callback();
-        });
-    };
-
+    
     // Handle balance query
     const balanceMatch = pathname.match(/^\/api\/user\/(\d+)\/balance$/);
     if (balanceMatch && request.method === 'GET') {
-        verifyApiAuth(request, response, balanceMatch[1], () => {
-            serverLogic.handleGetBalance(request, response, balanceMatch[1]);
-        });
+        serverLogic.handleGetBalance(request, response, balanceMatch[1]);
         return;
     }
-
+    
     // Handle owned items query
     const ownedMatch = pathname.match(/^\/api\/user\/(\d+)\/owned-items$/);
     if (ownedMatch && request.method === 'GET') {
-        verifyApiAuth(request, response, ownedMatch[1], () => {
-            serverLogic.handleGetOwnedItems(request, response, ownedMatch[1]);
-        });
+        serverLogic.handleGetOwnedItems(request, response, ownedMatch[1]);
         return;
     }
-
+    
     // Handle purchase history query
     const historyMatch = pathname.match(/^\/api\/user\/(\d+)\/purchase-history$/);
     if (historyMatch && request.method === 'GET') {
-        verifyApiAuth(request, response, historyMatch[1], () => {
-            serverLogic.handleGetPurchaseHistory(request, response, historyMatch[1]);
-        });
+        serverLogic.handleGetPurchaseHistory(request, response, historyMatch[1]);
+        return;
+    }
+
+    // Handle active game query
+    const currentGameMatch = pathname.match(/^\/api\/user\/(\d+)\/current-game$/);
+    if (currentGameMatch && request.method === 'GET') {
+        serverLogic.handleGetCurrentGame(request, response, currentGameMatch[1]);
+        return;
+    }
+
+    // Handle live combat telemetry query
+    const combatTelemetryMatch = pathname.match(/^\/api\/game\/(\d+)\/combat-telemetry$/);
+    if (combatTelemetryMatch && request.method === 'GET') {
+        serverLogic.handleGetCombatTelemetry(request, response, combatTelemetryMatch[1]);
         return;
     }
     
@@ -585,10 +542,6 @@ wsServer.on('request', request => {
     
     // Connection close handler
     connection.on('close', (reasonCode, description) => {
-        if (connection.gameid) {
-            serverLogic.handlePlayerDisconnect(connection);
-        }
-
         const index = clients.indexOf(connection);
         if (index !== -1) {
             clients.splice(index, 1);
@@ -603,7 +556,7 @@ wsServer.on('request', request => {
         
         // Notify other players in the same game
         if (connection.gameid) {
-            broadcastPlayerList(connection.gameid);
+            serverLogic.broadcastPlayerList(connection.gameid);
         }
     });
 });
@@ -615,6 +568,24 @@ function handleCommand(data, connection) {
     switch (command) {
         case "start":
             serverLogic.handleGameStart(connection);
+            break;
+        case "creategame":
+            serverLogic.handleCreateGame(data, connection);
+            break;
+        case "gamelist":
+            serverLogic.handleGameList(connection);
+            break;
+        case "leavegame":
+            serverLogic.handleLeaveGame(connection);
+            break;
+        case "addai":
+            serverLogic.handleAddAi(data, connection);
+            break;
+        case "changerace":
+            serverLogic.handleChangeRace(data, connection);
+            break;
+        case "surrender":
+            serverLogic.handleSurrender(connection);
             break;
         case "colonize":
             serverLogic.colonizePlanet(connection);
@@ -631,9 +602,6 @@ function handleCommand(data, connection) {
         case "buybuilding":
             serverLogic.buyBuilding(data, connection);
             break;
-        case "creategame":
-            serverLogic.handleCreateGame(data, connection);
-            break;
         case "move":
             serverLogic.moveFleet(data, connection);
             break;
@@ -649,29 +617,11 @@ function handleCommand(data, connection) {
         case "update":
             serverLogic.updateResources(connection);
             break;
-        case "gamelist":
-            serverLogic.handleGameList(connection);
-            break;
         case "joingame":
             serverLogic.handleJoinGame(data, connection);
             break;
-        case "leavegame":
-            serverLogic.handleLeaveGame(connection);
-            break;
-        case "addai":
-            serverLogic.handleAddAi(data, connection);
-            break;
         case "getunlockedraces":
             serverLogic.handleGetUnlockedRaces(connection);
-            break;
-        case "changerace":
-            serverLogic.handleChangeRace(data, connection);
-            break;
-        case "standingorders":
-            serverLogic.handleStandingOrders(data, connection);
-            break;
-        case "applyorders":
-            serverLogic.handleApplyStandingOrders(connection);
             break;
         default:
             connection.sendUTF(`Unknown command: ${command}`);
@@ -697,23 +647,7 @@ function broadcastToGame(sender, message) {
 }
 
 function broadcastPlayerList(gameId) {
-    let playerList = "pl";
-    
-    // Build list of players in this game
-    clients.forEach(client => {
-        if (client.gameid === gameId) {
-            playerList += ":" + client.name;
-        }
-    });
-    
-    // Only broadcast if we have players
-    if (playerList !== "pl") {
-        clients.forEach(client => {
-            if (client.gameid === gameId) {
-                client.sendUTF(playerList);
-            }
-        });
-    }
+    serverLogic.broadcastPlayerList(gameId);
 }
 
 // in rewrite/index.js - complete the authUser function
@@ -753,14 +687,13 @@ function authUser(message, connection) {
             return;
         }
 
-        // Authentication successful - establish connection mapping
-        connection.name = playerId;
-        connection.gameid = user.currentgame || null;
+        connection.name = String(playerId);
         clientMap[playerId] = connection;
-        
+
         if (user.currentgame) {
+            connection.gameid = user.currentgame;
             console.log(`Player ${playerId} authenticated, joining game ${user.currentgame}`);
-            
+
             if (turns[connection.gameid] > 0) {
                 connection.sendUTF("You have re-connected to a game that is already in progress.");
                 serverLogic.updateResources(connection);
@@ -769,12 +702,14 @@ function authUser(message, connection) {
                 connection.sendUTF("lobby::");
                 connection.sendUTF("The game has yet to begin. Welcome.");
             }
-            
+
             broadcastPlayerList(connection.gameid);
-        } else {
-            console.log(`Player ${playerId} authenticated for lobby access`);
-            connection.sendUTF("lobby::");
-            serverLogic.handleGameList(connection);
+            return;
         }
+
+        connection.gameid = null;
+        connection.sendUTF("lobby::");
+        serverLogic.handleGameList(connection);
+        console.log(`Player ${playerId} authenticated in lobby mode`);
     });
 }

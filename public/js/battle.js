@@ -13,6 +13,14 @@
 const BattleSystem = (function() {
     // Array to store animation timers for cleanup
     let battleAnimationTimers = [];
+
+    function parseFleetTotal(parts, startIndex) {
+        let sum = 0;
+        for (let i = 0; i < 9; i++) {
+            sum += parseInt(parts[startIndex + i], 10) || 0;
+        }
+        return sum;
+    }
     
     function createBattleVisualization(message) {
         console.log("Creating battle visualization", message);
@@ -24,6 +32,14 @@ const BattleSystem = (function() {
         // Parse battle data
         const parts = message.split(':');
         if (parts.length < 20) return;
+
+        const attackerInitial = parseFleetTotal(parts, 1);
+        const defenderInitial = parseFleetTotal(parts, 10) + (parseInt(parts[19], 10) || 0) + (parseInt(parts[20], 10) || 0);
+        const hasFinalState = parts.length >= 40;
+        const attackerFinal = hasFinalState ? parseFleetTotal(parts, 21) : attackerInitial;
+        const defenderFinal = hasFinalState
+            ? parseFleetTotal(parts, 30) + (parseInt(parts[39], 10) || 0) + (parseInt(parts[40], 10) || 0)
+            : defenderInitial;
         
         // Remove any existing battle ground
         const existingBattle = document.getElementById('battleGround');
@@ -43,16 +59,46 @@ const BattleSystem = (function() {
         battleDiv.style.backgroundImage = 'url(./images/spacebak.jpg)';
         battleDiv.style.zIndex = '1000';
         battleDiv.style.display = 'block';
+        battleDiv.style.border = '1px solid rgba(130, 170, 255, 0.4)';
+        battleDiv.style.borderRadius = '10px';
+        battleDiv.style.overflow = 'hidden';
         document.body.appendChild(battleDiv);
+
+        const hud = document.createElement('div');
+        hud.id = 'battleHud';
+        hud.style.position = 'absolute';
+        hud.style.left = '2%';
+        hud.style.right = '2%';
+        hud.style.top = '2%';
+        hud.style.minHeight = '54px';
+        hud.style.padding = '8px 12px';
+        hud.style.background = 'rgba(6, 11, 26, 0.72)';
+        hud.style.border = '1px solid rgba(130, 170, 255, 0.35)';
+        hud.style.borderRadius = '8px';
+        hud.style.color = '#dce7ff';
+        hud.style.display = 'flex';
+        hud.style.alignItems = 'center';
+        hud.style.justifyContent = 'space-between';
+        hud.style.fontSize = '13px';
+        hud.innerHTML = `
+            <div id="battleHudAttackers"><b>Attackers</b>: ${attackerInitial} engaged</div>
+            <div id="battleRoundIndicator"><b>Engagement</b>: live</div>
+            <div id="battleHudDefenders"><b>Defenders</b>: ${defenderInitial} engaged</div>
+        `;
+        battleDiv.appendChild(hud);
         
         // Add skip button
         const skipButton = document.createElement('button');
         skipButton.id = 'stopBattle';
         skipButton.style.position = 'absolute';
-        skipButton.style.right = '15%';
-        skipButton.style.width = '5%';
-        skipButton.style.height = '3%';
-        skipButton.style.top = '10%';
+        skipButton.style.right = '2%';
+        skipButton.style.width = '80px';
+        skipButton.style.height = '34px';
+        skipButton.style.top = '2%';
+        skipButton.style.borderRadius = '6px';
+        skipButton.style.background = '#1d3559';
+        skipButton.style.color = '#dce7ff';
+        skipButton.style.border = '1px solid rgba(130, 170, 255, 0.55)';
         skipButton.innerHTML = 'SKIP';
         skipButton.onclick = () => {
             document.body.removeChild(battleDiv);
@@ -63,8 +109,8 @@ const BattleSystem = (function() {
         const attackerHeader = document.createElement('h1');
         attackerHeader.id = 'atttxt';
         attackerHeader.style.position = 'absolute';
-        attackerHeader.style.right = '15%';
-        attackerHeader.style.top = '12%';
+        attackerHeader.style.right = '12%';
+        attackerHeader.style.top = '14%';
         attackerHeader.innerHTML = 'Attackers';
         battleDiv.appendChild(attackerHeader);
         
@@ -72,7 +118,7 @@ const BattleSystem = (function() {
         defenderHeader.id = 'deftxt';
         defenderHeader.style.position = 'absolute';
         defenderHeader.style.right = '80%';
-        defenderHeader.style.top = '12%';
+        defenderHeader.style.top = '14%';
         defenderHeader.innerHTML = 'Defenders';
         battleDiv.appendChild(defenderHeader);
         
@@ -119,13 +165,29 @@ const BattleSystem = (function() {
             animateBattleRound(parts, round, battleDiv);
             round++;
         }
+
+        const summaryTimer = setTimeout(() => {
+            const attackerHud = document.getElementById('battleHudAttackers');
+            const defenderHud = document.getElementById('battleHudDefenders');
+            const roundHud = document.getElementById('battleRoundIndicator');
+            if (attackerHud) {
+                attackerHud.innerHTML = `<b>Attackers</b>: ${attackerInitial} -> ${attackerFinal}`;
+            }
+            if (defenderHud) {
+                defenderHud.innerHTML = `<b>Defenders</b>: ${defenderInitial} -> ${defenderFinal}`;
+            }
+            if (roundHud) {
+                roundHud.innerHTML = `<b>Engagement</b>: resolved`;
+            }
+        }, 4200);
+        battleAnimationTimers.push(summaryTimer);
         
-        // Automatically close after 20 seconds
+        // Automatically close after a short post-resolution window
         const closeTimer = setTimeout(() => {
             if (document.getElementById('battleGround')) {
                 document.body.removeChild(document.getElementById('battleGround'));
             }
-        }, 20000);
+        }, 15000);
         
         battleAnimationTimers.push(closeTimer);
     }
@@ -149,9 +211,14 @@ const BattleSystem = (function() {
     }
     
     function animateBattleRound(battleData, round, container) {
-        const delay = 5000 * round;
+        const delay = 3200 * round;
         
         const roundTimer = setTimeout(() => {
+            const roundHud = document.getElementById('battleRoundIndicator');
+            if (roundHud) {
+                roundHud.innerHTML = `<b>Engagement</b>: exchange ${round}`;
+            }
+
             // For each ship type (9 attacker types + 9 defender types)
             for (let i = 0; i < 18; i++) {
                 const beforeCount = parseInt(battleData[i + 1]) || 0;
@@ -199,6 +266,55 @@ const BattleSystem = (function() {
         
         battleAnimationTimers.push(roundTimer);
     }
+
+    function showBattleSummary(summary) {
+        const existingSummary = document.getElementById('battleSummaryCard');
+        if (existingSummary && existingSummary.parentNode) {
+            existingSummary.parentNode.removeChild(existingSummary);
+        }
+
+        const normalizedResult = summary.result === 'attackerVictory'
+            ? 'Attacker Victory'
+            : summary.result === 'defenderVictory'
+                ? 'Defender Victory'
+                : 'Inconclusive';
+        const visibilityLabel = /stealth/i.test(summary.reason)
+            ? 'Limited telemetry (stealth)'
+            : /overwhelming/i.test(summary.reason)
+                ? 'Limited telemetry (overwhelming force)'
+                : 'Full telemetry';
+
+        const card = document.createElement('div');
+        card.id = 'battleSummaryCard';
+        card.style.position = 'fixed';
+        card.style.right = '20px';
+        card.style.bottom = '20px';
+        card.style.maxWidth = '360px';
+        card.style.padding = '14px 16px';
+        card.style.borderRadius = '10px';
+        card.style.background = 'rgba(10, 16, 33, 0.94)';
+        card.style.border = '1px solid rgba(130, 170, 255, 0.45)';
+        card.style.color = '#dce7ff';
+        card.style.fontSize = '13px';
+        card.style.lineHeight = '1.35';
+        card.style.zIndex = '1200';
+        card.innerHTML = `
+            <div style="font-size: 14px; font-weight: bold; margin-bottom: 6px;">Battle Summary: Sector ${summary.sector}</div>
+            <div>Outcome: ${normalizedResult}</div>
+            <div>Winner: Player ${summary.winnerId}</div>
+            <div>Losses - Attackers: ${summary.attackerLosses}, Defenders: ${summary.defenderLosses}</div>
+            <div>Visibility: ${visibilityLabel}</div>
+            <div>Force Ratio: ${summary.forceRatio}</div>
+        `;
+        document.body.appendChild(card);
+
+        const timer = setTimeout(() => {
+            if (card.parentNode) {
+                card.parentNode.removeChild(card);
+            }
+        }, 7000);
+        battleAnimationTimers.push(timer);
+    }
     
     // Clean up all animation timers and elements
 	function cleanupBattleVisualization() {
@@ -215,7 +331,8 @@ const BattleSystem = (function() {
     
     return {
         createBattleVisualization,
-        cleanupBattleVisualization
+        cleanupBattleVisualization,
+        showBattleSummary
     };
 })();
 
