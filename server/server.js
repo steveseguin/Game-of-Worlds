@@ -286,6 +286,12 @@ function createGameTables(gameId, callback) {
             owner INT NOT NULL,
             type VARCHAR(64) NOT NULL,
             turn_built INT DEFAULT 0
+        )`,
+        `CREATE TABLE IF NOT EXISTS explored_sectors${gameId} (
+            playerid INT NOT NULL,
+            sectorid INT NOT NULL,
+            discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (playerid, sectorid)
         )`
     ];
 
@@ -685,7 +691,7 @@ async function initializeGame(gameId, connection) {
             const homeworld = assignHomeworld(index, mapSize);
             return (async () => {
                 await queryDb(
-                    `UPDATE players${gameId} SET 
+                    `UPDATE players${gameId} SET
                      metal = 100, crystal = 100, research = 50,
                      homeworld = ?, currentsector = ?
                      WHERE userid = ?`,
@@ -693,6 +699,11 @@ async function initializeGame(gameId, connection) {
                 );
                 await queryDb(
                     `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
+                    [row.userid, homeworld]
+                );
+                // Mark homeworld as explored
+                await queryDb(
+                    `INSERT IGNORE INTO explored_sectors${gameId} (playerid, sectorid) VALUES (?, ?)`,
                     [row.userid, homeworld]
                 );
                 // Spawn starter ships so players can take actions immediately.
@@ -1672,7 +1683,7 @@ function probeSector(data, connection) {
     const targetSector = parseInt(parts[1]);
     const playerId = connection.name;
     const gameId = connection.gameid;
-    
+
     // Check if player has probe technology
     db.query(
         `SELECT tech FROM players${gameId} WHERE userid = ?`,
@@ -1682,13 +1693,13 @@ function probeSector(data, connection) {
                 connection.sendUTF("Error: Could not get player data");
                 return;
             }
-            
+
             const playerTech = results[0].tech ? results[0].tech.split(',').map(Number) : [];
             if (!playerTech.includes(15)) { // Probe Scanner tech ID
                 connection.sendUTF("Error: Probe Scanner technology required");
                 return;
             }
-            
+
             // Get sector information
             db.query(
                 `SELECT * FROM map${gameId} WHERE sectorid = ?`,
@@ -1698,23 +1709,28 @@ function probeSector(data, connection) {
                         connection.sendUTF("Error: Invalid sector");
                         return;
                     }
-                    
+
+                    // Mark sector as explored
+                    markSectorExplored(gameId, playerId, targetSector);
+
                     // Get ships in sector
                     db.query(
-                        `SELECT owner, type, COUNT(*) as count 
-                         FROM ships${gameId} 
-                         WHERE sectorid = ? 
+                        `SELECT owner, type, COUNT(*) as count
+                         FROM ships${gameId}
+                         WHERE sectorid = ?
                          GROUP BY owner, type`,
                         [targetSector],
                         (err, ships) => {
                             if (err) ships = [];
-                            
+
                             const probeData = {
                                 sector: sector[0],
                                 ships: ships
                             };
-                            
+
                             connection.sendUTF(`probe::${targetSector}::${JSON.stringify(probeData)}`);
+                            // Broadcast sector update to all players who can now see it
+                            updateSector2(gameId, targetSector);
                         }
                     );
                 }
@@ -1919,16 +1935,16 @@ function moveFleet(data, connection) {
     const shipCounts = parts[4].split(",").map(Number);
     const playerId = connection.name;
     const gameId = connection.gameid;
-    
+
     // Validate movement
     if (!areAdjacentSectors(fromSector, toSector)) {
         connection.sendUTF("Error: Sectors are not adjacent");
         return;
     }
-    
+
     // Check crystal cost (1 crystal per ship)
     const totalShips = shipCounts.reduce((a, b) => a + b, 0);
-    
+
     db.query(
         `SELECT crystal FROM players${gameId} WHERE userid = ?`,
         [playerId],
@@ -1937,12 +1953,12 @@ function moveFleet(data, connection) {
                 connection.sendUTF("Error: Could not get player data");
                 return;
             }
-            
+
             if (results[0].crystal < totalShips) {
                 connection.sendUTF("Error: Not enough crystal for movement");
                 return;
             }
-            
+
             // Move ships
             let moved = 0;
             shipTypes.forEach((type, index) => {
@@ -1950,8 +1966,8 @@ function moveFleet(data, connection) {
                 if (count > 0) {
                     // Get ships to move
                     db.query(
-                        `SELECT id FROM ships${gameId} 
-                         WHERE owner = ? AND sectorid = ? AND type = ? 
+                        `SELECT id FROM ships${gameId}
+                         WHERE owner = ? AND sectorid = ? AND type = ?
                          LIMIT ?`,
                         [playerId, fromSector, type, count],
                         (err, ships) => {
@@ -1963,14 +1979,17 @@ function moveFleet(data, connection) {
                                     (err) => {
                                         if (!err) {
                                             moved += ships.length;
-                                            
-                                            // If all ships moved, deduct crystal
+
+                                            // If all ships moved, deduct crystal and mark sectors explored
                                             if (moved === totalShips) {
                                                 db.query(
                                                     `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ?`,
                                                     [totalShips, playerId]
                                                 );
-                                                
+
+                                                // Mark destination sector as explored
+                                                markSectorExplored(gameId, playerId, toSector);
+
                                                 connection.sendUTF("Success: Fleet moved");
                                                 updateResources(connection);
                                                 updateSector2(gameId, fromSector);
@@ -2016,6 +2035,56 @@ function updateSector(data, connection) {
     sendMultiMoveOptions(connection, gameId, sectorId);
 }
 
+function canPlayerSeeSector(gameId, playerId, sectorId, callback) {
+    // Player can see a sector if:
+    // 1. They own it
+    // 2. They have explored it
+    // 3. They have a ship in it
+    // 4. It's an allied sector
+
+    db.query(
+        `SELECT owner FROM map${gameId} WHERE sectorid = ?`,
+        [sectorId],
+        (err, sectors) => {
+            if (err || !sectors.length) return callback(false);
+
+            const sector = sectors[0];
+
+            // Own it
+            if (sector.owner === playerId) return callback(true);
+
+            // Check if explored
+            db.query(
+                `SELECT sectorid FROM explored_sectors${gameId} WHERE playerid = ? AND sectorid = ?`,
+                [playerId, sectorId],
+                (err, explored) => {
+                    if (!err && explored && explored.length > 0) return callback(true);
+
+                    // Check if has ships there
+                    db.query(
+                        `SELECT id FROM ships${gameId} WHERE owner = ? AND sectorid = ? LIMIT 1`,
+                        [playerId, sectorId],
+                        (err, ships) => {
+                            callback(!err && ships && ships.length > 0);
+                        }
+                    );
+                }
+            );
+        }
+    );
+}
+
+function markSectorExplored(gameId, playerId, sectorId) {
+    // Mark sector as explored by player (ignore if already explored)
+    db.query(
+        `INSERT IGNORE INTO explored_sectors${gameId} (playerid, sectorid) VALUES (?, ?)`,
+        [playerId, sectorId],
+        (err) => {
+            if (err) console.error('Error marking sector explored:', err);
+        }
+    );
+}
+
 function updateSector2(gameId, sectorId) {
     // Get sector data
     db.query(
@@ -2023,32 +2092,41 @@ function updateSector2(gameId, sectorId) {
         [sectorId],
         (err, sector) => {
             if (err || sector.length === 0) return;
-            
+
             // Get ships in sector
             db.query(
-                `SELECT owner, type, COUNT(*) as count 
-                 FROM ships${gameId} 
-                 WHERE sectorid = ? 
+                `SELECT owner, type, COUNT(*) as count
+                 FROM ships${gameId}
+                 WHERE sectorid = ?
                  GROUP BY owner, type`,
                 [sectorId],
                 (err, ships) => {
                     if (err) ships = [];
-                    
+
                     // Get buildings in sector
                     db.query(
                         `SELECT type FROM buildings${gameId} WHERE sectorid = ?`,
                         [sectorId],
                         (err, buildings) => {
                             if (err) buildings = [];
-                            
+
                             const sectorData = {
                                 sector: sector[0],
                                 ships: ships,
                                 buildings: buildings
                             };
-                            
-                            // Broadcast to all players in game
-                            broadcastToGame(gameId, `sector::${sectorId}::${JSON.stringify(sectorData)}`);
+
+                            // Send sector data to each player who can see it
+                            gameState.clients.forEach(client => {
+                                if (client.gameid === gameId) {
+                                    const playerId = Number(client.name);
+                                    canPlayerSeeSector(gameId, playerId, sectorId, (canSee) => {
+                                        if (canSee) {
+                                            client.sendUTF(`sector::${sectorId}::${JSON.stringify(sectorData)}`);
+                                        }
+                                    });
+                                }
+                            });
                         }
                     );
                 }
@@ -2288,14 +2366,54 @@ function updateResources(connection) {
 }
 
 function updateAllSectors(gameId, connection) {
-    // Send all sector data to reconnecting player
+    // Send visible sector data to reconnecting player
+    const playerId = Number(connection.name);
+
     db.query(
         `SELECT sectorid FROM map${gameId}`,
         (err, sectors) => {
             if (err) return;
-            
+
             sectors.forEach(sector => {
-                updateSector2(gameId, sector.sectorid);
+                canPlayerSeeSector(gameId, playerId, sector.sectorid, (canSee) => {
+                    if (canSee) {
+                        // Get and send sector data directly to this connection
+                        db.query(
+                            `SELECT * FROM map${gameId} WHERE sectorid = ?`,
+                            [sector.sectorid],
+                            (err, sectorData) => {
+                                if (err || !sectorData.length) return;
+
+                                db.query(
+                                    `SELECT owner, type, COUNT(*) as count
+                                     FROM ships${gameId}
+                                     WHERE sectorid = ?
+                                     GROUP BY owner, type`,
+                                    [sector.sectorid],
+                                    (err, ships) => {
+                                        if (err) ships = [];
+
+                                        db.query(
+                                            `SELECT type FROM buildings${gameId} WHERE sectorid = ?`,
+                                            [sector.sectorid],
+                                            (err, buildings) => {
+                                                if (err) buildings = [];
+
+                                                const data = {
+                                                    sector: sectorData[0],
+                                                    ships: ships,
+                                                    buildings: buildings
+                                                };
+
+                                                connection.sendUTF(`sector::${sector.sectorid}::${JSON.stringify(data)}`);
+                                            }
+                                        );
+                                    }
+                                );
+                            }
+                        );
+                    }
+                });
             });
         }
     );
