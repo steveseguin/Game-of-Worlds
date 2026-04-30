@@ -16,6 +16,7 @@ class MockDatabase {
         this._maps = new Map();
         this._ships = new Map();
         this._buildings = new Map();
+        this._exploredSectors = new Map();
         this._shipIds = new Map();
         this._buildingIds = new Map();
         this._nextUserId = 1;
@@ -236,6 +237,7 @@ class MockDatabase {
                 const gameId = Number(params[0]);
                 const existed = this._games.delete(gameId);
                 this._playerTables.delete(gameId);
+                this._exploredSectors.delete(gameId);
                 return this._async(callback, null, { affectedRows: existed ? 1 : 0 });
             }
 
@@ -886,6 +888,32 @@ class MockDatabase {
                 }
             }
 
+            const exploredMatch = normalized.match(/`?explored_sectors(\d+)`?/i);
+            if (exploredMatch) {
+                const gameId = Number(exploredMatch[1]);
+                const explored = this._ensureExploredSectors(gameId);
+
+                if (/^INSERT IGNORE INTO `?explored_sectors\d+`? \(playerid, sectorid\) VALUES \(\?, \?\)/i.test(normalized)) {
+                    const [playerId, sectorId] = params.map(Number);
+                    explored.set(`${playerId}:${sectorId}`, { playerid: playerId, sectorid: sectorId });
+                    return this._async(callback, null, { affectedRows: 1 });
+                }
+
+                if (/^SELECT sectorid FROM `?explored_sectors\d+`? WHERE playerid = \? AND sectorid = \?/i.test(normalized)) {
+                    const [playerId, sectorId] = params.map(Number);
+                    const row = explored.get(`${playerId}:${sectorId}`);
+                    return this._async(callback, null, row ? [{ sectorid: row.sectorid }] : []);
+                }
+
+                if (/^SELECT sectorid FROM `?explored_sectors\d+`? WHERE playerid = \?/i.test(normalized)) {
+                    const playerId = Number(params[0]);
+                    const rows = Array.from(explored.values())
+                        .filter(row => row.playerid === playerId)
+                        .map(row => ({ sectorid: row.sectorid }));
+                    return this._async(callback, null, rows);
+                }
+            }
+
             if (/^SHOW COLUMNS FROM `?players\d+`? LIKE 'joined_at'/i.test(normalized)) {
                 return this._async(callback, null, [{ Field: 'joined_at' }]);
             }
@@ -1058,6 +1086,13 @@ class MockDatabase {
             this._buildingIds.set(gameId, this._buildings.get(gameId).length + 1);
         }
         return this._buildings.get(gameId);
+    }
+
+    _ensureExploredSectors(gameId) {
+        if (!this._exploredSectors.has(gameId)) {
+            this._exploredSectors.set(gameId, new Map());
+        }
+        return this._exploredSectors.get(gameId);
     }
 
     _nextBuildingId(gameId) {

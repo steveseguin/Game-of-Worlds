@@ -47,6 +47,8 @@ let currentRaceId = null;
 let currentRaceName = '';
 let knownRaceMap = {};
 let inviteGameId = null;
+let currentGameStatus = 'waiting';
+let currentGameStarted = false;
 const AI_DIFFICULTY_OPTIONS = ['chill', 'medium', 'aggressive'];
 const AI_STRATEGY_OPTIONS = ['balanced', 'aggressive', 'economic'];
 const GAME_MODE_OPTIONS = [
@@ -164,6 +166,12 @@ function handleMessage(message) {
         return;
     }
 
+    if (message.startsWith('currentgame::')) {
+        setLobbyConnectionState('ready');
+        handleCurrentGameMessage(message.substring('currentgame::'.length));
+        return;
+    }
+
     if (message.startsWith('lobby::')) {
         clearCurrentGameTracking();
         setLobbyConnectionState('ready');
@@ -210,6 +218,9 @@ function handleMessage(message) {
         resetCreateGameState();
         const errorMessage = message.substring('creategame::error::'.length) || 'Unable to create game';
         showToast(errorMessage, 'error');
+        if (errorMessage.includes('Leave your current game')) {
+            requestCurrentGameSnapshot();
+        }
         return;
     }
 
@@ -242,7 +253,11 @@ function handleMessage(message) {
         isAwaitingRaceSelection = false;
         pendingJoinGameId = null;
         showToast(errorMessage, 'error');
-        renderGameListSkeleton('Please select a game to join.');
+        if (errorMessage.includes('Leave your current game')) {
+            requestCurrentGameSnapshot();
+        } else {
+            renderGameListSkeleton('Please select a game to join.');
+        }
         return;
     }
 
@@ -300,6 +315,13 @@ function handleMessage(message) {
 
     if (message.startsWith('startgame::')) {
         window.location.href = '/game.html';
+        return;
+    }
+
+    if (message.startsWith('gameover::')) {
+        clearCurrentGameTracking();
+        showToast('Game ended. You can create or join another game.', 'info');
+        refreshGames();
     }
 }
 
@@ -312,6 +334,13 @@ function createGame() {
     }
 
     if (!canSendLobbyCommand(true)) {
+        return;
+    }
+
+    if (currentGameId) {
+        showToast('Leave your current game before creating another.', 'warn');
+        updateWaitingView();
+        requestCurrentGameSnapshot();
         return;
     }
 
@@ -328,6 +357,12 @@ function createGame() {
 }
 
 function refreshGames() {
+    if (currentGameId && currentGameStarted) {
+        renderWaitingView();
+        requestCurrentGameSnapshot();
+        return;
+    }
+
     if (!canSendLobbyCommand()) {
         renderGameListSkeleton('Authenticating lobby session…');
         return;
@@ -335,6 +370,32 @@ function refreshGames() {
     renderGameListSkeleton('Loading games…');
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send('//gamelist');
+    }
+}
+
+function requestCurrentGameSnapshot() {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send('//currentgame');
+    }
+}
+
+function handleCurrentGameMessage(rawPayload) {
+    if (!rawPayload || rawPayload === 'null') {
+        clearCurrentGameTracking();
+        refreshGames();
+        return;
+    }
+
+    try {
+        const payload = JSON.parse(rawPayload);
+        if (!payload || !payload.gameId) {
+            clearCurrentGameTracking();
+            refreshGames();
+            return;
+        }
+        hydrateCurrentGame(payload);
+    } catch (error) {
+        console.error('Failed to parse current game payload:', error);
     }
 }
 
@@ -373,6 +434,8 @@ function updateGameList(rawPayload) {
             currentMaxPlayers = maxPlayers;
             currentPlayerCount = playerCount;
             currentGameMode = mode;
+            currentGameStatus = 'waiting';
+            currentGameStarted = false;
             waitingGameUpdated = true;
             return;
         }
@@ -452,6 +515,11 @@ function renderWaitingView() {
 
     if (!currentGameId) {
         refreshGames();
+        return;
+    }
+
+    if (currentGameStarted) {
+        renderActiveGameView();
         return;
     }
 
@@ -556,6 +624,36 @@ function renderWaitingView() {
     `;
 }
 
+function renderActiveGameView() {
+    const gameList = document.getElementById('gameList');
+    if (!gameList) {
+        return;
+    }
+
+    const titleName = currentGameName ? ` - ${escapeHtml(currentGameName)}` : '';
+    const modeLabel = formatModeLabel(currentGameMode);
+    const playerLabel = currentPlayerCount > 0 ? `${currentPlayerCount} players` : 'Players loading';
+    const playersHtml = currentPlayerDetails.length
+        ? `<ul style="list-style:none;padding:0;margin:12px 0 0 0;">${currentPlayerDetails.map(renderPlayerBadge).join('')}</ul>`
+        : '';
+
+    gameList.innerHTML = `
+        <tr>
+            <td colspan="6" style="text-align: center; padding: 20px;">
+                <h3>Game in progress ${currentGameId}${titleName}</h3>
+                <p>${playerLabel} - ${modeLabel}</p>
+                <div style="margin-top:10px;">
+                    <a href="/game.html" style="color:#5df5b4; text-decoration:none; font-weight:600;">Open game view</a>
+                </div>
+                ${playersHtml}
+                <div style="margin-top:16px;">
+                    <button onclick="resignCurrentGame()">Resign</button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
 function renderGameListSkeleton(message) {
     const gameList = document.getElementById('gameList');
     if (!gameList) {
@@ -613,6 +711,8 @@ function clearCurrentGameTracking() {
     currentRaceId = null;
     currentRaceName = '';
     currentGameMode = 'quick';
+    currentGameStatus = 'waiting';
+    currentGameStarted = false;
     countdownSeconds = null;
 }
 
@@ -735,6 +835,16 @@ function joinGame(gameId) {
         return;
     }
 
+    if (currentGameId) {
+        if (Number(gameId) === Number(currentGameId)) {
+            updateWaitingView();
+        } else {
+            showToast('Leave your current game before joining another one.', 'warn');
+            requestCurrentGameSnapshot();
+        }
+        return;
+    }
+
     if (isAwaitingRaceSelection && pendingJoinGameId === gameId) {
         return;
     }
@@ -764,6 +874,22 @@ function leaveGame() {
     }
     clearCurrentGameTracking();
     renderGameListSkeleton('Leaving game…');
+}
+
+function resignCurrentGame() {
+    if (!currentGameId) {
+        showToast('No active game to resign from.', 'warn');
+        return;
+    }
+
+    if (!window.confirm('Resign from this game?')) {
+        return;
+    }
+
+    if (canSendLobbyCommand(true)) {
+        websocket.send('//surrender');
+        showToast('Resigning from game...', 'info');
+    }
 }
 
 function startGame() {
@@ -801,6 +927,8 @@ function hydrateCurrentGame(payload) {
     currentRaceId = Number(payload.raceId) || currentRaceId || null;
     currentRaceName = payload.raceName || currentRaceName || getRaceName(currentRaceId);
     currentGameMode = (payload.mode || 'quick').toLowerCase();
+    currentGameStatus = (payload.status || (payload.started ? 'in-progress' : 'waiting')).toLowerCase();
+    currentGameStarted = Boolean(payload.started) || currentGameStatus === 'in-progress' || currentGameStatus === 'started';
     renderWaitingView();
 }
 
@@ -942,6 +1070,7 @@ function showToast(message, type = 'info', duration = 2800) {
 
 window.joinGame = joinGame;
 window.leaveGame = leaveGame;
+window.resignCurrentGame = resignCurrentGame;
 window.startGame = startGame;
 window.openRaceSelectorForCurrentGame = openRaceSelectorForCurrentGame;
 window.addAiPlayer = addAiPlayer;

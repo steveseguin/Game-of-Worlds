@@ -130,6 +130,9 @@ test.describe('Lobby lifecycle flows', () => {
         attachConnection(hostConnection);
 
         serverLogic.handleCreateGame('//creategame:Test%20Room:4', hostConnection);
+        const createdMessage = await waitForMessage(hostConnection, message => message.startsWith('creategame::success::'));
+        const gameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${gameId}:1`, hostConnection);
         await waitForMessage(hostConnection, message => message.startsWith('joingame::success::'));
 
         assert.ok(hostConnection.gameid, 'connection should have game id after creation');
@@ -164,6 +167,9 @@ test.describe('Lobby lifecycle flows', () => {
         attachConnection(hostConnection);
 
         serverLogic.handleCreateGame('//creategame:TwoPlayer%20Match:2', hostConnection);
+        const createdMessage = await waitForMessage(hostConnection, message => message.startsWith('creategame::success::'));
+        const createdGameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${createdGameId}:1`, hostConnection);
         await waitForMessage(hostConnection, message => message.startsWith('joingame::success::'));
         const gameId = hostConnection.gameid;
         assert.ok(gameId, 'host should receive a game id');
@@ -179,5 +185,70 @@ test.describe('Lobby lifecycle flows', () => {
         serverLogic.handleGameStart(hostConnection);
         await waitForMessage(hostConnection, message => message === 'startgame::');
         await waitForMessage(joinerConnection, message => message === 'startgame::');
+    });
+
+    test('player with an existing waiting game receives a current game snapshot', async t => {
+        const registration = await executeJsonHandler(serverLogic.handleRegister, {
+            username: 'returningHost',
+            password: 'Secure123',
+            email: 'returning@example.com'
+        });
+        const hostId = registration.body.userId;
+
+        const hostConnection = createMockConnection(hostId);
+        attachConnection(hostConnection);
+
+        serverLogic.handleCreateGame('//creategame:Recoverable%20Room:4', hostConnection);
+        const createdMessage = await waitForMessage(hostConnection, message => message.startsWith('creategame::success::'));
+        const gameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${gameId}:1`, hostConnection);
+        await waitForMessage(hostConnection, message => message.startsWith('joingame::success::'));
+
+        const returningConnection = createMockConnection(hostId);
+        returningConnection.gameid = gameId;
+        attachConnection(returningConnection);
+
+        serverLogic.handleCurrentGame(returningConnection);
+        const snapshotMessage = await waitForMessage(returningConnection, message => message.startsWith('currentgame::'));
+        const payload = JSON.parse(snapshotMessage.substring('currentgame::'.length));
+
+        assert.equal(payload.gameId, gameId);
+        assert.equal(payload.gameName, 'Recoverable Room');
+        assert.equal(payload.started, false);
+        assert.equal(payload.creatorId, hostId);
+        assert.equal(returningConnection.gameid, gameId);
+        assert.equal(returningConnection.raceid, 1);
+    });
+
+    test('existing player can rejoin a full waiting game', async t => {
+        const registration = await executeJsonHandler(serverLogic.handleRegister, {
+            username: 'fullRoomHost',
+            password: 'Secure123',
+            email: 'fullroom@example.com'
+        });
+        const hostId = registration.body.userId;
+
+        const hostConnection = createMockConnection(hostId);
+        attachConnection(hostConnection);
+
+        serverLogic.handleCreateGame('//creategame:Full%20Room:2', hostConnection);
+        const createdMessage = await waitForMessage(hostConnection, message => message.startsWith('creategame::success::'));
+        const gameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${gameId}:1`, hostConnection);
+        await waitForMessage(hostConnection, message => message.startsWith('joingame::success::'));
+
+        serverLogic.handleAddAi('//addai:medium:balanced', hostConnection);
+        await waitForMessage(hostConnection, message => message.startsWith('addai::success::'));
+
+        const returningConnection = createMockConnection(hostId);
+        attachConnection(returningConnection);
+        serverLogic.handleJoinGame(`//joingame:${gameId}:1`, returningConnection);
+
+        const rejoinMessage = await waitForMessage(returningConnection, message => message.startsWith('joingame::success::'));
+        const payload = JSON.parse(rejoinMessage.substring('joingame::success::'.length));
+
+        assert.equal(payload.gameId, gameId);
+        assert.equal(payload.playerCount, 2);
+        assert.equal(returningConnection.gameid, gameId);
     });
 });

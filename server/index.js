@@ -575,6 +575,9 @@ function handleCommand(data, connection) {
         case "gamelist":
             serverLogic.handleGameList(connection);
             break;
+        case "currentgame":
+            serverLogic.handleCurrentGame(connection);
+            break;
         case "leavegame":
             serverLogic.handleLeaveGame(connection);
             break;
@@ -694,16 +697,15 @@ function authUser(message, connection) {
             connection.gameid = user.currentgame;
             console.log(`Player ${playerId} authenticated, joining game ${user.currentgame}`);
 
-            if (turns[connection.gameid] > 0) {
-                connection.sendUTF("You have re-connected to a game that is already in progress.");
-                serverLogic.updateResources(connection);
-                serverLogic.updateAllSectors(connection.gameid, connection);
-            } else {
-                connection.sendUTF("lobby::");
-                connection.sendUTF("The game has yet to begin. Welcome.");
-            }
-
-            broadcastPlayerList(connection.gameid);
+            serverLogic.handleCurrentGame(connection, (_err, payload) => {
+                if (payload && payload.started) {
+                    connection.sendUTF("You have re-connected to a game that is already in progress.");
+                    serverLogic.updateResources(connection);
+                    serverLogic.updateAllSectors(connection.gameid, connection);
+                } else if (payload && payload.gameId) {
+                    connection.sendUTF("The game has yet to begin. Welcome.");
+                }
+            });
             return;
         }
 

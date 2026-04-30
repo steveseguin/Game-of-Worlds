@@ -510,6 +510,7 @@ function handleCreateGame(data, connection) {
 
     if (connection.gameid) {
         connection.sendUTF('creategame::error::Leave your current game before creating another.');
+        sendCurrentGameSnapshot(connection, () => {});
         return;
     }
 
@@ -2432,6 +2433,7 @@ function handleJoinGame(data, connection) {
 
     if (connection.gameid && Number(connection.gameid) !== gameId) {
         connection.sendUTF('joingame::error::Leave your current game before joining another one.');
+        sendCurrentGameSnapshot(connection, () => {});
         return;
     }
 
@@ -2449,25 +2451,30 @@ function handleJoinGame(data, connection) {
 
             const game = games[0];
 
-            db.query(`SELECT COUNT(*) AS count FROM players${gameId}`, (countErr, counts) => {
-                if (countErr) {
-                    connection.sendUTF('joingame::error::Unable to check available seats.');
-                    return;
-                }
-
-                const playerCount = Number((counts && counts[0] && (counts[0].count ?? counts[0].c)) || 0);
-                const maxPlayers = parsePositiveInt(game.maxplayers, 0);
-                if (maxPlayers > 0 && playerCount >= maxPlayers) {
-                    connection.sendUTF('joingame::error::Game is already full.');
-                    return;
-                }
-
-                db.query(`SELECT * FROM players${gameId} WHERE userid = ? LIMIT 1`, [playerId], (existingErr, existing) => {
-                    if (!existingErr && existing && existing.length > 0) {
+            db.query(`SELECT * FROM players${gameId} WHERE userid = ? LIMIT 1`, [playerId], (existingErr, existing) => {
+                if (!existingErr && existing && existing.length > 0) {
+                    db.query(`SELECT COUNT(*) AS count FROM players${gameId}`, (countErr, counts) => {
+                        const playerCount = countErr
+                            ? 1
+                            : Number((counts && counts[0] && (counts[0].count ?? counts[0].c)) || 1);
                         connection.gameid = gameId;
                         connection.raceid = existing[0].race_id || raceId;
                         sendJoinSuccess(connection, game, connection.raceid, playerCount);
                         broadcastPlayerList(gameId);
+                    });
+                    return;
+                }
+
+                db.query(`SELECT COUNT(*) AS count FROM players${gameId}`, (countErr, counts) => {
+                    if (countErr) {
+                        connection.sendUTF('joingame::error::Unable to check available seats.');
+                        return;
+                    }
+
+                    const playerCount = Number((counts && counts[0] && (counts[0].count ?? counts[0].c)) || 0);
+                    const maxPlayers = parsePositiveInt(game.maxplayers, 0);
+                    if (maxPlayers > 0 && playerCount >= maxPlayers) {
+                        connection.sendUTF('joingame::error::Game is already full.');
                         return;
                     }
 
@@ -2537,6 +2544,112 @@ function sendJoinSuccess(connection, game, raceId, playerCount) {
     };
 
     connection.sendUTF(`joingame::success::${JSON.stringify(payload)}`);
+}
+
+function clearStaleCurrentGame(connection, gameId, callback) {
+    const playerId = Number(connection && connection.name);
+    if (!playerId) {
+        if (callback) callback();
+        return;
+    }
+
+    db.query(
+        'UPDATE users SET currentgame = NULL WHERE id = ? AND currentgame = ?',
+        [playerId, gameId],
+        () => {
+            if (connection) {
+                connection.gameid = null;
+                connection.raceid = null;
+            }
+            if (callback) callback();
+        }
+    );
+}
+
+function sendCurrentGameSnapshot(connection, callback) {
+    if (!connection || !connection.name || connection.name === 'unknown') {
+        if (callback) callback(null, null);
+        return;
+    }
+
+    const playerId = Number(connection.name);
+    const currentGameId = parsePositiveInt(connection.gameid, 0);
+    if (!currentGameId || !playerId) {
+        connection.sendUTF('currentgame::null');
+        if (callback) callback(null, null);
+        return;
+    }
+
+    db.query('SELECT * FROM games WHERE id = ? LIMIT 1', [currentGameId], (gameErr, games) => {
+        const game = !gameErr && Array.isArray(games) && games.length > 0 ? games[0] : null;
+        if (!game) {
+            clearStaleCurrentGame(connection, currentGameId, () => {
+                connection.sendUTF('currentgame::null');
+                if (callback) callback(null, null);
+            });
+            return;
+        }
+
+        ensurePlayerTableColumns(currentGameId, tableErr => {
+            if (tableErr) {
+                connection.sendUTF('currentgame::null');
+                if (callback) callback(tableErr, null);
+                return;
+            }
+
+            db.query(`SELECT * FROM players${currentGameId} WHERE userid = ? LIMIT 1`, [playerId], (playerErr, players) => {
+                const player = !playerErr && Array.isArray(players) && players.length > 0 ? players[0] : null;
+                if (!player) {
+                    clearStaleCurrentGame(connection, currentGameId, () => {
+                        connection.sendUTF('currentgame::null');
+                        if (callback) callback(null, null);
+                    });
+                    return;
+                }
+
+                db.query(`SELECT COUNT(*) AS count FROM players${currentGameId}`, (countErr, counts) => {
+                    const rawCount = !countErr && counts && counts[0]
+                        ? (counts[0].count ?? counts[0].c ?? 1)
+                        : 1;
+                    const playerCount = Number.isFinite(Number(rawCount)) ? Number(rawCount) : 1;
+                    const raceId = parsePositiveInt(player.race_id, DEFAULT_CREATOR_RACE_ID);
+                    const isStarted = Number(game.started) === 1 || String(game.status || '').toLowerCase() === 'in-progress';
+                    const mode = normalizeMode((gameState.activeGames[currentGameId] && gameState.activeGames[currentGameId].mode) || game.mode);
+                    const payload = {
+                        gameId: Number(game.id),
+                        gameName: game.name || `Game ${currentGameId}`,
+                        maxPlayers: parsePositiveInt(game.maxplayers, 0),
+                        playerCount,
+                        creatorId: Number(game.creator),
+                        raceId,
+                        raceName: getRaceById(raceId).name,
+                        mode,
+                        started: isStarted,
+                        status: isStarted ? 'in-progress' : 'waiting'
+                    };
+
+                    connection.gameid = currentGameId;
+                    connection.raceid = raceId;
+                    connection.sendUTF(`currentgame::${JSON.stringify(payload)}`);
+                    if (callback) callback(null, payload);
+                });
+            });
+        });
+    });
+}
+
+function handleCurrentGame(connection, callback) {
+    sendCurrentGameSnapshot(connection, (err, payload) => {
+        if (payload && payload.gameId) {
+            broadcastPlayerList(payload.gameId);
+            if (callback) callback(err, payload);
+            return;
+        }
+        if (!err) {
+            handleGameList(connection);
+        }
+        if (callback) callback(err, payload);
+    });
 }
 
 function handleChangeRace(data, connection) {
@@ -3020,6 +3133,7 @@ module.exports = {
     handleRegister,
     handleCreateGame,
     handleGameList,
+    handleCurrentGame,
     handleLeaveGame,
     handleAddAi,
     handleChangeRace,

@@ -112,6 +112,9 @@ test.describe('AI lobby controls', () => {
         attachConnection(hostConn);
 
         serverLogic.handleCreateGame('//creategame:AI%20Room:2', hostConn);
+        const createdMessage = await waitForMessage(hostConn, m => m.startsWith('creategame::success::'));
+        const createdGameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${createdGameId}:1`, hostConn);
         await waitForMessage(hostConn, m => m.startsWith('joingame::success::'));
         const gameId = hostConn.gameid;
         assert.ok(gameId, 'host should have a game id');
@@ -141,6 +144,9 @@ test.describe('AI lobby controls', () => {
         const hostConn = createMockConnection(creator.body.userId);
         attachConnection(hostConn);
         serverLogic.handleCreateGame('//creategame:Protected:4', hostConn);
+        const createdMessage = await waitForMessage(hostConn, m => m.startsWith('creategame::success::'));
+        const createdGameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${createdGameId}:1`, hostConn);
         await waitForMessage(hostConn, m => m.startsWith('joingame::success::'));
         const gameId = hostConn.gameid;
 
@@ -165,6 +171,9 @@ test.describe('AI lobby controls', () => {
         attachConnection(hostConn);
 
         serverLogic.handleCreateGame('//creategame:Tight%20Room:2', hostConn);
+        const createdMessage = await waitForMessage(hostConn, m => m.startsWith('creategame::success::'));
+        const createdGameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${createdGameId}:1`, hostConn);
         await waitForMessage(hostConn, m => m.startsWith('joingame::success::'));
 
         serverLogic.handleAddAi('//addai:medium:balanced', hostConn);

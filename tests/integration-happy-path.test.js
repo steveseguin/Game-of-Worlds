@@ -118,6 +118,9 @@ test.describe('Happy path: signup → create → add AI → select race → star
 
     // Create game
     serverLogic.handleCreateGame('//creategame:Integration%20Test:2', hostConn);
+    const createdMessage = await waitFor(hostConn, m => m.startsWith('creategame::success::'));
+    const createdGameId = Number(createdMessage.split('::')[2]);
+    serverLogic.handleJoinGame(`//joingame:${createdGameId}:1`, hostConn);
     await waitFor(hostConn, m => m.startsWith('joingame::success::'));
     const gameId = hostConn.gameid;
     assert.ok(gameId, 'game id assigned');
