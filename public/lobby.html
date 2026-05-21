@@ -44,6 +44,12 @@
             margin: 0 auto;
             padding: 32px 20px 48px;
         }
+        body.lobby-page {
+            overflow-y: auto;
+            overflow-x: hidden;
+            height: auto;
+            min-height: 100vh;
+        }
         .hero {
             background: linear-gradient(120deg, rgba(33,44,92,0.8), rgba(23,30,68,0.9));
             border: 1px solid rgba(255,255,255,0.06);
@@ -309,7 +315,7 @@
         }
     </style>
 </head>
-<body>
+<body class="lobby-page">
     <div class="lobby-shell">
         <div class="hero">
             <div>
