@@ -68,10 +68,10 @@ function setLobbyConnectionState(state, message) {
     isLobbyReady = normalizedState === 'ready';
 
     const labels = {
-        connecting: 'Lobby: Connecting…',
-        authorizing: 'Lobby: Authorizing…',
+        connecting: 'Lobby: Connecting...',
+        authorizing: 'Lobby: Authorizing...',
         ready: 'Lobby: Connected',
-        disconnected: 'Lobby: Reconnecting…'
+        disconnected: 'Lobby: Reconnecting...'
     };
 
     const pill = document.getElementById('lobbyConnectionState');
@@ -86,14 +86,6 @@ function setLobbyConnectionState(state, message) {
         refreshBtn.disabled = !isLobbyReady;
         refreshBtn.title = isLobbyReady ? '' : 'Waiting for lobby authentication';
     }
-}
-
-function canSendLobbyCommand(showToastOnFailure = false) {
-    const ready = !!(isLobbyReady && websocket && websocket.readyState === WebSocket.OPEN);
-    if (!ready && showToastOnFailure) {
-        showToast('Lobby connection is still syncing. Please wait a moment.', 'warn');
-    }
-    return ready;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -142,6 +134,15 @@ function initWebSocket() {
 function handleMessage(message) {
     console.log('Received:', message);
 
+    if (message.startsWith('$^$')) {
+        const count = message.substring(3) || '0';
+        const el = document.getElementById('online-count');
+        if (el) {
+            el.textContent = count;
+        }
+        return;
+    }
+
     if (message.startsWith('Error:')) {
         const errorText = message.substring('Error:'.length).trim() || 'An unexpected lobby error occurred.';
         showToast(errorText, 'error');
@@ -180,15 +181,6 @@ function handleMessage(message) {
             const targetInviteId = inviteGameId;
             inviteGameId = null;
             joinGame(targetInviteId);
-        }
-        return;
-    }
-
-    if (message.startsWith('$^$')) {
-        const count = message.substring(3) || '0';
-        const el = document.getElementById('online-count');
-        if (el) {
-            el.textContent = count;
         }
         return;
     }
@@ -325,6 +317,14 @@ function handleMessage(message) {
     }
 }
 
+function canSendLobbyCommand(showMessage = false) {
+    const ready = !!(isLobbyReady && websocket && websocket.readyState === WebSocket.OPEN);
+    if (!ready && showMessage) {
+        showToast('Lobby connection is still syncing. Please wait a moment.', 'warn');
+    }
+    return ready;
+}
+
 function createGame() {
     const nameField = document.getElementById('gameName');
     const gameName = nameField ? nameField.value.trim() : '';
@@ -367,8 +367,9 @@ function refreshGames() {
         renderGameListSkeleton('Authenticating lobby session…');
         return;
     }
+
     renderGameListSkeleton('Loading games…');
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
+    if (canSendLobbyCommand(false)) {
         websocket.send('//gamelist');
     }
 }
@@ -518,16 +519,12 @@ function renderWaitingView() {
         return;
     }
 
+    const maxLabel = currentMaxPlayers > 0 ? currentMaxPlayers : '∞';
     if (currentGameStarted) {
         renderActiveGameView();
         return;
     }
 
-    const playersHtml = currentPlayerDetails.length
-        ? `<ul style="list-style:none;padding:0;margin:12px 0 0 0;">${currentPlayerDetails.map(renderPlayerBadge).join('')}</ul>`
-        : '<p style="margin:12px 0 0 0;">Waiting for other players to join…</p>';
-
-    const maxLabel = currentMaxPlayers > 0 ? currentMaxPlayers : '∞';
     const requiredPlayers = currentMaxPlayers > 0
         ? Math.min(currentMaxPlayers, MIN_AUTO_START_PLAYERS)
         : MIN_AUTO_START_PLAYERS;
@@ -536,88 +533,126 @@ function renderWaitingView() {
     const hasOpenSeat = currentMaxPlayers === 0 || currentPlayerCount < currentMaxPlayers;
     const raceLabel = escapeHtml(currentRaceName || getRaceName(currentRaceId) || 'Not selected');
     const inviteLink = `${window.location.origin}/lobby.html?game=${currentGameId}`;
-    const raceControls = `
-        <div style="margin-top:12px;">
-            <strong>Race:</strong> ${raceLabel}
-            <button onclick="openRaceSelectorForCurrentGame()" style="margin-left:8px;" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Choose/Change Race</button>
-        </div>
-    `;
-    const reconnectBtn = `
-        <div style="margin-top:10px;">
-            <a href="/game.html" style="color:#5df5b4; text-decoration:none; font-weight:600;">Open game view</a>
-        </div>
-    `;
-
-    let statusLine;
-    if (isCurrentGameCreator) {
-        statusLine = readyToStart
-            ? 'All required commanders are present. Launch when ready.'
-            : `Waiting for at least ${requiredPlayers} players before launch.`;
-    } else {
-        statusLine = 'Waiting for the game creator to start the match.';
-    }
-    if (countdownActive) {
-        statusLine = `Countdown started — launching in ${countdownSeconds}s`;
-    }
-
     const modeLabel = formatModeLabel(currentGameMode);
-    const startButton = isCurrentGameCreator
-        ? `<button onclick="startGame()" ${(!readyToStart || isStartingGame || countdownActive || !isLobbyReady) ? 'disabled' : ''} style="margin-top:12px;">
-                ${countdownActive ? `Starting in ${countdownSeconds || 10}s` : (isStartingGame ? 'Starting…' : 'Start Game')}
+    const titleName = currentGameName ? escapeHtml(currentGameName) : `Game ${currentGameId}`;
+
+    // Status pill (color depends on state)
+    let statusText, statusClass;
+    if (countdownActive) {
+        statusText = `Launching in ${countdownSeconds}s`;
+        statusClass = 'chip-progress';
+    } else if (isCurrentGameCreator) {
+        if (readyToStart) {
+            statusText = currentPlayerCount >= 2 ? 'Ready to launch' : 'Solo / sandbox ready';
+            statusClass = 'chip-waiting';
+        } else {
+            statusText = `Need ${requiredPlayers - currentPlayerCount} more`;
+            statusClass = 'chip-mode';
+        }
+    } else {
+        statusText = 'Waiting for host';
+        statusClass = 'chip-mode';
+    }
+
+    // Player slots (filled + empty)
+    const slots = [];
+    currentPlayerDetails.forEach(p => slots.push(renderPlayerSlot(p)));
+    if (currentMaxPlayers > 0) {
+        for (let i = currentPlayerDetails.length; i < currentMaxPlayers; i++) {
+            slots.push(`<li class="player-slot empty"><span class="slot-icon">+</span><span class="slot-text">Open seat</span></li>`);
+        }
+    }
+    const playersHtml = `<ul class="player-slots">${slots.join('')}</ul>`;
+
+    // Buttons
+    const primaryBtn = isCurrentGameCreator && !countdownActive
+        ? `<button class="primary lg" onclick="startGame()" ${(!readyToStart || isStartingGame || !isLobbyReady) ? 'disabled' : ''}>
+              ${isStartingGame ? 'Starting…' : '▶ Start Game'}
            </button>`
+        : (countdownActive
+            ? `<button class="primary lg" disabled>Starting in ${countdownSeconds || 10}s</button>`
+            : '');
+    const aiSandboxBtn = isCurrentGameCreator && !countdownActive && hasOpenSeat
+        ? `<button class="ghost lg" onclick="startAiSandbox()" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Fill with AI &amp; Start</button>`
         : '';
-    const aiSandboxButton = isCurrentGameCreator && !countdownActive
-        ? `<button onclick="startAiSandbox()" style="margin-top:8px;" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Fill with AI & Start</button>`
-        : '';
+
     const aiControls = isCurrentGameCreator && hasOpenSeat && !countdownActive
         ? `
-            <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
-                <label style="display:flex; align-items:center; gap:6px; color:#cfd7ff;">
-                    Difficulty
-                    <select id="aiDifficulty" style="padding:8px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;" ${isLobbyReady ? '' : 'disabled'}>
-                        ${AI_DIFFICULTY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
-                    </select>
-                </label>
-                <label style="display:flex; align-items:center; gap:6px; color:#cfd7ff;">
-                    Strategy
-                    <select id="aiStrategy" style="padding:8px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;" ${isLobbyReady ? '' : 'disabled'}>
-                        ${AI_STRATEGY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
-                    </select>
-                </label>
-                <button onclick="addAiPlayer()" style="padding:10px 14px;" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Add AI Opponent</button>
-            </div>
+            <details class="ai-section">
+                <summary>Add AI opponent</summary>
+                <div class="ai-section-row">
+                    <label>Difficulty
+                        <select id="aiDifficulty" ${isLobbyReady ? '' : 'disabled'}>
+                            ${AI_DIFFICULTY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
+                        </select>
+                    </label>
+                    <label>Strategy
+                        <select id="aiStrategy" ${isLobbyReady ? '' : 'disabled'}>
+                            ${AI_STRATEGY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
+                        </select>
+                    </label>
+                    <button class="ghost" onclick="addAiPlayer()" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>+ Add AI</button>
+                </div>
+            </details>
           `
         : '';
-    const countdownNotice = countdownActive
-        ? `<div style="margin-top:10px;color:#ffcc66;font-weight:600;">Launch locked: ${countdownSeconds}s</div>`
+
+    // If countdown is happening, prominently show "Open game view" (the player will need it once game starts)
+    const openGameBanner = countdownActive
+        ? `<a class="open-game-banner" href="/game.html">Game starting — open game view ➜</a>`
         : '';
-    const inviteBlock = `
-        <div style="margin-top:16px; text-align:left; max-width:520px; margin-inline:auto;">
-            <div style="font-weight:600; margin-bottom:6px;">Invite a friend</div>
-            <div style="display:flex; gap:8px; align-items:center;">
-                <input type="text" value="${inviteLink}" readonly style="flex:1; padding:10px; border-radius:8px; border:1px solid #3b4257; background:#0f1424; color:#e8ecff;">
-                <button onclick="copyInviteLink('${inviteLink}')" style="padding:10px 14px;">Copy</button>
-            </div>
-        </div>
-    `;
 
     gameList.innerHTML = `
         <tr>
-            <td colspan="6" style="text-align: center; padding: 20px;">
-                <h3>🎮 Waiting in Game ${currentGameId}${currentGameName ? ` — ${currentGameName}` : ''}</h3>
-                <p>${statusLine}</p>
-                <p>Players: ${currentPlayerCount}/${maxLabel}</p>
-                ${raceControls}
-                ${reconnectBtn}
-                ${playersHtml}
-                ${aiControls}
-                ${startButton}
-                ${aiSandboxButton}
-                <div style="margin-top:8px; color:#cfd7ff;">Mode: ${modeLabel}</div>
-                ${countdownNotice}
-                ${inviteBlock}
-                <div style="margin-top:16px;">
-                    <button onclick="leaveGame()">Leave Game</button>
+            <td colspan="6" class="waiting-cell">
+                <div class="waiting-view">
+                    <header class="waiting-header">
+                        <div>
+                            <div class="waiting-eyebrow">🎮 Waiting room · Game ${currentGameId}</div>
+                            <h3>${titleName}</h3>
+                        </div>
+                        <div class="waiting-meta">
+                            <span class="chip ${statusClass}">${statusText}</span>
+                            <span class="chip chip-mode">${modeLabel}</span>
+                            <span class="chip">${currentPlayerCount}/${maxLabel} players</span>
+                        </div>
+                    </header>
+
+                    ${openGameBanner}
+
+                    <section class="waiting-players">
+                        <div class="section-label">Commanders</div>
+                        ${playersHtml}
+                    </section>
+
+                    <section class="waiting-controls">
+                        <div class="race-row">
+                            <div>
+                                <div class="section-label">Your race</div>
+                                <div class="race-name">${raceLabel}</div>
+                            </div>
+                            <button class="ghost" onclick="openRaceSelectorForCurrentGame()" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Choose / Change</button>
+                        </div>
+                        ${aiControls}
+                    </section>
+
+                    <section class="waiting-actions">
+                        ${primaryBtn}
+                        ${aiSandboxBtn}
+                    </section>
+
+                    <details class="invite-block">
+                        <summary>Invite a friend</summary>
+                        <div class="invite-row">
+                            <input type="text" value="${inviteLink}" readonly>
+                            <button class="ghost" onclick="copyInviteLink('${inviteLink}')">Copy</button>
+                        </div>
+                    </details>
+
+                    <div class="waiting-footer">
+                        <a class="resume-link" href="/game.html">Open game view</a>
+                        <button class="danger-link" onclick="leaveGame()">Leave game</button>
+                    </div>
                 </div>
             </td>
         </tr>
@@ -630,28 +665,60 @@ function renderActiveGameView() {
         return;
     }
 
-    const titleName = currentGameName ? ` - ${escapeHtml(currentGameName)}` : '';
+    const titleName = currentGameName ? escapeHtml(currentGameName) : `Game ${currentGameId}`;
     const modeLabel = formatModeLabel(currentGameMode);
     const playerLabel = currentPlayerCount > 0 ? `${currentPlayerCount} players` : 'Players loading';
-    const playersHtml = currentPlayerDetails.length
-        ? `<ul style="list-style:none;padding:0;margin:12px 0 0 0;">${currentPlayerDetails.map(renderPlayerBadge).join('')}</ul>`
+    const playersHtml = currentPlayerDetails.length > 0
+        ? `<section class="waiting-players">
+               <div class="section-label">Commanders</div>
+               <ul class="player-slots">${currentPlayerDetails.map(renderPlayerSlot).join('')}</ul>
+           </section>`
         : '';
 
     gameList.innerHTML = `
         <tr>
-            <td colspan="6" style="text-align: center; padding: 20px;">
-                <h3>Game in progress ${currentGameId}${titleName}</h3>
-                <p>${playerLabel} - ${modeLabel}</p>
-                <div style="margin-top:10px;">
-                    <a href="/game.html" style="color:#5df5b4; text-decoration:none; font-weight:600;">Open game view</a>
-                </div>
-                ${playersHtml}
-                <div style="margin-top:16px;">
-                    <button onclick="resignCurrentGame()">Resign</button>
+            <td colspan="6" class="waiting-cell">
+                <div class="waiting-view">
+                    <header class="waiting-header">
+                        <div>
+                            <div class="waiting-eyebrow">Game in progress - Game ${currentGameId}</div>
+                            <h3>${titleName}</h3>
+                        </div>
+                        <div class="waiting-meta">
+                            <span class="chip chip-progress">In progress</span>
+                            <span class="chip chip-mode">${modeLabel}</span>
+                            <span class="chip">${playerLabel}</span>
+                        </div>
+                    </header>
+
+                    <a class="open-game-banner" href="/game.html">Open game view</a>
+                    ${playersHtml}
+
+                    <div class="waiting-footer">
+                        <span class="section-label" style="margin:0;">Player ${escapeHtml(String(userId || ''))}</span>
+                        <button class="danger-link" onclick="resignCurrentGame()">Resign</button>
+                    </div>
                 </div>
             </td>
         </tr>
     `;
+}
+
+function renderPlayerSlot(player) {
+    const safeName = escapeHtml(player.name);
+    const race = escapeHtml(player.race || 'No race');
+    const isAi = player.isAi;
+    const meBadge = player.isSelf ? `<span class="slot-me">you</span>` : '';
+    const aiBadges = isAi
+        ? `<span class="slot-tag ai">${escapeHtml(player.aiDiff || 'ai')}</span><span class="slot-tag ai">${escapeHtml(player.aiStrat || 'balanced')}</span>`
+        : '';
+    return `<li class="player-slot ${isAi ? 'is-ai' : ''}">
+        <span class="slot-icon">${isAi ? '🤖' : '👤'}</span>
+        <span class="slot-text">
+            <span class="slot-name">${safeName}${meBadge}</span>
+            <span class="slot-meta"><span class="slot-tag">${race}</span>${aiBadges}</span>
+        </span>
+    </li>`;
 }
 
 function renderGameListSkeleton(message) {
@@ -800,7 +867,7 @@ function loadRaceSelectionScript(callback) {
 }
 
 function requestUnlockedRaces() {
-    if (canSendLobbyCommand()) {
+    if (canSendLobbyCommand(false)) {
         websocket.send('//getunlockedraces');
     }
 }
@@ -867,7 +934,7 @@ function joinGame(gameId) {
 }
 
 function leaveGame() {
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
+    if (canSendLobbyCommand(false)) {
         websocket.send('//leavegame');
     } else {
         window.location.href = '/lobby.html';

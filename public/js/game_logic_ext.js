@@ -8,6 +8,16 @@ const WIN_CONDITIONS = {
     TIME_LIMIT: { turns: 50, description: "Having most territory when time limit is reached" }
 };
 
+const exportsTarget = typeof module !== 'undefined' && module.exports
+    ? module.exports
+    : (typeof window !== 'undefined'
+        ? (window.GameLogicExtensions = window.GameLogicExtensions || {})
+        : {});
+
+function getEndGameRef() {
+    return typeof exportsTarget.endGame === 'function' ? exportsTarget.endGame : endGame;
+}
+
 // --- Game End Functions ---
 
 // endGame now takes dependencies as an argument
@@ -190,7 +200,7 @@ function checkGameEndConditions(gameId, dependencies) {
         return;
     }
 
-    const extendedDependencies = { ...dependencies, endGameRef: module.exports.endGame };
+    const extendedDependencies = { ...dependencies, endGameRef: getEndGameRef() };
 
     checkConquestVictory(gameId, extendedDependencies);
 
@@ -300,14 +310,13 @@ function moveFleetTransactional(db, gameId, playerId, sourceSectorId, targetSect
 }
 
 
-module.exports = {
+Object.assign(exportsTarget, {
     WIN_CONDITIONS,
     endGame,
     checkGameEndConditions,
-    moveFleetTransactional, // Added new function
-    // Individual checkers are not typically called directly from server.js but are exported for completeness/testing
+    moveFleetTransactional,
     checkConquestVictory,
     checkEliminationVictory,
     checkTechnologyVictory,
     checkTimeLimitVictory
-};
+});

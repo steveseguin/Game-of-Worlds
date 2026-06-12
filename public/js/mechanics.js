@@ -11,6 +11,11 @@
  * Dependencies:
  * - Used by battle.js and possibly other client-side modules
  */
+const exportsTarget = typeof module !== 'undefined' && module.exports
+    ? module.exports
+    : (typeof window !== 'undefined'
+        ? (window.GameMechanics = window.GameMechanics || {})
+        : {});
 /**
  * Ship type definitions with base stats
  */
@@ -451,172 +456,11 @@ function formatBattleMessage(battleLog) {
     return message;
 }
 
-/**
- * Processes the result of a battle, updating the database and notifying players
- * @param {object} battleLog - Battle result from conductBattle()
- * @param {object} gameData - Game data including database connection
- * @param {number} attackerId - ID of attacking player
- * @param {number} defenderId - ID of defending player
- * @param {number} sectorId - ID of sector where battle took place
- */
-function processBattleResult(battleResult, gameId, attackerId, defenderId, sectorId) {
-    // Format battle message for clients
-    const battleMessage = formatBattleMessage(battleResult);
-    
-    // Update database based on battle result
-    if (battleResult.result === "attackerVictory") {
-        // Get remaining ship counts
-        const remainingShips = battleResult.final.attackers;
-        
-        // Begin transaction
-        db.beginTransaction(err => {
-            if (err) {
-                console.error("Battle transaction error:", err);
-                return;
-            }
-            
-            // Update database - attacker takes control
-            const updateQuery = `
-                UPDATE map${gameId} 
-                SET 
-                    totalship1 = ?,
-                    totalship2 = ?,
-                    totalship3 = ?,
-                    totalship4 = ?,
-                    totalship5 = ?,
-                    totalship6 = ?,
-                    totalship7 = ?,
-                    totalship8 = ?,
-                    totalship9 = ?,
-                    ownerid = ?,
-                    colonized = 0,
-                    groundturret = 0,
-                    orbitalturret = 0
-                WHERE sectorid = ?
-            `;
-            
-            db.query(updateQuery, [
-                remainingShips[1] || 0,
-                remainingShips[2] || 0,
-                remainingShips[3] || 0,
-                remainingShips[4] || 0,
-                remainingShips[5] || 0,
-                remainingShips[6] || 0,
-                remainingShips[7] || 0,
-                remainingShips[8] || 0,
-                remainingShips[9] || 0,
-                attackerId,
-                sectorId
-            ], err => {
-                if (err) {
-                    return db.rollback(() => {
-                        console.error("Error updating sector after battle:", err);
-                    });
-                }
-                
-                // Record battle in history
-                db.query(`
-                    INSERT INTO battle_history (
-                        game_id, sector_id, attacker_id, defender_id, 
-                        outcome, attacker_ships_lost, defender_ships_lost
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                `, [
-                    gameId, 
-                    sectorId, 
-                    attackerId, 
-                    defenderId,
-                    'attacker_victory',
-                    battleResult.initial.attackers.length - Object.values(remainingShips).reduce((a, b) => a + b, 0),
-                    battleResult.initial.defenders.length
-                ], err => {
-                    if (err) {
-                        console.error("Error recording battle history:", err);
-                    }
-                    
-                    db.commit(err => {
-                        if (err) {
-                            return db.rollback(() => {
-                                console.error("Error committing battle transaction:", err);
-                            });
-                        }
-                        
-                        // Notify players
-                        const attackerClient = clientMap[attackerId];
-                        const defenderClient = clientMap[defenderId];
-                        
-                        if (attackerClient) {
-                            attackerClient.sendUTF(battleMessage);
-                            attackerClient.sendUTF(`Victory! Your forces have captured sector ${sectorId.toString(16).toUpperCase()}.`);
-                            updateSector2(sectorId, attackerClient);
-                        }
-                        
-                        if (defenderClient) {
-                            defenderClient.sendUTF(battleMessage);
-                            defenderClient.sendUTF(`Defeat! Your forces lost control of sector ${sectorId.toString(16).toUpperCase()}.`);
-                        }
-                    });
-                });
-            });
-        });
-    } else {
-        // Defender victory - update defender's ships
-        const remainingShips = battleLog.final.defenders;
-        
-        const updateQuery = `
-            UPDATE map${gameId} 
-            SET 
-                totalship1 = ?,
-                totalship2 = ?,
-                totalship3 = ?,
-                totalship4 = ?,
-                totalship5 = ?,
-                totalship6 = ?,
-                totalship7 = ?,
-                totalship8 = ?,
-                totalship9 = ?,
-                orbitalturret = ?
-            WHERE sectorid = ?
-        `;
-        
-        db.query(updateQuery, [
-            remainingShips[1] || 0,
-            remainingShips[2] || 0,
-            remainingShips[3] || 0,
-            remainingShips[4] || 0,
-            remainingShips[5] || 0,
-            remainingShips[6] || 0,
-            remainingShips[7] || 0,
-            remainingShips[8] || 0,
-            remainingShips[9] || 0,
-            battleLog.final.orbitalTurrets,
-            sectorId
-        ]);
-        
-        // Notify attacker of defeat
-        if (clientMap[attackerId]) {
-            clientMap[attackerId].sendUTF('All our ships were destroyed. We lost the battle.');
-            clientMap[attackerId].sendUTF(battleMessage);
-        }
-        
-        // Notify defender of victory
-        if (clientMap[defenderId]) {
-            clientMap[defenderId].sendUTF(`We were just attacked in sector ${sectorId.toString(16).toUpperCase()}, yet we won the battle.`);
-            clientMap[defenderId].sendUTF(battleMessage);
-        }
-    }
-    
-    // Notify other players about the battle
-    clients.forEach(client => {
-        if (client.gameid === gameId && client.name !== attackerId && client.name !== defenderId) {
-            client.sendUTF("Somewhere in the universe, a great battle just took place.");
-        }
-    });
-}
+// Note: processBattleResult is server-side only and lives in server/server.js
 
 // Export functions for use in server.js
-module.exports = {
+Object.assign(exportsTarget, {
     SHIP_TYPES,
     conductBattle,
-    formatBattleMessage,
-    processBattleResult
-};
+    formatBattleMessage
+});

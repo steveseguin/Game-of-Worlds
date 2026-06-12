@@ -619,12 +619,21 @@ function handleCommand(data, connection) {
             break;
         case "update":
             serverLogic.updateResources(connection);
+            if (connection.gameid) {
+                serverLogic.updateAllSectors(connection.gameid, connection);
+            }
             break;
         case "joingame":
             serverLogic.handleJoinGame(data, connection);
             break;
         case "getunlockedraces":
             serverLogic.handleGetUnlockedRaces(connection);
+            break;
+        case "standingorders":
+            serverLogic.handleStandingOrders(data, connection);
+            break;
+        case "applyorders":
+            serverLogic.handleApplyStandingOrders(connection);
             break;
         default:
             connection.sendUTF(`Unknown command: ${command}`);

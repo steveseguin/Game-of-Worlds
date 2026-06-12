@@ -44,8 +44,9 @@ let hasEnsuredGameModeColumn = false;
 // Expose game state for other modules that rely on it
 global.gameState = gameState;
 
-const VALID_LOBBY_PLAYER_COUNTS = new Set([2, 3, 4, 6, 8]);
+const VALID_LOBBY_PLAYER_COUNTS = new Set([2, 3, 4, 6, 8, 12, 25, 50, 100, 250, 500, 1000]);
 const DEFAULT_MAX_PLAYERS = 4;
+const MAX_LOBBY_PLAYERS = 1000;
 const GAME_LIST_LIMIT = 25;
 const DEFAULT_CREATOR_RACE_ID = 1;
 const MIN_PLAYERS_TO_START = 1;
@@ -69,6 +70,21 @@ const DEFAULT_STANDING_ORDERS = {
     autoScout: false
 };
 const SCOUT_SHIP_ID = combatSystem.SHIP_TYPES?.SCOUT?.id || 3;
+const COLONY_SHIP_ID = combatSystem.SHIP_TYPES?.COLONY_SHIP?.id || 6;
+const PROBE_COST_CRYSTAL = 300;
+// Enough crystal for one opening probe (300) plus some fleet moves — probing
+// versus blind exploration is the game's first meaningful decision.
+const STARTING_RESOURCES = Object.freeze({ metal: 300, crystal: 400, research: 100 });
+// Building slots scale with the body being built on.
+const BUILDING_SLOTS_BY_TYPE = Object.freeze({
+    1: 1,  // secured asteroid belt: one mining rig
+    6: 2,  // micro planet
+    7: 3,  // small planet
+    8: 4,  // medium planet
+    9: 5,  // large planet
+    10: 6  // homeworld
+});
+const STARTING_BUILDINGS = Object.freeze([0, 4]); // Metal Extractor + Orbital Turret, matching the PHP start.
 const GAME_TABLE_SUFFIXES = [
     'map',
     'players',
@@ -193,14 +209,46 @@ function formatSectorToken(sectorId) {
     return Number(sectorId).toString(16).toUpperCase();
 }
 
+function calculateMapSize(maxPlayers) {
+    const players = Math.max(2, Math.min(MAX_LOBBY_PLAYERS, parsePositiveInt(maxPlayers, DEFAULT_MAX_PLAYERS)));
+    if (players <= 8) {
+        return { width: 14, height: 8 };
+    }
+
+    const targetSectors = Math.max(112, players * 4);
+    const aspect = 14 / 8;
+    const width = Math.ceil(Math.sqrt(targetSectors * aspect));
+    const height = Math.ceil(targetSectors / width);
+    return { width, height };
+}
+
+function getGameMapSizeSync(gameId) {
+    const active = gameState.activeGames[gameId];
+    if (active && active.mapSize && active.mapSize.width && active.mapSize.height) {
+        return active.mapSize;
+    }
+    return { width: 14, height: 8 };
+}
+
+function rememberGameMapSize(gameId, mapSize) {
+    if (!gameState.activeGames[gameId]) {
+        gameState.activeGames[gameId] = {};
+    }
+    gameState.activeGames[gameId].mapSize = {
+        width: Number(mapSize.width) || 14,
+        height: Number(mapSize.height) || 8
+    };
+}
+
 function getAdjacentSectorIds(sectorId, width = 14, height = 8) {
     const id = Number(sectorId);
-    if (!Number.isFinite(id) || id < 0 || id >= width * height) {
+    if (!Number.isFinite(id) || id < 1 || id > width * height) {
         return [];
     }
 
-    const x = id % width;
-    const y = Math.floor(id / width);
+    const zeroBased = id - 1;
+    const x = zeroBased % width;
+    const y = Math.floor(zeroBased / width);
     const adjacent = [];
 
     for (let dy = -1; dy <= 1; dy++) {
@@ -209,7 +257,7 @@ function getAdjacentSectorIds(sectorId, width = 14, height = 8) {
             const nx = x + dx;
             const ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-            adjacent.push((ny * width) + nx);
+            adjacent.push((ny * width) + nx + 1);
         }
     }
 
@@ -252,7 +300,11 @@ function createGameTables(gameId, callback) {
             x INT NOT NULL,
             y INT NOT NULL,
             type INT DEFAULT 0,
-            owner INT DEFAULT NULL
+            owner INT DEFAULT NULL,
+            metalbonus INT DEFAULT 100,
+            crystalbonus INT DEFAULT 100,
+            terraformlvl INT DEFAULT 0,
+            artifact INT DEFAULT 0
         )`,
         `CREATE TABLE IF NOT EXISTS players${gameId} (
             userid INT PRIMARY KEY,
@@ -517,7 +569,7 @@ function handleCreateGame(data, connection) {
     const parts = data.split(':');
     const encodedName = parts[1] || '';
     const gameName = safeDecodeURIComponent(encodedName, '').trim();
-    const maxPlayers = Math.max(2, Math.min(8, parsePositiveInt(parts[2], 4)));
+    const maxPlayers = Math.max(2, Math.min(MAX_LOBBY_PLAYERS, parsePositiveInt(parts[2], DEFAULT_MAX_PLAYERS)));
     const mode = normalizeMode(parts[3]);
     const creatorId = Number(connection.name);
 
@@ -630,7 +682,9 @@ function handleGameStart(connection) {
             if (!gameState.turns[gameId]) {
                 gameState.turns[gameId] = 1;
             }
-            processTurn(gameId);
+            // Game already running: treat //start as "I'm done with my turn".
+            // When every human player is done, the next turn begins early.
+            markPlayerTurnDone(gameId, connection);
             return;
         }
 
@@ -639,7 +693,7 @@ function handleGameStart(connection) {
             return;
         }
 
-        initializeGame(gameId, connection);
+        initializeGame(gameId, connection, game);
     });
 }
 
@@ -655,48 +709,59 @@ function queryDb(sql, params = []) {
     });
 }
 
-async function initializeGame(gameId, connection) {
+async function initializeGame(gameId, connection, game = {}) {
     try {
         await queryDb('UPDATE games SET started = 1 WHERE id = ?', [gameId]);
-
-        // Initialize turn counter.
-        gameState.turns[gameId] = 1;
-        gameState.activeGames[gameId] = {
-            ...(gameState.activeGames[gameId] || {}),
-            status: 'in-progress'
-        };
-
-        // Create and persist the game map before players can interact with sectors.
-        const mapSize = { width: 14, height: 8 };
-        const generatedMap = mapSystem.generateMap(mapSize.width, mapSize.height);
-        const map = Array.isArray(generatedMap)
-            ? generatedMap
-            : (generatedMap && Array.isArray(generatedMap.sectors) ? generatedMap.sectors : []);
-
-        await Promise.all(map.map((sector, index) => {
-            const x = index % mapSize.width;
-            const y = Math.floor(index / mapSize.width);
-            const sectorType = Number(sector && sector.type) || 0;
-            return queryDb(
-                `INSERT INTO map${gameId} (sectorid, x, y, type) VALUES (?, ?, ?, ?)`,
-                [index, x, y, sectorType]
-            );
-        }));
 
         // Initialize players in deterministic join order so homeworld assignment is stable.
         const players = await queryDb(
             `SELECT userid FROM players${gameId} ORDER BY joined_at ASC, userid ASC`
         );
+        const playerRows = Array.isArray(players) ? players : [];
 
-        await Promise.all((players || []).map((row, index) => {
-            const homeworld = assignHomeworld(index, mapSize);
+        // Initialize turn counter.
+        gameState.turns[gameId] = 1;
+        const maxPlayersForMap = parsePositiveInt(game.maxplayers, Math.max(playerRows.length, DEFAULT_MAX_PLAYERS));
+        const mapSize = calculateMapSize(maxPlayersForMap);
+        gameState.activeGames[gameId] = {
+            ...(gameState.activeGames[gameId] || {}),
+            status: 'in-progress',
+            mapSize
+        };
+
+        // Create and persist the game map before players can interact with sectors.
+        const generatedMap = mapSystem.generateMap(mapSize.width, mapSize.height, playerRows.length);
+        const map = Array.isArray(generatedMap)
+            ? generatedMap
+            : (generatedMap && Array.isArray(generatedMap.sectors) ? generatedMap.sectors : []);
+        const generatedHomeworlds = generatedMap && Array.isArray(generatedMap.homeworlds)
+            ? generatedMap.homeworlds
+            : [];
+
+        await Promise.all(map.map((sector, index) => {
+            const sectorId = Number(sector && sector.sectorid) || (index + 1);
+            const x = Number.isFinite(Number(sector && sector.x)) ? Number(sector.x) : (index % mapSize.width);
+            const y = Number.isFinite(Number(sector && sector.y)) ? Number(sector.y) : Math.floor(index / mapSize.width);
+            const sectorType = Number(sector && (sector.type ?? sector.sectortype)) || 0;
+            const metalBonus = Number(sector && sector.metalbonus) || 100;
+            const crystalBonus = Number(sector && sector.crystalbonus) || 100;
+            const terraformLevel = Number(sector && sector.terraformlvl) || 0;
+            const artifact = Number(sector && sector.artifact) || 0;
+            return queryDb(
+                `INSERT INTO map${gameId} (sectorid, x, y, type, metalbonus, crystalbonus, terraformlvl, artifact) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [sectorId, x, y, sectorType, metalBonus, crystalBonus, terraformLevel, artifact]
+            );
+        }));
+
+        await Promise.all(playerRows.map((row, index) => {
+            const homeworld = generatedHomeworlds[index] || assignHomeworld(index, mapSize);
             return (async () => {
                 await queryDb(
                     `UPDATE players${gameId} SET
-                     metal = 100, crystal = 100, research = 50,
+                     metal = ?, crystal = ?, research = ?,
                      homeworld = ?, currentsector = ?
                      WHERE userid = ?`,
-                    [homeworld, homeworld, row.userid]
+                    [STARTING_RESOURCES.metal, STARTING_RESOURCES.crystal, STARTING_RESOURCES.research, homeworld, homeworld, row.userid]
                 );
                 await queryDb(
                     `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
@@ -707,20 +772,28 @@ async function initializeGame(gameId, connection) {
                     `INSERT IGNORE INTO explored_sectors${gameId} (playerid, sectorid) VALUES (?, ?)`,
                     [row.userid, homeworld]
                 );
-                // Spawn starter ships so players can take actions immediately.
+                // Spawn starter ships so players can scout and colonize immediately.
                 await queryDb(
                     `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                    [row.userid, 3, homeworld]
+                    [row.userid, SCOUT_SHIP_ID, homeworld]
                 );
                 await queryDb(
                     `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                    [row.userid, 5, homeworld]
+                    [row.userid, COLONY_SHIP_ID, homeworld]
                 );
+                await Promise.all(STARTING_BUILDINGS.map(buildingType => queryDb(
+                    `INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`,
+                    [homeworld, buildingType, row.userid]
+                )));
             })();
         }));
 
         // Start turn timer after setup is complete.
         startTurnTimer(gameId);
+
+        // Prime AI profiles and standing-order defaults for everyone in the game.
+        hydrateAiPlayers(gameId);
+        hydrateStandingOrdersDefaults(gameId, gameState.activeGames[gameId].mode);
 
         // Notify players only once the world is fully initialized.
         broadcastToGame(gameId, "The game has started!");
@@ -733,104 +806,158 @@ async function initializeGame(gameId, connection) {
 }
 
 function assignHomeworld(playerIndex, mapSize) {
-    // Distribute players evenly across the map
-    const positions = [
-        0, mapSize.width - 1,
-        mapSize.width * (mapSize.height - 1), 
-        mapSize.width * mapSize.height - 1
-    ];
-    
-    return positions[playerIndex % positions.length];
+    const total = mapSize.width * mapSize.height;
+    return Math.min(total, Math.max(1, playerIndex + 1));
 }
 
 function startTurnTimer(gameId) {
     if (gameState.gameTimer[gameId]) {
         clearInterval(gameState.gameTimer[gameId]);
     }
+    const mode = normalizeMode(gameState.activeGames[gameId] && gameState.activeGames[gameId].mode);
+    const interval = TURN_SPEEDS_MS[mode] || TURN_SPEEDS_MS.quick;
     gameState.gameTimer[gameId] = setInterval(() => {
         processTurn(gameId);
-    }, 180000); // 3 minutes per turn
+    }, interval);
+}
+
+// Per-turn yields for owned sectors. Planets scale with their rolled
+// metal/crystal bonuses (50–250%); securing an asteroid belt turns it into a
+// modest mining operation. Buildings amplify the sector they sit in.
+const SECTOR_YIELDS = {
+    1: { metal: 8, crystal: 4, research: 0 },    // asteroid belt (when secured)
+    6: { metal: 10, crystal: 6, research: 1 },   // micro planet
+    7: { metal: 16, crystal: 9, research: 1 },   // small planet
+    8: { metal: 22, crystal: 12, research: 2 },  // medium planet
+    9: { metal: 30, crystal: 16, research: 2 },  // large planet
+    10: { metal: 35, crystal: 18, research: 5 }  // homeworld
+};
+const BASE_INCOME = { metal: 5, crystal: 5, research: 5 };
+
+async function computeTurnIncome(gameId, playerId) {
+    const income = { ...BASE_INCOME };
+    let sectors = [];
+    try {
+        sectors = await queryDb(
+            `SELECT sectorid, type, metalbonus, crystalbonus FROM map${gameId} WHERE owner = ?`,
+            [playerId]
+        );
+    } catch (err) {
+        // Older games lack bonus columns; fall back to flat yields.
+        sectors = await queryDb(
+            `SELECT sectorid, type FROM map${gameId} WHERE owner = ?`,
+            [playerId]
+        ).catch(() => []);
+    }
+
+    const buildingRows = await queryDb(
+        `SELECT sectorid, type, COUNT(*) as count FROM buildings${gameId} WHERE owner = ? GROUP BY sectorid, type`,
+        [playerId]
+    ).catch(() => []);
+    const buildingsBySector = new Map();
+    (buildingRows || []).forEach(row => {
+        const sectorId = Number(row.sectorid);
+        if (!buildingsBySector.has(sectorId)) buildingsBySector.set(sectorId, {});
+        buildingsBySector.get(sectorId)[Number(row.type)] = Number(row.count) || 0;
+    });
+
+    (sectors || []).forEach(sector => {
+        const yields = SECTOR_YIELDS[Number(sector.type)];
+        if (!yields) return;
+        const metalBonus = (Number(sector.metalbonus) || 100) / 100;
+        const crystalBonus = (Number(sector.crystalbonus) || 100) / 100;
+        const local = buildingsBySector.get(Number(sector.sectorid)) || {};
+        const extractors = local[0] || 0;
+        const refineries = local[1] || 0;
+        const academies = local[2] || 0;
+        income.metal += yields.metal * metalBonus * (1 + 0.6 * extractors);
+        income.crystal += yields.crystal * crystalBonus * (1 + 0.6 * refineries);
+        income.research += yields.research + 4 * academies;
+    });
+
+    return income;
 }
 
 function processTurn(gameId) {
     gameState.turns[gameId]++;
-    
+
+    // New turn: clear "done early" flags.
+    if (gameState.activeGames[gameId] && gameState.activeGames[gameId].turnReady) {
+        gameState.activeGames[gameId].turnReady.clear();
+    }
+
+    // Let AI opponents act, then run any player standing orders.
+    triggerAiTurn(gameId);
+    applyStandingOrdersForGame(gameId);
+
+    const activeState = gameState.activeGames[gameId] || {};
+    const isEpic = normalizeMode(activeState.mode) === 'epic';
+    const modeMultiplier = isEpic ? EPIC_RESOURCE_MULTIPLIER : 1;
+
     // Process resource generation with race modifiers
     db.query(`SELECT * FROM players${gameId}`, (err, players) => {
         if (err) return;
-        
+
         players.forEach(player => {
             // Get race modifiers
             const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === player.race_id) || raceSystem.RACE_TYPES.TERRAN;
-            
-            // Get player's buildings
-            db.query(
-                `SELECT b.type, COUNT(*) as count FROM buildings${gameId} b
-                 JOIN map${gameId} m ON b.sectorid = m.sectorid
-                 WHERE m.owner = ? GROUP BY b.type`,
-                [player.userid],
-                (err, buildings) => {
-                    if (err) return;
-                    
-                    let metalGen = 10; // Base generation
-                    let crystalGen = 10;
-                    let researchGen = 5;
-                    
-                    buildings.forEach(building => {
-                        switch(building.type) {
-                            case 0: metalGen += building.count * 10; break; // Metal Extractor
-                            case 1: crystalGen += building.count * 10; break; // Crystal Refinery
-                            case 2: researchGen += building.count * 5; break; // Research Academy
-                        }
-                    });
-                    
-                    // Apply race modifiers
-                    metalGen = Math.floor(metalGen * race.bonuses.metalProduction);
-                    crystalGen = Math.floor(crystalGen * race.bonuses.crystalProduction);
-                    researchGen = Math.floor(researchGen * race.bonuses.researchSpeed);
-                    
-                    // Update resources and stats
-                    db.query(
-                        `UPDATE players${gameId} SET 
-                         metal = metal + ?,
-                         crystal = crystal + ?,
-                         research = research + ?
-                         WHERE userid = ?`,
-                        [metalGen, crystalGen, researchGen, player.userid]
-                    );
-                    
-                    // Update lifetime crystal earned for unlock tracking
-                    db.query(
-                        `UPDATE user_stats SET 
-                         total_crystal_earned = total_crystal_earned + ?
-                         WHERE user_id = ?`,
-                        [crystalGen, player.userid]
-                    );
-                    
-                    // Handle special race abilities
-                    if (race.id === 6) { // Mechanicus auto-repair
-                        autoRepairShips(gameId, player.userid);
-                    } else if (race.id === 7) { // Bioform evolution
-                        evolveShips(gameId, player.userid);
+
+            computeTurnIncome(gameId, player.userid).then(income => {
+                const metalGen = Math.floor(income.metal * race.bonuses.metalProduction * modeMultiplier);
+                const crystalGen = Math.floor(income.crystal * race.bonuses.crystalProduction * modeMultiplier);
+                const researchGen = Math.floor(income.research * race.bonuses.researchSpeed * modeMultiplier);
+
+                // Update resources and stats
+                db.query(
+                    `UPDATE players${gameId} SET
+                     metal = metal + ?,
+                     crystal = crystal + ?,
+                     research = research + ?
+                     WHERE userid = ?`,
+                    [metalGen, crystalGen, researchGen, player.userid],
+                    () => {
+                        gameState.clients.forEach(client => {
+                            if (Number(client.gameid) === Number(gameId) && Number(client.name) === Number(player.userid)) {
+                                updateResources(client);
+                                sendVisibleMapState(gameId, client);
+                            }
+                        });
                     }
+                );
+
+                // Update lifetime crystal earned for unlock tracking
+                db.query(
+                    `UPDATE user_stats SET
+                     total_crystal_earned = total_crystal_earned + ?
+                     WHERE user_id = ?`,
+                    [crystalGen, player.userid]
+                );
+
+                // Handle special race abilities
+                if (race.id === 6) { // Mechanicus auto-repair
+                    autoRepairShips(gameId, player.userid);
+                } else if (race.id === 7) { // Bioform evolution
+                    evolveShips(gameId, player.userid);
                 }
-            );
+            }).catch(incomeErr => {
+                console.warn(`Income calculation failed for player ${player.userid} in game ${gameId}:`, incomeErr.message || incomeErr);
+            });
         });
     });
-    
+
     // Process battles
     processBattles(gameId);
     
     // Check victory conditions
     victorySystem.checkAllPlayersForVictory(gameId, gameState, db, (err, winner) => {
-        if (!err && winner) {
-            // End the game
-            victorySystem.endGame(gameId, winner.playerId, winner.condition, gameState, db, (err, result) => {
-                if (!err) {
-                    broadcastToGame(gameId, `gameover::${winner.playerId}::${winner.condition}`);
-                }
-            });
-        }
+        if (err || !winner) return;
+        // Broadcast first so a bookkeeping failure can't swallow the result.
+        broadcastToGame(gameId, `gameover::${winner.playerId}::${winner.condition}`);
+        victorySystem.endGame(gameId, winner.playerId, winner.condition, gameState, db, (endErr) => {
+            if (endErr) {
+                console.error(`Game ${gameId} end bookkeeping failed:`, endErr.message || endErr);
+            }
+        });
     });
     
     // Notify players of new turn
@@ -1364,6 +1491,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
         updateSector2(gameId, sectorId);
 
         const fullBattleMessage = combatSystem.formatBattleMessage(battleLog);
+        const sectorBattleMessage = `battle::${sectorId}::${fullBattleMessage}`;
         const viewModes = getBattleViewModes(
             attackerShips,
             defenderShips,
@@ -1387,7 +1515,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
         });
 
         const attackerMessage = viewModes.attacker.mode === 'full'
-            ? fullBattleMessage
+            ? sectorBattleMessage
             : formatBattleSummaryMessage({
                 sectorId,
                 reason: viewModes.attacker.reason,
@@ -1398,7 +1526,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
                 result: battleLog.result
             });
         const defenderMessage = viewModes.defender.mode === 'full'
-            ? fullBattleMessage
+            ? sectorBattleMessage
             : formatBattleSummaryMessage({
                 sectorId,
                 reason: viewModes.defender.reason,
@@ -1411,6 +1539,14 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
 
         notifyPlayer(attackerId, attackerMessage);
         notifyPlayer(defenderId, defenderMessage);
+
+        // Combat overrides fog: every other player in the game sees the battle too.
+        gameState.clients.forEach(client => {
+            if (Number(client.gameid) !== Number(gameId)) return;
+            const clientId = Number(client.name);
+            if (clientId === attackerId || clientId === defenderId) return;
+            client.sendUTF(sectorBattleMessage);
+        });
 
         const sectorHex = Number(sectorId).toString(16).toUpperCase();
         notifyPlayer(
@@ -1560,8 +1696,8 @@ function colonizePlanet(connection) {
             // Check if player has a colony ship in this sector
             db.query(
                 `SELECT id FROM ships${gameId} 
-                 WHERE owner = ? AND sectorid = ? AND type = 5 LIMIT 1`,
-                [playerId, sectorId],
+                 WHERE owner = ? AND sectorid = ? AND type = ? LIMIT 1`,
+                [playerId, sectorId, COLONY_SHIP_ID],
                 (err, ships) => {
                     if (err || ships.length === 0) {
                         connection.sendUTF("Error: No colony ship in this sector");
@@ -1583,7 +1719,7 @@ function colonizePlanet(connection) {
                                 return;
                             }
                             
-                            if (sector[0].type < 1 || sector[0].type > 10) {
+                            if (sector[0].type < 6 || sector[0].type > 10) {
                                 connection.sendUTF("Error: Cannot colonize this sector type");
                                 return;
                             }
@@ -1641,30 +1777,34 @@ function buyTech(data, connection) {
             
             const player = results[0];
             const playerTech = player.tech ? player.tech.split(',').map(Number) : [];
-            
+
             if (playerTech.includes(techId)) {
                 connection.sendUTF("Error: Already have this technology");
                 return;
             }
-            
-            if (player.research < tech.cost) {
+
+            const techCost = Number(tech.cost ?? tech.baseCost) || 0;
+            if (player.research < techCost) {
                 connection.sendUTF("Error: Not enough research points");
                 return;
             }
-            
-            // Check prerequisites
-            if (tech.requires && !playerTech.includes(tech.requires)) {
+
+            // Check prerequisites (stored as keys into TECHNOLOGIES)
+            const prereqIds = (tech.prerequisites || [])
+                .map(key => techSystem.TECHNOLOGIES[key] && techSystem.TECHNOLOGIES[key].id)
+                .filter(Number.isFinite);
+            if (!prereqIds.every(id => playerTech.includes(id))) {
                 connection.sendUTF("Error: Missing prerequisite technology");
                 return;
             }
-            
+
             // Buy the tech
             playerTech.push(techId);
             const newTech = playerTech.join(',');
-            
+
             db.query(
                 `UPDATE players${gameId} SET research = research - ?, tech = ? WHERE userid = ?`,
-                [tech.cost, newTech, playerId],
+                [techCost, newTech, playerId],
                 (err) => {
                     if (err) {
                         connection.sendUTF("Error: Failed to buy technology");
@@ -1681,59 +1821,76 @@ function buyTech(data, connection) {
 
 function probeSector(data, connection) {
     const parts = data.split(":");
-    const targetSector = parseInt(parts[1]);
+    const targetSector = parseSectorToken(parts[1]);
     const playerId = connection.name;
     const gameId = connection.gameid;
 
-    // Check if player has probe technology
+    if (!Number.isFinite(targetSector)) {
+        connection.sendUTF("Error: Invalid sector");
+        return;
+    }
+
+    // Probes cost crystal and may be destroyed before revealing hazardous sectors.
     db.query(
-        `SELECT tech FROM players${gameId} WHERE userid = ?`,
-        [playerId],
-        (err, results) => {
-            if (err || results.length === 0) {
-                connection.sendUTF("Error: Could not get player data");
+        `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ? AND crystal >= ?`,
+        [PROBE_COST_CRYSTAL, playerId, PROBE_COST_CRYSTAL],
+        (costErr, costResult) => {
+            if (costErr || !costResult || costResult.affectedRows === 0) {
+                connection.sendUTF(`Error: Probes cost ${PROBE_COST_CRYSTAL} crystal`);
                 return;
             }
 
-            const playerTech = results[0].tech ? results[0].tech.split(',').map(Number) : [];
-            if (!playerTech.includes(15)) { // Probe Scanner tech ID
-                connection.sendUTF("Error: Probe Scanner technology required");
+            revealProbedSector(gameId, playerId, targetSector, connection);
+        }
+    );
+}
+
+function revealProbedSector(gameId, playerId, targetSector, connection) {
+    db.query(
+        `SELECT * FROM map${gameId} WHERE sectorid = ?`,
+        [targetSector],
+        (err, sector) => {
+            if (err || sector.length === 0) {
+                updateResources(connection);
+                connection.sendUTF("Error: Invalid sector");
                 return;
             }
 
-            // Get sector information
+            const sectorType = Number(sector[0].type);
+            const sectorOwner = sector[0].owner;
+
+            if (sectorType === 2) {
+                updateResources(connection);
+                connection.sendUTF(`Error: Our probe was destroyed in sector ${formatSectorToken(targetSector)} - there's a BLACK HOLE there!`);
+                return;
+            }
+            if (sectorType === 1 && Number(sectorOwner) !== Number(playerId)) {
+                updateResources(connection);
+                connection.sendUTF(`Error: Our probe was destroyed in sector ${formatSectorToken(targetSector)} - dangerous asteroid field!`);
+                return;
+            }
+
+            markSectorExplored(gameId, playerId, targetSector);
+
             db.query(
-                `SELECT * FROM map${gameId} WHERE sectorid = ?`,
+                `SELECT owner, type, COUNT(*) as count
+                 FROM ships${gameId}
+                 WHERE sectorid = ?
+                 GROUP BY owner, type`,
                 [targetSector],
-                (err, sector) => {
-                    if (err || sector.length === 0) {
-                        connection.sendUTF("Error: Invalid sector");
-                        return;
-                    }
+                (shipErr, ships) => {
+                    if (shipErr) ships = [];
 
-                    // Mark sector as explored
-                    markSectorExplored(gameId, playerId, targetSector);
+                    const probeData = {
+                        sector: sector[0],
+                        ships: ships,
+                        buildings: []
+                    };
 
-                    // Get ships in sector
-                    db.query(
-                        `SELECT owner, type, COUNT(*) as count
-                         FROM ships${gameId}
-                         WHERE sectorid = ?
-                         GROUP BY owner, type`,
-                        [targetSector],
-                        (err, ships) => {
-                            if (err) ships = [];
-
-                            const probeData = {
-                                sector: sector[0],
-                                ships: ships
-                            };
-
-                            connection.sendUTF(`probe::${targetSector}::${JSON.stringify(probeData)}`);
-                            // Broadcast sector update to all players who can now see it
-                            updateSector2(gameId, targetSector);
-                        }
-                    );
+                    updateResources(connection);
+                    connection.sendUTF(`sector::${targetSector}::${JSON.stringify(probeData)}`);
+                    updateSector2(gameId, targetSector);
+                    sendVisibleMapState(gameId, connection);
                 }
             );
         }
@@ -1875,21 +2032,27 @@ function buyBuilding(data, connection) {
             
             // Check if player owns the sector
             db.query(
-                `SELECT owner FROM map${gameId} WHERE sectorid = ?`,
+                `SELECT owner, type FROM map${gameId} WHERE sectorid = ?`,
                 [player.currentsector],
                 (err, sector) => {
-                    if (err || sector.length === 0 || sector[0].owner !== playerId) {
+                    if (err || sector.length === 0 || Number(sector[0].owner) !== Number(playerId)) {
                         connection.sendUTF("Error: You don't own this sector");
                         return;
                     }
-                    
-                    // Check building limit (max 3 per sector)
+
+                    // Building slots scale with the planet (homeworld 6 … asteroid 1).
+                    const slotLimit = BUILDING_SLOTS_BY_TYPE[Number(sector[0].type)] || 0;
+                    if (slotLimit === 0) {
+                        connection.sendUTF("Error: Nothing can be built in this sector");
+                        return;
+                    }
+
                     db.query(
                         `SELECT COUNT(*) as count FROM buildings${gameId} WHERE sectorid = ?`,
                         [player.currentsector],
                         (err, count) => {
-                            if (err || count[0].count >= 3) {
-                                connection.sendUTF("Error: Building limit reached");
+                            if (err || count[0].count >= slotLimit) {
+                                connection.sendUTF(`Error: Building limit reached (${slotLimit} slots here)`);
                                 return;
                             }
                             
@@ -1938,7 +2101,7 @@ function moveFleet(data, connection) {
     const gameId = connection.gameid;
 
     // Validate movement
-    if (!areAdjacentSectors(fromSector, toSector)) {
+    if (!areAdjacentSectors(fromSector, toSector, gameId)) {
         connection.sendUTF("Error: Sectors are not adjacent");
         return;
     }
@@ -1991,10 +2154,12 @@ function moveFleet(data, connection) {
                                                 // Mark destination sector as explored
                                                 markSectorExplored(gameId, playerId, toSector);
 
-                                                connection.sendUTF("Success: Fleet moved");
-                                                updateResources(connection);
-                                                updateSector2(gameId, fromSector);
-                                                updateSector2(gameId, toSector);
+                                                // HAZARD HANDLING & AUTO-COLONIZATION
+                                                applyArrivalEffects(gameId, playerId, toSector, connection, () => {
+                                                    updateResources(connection);
+                                                    updateSector2(gameId, fromSector);
+                                                    updateSector2(gameId, toSector);
+                                                });
                                             }
                                         }
                                     }
@@ -2008,32 +2173,172 @@ function moveFleet(data, connection) {
     );
 }
 
-function areAdjacentSectors(sector1, sector2) {
-    const mapWidth = 14;
-    const x1 = sector1 % mapWidth;
-    const y1 = Math.floor(sector1 / mapWidth);
-    const x2 = sector2 % mapWidth;
-    const y2 = Math.floor(sector2 / mapWidth);
-    
+function areAdjacentSectors(sector1, sector2, gameId) {
+    const mapSize = getGameMapSizeSync(gameId);
+    const mapWidth = mapSize.width;
+    const id1 = Number(sector1) - 1;
+    const id2 = Number(sector2) - 1;
+    if (!Number.isFinite(id1) || !Number.isFinite(id2) || id1 < 0 || id2 < 0) {
+        return false;
+    }
+
+    const x1 = id1 % mapWidth;
+    const y1 = Math.floor(id1 / mapWidth);
+    const x2 = id2 % mapWidth;
+    const y2 = Math.floor(id2 / mapWidth);
+
     const dx = Math.abs(x1 - x2);
     const dy = Math.abs(y1 - y2);
-    
+
     // Check if adjacent (including diagonals)
     return dx <= 1 && dy <= 1 && (dx + dy) > 0;
+}
+
+// ============================================================================
+// HAZARD MECHANICS - Restored from original 2012 game
+// Black holes annihilate fleets, asteroids damage them (if not owned),
+// and unowned planets are auto-colonized on arrival.
+// ============================================================================
+function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
+    const finish = () => { try { done && done(); } catch (e) { console.error('arrival cb error:', e); } };
+
+    db.query(
+        `SELECT type, owner FROM map${gameId} WHERE sectorid = ?`,
+        [sectorId],
+        (err, sectorRows) => {
+            if (err || !sectorRows || sectorRows.length === 0) {
+                connection.sendUTF("Success: Fleet moved");
+                return finish();
+            }
+
+            const sectorType = Number(sectorRows[0].type);
+            const sectorOwner = sectorRows[0].owner;
+            const numericPlayerId = Number(playerId);
+            const ownsSector = Number(sectorOwner) === numericPlayerId;
+
+            // BLACK HOLE: Annihilate the fleet
+            if (sectorType === 2) {
+                db.query(
+                    `DELETE FROM ships${gameId} WHERE owner = ? AND sectorid = ?`,
+                    [playerId, sectorId],
+                    (delErr, result) => {
+                        const lostCount = (result && result.affectedRows) || 0;
+                        connection.sendUTF(`Error: Fleet arrived in sector ${sectorId}... but the sector contained a BLACK HOLE! UH-OH! Our fleet was crushed by the immense gravity!`);
+                        // Notify other players
+                        gameState.clients.forEach(c => {
+                            if (c.gameid === gameId && Number(c.name) !== numericPlayerId) {
+                                c.sendUTF(`Error: An enemy fleet was destroyed by the black hole in sector ${sectorId}!`);
+                            }
+                        });
+                        finish();
+                    }
+                );
+                return;
+            }
+
+            // ASTEROID BELT: Random damage unless owned
+            if (sectorType === 1 && !ownsSector) {
+                // Get ships that just arrived
+                db.query(
+                    `SELECT id FROM ships${gameId} WHERE owner = ? AND sectorid = ?`,
+                    [playerId, sectorId],
+                    (shipErr, ships) => {
+                        if (shipErr || !ships || ships.length === 0) {
+                            connection.sendUTF(`Success: Fleet moved into sector ${sectorId}`);
+                            return finish();
+                        }
+                        const totalShips = ships.length;
+                        // ~50% chance per ship of destruction
+                        const destroyed = ships.filter(() => Math.random() > 0.5);
+                        const destroyedCount = destroyed.length;
+
+                        const proceed = () => {
+                            let msg;
+                            if (destroyedCount === 0) {
+                                msg = `Success: We navigated the asteroid belt in sector ${sectorId} and avoided being hit. Whew!`;
+                            } else if (destroyedCount === totalShips) {
+                                msg = `Error: Asteroids in sector ${sectorId} destroyed our entire fleet! We lost everything!`;
+                            } else {
+                                msg = `Error: We lost ${destroyedCount} ships to asteroids in sector ${sectorId}. If we can control the sector though, that won't happen again.`;
+                            }
+                            connection.sendUTF(msg);
+                            // Notify other players if there were losses
+                            if (destroyedCount > 0) {
+                                gameState.clients.forEach(c => {
+                                    if (c.gameid === gameId && Number(c.name) !== numericPlayerId) {
+                                        c.sendUTF(`Error: An enemy fleet lost ${destroyedCount} ships to asteroids in sector ${sectorId}!`);
+                                    }
+                                });
+                            }
+                            // Auto-colonize if survivors and unowned (asteroid belts are NOT colonizable per spec, skip)
+                            finish();
+                        };
+
+                        if (destroyedCount === 0) {
+                            proceed();
+                        } else {
+                            const destroyedIds = destroyed.map(s => s.id).join(',');
+                            db.query(
+                                `DELETE FROM ships${gameId} WHERE id IN (${destroyedIds})`,
+                                proceed
+                            );
+                        }
+                    }
+                );
+                return;
+            }
+
+            // AUTO-COLONIZATION: Unowned planets (types 6-9)
+            if (sectorType >= 6 && sectorType <= 9 && !sectorOwner) {
+                db.query(
+                    `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
+                    [playerId, sectorId],
+                    (colErr) => {
+                        if (!colErr) {
+                            connection.sendUTF(`Success: Fleet claimed sector ${sectorId} for our empire!`);
+                        } else {
+                            connection.sendUTF(`Success: Fleet moved to sector ${sectorId}`);
+                        }
+                        finish();
+                    }
+                );
+                return;
+            }
+
+            // Default: safe arrival
+            connection.sendUTF("Success: Fleet moved");
+            finish();
+        }
+    );
 }
 
 function updateSector(data, connection) {
     const parts = data.split(":");
     const sectorId = parseSectorToken(parts[1]);
     const gameId = connection.gameid;
+    const playerId = Number(connection.name);
 
     if (!Number.isFinite(sectorId)) {
         connection.sendUTF("Error: Invalid sector");
         return;
     }
 
-    updateSector2(gameId, sectorId);
-    sendMultiMoveOptions(connection, gameId, sectorId);
+    canPlayerSeeSector(gameId, playerId, sectorId, (canSee) => {
+        if (canSee) {
+            db.query(
+                `UPDATE players${gameId} SET currentsector = ? WHERE userid = ?`,
+                [sectorId, playerId],
+                () => {
+                    updateSector2(gameId, sectorId);
+                    sendMultiMoveOptions(connection, gameId, sectorId);
+                }
+            );
+            return;
+        }
+
+        connection.sendUTF(`probeonly:${formatSectorToken(sectorId)}`);
+        sendMultiMoveOptions(connection, gameId, sectorId);
+    });
 }
 
 function canPlayerSeeSector(gameId, playerId, sectorId, callback) {
@@ -2052,7 +2357,7 @@ function canPlayerSeeSector(gameId, playerId, sectorId, callback) {
             const sector = sectors[0];
 
             // Own it
-            if (sector.owner === playerId) return callback(true);
+            if (Number(sector.owner) === Number(playerId)) return callback(true);
 
             // Check if explored
             db.query(
@@ -2119,7 +2424,7 @@ function updateSector2(gameId, sectorId) {
 
                             // Send sector data to each player who can see it
                             gameState.clients.forEach(client => {
-                                if (client.gameid === gameId) {
+                                if (Number(client.gameid) === Number(gameId)) {
                                     const playerId = Number(client.name);
                                     canPlayerSeeSector(gameId, playerId, sectorId, (canSee) => {
                                         if (canSee) {
@@ -2143,7 +2448,8 @@ function surroundShips(data, connection) {
 
 function sendMultiMoveOptions(connection, gameId, targetSector) {
     const playerId = Number(connection.name);
-    const adjacentIds = getAdjacentSectorIds(targetSector);
+    const mapSize = getGameMapSizeSync(gameId);
+    const adjacentIds = getAdjacentSectorIds(targetSector, mapSize.width, mapSize.height);
     if (!Number.isFinite(playerId) || adjacentIds.length === 0) {
         return;
     }
@@ -2232,7 +2538,7 @@ function preMoveFleet(data, connection) {
     });
 
     for (const entry of moveEntries) {
-        if (!areAdjacentSectors(entry.sourceSector, targetSector)) {
+        if (!areAdjacentSectors(entry.sourceSector, targetSector, gameId)) {
             connection.sendUTF(`Error: Sector ${formatSectorToken(entry.sourceSector)} is not adjacent to ${formatSectorToken(targetSector)}`);
             return;
         }
@@ -2316,15 +2622,18 @@ function preMoveFleet(data, connection) {
                                     return;
                                 }
 
-                                updateResources(connection);
-                                updateSector2(gameId, targetSector);
-                                touchedSectors.forEach(sectorId => {
-                                    if (sectorId !== targetSector) {
-                                        updateSector2(gameId, sectorId);
-                                    }
-                                });
+                                markSectorExplored(gameId, playerId, targetSector);
 
-                                connection.sendUTF(`Success: Fleet moved to sector ${formatSectorToken(targetSector)}`);
+                                // HAZARD HANDLING & AUTO-COLONIZATION
+                                applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
+                                    updateResources(connection);
+                                    updateSector2(gameId, targetSector);
+                                    gameState.clients.forEach(client => {
+                                        if (Number(client.gameid) === Number(gameId)) {
+                                            sendVisibleMapState(gameId, client);
+                                        }
+                                    });
+                                });
                             }
                         );
                     };
@@ -2366,9 +2675,100 @@ function updateResources(connection) {
     );
 }
 
+function sendMapConfig(gameId, connection) {
+    const mapSize = getGameMapSizeSync(gameId);
+    connection.sendUTF(`mapconfig::${mapSize.width}::${mapSize.height}`);
+}
+
+function sectorStatusForPlayer(sector, playerId, fleetSize) {
+    const type = Number(sector.type ?? sector.sectortype ?? 0);
+    const owner = Number(sector.owner ?? sector.ownerid ?? 0);
+    if (type === 2) return 'blackhole';
+    // A secured asteroid belt is safe territory; show it as owned.
+    if (owner && owner === Number(playerId)) return type === 10 ? 'homeworld' : 'owned';
+    if (type === 1 || type === 3) return 'hazard';
+    if (owner) return 'enemy';
+    if (type === 10) return 'homeworld';
+    if (fleetSize > 0) return 'owned';
+    return 'neutral';
+}
+
+function sendVisibleMapState(gameId, connection) {
+    const playerId = Number(connection.name);
+    if (!Number.isFinite(playerId)) {
+        return;
+    }
+
+    db.query(`SELECT * FROM map${gameId}`, (mapErr, sectors) => {
+        if (mapErr || !Array.isArray(sectors)) {
+            sendMapConfig(gameId, connection);
+            return;
+        }
+
+        if (sectors.length > 0) {
+            const width = Math.max(...sectors.map(sector => Number(sector.x) || 0)) + 1;
+            const height = Math.max(...sectors.map(sector => Number(sector.y) || 0)) + 1;
+            rememberGameMapSize(gameId, { width, height });
+        }
+        sendMapConfig(gameId, connection);
+
+        const explored = new Set();
+        db.query(
+            `SELECT sectorid FROM explored_sectors${gameId} WHERE playerid = ?`,
+            [playerId],
+            (exploredErr, exploredRows) => {
+                if (!exploredErr && Array.isArray(exploredRows)) {
+                    exploredRows.forEach(row => explored.add(Number(row.sectorid)));
+                }
+
+                db.query(
+                    `SELECT sectorid, COUNT(*) as count FROM ships${gameId} WHERE owner = ? GROUP BY sectorid`,
+                    [playerId],
+                    (shipsErr, shipRows) => {
+                        const fleetBySector = new Map();
+                        if (!shipsErr && Array.isArray(shipRows)) {
+                            shipRows.forEach(row => {
+                                fleetBySector.set(Number(row.sectorid), Number(row.count) || 0);
+                            });
+                        }
+
+                        const visible = [];
+                        sectors.forEach(sector => {
+                            const sectorId = Number(sector.sectorid);
+                            const owned = Number(sector.owner) === playerId;
+                            const fleetSize = fleetBySector.get(sectorId) || 0;
+                            if (!owned && fleetSize <= 0 && !explored.has(sectorId)) {
+                                return;
+                            }
+                            const sectorType = Number(sector.type ?? sector.sectortype) || 0;
+                            visible.push(`${sectorId}:${sectorStatusForPlayer(sector, playerId, fleetSize)}:${fleetSize}:${sectorType}`);
+                        });
+
+                        connection.sendUTF(`mapstate::${visible.join(',')}`);
+                    }
+                );
+            }
+        );
+    });
+}
+
 function updateAllSectors(gameId, connection) {
+    sendVisibleMapState(gameId, connection);
+
     // Send visible sector data to reconnecting player
     const playerId = Number(connection.name);
+    db.query(
+        `SELECT currentsector FROM players${gameId} WHERE userid = ? LIMIT 1`,
+        [playerId],
+        (currentErr, currentRows) => {
+            if (!currentErr && Array.isArray(currentRows) && currentRows.length > 0) {
+                const currentSector = parsePositiveInt(currentRows[0].currentsector, 0);
+                if (currentSector > 0) {
+                    updateSector2(gameId, currentSector);
+                }
+            }
+        }
+    );
 
     db.query(
         `SELECT sectorid FROM map${gameId}`,
@@ -2962,7 +3362,7 @@ function handleGetUnlockedRaces(connection) {
 // Helper functions
 function broadcastToGame(gameId, message) {
     gameState.clients.forEach(client => {
-        if (client.gameid === gameId) {
+        if (Number(client.gameid) === Number(gameId)) {
             client.sendUTF(message);
         }
     });
@@ -3013,6 +3413,17 @@ function notifyPlayer(playerId, message) {
     const connection = gameState.clientMap[playerId];
     if (connection) {
         connection.sendUTF(message);
+    }
+}
+
+function handlePlayerDisconnect(connection) {
+    if (!connection) {
+        return;
+    }
+
+    const playerId = connection.name ? String(connection.name) : '';
+    if (playerId && playerId !== 'unknown' && gameState.clientMap[playerId] === connection) {
+        delete gameState.clientMap[playerId];
     }
 }
 
@@ -3126,6 +3537,550 @@ function handleGetCurrentGame(request, response, userId) {
     );
 }
 
+// ============================================================================
+// ACTIVE GAME STATE, STANDING ORDERS & AI TURNS
+// Restored after the modular reorganization dropped them. Standing orders let
+// players (especially in epic/24h mode) automate rebuild/scout chores; the AI
+// block gives computer opponents real turn behavior.
+// ============================================================================
+
+function ensureActiveGameState(gameId) {
+    if (!gameState.activeGames[gameId]) {
+        gameState.activeGames[gameId] = {};
+    }
+    const state = gameState.activeGames[gameId];
+    if (!state.aiProfiles) {
+        state.aiProfiles = new Map();
+    }
+    if (!state.standingOrders) {
+        state.standingOrders = {};
+    }
+    if (!state.turnReady) {
+        state.turnReady = new Set();
+    }
+    return state;
+}
+
+// "Finish turn early": each human can declare they're done; once everyone
+// has, the next turn starts immediately instead of waiting out the clock.
+function markPlayerTurnDone(gameId, connection) {
+    const state = ensureActiveGameState(gameId);
+    const playerId = Number(connection.name);
+    if (!Number.isFinite(playerId)) return;
+    state.turnReady.add(playerId);
+
+    db.query(
+        `SELECT userid, is_ai FROM players${gameId}`,
+        (err, rows) => {
+            if (err || !Array.isArray(rows)) return;
+            const humans = rows.filter(row => Number(row.is_ai) !== 1).map(row => Number(row.userid));
+            const readyCount = humans.filter(id => state.turnReady.has(id)).length;
+
+            broadcastToGame(gameId, `turnready::${readyCount}::${humans.length}`);
+
+            if (readyCount >= humans.length && humans.length > 0) {
+                startTurnTimer(gameId); // restart the clock for the new turn
+                processTurn(gameId);
+            }
+        }
+    );
+}
+
+function defaultStandingOrders(mode = DEFAULT_GAME_MODE) {
+    const normalized = normalizeMode(mode);
+    return {
+        ...DEFAULT_STANDING_ORDERS,
+        autoRebuild: normalized === 'epic',
+        autoScout: normalized === 'epic',
+        targetScouts: 2
+    };
+}
+
+function getStandingOrders(gameId, playerId) {
+    const state = ensureActiveGameState(gameId);
+    if (!state.standingOrders[playerId]) {
+        state.standingOrders[playerId] = defaultStandingOrders(state.mode || DEFAULT_GAME_MODE);
+    }
+    return state.standingOrders[playerId];
+}
+
+function setStandingOrders(gameId, playerId, incoming = {}) {
+    const state = ensureActiveGameState(gameId);
+    const current = getStandingOrders(gameId, playerId);
+    state.standingOrders[playerId] = {
+        ...current,
+        autoRebuild: Boolean(incoming.autoRebuild),
+        autoScout: Boolean(incoming.autoScout),
+        targetScouts: Number.isFinite(incoming.targetScouts)
+            ? Math.max(0, Math.min(6, incoming.targetScouts))
+            : (current.targetScouts || 2)
+    };
+    return state.standingOrders[playerId];
+}
+
+async function applyStandingOrdersForPlayer(gameId, playerId) {
+    const orders = getStandingOrders(gameId, playerId);
+    const summary = [];
+    if (!orders) return summary;
+
+    try {
+        const playerRows = await queryDb(
+            `SELECT metal, crystal, homeworld FROM players${gameId} WHERE userid = ? LIMIT 1`,
+            [playerId]
+        );
+        if (!playerRows || playerRows.length === 0) {
+            return summary;
+        }
+        const player = playerRows[0];
+        let metal = Number(player.metal) || 0;
+        let crystal = Number(player.crystal) || 0;
+        const homeworld = Number(player.homeworld);
+        if (!Number.isFinite(homeworld)) {
+            return summary;
+        }
+
+        if (orders.autoRebuild) {
+            const sectorRows = await queryDb(
+                `SELECT owner FROM map${gameId} WHERE sectorid = ? LIMIT 1`,
+                [homeworld]
+            );
+            if (sectorRows && sectorRows[0] && Number(sectorRows[0].owner) === Number(playerId)) {
+                const buildingRows = await queryDb(
+                    `SELECT type, COUNT(*) as count FROM buildings${gameId} WHERE sectorid = ? AND owner = ? GROUP BY type`,
+                    [homeworld, playerId]
+                );
+                const buildingCounts = {};
+                (buildingRows || []).forEach(row => {
+                    buildingCounts[row.type] = row.count;
+                });
+                for (const [type, label] of [[0, 'metal extractor'], [1, 'crystal refinery']]) {
+                    if (buildingCounts[type]) continue;
+                    const cost = BUILDING_COSTS[type];
+                    if (metal < cost.metal || crystal < cost.crystal) continue;
+                    metal -= cost.metal;
+                    crystal -= cost.crystal;
+                    await queryDb(
+                        `UPDATE players${gameId} SET metal = ?, crystal = ? WHERE userid = ?`,
+                        [metal, crystal, playerId]
+                    );
+                    await queryDb(
+                        `INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`,
+                        [homeworld, type, playerId]
+                    );
+                    summary.push(`Auto-built ${label} on homeworld`);
+                }
+            }
+        }
+
+        if (orders.autoScout) {
+            const scoutCost = (combatSystem.SHIP_TYPES.SCOUT && combatSystem.SHIP_TYPES.SCOUT.cost) || { metal: 200, crystal: 0 };
+            const scoutCountRows = await queryDb(
+                `SELECT COUNT(*) as count FROM ships${gameId} WHERE owner = ? AND type = ?`,
+                [playerId, SCOUT_SHIP_ID]
+            );
+            const currentScouts = (scoutCountRows && scoutCountRows[0] && scoutCountRows[0].count) || 0;
+            const desiredScouts = Number.isFinite(orders.targetScouts) ? orders.targetScouts : 2;
+            if (currentScouts < desiredScouts && metal >= scoutCost.metal && crystal >= (scoutCost.crystal || 0)) {
+                const spaceportRows = await queryDb(
+                    `SELECT COUNT(*) as count FROM buildings${gameId} WHERE owner = ? AND sectorid = ? AND type = 3`,
+                    [playerId, homeworld]
+                );
+                const hasSpaceport = ((spaceportRows && spaceportRows[0] && spaceportRows[0].count) || 0) > 0;
+                if (hasSpaceport) {
+                    metal -= scoutCost.metal;
+                    crystal -= (scoutCost.crystal || 0);
+                    await queryDb(
+                        `UPDATE players${gameId} SET metal = ?, crystal = ? WHERE userid = ?`,
+                        [metal, crystal, playerId]
+                    );
+                    await queryDb(
+                        `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
+                        [playerId, SCOUT_SHIP_ID, homeworld]
+                    );
+                    summary.push('Auto-built scout to keep vision online');
+                }
+            }
+        }
+    } catch (err) {
+        console.warn(`Standing orders failed for player ${playerId} in game ${gameId}:`, err.message || err);
+    }
+
+    return summary;
+}
+
+function hydrateStandingOrdersDefaults(gameId, mode) {
+    const state = ensureActiveGameState(gameId);
+    db.query(`SELECT userid FROM players${gameId}`, (err, rows) => {
+        if (err || !Array.isArray(rows)) {
+            return;
+        }
+        rows.forEach(row => {
+            const playerId = Number(row.userid);
+            if (!Number.isFinite(playerId) || state.standingOrders[playerId]) {
+                return;
+            }
+            state.standingOrders[playerId] = defaultStandingOrders(mode || state.mode || DEFAULT_GAME_MODE);
+        });
+    });
+}
+
+function applyStandingOrdersForGame(gameId) {
+    db.query(`SELECT userid FROM players${gameId}`, (err, rows) => {
+        if (err || !Array.isArray(rows)) {
+            return;
+        }
+        rows.forEach(row => {
+            applyStandingOrdersForPlayer(gameId, row.userid).then(summary => {
+                if (!Array.isArray(summary) || summary.length === 0) return;
+                const client = gameState.clientMap[String(row.userid)] || gameState.clientMap[row.userid];
+                if (client && Number(client.gameid) === Number(gameId)) {
+                    summary.forEach(line => client.sendUTF(`systemalert::${line}`));
+                    updateResources(client);
+                }
+            }).catch(err2 => {
+                console.warn(`Standing orders tick failed for player ${row.userid} in game ${gameId}:`, err2.message || err2);
+            });
+        });
+    });
+}
+
+function handleStandingOrders(data, connection) {
+    if (!connection.gameid || !connection.name) {
+        connection.sendUTF("standingorders::error::Missing game context");
+        return;
+    }
+    const payload = data.substring("//standingorders:".length);
+    if (payload === "get") {
+        const orders = getStandingOrders(connection.gameid, connection.name);
+        connection.sendUTF(`standingorders::state::${JSON.stringify(orders)}`);
+        return;
+    }
+    try {
+        const parsed = JSON.parse(payload);
+        const updated = setStandingOrders(connection.gameid, connection.name, parsed);
+        connection.sendUTF(`standingorders::state::${JSON.stringify(updated)}`);
+    } catch (err) {
+        console.error('Failed to parse standing orders payload:', err);
+        connection.sendUTF("standingorders::error::Invalid payload");
+    }
+}
+
+async function handleApplyStandingOrders(connection) {
+    if (!connection.gameid || !connection.name) return;
+    try {
+        const summary = await applyStandingOrdersForPlayer(connection.gameid, connection.name);
+        if (Array.isArray(summary) && summary.length > 0) {
+            connection.sendUTF(`standingorders::applied::${JSON.stringify(summary)}`);
+            updateResources(connection);
+        } else {
+            connection.sendUTF("standingorders::noop");
+        }
+    } catch (err) {
+        console.error('Failed to apply standing orders:', err);
+        connection.sendUTF("standingorders::error::Unable to run standing orders right now");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AI opponents: each turn the AI develops its economy, expands with colony
+// ships, researches tech, and (per strategy) harasses the nearest enemy.
+// ---------------------------------------------------------------------------
+
+function connectionStub(playerId, gameId) {
+    return {
+        name: String(playerId),
+        gameid: gameId,
+        sendUTF() {}
+    };
+}
+
+function sectorXY(gameId, sectorId) {
+    const { width } = getGameMapSizeSync(gameId);
+    const zeroBased = Number(sectorId) - 1;
+    return { x: zeroBased % width, y: Math.floor(zeroBased / width) };
+}
+
+function sectorDistance(gameId, a, b) {
+    const pa = sectorXY(gameId, a);
+    const pb = sectorXY(gameId, b);
+    // Chebyshev distance: diagonal moves are legal, so this is true travel time.
+    return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
+}
+
+async function nextStepTowards(gameId, current, target, playerId) {
+    if (Number(current) === Number(target)) return null;
+    const { width, height } = getGameMapSizeSync(gameId);
+    const cur = sectorXY(gameId, current);
+    const dst = sectorXY(gameId, target);
+    const stepX = cur.x === dst.x ? 0 : (cur.x < dst.x ? 1 : -1);
+    const stepY = cur.y === dst.y ? 0 : (cur.y < dst.y ? 1 : -1);
+
+    const candidates = [];
+    const pushCandidate = (x, y) => {
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        const id = y * width + x + 1;
+        if (id !== Number(current) && !candidates.includes(id)) candidates.push(id);
+    };
+    pushCandidate(cur.x + stepX, cur.y + stepY); // preferred: diagonal toward target
+    pushCandidate(cur.x + stepX, cur.y);
+    pushCandidate(cur.x, cur.y + stepY);
+
+    if (candidates.length === 0) return null;
+
+    try {
+        const rows = await queryDb(
+            `SELECT sectorid, type, owner FROM map${gameId} WHERE sectorid IN (${candidates.map(() => '?').join(',')})`,
+            candidates
+        );
+        const info = new Map((rows || []).map(r => [Number(r.sectorid), r]));
+        // Prefer candidates in order, skipping black holes and unowned asteroid belts.
+        for (const id of candidates) {
+            const row = info.get(id);
+            if (!row) continue;
+            const type = Number(row.type);
+            if (type === 2) continue; // black hole: never
+            if (type === 1 && Number(row.owner) !== Number(playerId)) continue; // asteroid: only if secured
+            return id;
+        }
+        // All safe-ish routes blocked; accept an asteroid risk rather than stalling.
+        for (const id of candidates) {
+            const row = info.get(id);
+            if (row && Number(row.type) !== 2) return id;
+        }
+    } catch (err) {
+        console.warn(`AI pathing failed in game ${gameId}:`, err.message || err);
+    }
+    return null;
+}
+
+function trackAiProfile(gameId, playerId, difficulty = 'medium', strategy = 'balanced') {
+    const state = ensureActiveGameState(gameId);
+    state.aiProfiles.set(Number(playerId), {
+        difficulty: (difficulty || 'medium').toLowerCase(),
+        strategy: (strategy || 'balanced').toLowerCase(),
+        lastTurn: 0
+    });
+}
+
+function hydrateAiPlayers(gameId) {
+    db.query(
+        `SELECT userid, is_ai, ai_difficulty, ai_strategy FROM players${gameId} WHERE is_ai = 1`,
+        (err, rows) => {
+            if (err || !Array.isArray(rows)) {
+                return;
+            }
+            rows.filter(row => Number(row.is_ai) === 1).forEach(row => {
+                trackAiProfile(gameId, row.userid, row.ai_difficulty, row.ai_strategy);
+            });
+        }
+    );
+}
+
+function triggerAiTurn(gameId) {
+    db.query(
+        `SELECT userid, is_ai, ai_difficulty, ai_strategy FROM players${gameId} WHERE is_ai = 1`,
+        (err, rows) => {
+            if (err || !Array.isArray(rows)) {
+                return;
+            }
+            rows.filter(row => Number(row.is_ai) === 1).forEach(row => {
+                trackAiProfile(gameId, row.userid, row.ai_difficulty, row.ai_strategy);
+                runAiActions(gameId, row.userid, row.ai_difficulty, row.ai_strategy)
+                    .catch(aiErr => console.warn(`AI turn failed for player ${row.userid} in game ${gameId}:`, aiErr.message || aiErr));
+            });
+        }
+    );
+}
+
+async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 'balanced') {
+    const strat = (strategy || 'balanced').toLowerCase();
+    const aggressiveness = strat === 'aggressive' ? 1.2 : strat === 'chill' ? 0.6 : 1.0;
+    const stub = connectionStub(playerId, gameId);
+
+    const rows = await queryDb(
+        `SELECT userid, homeworld, currentsector, metal, crystal, research FROM players${gameId} WHERE userid = ? LIMIT 1`,
+        [playerId]
+    );
+    if (!rows || rows.length === 0) return;
+    const player = rows[0];
+    const homeworld = Number(player.homeworld);
+    if (!Number.isFinite(homeworld) || homeworld <= 0) return;
+
+    // Keep the AI's "current sector" anchored to its homeworld so purchases land there.
+    if (Number(player.currentsector) !== homeworld) {
+        await queryDb(`UPDATE players${gameId} SET currentsector = ? WHERE userid = ?`, [homeworld, playerId]);
+    }
+
+    const buildingRows = await queryDb(
+        `SELECT type, COUNT(*) as count FROM buildings${gameId} WHERE sectorid = ? AND owner = ? GROUP BY type`,
+        [homeworld, playerId]
+    );
+    const buildingCounts = {};
+    (buildingRows || []).forEach(row => { buildingCounts[row.type] = row.count; });
+    const hasSpaceport = Boolean(buildingCounts[3]);
+
+    // Economy & infrastructure: spaceport first (ships unlock everything else).
+    if (!hasSpaceport && player.metal >= BUILDING_COSTS[3].metal && player.crystal >= BUILDING_COSTS[3].crystal) {
+        buyBuilding('//buybuilding:3', stub);
+    } else {
+        if (!buildingCounts[0] && player.metal >= BUILDING_COSTS[0].metal && player.crystal >= BUILDING_COSTS[0].crystal) {
+            buyBuilding('//buybuilding:0', stub);
+        }
+        if (!buildingCounts[1] && player.metal >= BUILDING_COSTS[1].metal && player.crystal >= BUILDING_COSTS[1].crystal) {
+            buyBuilding('//buybuilding:1', stub);
+        }
+    }
+
+    if (hasSpaceport) {
+        const scoutCost = combatSystem.SHIP_TYPES.SCOUT.cost;
+        const frigateCost = combatSystem.SHIP_TYPES.FRIGATE.cost;
+        const destroyerCost = combatSystem.SHIP_TYPES.DESTROYER.cost;
+        const colonyCost = combatSystem.SHIP_TYPES.COLONY_SHIP.cost;
+
+        const shipRows = await queryDb(
+            `SELECT type, COUNT(*) as count FROM ships${gameId} WHERE sectorid = ? AND owner = ? GROUP BY type`,
+            [homeworld, playerId]
+        );
+        const shipCounts = {};
+        (shipRows || []).forEach(row => { shipCounts[row.type] = row.count; });
+
+        let budget = Number(player.metal) || 0;
+        // Keep a colony ship in production for expansion.
+        const colonyRows = await queryDb(
+            `SELECT COUNT(*) as count FROM ships${gameId} WHERE owner = ? AND type = ?`,
+            [playerId, COLONY_SHIP_ID]
+        );
+        const colonyCount = (colonyRows && colonyRows[0] && colonyRows[0].count) || 0;
+        if (colonyCount === 0 && budget >= colonyCost.metal + 400) {
+            buyShip(`//buyship:${COLONY_SHIP_ID}`, stub);
+            budget -= colonyCost.metal;
+        }
+        if (!shipCounts[SCOUT_SHIP_ID] && budget >= scoutCost.metal + 200) {
+            buyShip(`//buyship:${SCOUT_SHIP_ID}`, stub);
+            budget -= scoutCost.metal;
+        }
+        if (budget >= destroyerCost.metal * (2 - aggressiveness)) {
+            buyShip(`//buyship:${combatSystem.SHIP_TYPES.DESTROYER.id}`, stub);
+            budget -= destroyerCost.metal;
+        } else if (budget >= frigateCost.metal * (2 - aggressiveness)) {
+            buyShip(`//buyship:${combatSystem.SHIP_TYPES.FRIGATE.id}`, stub);
+            budget -= frigateCost.metal;
+        }
+    }
+
+    await handleAiExpansion(gameId, playerId, homeworld);
+    if (strat === 'aggressive') {
+        await handleAiHarass(gameId, playerId, homeworld);
+    }
+    await aiResearchAndDefend(gameId, playerId, strat);
+}
+
+async function handleAiExpansion(gameId, playerId, homeSector) {
+    const colonyShips = await queryDb(
+        `SELECT id, sectorid FROM ships${gameId} WHERE owner = ? AND type = ? LIMIT 1`,
+        [playerId, COLONY_SHIP_ID]
+    );
+    if (!colonyShips || colonyShips.length === 0) return;
+    const colony = colonyShips[0];
+    const current = Number(colony.sectorid);
+
+    const candidates = await queryDb(
+        `SELECT sectorid, type FROM map${gameId} WHERE owner IS NULL AND type BETWEEN 6 AND 9`,
+        []
+    );
+    if (!candidates || candidates.length === 0) return;
+
+    const target = candidates.reduce((best, row) => {
+        const dist = sectorDistance(gameId, row.sectorid, current);
+        if (!best || dist < best.dist) return { sector: Number(row.sectorid), dist };
+        return best;
+    }, null);
+    if (!target) return;
+
+    if (current === target.sector) {
+        // Standing on the prize: plant the flag.
+        await queryDb(`UPDATE players${gameId} SET currentsector = ? WHERE userid = ?`, [current, playerId]);
+        colonizePlanet(connectionStub(playerId, gameId));
+        await queryDb(`UPDATE players${gameId} SET currentsector = ? WHERE userid = ?`, [homeSector, playerId]);
+        return;
+    }
+
+    const step = await nextStepTowards(gameId, current, target.sector, playerId);
+    if (!step) return;
+    // moveFleet speaks the client wire protocol: sector tokens are hex.
+    moveFleet(`//move:${formatSectorToken(current)}:${formatSectorToken(step)}:${COLONY_SHIP_ID}:1`, connectionStub(playerId, gameId));
+}
+
+async function handleAiHarass(gameId, playerId, homeSector) {
+    const enemySectors = await queryDb(
+        `SELECT sectorid, owner FROM map${gameId} WHERE owner IS NOT NULL AND owner != ? LIMIT 50`,
+        [playerId]
+    );
+    if (!enemySectors || enemySectors.length === 0) return;
+
+    const target = enemySectors.reduce((best, row) => {
+        const dist = sectorDistance(gameId, row.sectorid, homeSector);
+        if (!best || dist < best.dist) return { sector: Number(row.sectorid), dist };
+        return best;
+    }, null);
+    if (!target) return;
+
+    const stacks = await queryDb(
+        `SELECT sectorid, type, COUNT(*) as count FROM ships${gameId} WHERE owner = ? GROUP BY sectorid, type`,
+        [playerId]
+    );
+    if (!stacks || stacks.length === 0) return;
+
+    const combatStacks = stacks.filter(row =>
+        Number(row.type) !== COLONY_SHIP_ID && Number(row.type) !== SCOUT_SHIP_ID && Number(row.count) >= 2
+    );
+    if (combatStacks.length === 0) return;
+
+    const bestStack = combatStacks.reduce((best, row) => {
+        const dist = sectorDistance(gameId, row.sectorid, target.sector);
+        if (!best || dist < best.dist) {
+            return { sector: Number(row.sectorid), type: Number(row.type), count: Number(row.count), dist };
+        }
+        return best;
+    }, null);
+    if (!bestStack) return;
+
+    const step = await nextStepTowards(gameId, bestStack.sector, target.sector, playerId);
+    if (!step) return;
+    moveFleet(`//move:${formatSectorToken(bestStack.sector)}:${formatSectorToken(step)}:${bestStack.type}:${bestStack.count}`, connectionStub(playerId, gameId));
+}
+
+async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
+    const rows = await queryDb(
+        `SELECT research, tech, homeworld, metal FROM players${gameId} WHERE userid = ? LIMIT 1`,
+        [playerId]
+    );
+    if (!rows || rows.length === 0) return;
+    const player = rows[0];
+
+    const ownedIds = new Set(
+        String(player.tech || '')
+            .split(',')
+            .map(value => Number(value.trim()))
+            .filter(Number.isFinite)
+    );
+
+    const affordable = Object.values(techSystem.TECHNOLOGIES)
+        .filter(tech => {
+            if (ownedIds.has(tech.id)) return false;
+            const prereqsMet = (tech.prerequisites || []).every(key => {
+                const prereq = techSystem.TECHNOLOGIES[key];
+                return prereq && ownedIds.has(prereq.id);
+            });
+            return prereqsMet && Number(player.research) >= (tech.baseCost || 100);
+        })
+        .sort((a, b) => (a.baseCost || 100) - (b.baseCost || 100) || (a.tier || 0) - (b.tier || 0));
+
+    if (affordable.length > 0) {
+        buyTech(`//buytech:${affordable[0].id}`, connectionStub(playerId, gameId));
+    }
+}
+
 // Export functions for use by index.js
 module.exports = {
     setDatabase,
@@ -3163,5 +4118,13 @@ module.exports = {
     handleGetPurchaseHistory,
     handleGetCurrentGame,
     handleGetCombatTelemetry,
+    handlePlayerDisconnect,
+    handleStandingOrders,
+    handleApplyStandingOrders,
+    defaultStandingOrders,
+    getStandingOrders,
+    setStandingOrders,
+    applyStandingOrdersForPlayer,
+    triggerAiTurn,
     gameState
 };

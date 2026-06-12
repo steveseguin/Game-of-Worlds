@@ -69,12 +69,6 @@
             margin: 0;
             color: rgba(232,236,255,0.75);
         }
-        .hero-status-col {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            align-items: flex-end;
-        }
         .cta-row {
             display: flex;
             gap: 12px;
@@ -91,22 +85,6 @@
             font-weight: 600;
             font-size: 14px;
         }
-        .pill-connection[data-state="ready"] {
-            background: rgba(93, 245, 180, 0.18);
-            border: 1px solid rgba(93, 245, 180, 0.5);
-            color: #bdfce3;
-        }
-        .pill-connection[data-state="authorizing"] {
-            background: rgba(255, 213, 108, 0.16);
-            border: 1px solid rgba(255, 213, 108, 0.45);
-            color: #ffe4a4;
-        }
-        .pill-connection[data-state="connecting"],
-        .pill-connection[data-state="disconnected"] {
-            background: rgba(255, 153, 153, 0.14);
-            border: 1px solid rgba(255, 153, 153, 0.42);
-            color: #ffd1d1;
-        }
         .panel-grid {
             display: grid;
             grid-template-columns: 380px 1fr;
@@ -119,10 +97,6 @@
             }
             .hero {
                 flex-direction: column;
-            }
-            .hero-status-col {
-                width: 100%;
-                align-items: flex-start;
             }
         }
         @media (max-width: 640px) {
@@ -313,6 +287,323 @@
             border-color: rgba(255,153,102,0.45);
             color: #ffc9a8;
         }
+
+        /* ===== Waiting Room (in-game lobby view) ===== */
+        .waiting-cell { padding: 0 !important; background: transparent !important; }
+        .waiting-view {
+            text-align: left;
+            padding: 22px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+        .waiting-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .waiting-header h3 {
+            margin: 4px 0 0;
+            font-size: 22px;
+            letter-spacing: 0.3px;
+        }
+        .waiting-eyebrow {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: rgba(232,236,255,0.55);
+            font-weight: 600;
+        }
+        .waiting-meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .waiting-meta .chip {
+            padding: 5px 11px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #cfd7ff;
+        }
+        .waiting-meta .chip-mode { background: rgba(76,124,255,0.14); border-color: rgba(76,124,255,0.4); color: #a7c4ff; }
+        .waiting-meta .chip-waiting { background: rgba(90,245,196,0.14); border-color: rgba(90,245,196,0.5); color: #a8f0c9; }
+        .waiting-meta .chip-progress { background: rgba(255,184,107,0.14); border-color: rgba(255,184,107,0.5); color: #ffd3a8; }
+
+        .section-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.4px;
+            color: rgba(232,236,255,0.5);
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .player-slots {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
+        }
+        .player-slot {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .player-slot.is-ai { background: rgba(255,153,102,0.07); border-color: rgba(255,153,102,0.25); }
+        .player-slot.empty {
+            background: rgba(255,255,255,0.02);
+            border: 1px dashed rgba(255,255,255,0.12);
+            color: rgba(232,236,255,0.45);
+        }
+        .player-slot .slot-icon {
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(76,124,255,0.18);
+            border-radius: 50%;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .player-slot.is-ai .slot-icon { background: rgba(255,153,102,0.18); }
+        .player-slot.empty .slot-icon { background: rgba(255,255,255,0.04); color: rgba(232,236,255,0.4); }
+        .player-slot .slot-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1;
+        }
+        .slot-name {
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .slot-me {
+            font-size: 10px;
+            font-weight: 700;
+            background: rgba(90,245,196,0.18);
+            color: #a8f0c9;
+            padding: 1px 6px;
+            border-radius: 999px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .slot-meta {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .slot-tag {
+            font-size: 10px;
+            padding: 1px 7px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.06);
+            color: rgba(232,236,255,0.7);
+        }
+        .slot-tag.ai {
+            background: rgba(255,153,102,0.14);
+            color: #ffc9a8;
+        }
+
+        .waiting-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .race-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .race-row .ghost {
+            padding: 8px 14px;
+            font-size: 13px;
+        }
+        .race-name { font-size: 16px; font-weight: 600; }
+
+        .ai-section {
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding-top: 12px;
+        }
+        .ai-section summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #cfd7ff;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+        }
+        .ai-section summary::before {
+            content: '+';
+            display: inline-flex;
+            width: 18px; height: 18px;
+            align-items: center;
+            justify-content: center;
+            background: rgba(76,124,255,0.18);
+            border-radius: 50%;
+            font-weight: 700;
+        }
+        .ai-section[open] summary::before { content: '−'; }
+        .ai-section-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .ai-section-row label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 12px;
+            color: rgba(232,236,255,0.65);
+        }
+        .ai-section-row select {
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #3b4257;
+            background: #0f1424;
+            color: #e8ecff;
+            font-weight: 600;
+            font-size: 13px;
+            min-width: 130px;
+        }
+        .ai-section-row .ghost { padding: 9px 14px; font-size: 13px; }
+
+        .waiting-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .waiting-actions button.lg {
+            padding: 14px 22px;
+            font-size: 15px;
+            font-weight: 700;
+            border-radius: 10px;
+            flex: 1;
+            min-width: 180px;
+        }
+        .waiting-actions button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .open-game-banner {
+            display: block;
+            padding: 12px 16px;
+            background: linear-gradient(120deg, rgba(255,184,107,0.18), rgba(255,213,108,0.12));
+            border: 1px solid rgba(255,184,107,0.45);
+            color: #ffd3a8;
+            text-decoration: none;
+            font-weight: 600;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .open-game-banner:hover { background: linear-gradient(120deg, rgba(255,184,107,0.28), rgba(255,213,108,0.2)); }
+
+        .invite-block {
+            border-radius: 12px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.06);
+            padding: 12px 14px;
+        }
+        .invite-block summary {
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            color: #cfd7ff;
+            list-style: none;
+        }
+        .invite-block summary::after {
+            content: ' ▾';
+            color: rgba(232,236,255,0.4);
+            font-size: 11px;
+        }
+        .invite-block[open] summary::after { content: ' ▴'; }
+        .invite-row {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+        }
+        .invite-row input {
+            flex: 1;
+            padding: 9px 12px;
+            border-radius: 8px;
+            border: 1px solid #3b4257;
+            background: #0f1424;
+            color: #e8ecff;
+            font-size: 12px;
+            font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+        }
+        .invite-row .ghost { padding: 9px 14px; font-size: 13px; }
+
+        .waiting-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 6px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            margin-top: 4px;
+        }
+        .resume-link {
+            color: #5df5b4;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .resume-link:hover { text-decoration: underline; }
+        .danger-link {
+            background: transparent;
+            border: 1px solid rgba(255,126,126,0.4);
+            color: #ff9a9a;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .danger-link:hover {
+            background: rgba(255,126,126,0.1);
+        }
+
+        @media (max-width: 640px) {
+            .waiting-view { padding: 16px 14px; }
+            .waiting-header h3 { font-size: 18px; }
+            .player-slots { grid-template-columns: 1fr; }
+            .waiting-actions button.lg { min-width: 100%; }
+            .race-row { flex-direction: column; align-items: flex-start; }
+            .ai-section-row { flex-direction: column; align-items: stretch; }
+            .ai-section-row select { min-width: 0; }
+            .invite-row { flex-direction: column; }
+        }
     </style>
 </head>
 <body class="lobby-page">
@@ -327,10 +618,7 @@
                     <div class="pill">Race selection on join</div>
                 </div>
             </div>
-            <div class="hero-status-col">
-                <div class="pill">Players online: <span id="online-count">?</span></div>
-                <div id="lobbyConnectionState" class="pill pill-connection" data-state="connecting">Lobby: Connecting…</div>
-            </div>
+            <div class="pill">Players online: <span id="online-count">?</span></div>
         </div>
 
         <div class="panel-grid">
@@ -346,6 +634,13 @@
                         <option value="4" selected>4 Players</option>
                         <option value="6">6 Players</option>
                         <option value="8">8 Players</option>
+                        <option value="12">12 Players</option>
+                        <option value="25">25 Players</option>
+                        <option value="50">50 Players</option>
+                        <option value="100">100 Players</option>
+                        <option value="250">250 Players</option>
+                        <option value="500">500 Players</option>
+                        <option value="1000">1000 Players</option>
                     </select>
                 </div>
                 <div class="form-row" style="margin-bottom:14px;">

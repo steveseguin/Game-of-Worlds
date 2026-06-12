@@ -12,7 +12,12 @@
  * - Used by server.js for tech mechanics on the server
  * - May be used by client for tech tree visualization
  */
- 
+const exportsTarget = typeof module !== 'undefined' && module.exports
+    ? module.exports
+    : (typeof window !== 'undefined'
+        ? (window.TechSystem = window.TechSystem || {})
+        : {});
+
 const TECH_CATEGORIES = {
     RESOURCE: {
         id: 1,
@@ -421,14 +426,18 @@ function renderTechUI(techs, availableResearch, container) {
            // Add click handler
            techButton.addEventListener('click', function() {
                if (canResearch) {
-                   if (confirm(`Research ${tech.name} for ${cost} research points?`)) {
-                       // Send research request to server
-                       websocket.send(`//buytech:${tech.id}`);
+                   const buy = () => websocket.send(`//buytech:${tech.id}`);
+                   if (window.NotificationSystem?.confirm) {
+                       window.NotificationSystem.confirm('Research', `Research ${tech.name} for ${cost} research points?`, buy, null);
+                   } else {
+                       buy();
                    }
                } else {
                    // Show why research is unavailable
                    const result = canResearchTech(techKey, techs, availableResearch);
-                   alert(result.message);
+                   if (window.NotificationSystem?.notify) {
+                       window.NotificationSystem.notify('Research', result.message, 'warn', 5000);
+                   }
                }
            });
            
@@ -453,7 +462,7 @@ function renderTechUI(techs, availableResearch, container) {
 }
 
 // Export module functions and objects
-module.exports = {
+Object.assign(exportsTarget, {
    TECH_CATEGORIES,
    TECHNOLOGIES,
    calculateTechCost,
@@ -464,4 +473,4 @@ module.exports = {
    getTechByCategory,
    generateTechTree,
    renderTechUI
-};
+});

@@ -55,19 +55,19 @@ const Shop = (function() {
                         <h3>Premium Races</h3>
                         <div class="shop-items">
                             <div class="shop-item" onclick="Shop.purchaseRace('race_quantum')">
-                                <img src="./images/planet1.png" alt="Quantum Entities">
+                                <img src="./images/planet1.jpg" alt="Quantum Entities">
                                 <h4>Quantum Entities</h4>
                                 <p>Phase through enemy attacks, instant warp capabilities</p>
                                 <div class="price">$4.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseRace('race_titan')">
-                                <img src="./images/planet2.png" alt="Titan Lords">
+                                <img src="./images/planet2.jpg" alt="Titan Lords">
                                 <h4>Titan Lords</h4>
                                 <p>Massive ships, extreme durability, area damage</p>
                                 <div class="price">$4.99</div>
                             </div>
                             <div class="shop-item" onclick="Shop.purchaseRace('race_shadow')">
-                                <img src="./images/planet3.png" alt="Shadow Realm">
+                                <img src="./images/planet3.jpg" alt="Shadow Realm">
                                 <h4>Shadow Realm</h4>
                                 <p>Cloaking technology, sabotage abilities, stealth attacks</p>
                                 <div class="price">$4.99</div>
@@ -200,7 +200,7 @@ const Shop = (function() {
                         <h3>Crystal Shop</h3>
                         <div class="shop-items">
                             <div class="shop-item" onclick="Shop.spendCrystals('crystal_race_unlock')">
-                                <img src="./images/planet4.png" alt="Race Unlock">
+                                <img src="./images/planet4.jpg" alt="Race Unlock">
                                 <h4>Unlock Any Race</h4>
                                 <p>Unlock any non-premium race instantly</p>
                                 <div class="crystal-price">1000 Crystals</div>

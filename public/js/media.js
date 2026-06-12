@@ -1,299 +1,148 @@
 // media.js - handles game audio (SFX + music)
 (function() {
-    const tracks = {
-        click: { src: 'sounds/click.mp3', volume: 0.6, type: 'sfx' },
-        hover: { src: 'sounds/hover.mp3', volume: 0.5, type: 'sfx' },
-        notification: { src: 'sounds/notification.mp3', volume: 0.6, type: 'sfx' },
-        explosion: { src: 'sounds/explosion.mp3', volume: 0.7, type: 'sfx' },
-        shipDestroyed: { src: 'sounds/ship-destroyed.mp3', volume: 0.7, type: 'sfx' },
-        warp: { src: 'sounds/warp-jump.mp3', volume: 0.6, type: 'sfx' },
-        battleAmbient: { src: 'sounds/battle-ambient.mp3', volume: 0.35, type: 'music', loop: true },
-        spaceAmbient: { src: 'sounds/space-ambient.mp3', volume: 0.35, type: 'music', loop: true },
-        victory: { src: 'music/victory-theme.mp3', volume: 0.8, type: 'music' },
-        defeat: { src: 'music/defeat-theme.mp3', volume: 0.8, type: 'music' }
+    const sounds = {
+        click: 'sounds/click.mp3',
+        hover: 'sounds/hover.mp3',
+        notification: 'sounds/notification.mp3',
+        explosion: 'sounds/explosion.mp3',
+        shipDestroyed: 'sounds/ship-destroyed.mp3',
+        warp: 'sounds/warp-jump.mp3',
+        battleAmbient: 'sounds/battle-ambient.mp3',
+        spaceAmbient: 'sounds/space-ambient.mp3',
+        victory: 'music/victory-theme.mp3',
+        defeat: 'music/defeat-theme.mp3'
     };
 
     const audio = {};
-    const fadeTimers = new WeakMap();
-    const MUSIC_FADE_MS = 900;
-    const HOVER_DEBOUNCE_MS = 80;
     let sfxEnabled = true;
     let musicEnabled = true;
     let ambientTrack = null;
-    let activeMusic = null;
-    let pendingAmbientResume = null;
     let lastHover = 0;
-
-    function clampVolume(value) {
-        return Math.max(0, Math.min(1, Number(value) || 0));
-    }
-
-    function isMusicTrack(name) {
-        return tracks[name] && tracks[name].type === 'music';
-    }
-
-    function getTrackVolume(name) {
-        const def = tracks[name];
-        return clampVolume(def ? def.volume : 0.6);
-    }
-
-    function trackNameForElement(el) {
-        const names = Object.keys(audio);
-        for (let i = 0; i < names.length; i++) {
-            const name = names[i];
-            if (audio[name] === el) return name;
-        }
-        return null;
-    }
-
-    function safePlay(el) {
-        if (!el) return;
-        el.play().catch(() => {});
-    }
-
-    function clearFade(el) {
-        const timerId = fadeTimers.get(el);
-        if (timerId) {
-            clearInterval(timerId);
-            fadeTimers.delete(el);
-        }
-    }
-
-    function fadeTo(el, target, durationMs, onDone) {
-        if (!el) return;
-        clearFade(el);
-
-        const start = clampVolume(el.volume);
-        const end = clampVolume(target);
-        if (durationMs <= 0 || start === end) {
-            el.volume = end;
-            if (onDone) onDone();
-            return;
-        }
-
-        const stepMs = 30;
-        const steps = Math.max(1, Math.round(durationMs / stepMs));
-        let currentStep = 0;
-
-        const timerId = setInterval(() => {
-            currentStep += 1;
-            const progress = Math.min(currentStep / steps, 1);
-            el.volume = start + (end - start) * progress;
-            if (progress >= 1) {
-                clearFade(el);
-                if (onDone) onDone();
-            }
-        }, stepMs);
-
-        fadeTimers.set(el, timerId);
-    }
-
-    function stopAllMusic(resetPosition) {
-        Object.keys(tracks).forEach(name => {
-            if (!isMusicTrack(name)) return;
-            const el = audio[name];
-            if (!el) return;
-            clearFade(el);
-            el.pause();
-            if (resetPosition) {
-                el.currentTime = 0;
-            }
-            el.volume = getTrackVolume(name);
-        });
-        activeMusic = null;
-    }
-
-    function crossfadeToTrack(name, options = {}) {
-        if (!musicEnabled || !isMusicTrack(name)) return;
-        const next = audio[name];
-        if (!next) return;
-
-        if (pendingAmbientResume) {
-            clearTimeout(pendingAmbientResume);
-            pendingAmbientResume = null;
-        }
-
-        const restart = options.restart !== false;
-        const fadeMs = typeof options.fadeMs === 'number' ? Math.max(0, options.fadeMs) : MUSIC_FADE_MS;
-        const targetVolume = getTrackVolume(name);
-
-        if (activeMusic === next) {
-            if (restart) {
-                next.currentTime = 0;
-            }
-            if (next.paused) {
-                safePlay(next);
-            }
-            fadeTo(next, targetVolume, Math.min(250, fadeMs));
-            return;
-        }
-
-        const previous = activeMusic;
-        activeMusic = next;
-
-        if (restart || next.ended) {
-            next.currentTime = 0;
-        }
-        next.volume = 0;
-        safePlay(next);
-        fadeTo(next, targetVolume, fadeMs);
-
-        if (previous && previous !== next) {
-            fadeTo(previous, 0, fadeMs, () => {
-                previous.pause();
-                previous.currentTime = 0;
-                const previousName = trackNameForElement(previous);
-                if (previousName) {
-                    previous.volume = getTrackVolume(previousName);
-                }
-            });
-        }
-    }
-
-    function queueAmbientResume() {
-        if (pendingAmbientResume) {
-            clearTimeout(pendingAmbientResume);
-        }
-        pendingAmbientResume = setTimeout(() => {
-            if (musicEnabled) {
-                startAmbient();
-            }
-            pendingAmbientResume = null;
-        }, 120);
-    }
 
     function init() {
         try {
             sfxEnabled = localStorage.getItem('gow-sfx') !== 'off';
             musicEnabled = localStorage.getItem('gow-music') !== 'off';
+            if (localStorage.getItem('gow-muted') === 'on') {
+                sfxEnabled = false;
+                musicEnabled = false;
+            }
         } catch (_) {}
 
-        Object.entries(tracks).forEach(([key, def]) => {
-            const el = new Audio(def.src);
+        Object.entries(sounds).forEach(([key, src]) => {
+            const el = new Audio(src);
             el.preload = 'auto';
-            el.loop = Boolean(def.loop);
-            el.volume = getTrackVolume(key);
+            if (key === 'battleAmbient' || key === 'spaceAmbient') {
+                el.loop = true;
+                el.volume = 0.35;
+            } else if (key === 'victory' || key === 'defeat') {
+                el.volume = 0.8;
+            } else {
+                el.volume = 0.6;
+            }
             audio[key] = el;
         });
-
-        ambientTrack = audio.spaceAmbient;
         startAmbient();
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        document.addEventListener('pointerdown', unlockOnGesture, true);
-        document.addEventListener('keydown', unlockOnGesture, true);
-
         window.MediaManager = {
             playSfx,
             playMusic,
-            stopMusic,
             toggleSfx,
             toggleMusic,
+            setMuted,
             isSfxEnabled: () => sfxEnabled,
-            isMusicEnabled: () => musicEnabled
+            isMusicEnabled: () => musicEnabled,
+            isMuted: () => !sfxEnabled && !musicEnabled
         };
     }
 
-    function unlockOnGesture() {
-        document.removeEventListener('pointerdown', unlockOnGesture, true);
-        document.removeEventListener('keydown', unlockOnGesture, true);
-        if (musicEnabled && activeMusic && activeMusic.paused) {
-            safePlay(activeMusic);
-        }
-    }
+    function playSoundSystemMusic(name) {
+        if (!window.SoundSystem) return false;
 
-    function handleVisibilityChange() {
-        if (!activeMusic) return;
-        if (document.hidden) {
-            activeMusic.pause();
-            return;
+        const contexts = {
+            battleAmbient: 'battle',
+            spaceAmbient: 'game',
+            victory: 'victory',
+            defeat: 'defeat'
+        };
+
+        if (contexts[name]) {
+            window.SoundSystem.playContextualMusic(contexts[name]);
+        } else {
+            window.SoundSystem.playMusic(name);
         }
-        if (musicEnabled && activeMusic.paused) {
-            safePlay(activeMusic);
-        }
+        return true;
     }
 
     function startAmbient() {
-        if (!musicEnabled || !ambientTrack) return;
-        crossfadeToTrack('spaceAmbient', { restart: false, fadeMs: 1000 });
+        if (!musicEnabled) return;
+        if (playSoundSystemMusic('spaceAmbient')) return;
+
+        ambientTrack = audio.spaceAmbient;
+        if (ambientTrack && ambientTrack.paused) {
+            ambientTrack.currentTime = 0;
+            ambientTrack.play().catch(() => {});
+        }
     }
 
     function playSfx(name) {
-        if (!sfxEnabled || !tracks[name] || isMusicTrack(name)) return;
-
-        if (name === 'hover') {
-            const now = Date.now();
-            if (now - lastHover < HOVER_DEBOUNCE_MS) {
-                return;
-            }
-            lastHover = now;
+        if (!sfxEnabled) return;
+        const el = audio[name];
+        if (el) {
+            el.currentTime = 0;
+            el.play().catch(() => {});
         }
-
-        const base = audio[name];
-        if (!base) return;
-        const instance = base.cloneNode(true);
-        instance.volume = getTrackVolume(name);
-        instance.currentTime = 0;
-        safePlay(instance);
     }
 
     function playMusic(name) {
-        if (!musicEnabled || !tracks[name] || !isMusicTrack(name)) return;
-        const def = tracks[name];
+        if (!musicEnabled) return;
+        if (playSoundSystemMusic(name)) return;
+
         const el = audio[name];
-        if (!el) return;
-
-        crossfadeToTrack(name, { restart: true, fadeMs: MUSIC_FADE_MS });
-
-        if (!def.loop) {
-            el.onended = () => {
-                el.onended = null;
-                queueAmbientResume();
-            };
+        if (el) {
+            el.currentTime = 0;
+            el.play().catch(() => {});
         }
-    }
-
-    function stopMusic() {
-        if (!activeMusic) return;
-        const current = activeMusic;
-        fadeTo(current, 0, 250, () => {
-            current.pause();
-            current.currentTime = 0;
-            const name = trackNameForElement(current);
-            if (name) {
-                current.volume = getTrackVolume(name);
-            }
-            if (activeMusic === current) {
-                activeMusic = null;
-            }
-        });
     }
 
     function toggleSfx() {
         sfxEnabled = !sfxEnabled;
-        try {
-            localStorage.setItem('gow-sfx', sfxEnabled ? 'on' : 'off');
-        } catch (_) {}
+        try { localStorage.setItem('gow-sfx', sfxEnabled ? 'on' : 'off'); } catch (_) {}
         return sfxEnabled;
     }
 
     function toggleMusic() {
         musicEnabled = !musicEnabled;
+        try { localStorage.setItem('gow-music', musicEnabled ? 'on' : 'off'); } catch (_) {}
+        if (!musicEnabled && window.SoundSystem) window.SoundSystem.stopMusic(false);
+        if (!musicEnabled && ambientTrack) ambientTrack.pause();
+        if (musicEnabled) startAmbient();
+        return musicEnabled;
+    }
+
+    function setMuted(muted) {
+        const enabled = !muted;
+        sfxEnabled = enabled;
+        musicEnabled = enabled;
         try {
-            localStorage.setItem('gow-music', musicEnabled ? 'on' : 'off');
+            localStorage.setItem('gow-muted', muted ? 'on' : 'off');
+            localStorage.setItem('gow-sfx', enabled ? 'on' : 'off');
+            localStorage.setItem('gow-music', enabled ? 'on' : 'off');
         } catch (_) {}
 
-        if (!musicEnabled) {
-            if (pendingAmbientResume) {
-                clearTimeout(pendingAmbientResume);
-                pendingAmbientResume = null;
+        if (muted) {
+            Object.values(audio).forEach(el => {
+                if (el && typeof el.pause === 'function') {
+                    el.pause();
+                }
+            });
+            if (window.SoundSystem?.stopMusic) {
+                window.SoundSystem.stopMusic(false);
             }
-            stopAllMusic(false);
-            return musicEnabled;
+            return false;
         }
 
         startAmbient();
-        return musicEnabled;
+        return true;
     }
 
     document.addEventListener('DOMContentLoaded', init);

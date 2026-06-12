@@ -37,14 +37,9 @@ const ControlPad = (function() {
     }
     
 	function initialize() {
-		// Set up tabs without duplicating GameUI event listeners
-		// Only set up building, ship, and tech button events here
-		
-		// Set up building buttons
-		for (let i = 1; i <= 6; i++) {
-			document.getElementById(`bb${i}`)?.addEventListener('click', () => buyBuilding(i));
-		}
-		
+		// BuildSystem owns building and ship button events.
+		// ControlPad only wires controls that are not handled elsewhere.
+
 		// Set up tech buttons
 		for (let i = 1; i <= 9; i++) {
 			document.getElementById(`t${i}`)?.addEventListener('click', () => buyTech(i));

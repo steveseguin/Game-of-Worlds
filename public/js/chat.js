@@ -19,8 +19,10 @@ const ChatSystem = (function() {
     let chatfadetimer = null;
     let chatfadebegin = null;
     let chatfadevalue = 100;
+    let pendingOwnMessages = [];
     
     function initialize() {
+        ensureChatFeed();
         // Set up chat form event handler
         document.getElementById('chatForm')?.addEventListener('submit', sendChat);
         document.getElementById('chatHistoryUp')?.addEventListener('click', showChatHistory);
@@ -34,21 +36,33 @@ const ChatSystem = (function() {
         event.preventDefault();
         const chatInput = document.getElementById("chat");
         if (chatInput && chatInput.value.trim() !== "") {
-            websocket.send(chatInput.value);
+            const text = chatInput.value.trim();
+            pendingOwnMessages.push({ text, time: Date.now() });
+            displayMessage(`You: ${text}`, { own: true });
+            if (typeof websocket !== 'undefined' && websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(text);
+            }
             chatInput.value = "";
         }
     }
     
-    function displayMessage(message) {
+    function displayMessage(message, options = {}) {
         const logElement = document.getElementById('log');
-        if (!logElement) return;
+        ensureChatFeed();
+
+        if (!options.own && shouldSuppressOwnEcho(message)) {
+            return;
+        }
         
         // Sanitize message to prevent XSS
         const sanitizedMessage = escapeHtml(message);
-        logElement.innerHTML = sanitizedMessage + "<br>";
+        if (logElement) {
+            logElement.innerHTML = sanitizedMessage + "<br>";
+        }
+        appendChatMessage(sanitizedMessage, options.own);
         
         // Trim log if it gets too long
-        if (logElement.innerHTML.length > 1500) {
+        if (logElement && logElement.innerHTML.length > 1500) {
             logElement.innerHTML = "..." + logElement.innerHTML.substring(
                 logElement.innerHTML.length - 1500,
                 logElement.innerHTML.length
@@ -59,7 +73,9 @@ const ChatSystem = (function() {
         pushLog();
         
         // Scroll to bottom
-        logElement.scrollTop = logElement.scrollHeight;
+        if (logElement) {
+            logElement.scrollTop = logElement.scrollHeight;
+        }
         
         // Start fade effect
         startChatFade();
@@ -71,7 +87,8 @@ const ChatSystem = (function() {
         if (timeSince) timeSince.textContent = "0 seconds ago";
         
         chatHistoryTime.push(d.getTime());
-        chatHistory.push(document.getElementById("log").innerHTML);
+        const logElement = document.getElementById("log");
+        chatHistory.push(logElement ? logElement.innerHTML : '');
         
         clearInterval(timeSinceCounter);
         timeSinceCounter = setInterval(updateTimeLog, 1000);
@@ -130,6 +147,54 @@ const ChatSystem = (function() {
     function setAlpha(element, opacity) {
         if (!element) return;
         element.style.opacity = opacity / 100;
+    }
+
+    function ensureChatFeed() {
+        if (document.getElementById('chatMessages')) return;
+
+        const chatContainer = document.getElementById('chatContainer');
+        if (!chatContainer || !chatContainer.parentNode) return;
+
+        const feed = document.createElement('div');
+        feed.id = 'chatFeed';
+        feed.style.position = 'fixed';
+        feed.style.left = '0';
+        feed.style.bottom = '368px';
+        feed.style.width = '500px';
+        feed.style.maxWidth = '100%';
+        feed.style.maxHeight = '140px';
+        feed.style.overflow = 'hidden';
+        feed.style.zIndex = '151';
+        feed.style.padding = '4px';
+        feed.style.boxSizing = 'border-box';
+        feed.style.pointerEvents = 'none';
+        feed.innerHTML = '<div id="chatMessages" style="display:flex;flex-direction:column;gap:4px;"></div>';
+        chatContainer.parentNode.insertBefore(feed, chatContainer);
+    }
+
+    function appendChatMessage(sanitizedMessage, own) {
+        const messages = document.getElementById('chatMessages');
+        if (!messages) return;
+
+        const row = document.createElement('div');
+        row.className = `chat-message${own ? ' chat-message-own' : ''}`;
+        row.innerHTML = sanitizedMessage;
+        messages.appendChild(row);
+
+        while (messages.children.length > 8) {
+            messages.removeChild(messages.firstChild);
+        }
+
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    function shouldSuppressOwnEcho(message) {
+        const now = Date.now();
+        pendingOwnMessages = pendingOwnMessages.filter(entry => now - entry.time < 6000);
+        const index = pendingOwnMessages.findIndex(entry => message.includes(`says: ${entry.text}`));
+        if (index === -1) return false;
+        pendingOwnMessages.splice(index, 1);
+        return true;
     }
     
     function escapeHtml(unsafe) {

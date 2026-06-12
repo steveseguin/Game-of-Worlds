@@ -14,48 +14,6 @@ const MiniMap = (function() {
     let hexElements = {};
     let width = 14;
     let height = 8;
-    let hasVisibilityData = false;
-
-    function normalizeHexColor(color, fallback = '#DDDDDD') {
-        if (typeof color !== 'string') return fallback;
-        const trimmed = color.trim();
-        if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed;
-        if (/^[0-9a-fA-F]{6}$/.test(trimmed)) return `#${trimmed}`;
-        return fallback;
-    }
-
-    function shiftColor(color, delta) {
-        const normalized = normalizeHexColor(color);
-        const r = Math.max(0, Math.min(255, parseInt(normalized.slice(1, 3), 16) + delta));
-        const g = Math.max(0, Math.min(255, parseInt(normalized.slice(3, 5), 16) + delta));
-        const b = Math.max(0, Math.min(255, parseInt(normalized.slice(5, 7), 16) + delta));
-        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-    }
-
-    function textColorForFill(color) {
-        const normalized = normalizeHexColor(color, '#888888');
-        const r = parseInt(normalized.slice(1, 3), 16);
-        const g = parseInt(normalized.slice(3, 5), 16);
-        const b = parseInt(normalized.slice(5, 7), 16);
-        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-        return brightness > 150 ? '#0f172a' : '#f8fbff';
-    }
-
-    function isExploredStatus(status) {
-        return status !== 'neutral' && status !== 'unknown' && status !== undefined && status !== null;
-    }
-
-    function notifyUnexploredSector(id) {
-        const label = Number(id).toString(16).toUpperCase();
-        if (window.NotificationSystem?.notify) {
-            window.NotificationSystem.notify(
-                'Unexplored Sector',
-                `Sector ${label} must be explored before viewing details.`,
-                'info',
-                2200
-            );
-        }
-    }
     
     function initialize(containerId) {
         const container = document.getElementById(containerId);
@@ -100,7 +58,6 @@ const MiniMap = (function() {
         hex.setAttribute("id", "tile" + id);
         hex.setAttribute("points", "10,0 30,0 40,23 30,46 10,46 0,23");
         hex.setAttribute("fill", "#DDDDDD");
-        hex.setAttribute("data-original-fill", "#DDDDDD");
         hex.setAttribute("stroke", "#666666");
         hex.setAttribute("stroke-width", "2");
         
@@ -111,7 +68,7 @@ const MiniMap = (function() {
         text.setAttribute("y", "20");
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("font-size", "12");
-        text.setAttribute("fill", "#0f172a");
+        text.setAttribute("fill", "#000000");
         text.textContent = id.toString(16).toUpperCase();
         
         // Fleet size indicator (hidden by default)
@@ -136,23 +93,16 @@ const MiniMap = (function() {
         
         // Add event listeners
         hex.addEventListener('mouseover', function() {
-            const originalFill = this.getAttribute('data-original-fill') || '#DDDDDD';
-            this.setAttribute("fill", shiftColor(originalFill, 18));
+            this.setAttribute("fill-opacity", "0.86");
+            this.style.filter = "brightness(1.16)";
         });
-        
+
         hex.addEventListener('mouseout', function() {
-            // Restore original color based on current state
-            const originalFill = this.getAttribute('data-original-fill') || "#DDDDDD";
-            this.setAttribute("fill", originalFill);
+            this.setAttribute("fill-opacity", "1");
+            this.style.filter = "";
         });
         
         hex.addEventListener('click', function() {
-            const currentState = hexElements[id];
-            if (hasVisibilityData && currentState && !currentState.explored) {
-                notifyUnexploredSector(id);
-                return;
-            }
-
             if (typeof changeSector === 'function') {
                 changeSector(id);
             } else if (window.GameUI && typeof window.GameUI.changeSector === 'function') {
@@ -174,16 +124,29 @@ const MiniMap = (function() {
             hex,
             text,
             fleetText,
-            colonizedText,
-            status: 'unknown',
-            explored: false
+            colonizedText
         };
     }
     
     function updateSector(id, status, fleetSize, indicator) {
+        if (window.GalaxyMap?.updateSectorStatus) {
+            const statusMap = {
+                neutral: window.GalaxyMap.SECTOR_STATUS.UNKNOWN,
+                owned: window.GalaxyMap.SECTOR_STATUS.OWNED,
+                enemy: window.GalaxyMap.SECTOR_STATUS.ENEMY,
+                hazard: window.GalaxyMap.SECTOR_STATUS.HAZARD,
+                blackhole: window.GalaxyMap.SECTOR_STATUS.BLACKHOLE,
+                colonized: window.GalaxyMap.SECTOR_STATUS.COLONIZED,
+                homeworld: window.GalaxyMap.SECTOR_STATUS.HOMEWORLD,
+                warpgate: window.GalaxyMap.SECTOR_STATUS.WARPGATE,
+                artifact: window.GalaxyMap.SECTOR_STATUS.ARTIFACT
+            };
+            const numericStatus = statusMap[status] ?? window.GalaxyMap.SECTOR_STATUS.UNKNOWN;
+            window.GalaxyMap.updateSectorStatus(id, numericStatus, { fleetSize, indicator });
+        }
+
         const elem = hexElements[id];
         if (!elem) return;
-        hasVisibilityData = true;
         
         // Set color based on status
         let fillColor, strokeColor;
@@ -221,14 +184,10 @@ const MiniMap = (function() {
                 fillColor = "#DDDDDD";
                 strokeColor = "#666666";
         }
-
-        elem.status = status || 'unknown';
-        elem.explored = isExploredStatus(elem.status);
         
         elem.hex.setAttribute("fill", fillColor);
         elem.hex.setAttribute("stroke", strokeColor);
         elem.hex.setAttribute("data-original-fill", fillColor);
-        elem.text.setAttribute("fill", textColorForFill(fillColor));
         
         // Update fleet size
         if (fleetSize && fleetSize > 0) {
@@ -249,9 +208,35 @@ const MiniMap = (function() {
     
     return {
         initialize,
-        updateSector
+        updateSector,
+        highlightSector: function(id) {
+            if (window.GalaxyMap?.highlightSector) {
+                window.GalaxyMap.highlightSector(id);
+            }
+        }
     };
 })();
+
+function fade(from, to, element) {
+    if (!element) return;
+    
+    const fromColor = parseInt(from, 16);
+    const toColor = parseInt(to, 16);
+    const diff = (toColor - fromColor) / 10;
+    
+    let currentValue = fromColor;
+    const fadeInterval = setInterval(() => {
+        currentValue += diff;
+        if ((diff > 0 && currentValue >= toColor) || 
+            (diff < 0 && currentValue <= toColor)) {
+            clearInterval(fadeInterval);
+            currentValue = toColor;
+        }
+        
+        const hexColor = Math.round(currentValue).toString(16).padStart(6, '0');
+        element.setAttribute("fill", `#${hexColor}`);
+    }, 50);
+}
 
 // Initialize when document is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -263,9 +248,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Export the module
 if (typeof window !== 'undefined') {
-    // For browser environment
     window.MiniMap = MiniMap;
-} else {
-    // For Node.js environment
+}
+if (typeof module !== 'undefined' && module.exports) {
     module.exports = MiniMap;
 }

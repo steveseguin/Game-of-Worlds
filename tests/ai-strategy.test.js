@@ -86,6 +86,9 @@ test.describe('AI strategy basics', () => {
     const host = createConn(hostId);
     attach(host);
     serverLogic.handleCreateGame('//creategame:AI-strategy:2', host);
+    const created = await waitFor(host, m => m.startsWith('creategame::success::'));
+    const createdGameId = Number(created.split('::')[2]);
+    serverLogic.handleJoinGame(`//joingame:${createdGameId}:1`, host);
     await waitFor(host, m => m.startsWith('joingame::success::'));
 
     serverLogic.handleAddAi('//addai:aggressive:balanced', host);

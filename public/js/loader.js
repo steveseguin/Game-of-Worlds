@@ -12,14 +12,21 @@
  */
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Load modules in the right order
+    if (window.__gameInitialized) {
+        console.log('Game of Words modules loaded successfully');
+        return;
+    }
+
+    // Fallback initialization for legacy entry points
     if (window.GameUI) GameUI.initialize();
     if (window.GalaxyMap) GalaxyMap.initialize(14, 8, 'minimapid');
     if (window.ChatSystem) ChatSystem.initialize();
     if (window.ControlPad) ControlPad.initialize();
-    
-    // Initialize WebSocket last
-    initializeWebSocket();
-    
-    console.log('Game of Words modules loaded successfully');
+
+    if (typeof initializeWebSocket === 'function') {
+        initializeWebSocket();
+    }
+
+    window.__gameInitialized = true;
+    console.log('Game of Words modules loaded successfully (fallback mode)');
 });

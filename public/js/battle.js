@@ -13,16 +13,8 @@
 const BattleSystem = (function() {
     // Array to store animation timers for cleanup
     let battleAnimationTimers = [];
-
-    function parseFleetTotal(parts, startIndex) {
-        let sum = 0;
-        for (let i = 0; i < 9; i++) {
-            sum += parseInt(parts[startIndex + i], 10) || 0;
-        }
-        return sum;
-    }
     
-    function createBattleVisualization(message) {
+    function createBattleVisualization(message, options = {}) {
         console.log("Creating battle visualization", message);
         
         // Clear any existing animation timers
@@ -32,85 +24,85 @@ const BattleSystem = (function() {
         // Parse battle data
         const parts = message.split(':');
         if (parts.length < 20) return;
-
-        const attackerInitial = parseFleetTotal(parts, 1);
-        const defenderInitial = parseFleetTotal(parts, 10) + (parseInt(parts[19], 10) || 0) + (parseInt(parts[20], 10) || 0);
-        const hasFinalState = parts.length >= 40;
-        const attackerFinal = hasFinalState ? parseFleetTotal(parts, 21) : attackerInitial;
-        const defenderFinal = hasFinalState
-            ? parseFleetTotal(parts, 30) + (parseInt(parts[39], 10) || 0) + (parseInt(parts[40], 10) || 0)
-            : defenderInitial;
         
         // Remove any existing battle ground
         const existingBattle = document.getElementById('battleGround');
         if (existingBattle) {
             document.body.removeChild(existingBattle);
         }
-        
+        const existingDim = document.getElementById('battleDim');
+        if (existingDim) {
+            document.body.removeChild(existingDim);
+        }
+
+        // Dim the game behind the theater — combat pauses the world.
+        const dim = document.createElement('div');
+        dim.id = 'battleDim';
+        dim.style.cssText = 'position:fixed;inset:0;background:rgba(2,4,10,0.72);backdrop-filter:blur(3px);z-index:999;';
+        document.body.appendChild(dim);
+
         // Create battle container
         const battleDiv = document.createElement('div');
         battleDiv.id = 'battleGround';
-        battleDiv.style.position = 'absolute';
+        battleDiv.style.position = 'fixed';
         battleDiv.style.left = '10%';
         battleDiv.style.width = '80%';
         battleDiv.style.height = '80%';
         battleDiv.style.top = '10%';
         battleDiv.style.background = '#000';
         battleDiv.style.backgroundImage = 'url(./images/spacebak.jpg)';
+        battleDiv.style.backgroundSize = 'cover';
         battleDiv.style.zIndex = '1000';
         battleDiv.style.display = 'block';
-        battleDiv.style.border = '1px solid rgba(130, 170, 255, 0.4)';
-        battleDiv.style.borderRadius = '10px';
+        battleDiv.style.border = '1px solid rgba(120,170,255,0.35)';
+        battleDiv.style.borderRadius = '14px';
+        battleDiv.style.boxShadow = '0 22px 80px rgba(0,0,0,0.8)';
         battleDiv.style.overflow = 'hidden';
         document.body.appendChild(battleDiv);
 
-        const hud = document.createElement('div');
-        hud.id = 'battleHud';
-        hud.style.position = 'absolute';
-        hud.style.left = '2%';
-        hud.style.right = '2%';
-        hud.style.top = '2%';
-        hud.style.minHeight = '54px';
-        hud.style.padding = '8px 12px';
-        hud.style.background = 'rgba(6, 11, 26, 0.72)';
-        hud.style.border = '1px solid rgba(130, 170, 255, 0.35)';
-        hud.style.borderRadius = '8px';
-        hud.style.color = '#dce7ff';
-        hud.style.display = 'flex';
-        hud.style.alignItems = 'center';
-        hud.style.justifyContent = 'space-between';
-        hud.style.fontSize = '13px';
-        hud.innerHTML = `
-            <div id="battleHudAttackers"><b>Attackers</b>: ${attackerInitial} engaged</div>
-            <div id="battleRoundIndicator"><b>Engagement</b>: live</div>
-            <div id="battleHudDefenders"><b>Defenders</b>: ${defenderInitial} engaged</div>
-        `;
-        battleDiv.appendChild(hud);
+        // Title banner
+        const title = document.createElement('div');
+        title.style.cssText = 'position:absolute;top:2%;left:50%;transform:translateX(-50%);color:#ffd166;font-weight:800;letter-spacing:3px;font-size:20px;text-transform:uppercase;text-shadow:0 2px 12px rgba(0,0,0,0.8);z-index:5;';
+        title.textContent = options.sectorId ? `Battle for Sector ${options.sectorId}` : 'Fleet Engagement';
+        battleDiv.appendChild(title);
+
+        const completeBattle = () => {
+            if (battleDiv.parentNode) {
+                battleDiv.parentNode.removeChild(battleDiv);
+            }
+            const dimEl = document.getElementById('battleDim');
+            if (dimEl && dimEl.parentNode) {
+                dimEl.parentNode.removeChild(dimEl);
+            }
+            if (options.sectorId && window.GalaxyMap?.clearBattleSector) {
+                window.GalaxyMap.clearBattleSector(options.sectorId);
+            }
+            if (window.GameScreen?.restoreTitle) {
+                window.GameScreen.restoreTitle();
+            }
+            if (typeof options.onComplete === 'function') {
+                options.onComplete();
+            }
+        };
         
         // Add skip button
         const skipButton = document.createElement('button');
         skipButton.id = 'stopBattle';
         skipButton.style.position = 'absolute';
-        skipButton.style.right = '2%';
-        skipButton.style.width = '80px';
-        skipButton.style.height = '34px';
-        skipButton.style.top = '2%';
-        skipButton.style.borderRadius = '6px';
-        skipButton.style.background = '#1d3559';
-        skipButton.style.color = '#dce7ff';
-        skipButton.style.border = '1px solid rgba(130, 170, 255, 0.55)';
+        skipButton.style.right = '15%';
+        skipButton.style.width = '5%';
+        skipButton.style.height = '3%';
+        skipButton.style.top = '10%';
         skipButton.innerHTML = 'SKIP';
-        skipButton.onclick = () => {
-            document.body.removeChild(battleDiv);
-        };
+        skipButton.onclick = completeBattle;
         battleDiv.appendChild(skipButton);
         
         // Add headers
         const attackerHeader = document.createElement('h1');
         attackerHeader.id = 'atttxt';
         attackerHeader.style.position = 'absolute';
-        attackerHeader.style.right = '12%';
-        attackerHeader.style.top = '14%';
+        attackerHeader.style.right = '15%';
+        attackerHeader.style.top = '12%';
         attackerHeader.innerHTML = 'Attackers';
         battleDiv.appendChild(attackerHeader);
         
@@ -118,7 +110,7 @@ const BattleSystem = (function() {
         defenderHeader.id = 'deftxt';
         defenderHeader.style.position = 'absolute';
         defenderHeader.style.right = '80%';
-        defenderHeader.style.top = '14%';
+        defenderHeader.style.top = '12%';
         defenderHeader.innerHTML = 'Defenders';
         battleDiv.appendChild(defenderHeader);
         
@@ -165,30 +157,38 @@ const BattleSystem = (function() {
             animateBattleRound(parts, round, battleDiv);
             round++;
         }
+        const totalRounds = round - 1;
 
-        const summaryTimer = setTimeout(() => {
-            const attackerHud = document.getElementById('battleHudAttackers');
-            const defenderHud = document.getElementById('battleHudDefenders');
-            const roundHud = document.getElementById('battleRoundIndicator');
-            if (attackerHud) {
-                attackerHud.innerHTML = `<b>Attackers</b>: ${attackerInitial} -> ${attackerFinal}`;
+        // After the final round, declare the outcome on screen.
+        const bannerTimer = setTimeout(() => {
+            const base = totalRounds * 20;
+            let attackersLeft = 0;
+            let defendersLeft = 0;
+            for (let i = 0; i < 9; i++) {
+                attackersLeft += parseInt(parts[base + i + 1]) || 0;
+                defendersLeft += parseInt(parts[base + i + 10]) || 0;
             }
-            if (defenderHud) {
-                defenderHud.innerHTML = `<b>Defenders</b>: ${defenderInitial} -> ${defenderFinal}`;
+            const banner = document.createElement('div');
+            banner.style.cssText = 'position:absolute;top:42%;left:50%;transform:translateX(-50%) scale(0.6);color:#fff;font-weight:900;letter-spacing:6px;font-size:46px;text-transform:uppercase;text-shadow:0 0 24px rgba(255,140,60,0.9);z-index:6;transition:transform 0.4s ease, opacity 0.4s ease;opacity:0;';
+            banner.textContent = attackersLeft > 0 && defendersLeft === 0
+                ? 'Attackers Prevail'
+                : (defendersLeft > 0 && attackersLeft === 0 ? 'Defense Holds' : 'Stalemate');
+            battleDiv.appendChild(banner);
+            requestAnimationFrame(() => {
+                banner.style.opacity = '1';
+                banner.style.transform = 'translateX(-50%) scale(1)';
+            });
+            if (window.MediaManager?.playSfx) {
+                window.MediaManager.playSfx('shipDestroyed');
             }
-            if (roundHud) {
-                roundHud.innerHTML = `<b>Engagement</b>: resolved`;
-            }
-        }, 4200);
-        battleAnimationTimers.push(summaryTimer);
-        
-        // Automatically close after a short post-resolution window
+        }, totalRounds * ROUND_MS + 800);
+        battleAnimationTimers.push(bannerTimer);
+
+        // Automatically close shortly after the result lands.
         const closeTimer = setTimeout(() => {
-            if (document.getElementById('battleGround')) {
-                document.body.removeChild(document.getElementById('battleGround'));
-            }
-        }, 15000);
-        
+            completeBattle();
+        }, totalRounds * ROUND_MS + 5200);
+
         battleAnimationTimers.push(closeTimer);
     }
     
@@ -210,110 +210,99 @@ const BattleSystem = (function() {
         container.appendChild(img);
     }
     
+    const ROUND_MS = 2600;
+
+    function fireLaser(container, fromEl, toEl) {
+        if (!fromEl || !toEl || !container) return;
+        const cRect = container.getBoundingClientRect();
+        const fRect = fromEl.getBoundingClientRect();
+        const tRect = toEl.getBoundingClientRect();
+        const x1 = fRect.left + fRect.width / 2 - cRect.left;
+        const y1 = fRect.top + fRect.height / 2 - cRect.top;
+        const x2 = tRect.left + tRect.width / 2 - cRect.left;
+        const y2 = tRect.top + tRect.height / 2 - cRect.top;
+        const length = Math.hypot(x2 - x1, y2 - y1);
+        const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+
+        const beam = document.createElement('div');
+        beam.style.cssText = `position:absolute;left:${x1}px;top:${y1}px;width:${length}px;height:2px;` +
+            'background:linear-gradient(90deg, rgba(120,220,255,0.1), rgba(140,230,255,0.95), rgba(255,90,90,0.9));' +
+            `transform-origin:0 50%;transform:rotate(${angle}deg);z-index:4;pointer-events:none;box-shadow:0 0 8px rgba(120,220,255,0.8);`;
+        container.appendChild(beam);
+        const cleanup = setTimeout(() => {
+            if (beam.parentNode) beam.parentNode.removeChild(beam);
+        }, 260);
+        battleAnimationTimers.push(cleanup);
+    }
+
+    function shipElements(container, side) {
+        return Array.from(container.querySelectorAll('img'))
+            .filter(el => el.id && el.id.startsWith(side === 'attacker' ? '1a' : '1d') && !el.dataset.dead);
+    }
+
     function animateBattleRound(battleData, round, container) {
-        const delay = 3200 * round;
-        
+        const delay = ROUND_MS * round;
+
         const roundTimer = setTimeout(() => {
-            const roundHud = document.getElementById('battleRoundIndicator');
-            if (roundHud) {
-                roundHud.innerHTML = `<b>Engagement</b>: exchange ${round}`;
+            // Exchange of fire: a volley of lasers between random living ships.
+            const attackers = shipElements(container, 'attacker');
+            const defenders = shipElements(container, 'defender');
+            const volleys = Math.min(7, Math.max(3, Math.floor((attackers.length + defenders.length) / 3)));
+            for (let v = 0; v < volleys; v++) {
+                const beamTimer = setTimeout(() => {
+                    const fromAtt = Math.random() > 0.5;
+                    const src = fromAtt ? attackers : defenders;
+                    const dst = fromAtt ? defenders : attackers;
+                    if (src.length && dst.length) {
+                        fireLaser(container,
+                            src[Math.floor(Math.random() * src.length)],
+                            dst[Math.floor(Math.random() * dst.length)]);
+                    }
+                }, Math.random() * 900);
+                battleAnimationTimers.push(beamTimer);
+            }
+            if (window.MediaManager?.playSfx) {
+                window.MediaManager.playSfx('laserFire');
             }
 
             // For each ship type (9 attacker types + 9 defender types)
             for (let i = 0; i < 18; i++) {
-                const beforeCount = parseInt(battleData[i + 1]) || 0;
+                const beforeCount = parseInt(battleData[i + 1 + (round - 1) * 20]) || parseInt(battleData[i + 1]) || 0;
                 const afterCount = parseInt(battleData[i + 1 + round * 20]) || 0;
-                
-                // Calculate losses
-                const losses = beforeCount - afterCount;
-                
+
                 // Animate destruction of lost ships
                 for (let j = afterCount; j < beforeCount; j++) {
                     const prefix = i < 9 ? '1a' : '1d';
                     const shipType = i < 9 ? i : i - 9;
                     const shipId = prefix + j + shipType;
-                    
-                    // Randomly time the explosions
+
+                    // Randomly time the explosions within the round
                     const explosionTimer = setTimeout(() => {
                         const ship = document.getElementById(shipId);
                         if (ship) {
+                            ship.dataset.dead = '1';
                             ship.src = './images/boom.gif';
-                            
-                            // Add explosion sound if available
-                            try {
-                                const sound = new Audio('explosion.mp3');
-                                sound.volume = 0.3;
-                                sound.play().catch(e => console.log('Sound play error:', e));
-                            } catch (e) {
-                                console.log('Sound play error:', e);
+                            if (window.MediaManager?.playSfx) {
+                                window.MediaManager.playSfx('explosion');
                             }
-                            
+
                             // Remove ship after explosion animation
                             const removeTimer = setTimeout(() => {
                                 if (ship && ship.parentNode) {
                                     ship.parentNode.removeChild(ship);
                                 }
-                            }, 1000);
-                            
+                            }, 900);
+
                             battleAnimationTimers.push(removeTimer);
                         }
-                    }, Math.random() * 2000);
-                    
+                    }, 600 + Math.random() * 1400);
+
                     battleAnimationTimers.push(explosionTimer);
                 }
             }
         }, delay);
-        
+
         battleAnimationTimers.push(roundTimer);
-    }
-
-    function showBattleSummary(summary) {
-        const existingSummary = document.getElementById('battleSummaryCard');
-        if (existingSummary && existingSummary.parentNode) {
-            existingSummary.parentNode.removeChild(existingSummary);
-        }
-
-        const normalizedResult = summary.result === 'attackerVictory'
-            ? 'Attacker Victory'
-            : summary.result === 'defenderVictory'
-                ? 'Defender Victory'
-                : 'Inconclusive';
-        const visibilityLabel = /stealth/i.test(summary.reason)
-            ? 'Limited telemetry (stealth)'
-            : /overwhelming/i.test(summary.reason)
-                ? 'Limited telemetry (overwhelming force)'
-                : 'Full telemetry';
-
-        const card = document.createElement('div');
-        card.id = 'battleSummaryCard';
-        card.style.position = 'fixed';
-        card.style.right = '20px';
-        card.style.bottom = '20px';
-        card.style.maxWidth = '360px';
-        card.style.padding = '14px 16px';
-        card.style.borderRadius = '10px';
-        card.style.background = 'rgba(10, 16, 33, 0.94)';
-        card.style.border = '1px solid rgba(130, 170, 255, 0.45)';
-        card.style.color = '#dce7ff';
-        card.style.fontSize = '13px';
-        card.style.lineHeight = '1.35';
-        card.style.zIndex = '1200';
-        card.innerHTML = `
-            <div style="font-size: 14px; font-weight: bold; margin-bottom: 6px;">Battle Summary: Sector ${summary.sector}</div>
-            <div>Outcome: ${normalizedResult}</div>
-            <div>Winner: Player ${summary.winnerId}</div>
-            <div>Losses - Attackers: ${summary.attackerLosses}, Defenders: ${summary.defenderLosses}</div>
-            <div>Visibility: ${visibilityLabel}</div>
-            <div>Force Ratio: ${summary.forceRatio}</div>
-        `;
-        document.body.appendChild(card);
-
-        const timer = setTimeout(() => {
-            if (card.parentNode) {
-                card.parentNode.removeChild(card);
-            }
-        }, 7000);
-        battleAnimationTimers.push(timer);
     }
     
     // Clean up all animation timers and elements
@@ -322,17 +311,20 @@ const BattleSystem = (function() {
 		battleAnimationTimers.forEach(timer => clearTimeout(timer));
 		battleAnimationTimers = [];
 		
-		// Remove battle DOM element if it exists
+		// Remove battle DOM elements if they exist
 		const battleGround = document.getElementById('battleGround');
 		if (battleGround && battleGround.parentNode) {
 			battleGround.parentNode.removeChild(battleGround);
+		}
+		const battleDim = document.getElementById('battleDim');
+		if (battleDim && battleDim.parentNode) {
+			battleDim.parentNode.removeChild(battleDim);
 		}
 	}
     
     return {
         createBattleVisualization,
-        cleanupBattleVisualization,
-        showBattleSummary
+        cleanupBattleVisualization
     };
 })();
 

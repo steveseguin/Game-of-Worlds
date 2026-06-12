@@ -14,98 +14,28 @@ const AvatarNotifications = (function() {
 
     // Race avatar configurations (id matches server race IDs)
     const raceAvatars = {
-        1: { name: 'Terran Empire', color: '#4a90d9', icon: 'terran' },
-        2: { name: 'Silicon Collective', color: '#7b68ee', icon: 'silicon' },
-        3: { name: 'Zephyr Swarm', color: '#32cd32', icon: 'zephyr' },
-        4: { name: 'Crystalline Entity', color: '#00ffff', icon: 'crystalline' },
-        5: { name: 'Void Walkers', color: '#8b008b', icon: 'void' },
-        6: { name: 'Mechanicus', color: '#cd853f', icon: 'mechanicus' },
-        7: { name: 'Bioform Collective', color: '#228b22', icon: 'bioform' },
-        8: { name: 'Star Nomads', color: '#ffd700', icon: 'nomad' },
-        9: { name: 'The Ancients', color: '#daa520', icon: 'ancient' },
-        10: { name: 'Quantum Entities', color: '#00bfff', icon: 'quantum' },
-        11: { name: 'Titan Lords', color: '#b22222', icon: 'titan' },
-        12: { name: 'Shadow Realm', color: '#483d8b', icon: 'shadow' }
+        1: { name: 'Terran Empire', color: '#4a90d9', asset: './images/terran-icon.svg' },
+        2: { name: 'Silicon Collective', color: '#7b68ee', asset: './images/silicon-icon.svg' },
+        3: { name: 'Zephyr Swarm', color: '#32cd32', asset: './images/zephyr-icon.svg' },
+        4: { name: 'Crystalline Entity', color: '#00ffff', asset: './images/crystalline-icon.svg' },
+        5: { name: 'Void Walkers', color: '#8b008b', asset: './images/void-icon.svg' },
+        6: { name: 'Mechanicus', color: '#cd853f', asset: './images/mechanicus-icon.svg' },
+        7: { name: 'Bioform Collective', color: '#228b22', asset: './images/bioform-icon.svg' },
+        8: { name: 'Star Nomads', color: '#ffd700', asset: './images/nomad-icon.svg' },
+        9: { name: 'The Ancients', color: '#daa520', asset: './images/ancient-icon.svg' },
+        10: { name: 'Quantum Entities', color: '#00bfff', asset: './images/quantum-icon.svg' },
+        11: { name: 'Titan Lords', color: '#b22222', asset: './images/titan-icon.svg' },
+        12: { name: 'Shadow Realm', color: '#483d8b', asset: './images/shadow-icon.svg' }
     };
 
-    // Generate SVG avatar for a race
+    // Render race art for the current advisor.
     function generateAvatar(raceId) {
         const race = raceAvatars[raceId] || raceAvatars[1];
-        const color = race.color;
-
-        // Different avatar shapes/styles per race
-        const avatarStyles = {
-            terran: `<circle cx="32" cy="28" r="16" fill="${color}"/>
-                     <rect x="20" y="46" width="24" height="18" rx="4" fill="${color}"/>
-                     <circle cx="26" cy="26" r="3" fill="#fff"/>
-                     <circle cx="38" cy="26" r="3" fill="#fff"/>`,
-            silicon: `<rect x="16" y="16" width="32" height="32" rx="4" fill="${color}"/>
-                      <rect x="22" y="22" width="8" height="8" fill="#0ff"/>
-                      <rect x="34" y="22" width="8" height="8" fill="#0ff"/>
-                      <rect x="22" y="36" width="20" height="4" fill="#0ff"/>`,
-            zephyr: `<ellipse cx="32" cy="32" rx="20" ry="16" fill="${color}"/>
-                     <ellipse cx="26" cy="28" r="4" fill="#ff0"/>
-                     <ellipse cx="38" cy="28" r="4" fill="#ff0"/>
-                     <path d="M24 38 Q32 44 40 38" stroke="#ff0" stroke-width="2" fill="none"/>`,
-            crystalline: `<polygon points="32,8 52,28 42,52 22,52 12,28" fill="${color}" opacity="0.8"/>
-                          <polygon points="32,16 44,28 38,44 26,44 20,28" fill="#fff" opacity="0.3"/>
-                          <circle cx="28" cy="28" r="3" fill="#fff"/>
-                          <circle cx="36" cy="28" r="3" fill="#fff"/>`,
-            void: `<circle cx="32" cy="32" r="22" fill="#1a0a2e"/>
-                   <circle cx="32" cy="32" r="18" fill="${color}" opacity="0.6"/>
-                   <circle cx="26" cy="28" r="4" fill="#ff00ff"/>
-                   <circle cx="38" cy="28" r="4" fill="#ff00ff"/>`,
-            mechanicus: `<rect x="14" y="14" width="36" height="36" fill="${color}"/>
-                         <circle cx="24" cy="26" r="5" fill="#f00"/>
-                         <circle cx="40" cy="26" r="5" fill="#f00"/>
-                         <rect x="20" y="38" width="24" height="6" fill="#666"/>
-                         <rect x="24" y="40" width="4" height="2" fill="#f00"/>
-                         <rect x="32" y="40" width="4" height="2" fill="#f00"/>`,
-            bioform: `<ellipse cx="32" cy="32" rx="18" ry="22" fill="${color}"/>
-                      <circle cx="26" cy="26" r="5" fill="#0f0"/>
-                      <circle cx="38" cy="26" r="5" fill="#0f0"/>
-                      <ellipse cx="32" cy="42" rx="8" ry="4" fill="#0a0"/>
-                      <path d="M14 20 Q10 10 16 8" stroke="${color}" stroke-width="4" fill="none"/>
-                      <path d="M50 20 Q54 10 48 8" stroke="${color}" stroke-width="4" fill="none"/>`,
-            nomad: `<path d="M32 10 L48 50 L16 50 Z" fill="${color}"/>
-                    <circle cx="32" cy="30" r="10" fill="#222"/>
-                    <circle cx="28" cy="28" r="2" fill="#ffd700"/>
-                    <circle cx="36" cy="28" r="2" fill="#ffd700"/>
-                    <path d="M28 34 L36 34" stroke="#ffd700" stroke-width="2"/>`,
-            ancient: `<circle cx="32" cy="32" r="20" fill="${color}"/>
-                      <circle cx="32" cy="32" r="16" fill="none" stroke="#fff" stroke-width="1" opacity="0.5"/>
-                      <circle cx="26" cy="28" r="4" fill="#fff"/>
-                      <circle cx="38" cy="28" r="4" fill="#fff"/>
-                      <path d="M24 40 Q32 46 40 40" stroke="#fff" stroke-width="2" fill="none"/>`,
-            quantum: `<circle cx="32" cy="32" r="18" fill="none" stroke="${color}" stroke-width="3"/>
-                      <circle cx="32" cy="32" r="12" fill="${color}" opacity="0.5"/>
-                      <circle cx="32" cy="32" r="6" fill="#fff"/>
-                      <circle cx="20" cy="20" r="4" fill="${color}"/>
-                      <circle cx="44" cy="20" r="4" fill="${color}"/>
-                      <circle cx="32" cy="50" r="4" fill="${color}"/>`,
-            titan: `<rect x="12" y="16" width="40" height="40" rx="6" fill="${color}"/>
-                    <rect x="18" y="22" width="10" height="10" fill="#ff4500"/>
-                    <rect x="36" y="22" width="10" height="10" fill="#ff4500"/>
-                    <rect x="20" y="40" width="24" height="8" fill="#8b0000"/>`,
-            shadow: `<circle cx="32" cy="32" r="22" fill="#1a1a2e"/>
-                     <circle cx="32" cy="32" r="18" fill="${color}" opacity="0.4"/>
-                     <ellipse cx="26" cy="28" rx="5" ry="6" fill="#9400d3"/>
-                     <ellipse cx="38" cy="28" rx="5" ry="6" fill="#9400d3"/>
-                     <path d="M20 44 Q32 38 44 44" stroke="#4b0082" stroke-width="3" fill="none"/>`
-        };
-
-        const style = avatarStyles[race.icon] || avatarStyles.terran;
-
-        return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <radialGradient id="avatarGlow${raceId}">
-                    <stop offset="0%" stop-color="${color}" stop-opacity="0.3"/>
-                    <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
-                </radialGradient>
-            </defs>
-            <circle cx="32" cy="32" r="30" fill="url(#avatarGlow${raceId})"/>
-            ${style}
-        </svg>`;
+        return `
+            <div class="avatar-art-frame" style="--race-color:${race.color}">
+                <img src="${race.asset}" alt="${race.name}" loading="lazy">
+            </div>
+        `;
     }
 
     function initialize() {
@@ -137,6 +67,8 @@ const AvatarNotifications = (function() {
         // Set up event listeners
         document.getElementById('navUp').addEventListener('click', () => navigate(-1));
         document.getElementById('navDown').addEventListener('click', () => navigate(1));
+        document.getElementById('navUp').textContent = String.fromCharCode(9650);
+        document.getElementById('navDown').textContent = String.fromCharCode(9660);
 
         // Set default avatar
         updateAvatar(currentRaceId);
@@ -181,9 +113,21 @@ const AvatarNotifications = (function() {
                 justify-content: center;
             }
 
-            .avatar-image svg {
-                width: 64px;
-                height: 64px;
+            .avatar-art-frame {
+                width: 100%;
+                height: 100%;
+                display: grid;
+                place-items: center;
+                background:
+                    radial-gradient(circle at 50% 45%, rgba(255,255,255,0.12), transparent 45%),
+                    linear-gradient(145deg, rgba(255,255,255,0.08), rgba(0,0,0,0.18));
+            }
+
+            .avatar-art-frame img {
+                width: 58px;
+                height: 58px;
+                object-fit: contain;
+                filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45));
             }
 
             .speech-bubble-container {
@@ -289,7 +233,7 @@ const AvatarNotifications = (function() {
                     order: 1;
                 }
 
-                .avatar-image svg {
+                .avatar-art-frame img {
                     width: 48px;
                     height: 48px;
                 }

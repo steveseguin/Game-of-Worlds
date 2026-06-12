@@ -400,6 +400,8 @@ function generateGameMap(width, height, playerCount) {
             // Create sector object
             const sector = {
                 sectorid: sectorId++,
+                x,
+                y,
                 sectortype: sectorType,
                 ownerid: 0,
                 colonized: 0,
@@ -448,66 +450,58 @@ function generateGameMap(width, height, playerCount) {
         }
     }
     
-    // Place homeworlds for players
+    // Place homeworlds for players across the full map. For large games, a
+    // ring pattern clusters starts too heavily, so use grid targets and search
+    // outward for the nearest unused planet sector to convert.
     const homeworlds = [];
-    
-    // Try to distribute homeworlds evenly across the map
-    for (let i = 0; i < playerCount; i++) {
-        let attempts = 0;
-        let placed = false;
-        
-        while (!placed && attempts < 50) {
-            // Calculate ideal positions in a circle
-            const angle = (2 * Math.PI * i) / playerCount;
-            const radius = Math.min(width, height) * 0.4;
-            const centerX = width / 2;
-            const centerY = height / 2;
-            
-            // Calculate target position with some randomness
-            const targetX = Math.floor(centerX + Math.cos(angle) * radius + (Math.random() * 4 - 2));
-            const targetY = Math.floor(centerY + Math.sin(angle) * radius + (Math.random() * 4 - 2));
-            
-            // Convert to sector index
-            const targetIndex = targetY * width + targetX;
-            
-            // Make sure we're in bounds
-            if (targetIndex >= 0 && targetIndex < sectors.length) {
-                const sector = sectors[targetIndex];
-                
-                // Check if this location works for a homeworld
-                if (sector.sectortype >= SECTOR_TYPES.MICRO_PLANET.id) {
-                    // Convert to homeworld
-                    sector.sectortype = SECTOR_TYPES.HOMEWORLD.id;
-                    sector.terraformlvl = 0;
-                    sector.metalbonus = 100;
-                    sector.crystalbonus = 100;
-                    
-                    homeworlds.push(sector.sectorid);
-                    placed = true;
+    const occupiedHomeworlds = new Set();
+    const requestedPlayers = Number(playerCount) || 0;
+    const placementColumns = Math.max(1, Math.ceil(Math.sqrt(requestedPlayers * (width / height))));
+    const placementRows = Math.max(1, Math.ceil(requestedPlayers / placementColumns));
+
+    function isHomeworldCandidate(sector) {
+        return sector &&
+            sector.sectortype >= SECTOR_TYPES.MICRO_PLANET.id &&
+            sector.sectortype < SECTOR_TYPES.HOMEWORLD.id &&
+            !occupiedHomeworlds.has(sector.sectorid);
+    }
+
+    function convertToHomeworld(sector) {
+        sector.sectortype = SECTOR_TYPES.HOMEWORLD.id;
+        sector.terraformlvl = 0;
+        sector.metalbonus = 100;
+        sector.crystalbonus = 100;
+        occupiedHomeworlds.add(sector.sectorid);
+        homeworlds.push(sector.sectorid);
+    }
+
+    function findNearestHomeworldCandidate(targetX, targetY) {
+        const maxRadius = Math.max(width, height);
+        for (let radius = 0; radius <= maxRadius; radius++) {
+            for (let y = targetY - radius; y <= targetY + radius; y++) {
+                if (y < 0 || y >= height) continue;
+                for (let x = targetX - radius; x <= targetX + radius; x++) {
+                    if (x < 0 || x >= width) continue;
+                    if (Math.max(Math.abs(x - targetX), Math.abs(y - targetY)) !== radius) continue;
+                    const sector = sectors[y * width + x];
+                    if (isHomeworldCandidate(sector)) {
+                        return sector;
+                    }
                 }
             }
-            
-            attempts++;
         }
-        
-        // If we couldn't place a homeworld, use any planet
-        if (!placed) {
-            // Find an unused planet
-            for (const sector of sectors) {
-                if (
-                    sector.sectortype >= SECTOR_TYPES.MICRO_PLANET.id && 
-                    sector.sectortype < SECTOR_TYPES.HOMEWORLD.id &&
-                    !homeworlds.includes(sector.sectorid)
-                ) {
-                    sector.sectortype = SECTOR_TYPES.HOMEWORLD.id;
-                    sector.terraformlvl = 0;
-                    sector.metalbonus = 100;
-                    sector.crystalbonus = 100;
-                    
-                    homeworlds.push(sector.sectorid);
-                    break;
-                }
-            }
+
+        return sectors.find(isHomeworldCandidate) || null;
+    }
+
+    for (let i = 0; i < requestedPlayers; i++) {
+        const gridX = i % placementColumns;
+        const gridY = Math.floor(i / placementColumns);
+        const targetX = Math.min(width - 1, Math.floor((gridX + 0.5) * width / placementColumns));
+        const targetY = Math.min(height - 1, Math.floor((gridY + 0.5) * height / placementRows));
+        const sector = findNearestHomeworldCandidate(targetX, targetY);
+        if (sector) {
+            convertToHomeworld(sector);
         }
     }
     

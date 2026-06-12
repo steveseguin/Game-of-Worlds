@@ -233,6 +233,40 @@ class MockDatabase {
                 return this._async(callback, null, { affectedRows: game ? 1 : 0 });
             }
 
+            if (/^UPDATE games SET status = "completed", winner = \? WHERE id = \?/i.test(normalized)) {
+                const [winner, gameId] = params;
+                const game = this._games.get(Number(gameId));
+                if (game) {
+                    game.status = 'completed';
+                    game.winner = Number(winner);
+                }
+                return this._async(callback, null, { affectedRows: game ? 1 : 0 });
+            }
+
+            if (/^INSERT INTO game_history/i.test(normalized)) {
+                return this._async(callback, null, { insertId: 1, affectedRows: 1 });
+            }
+
+            if (/FROM wonders\d+/i.test(normalized)) {
+                return this._async(callback, null, []);
+            }
+
+            if (/^UPDATE user_stats SET/i.test(normalized)) {
+                return this._async(callback, null, { affectedRows: 1 });
+            }
+
+            if (/^UPDATE users SET currentgame = NULL WHERE currentgame = \?/i.test(normalized)) {
+                const gameId = Number(params[0]);
+                let affected = 0;
+                this._users.forEach(user => {
+                    if (Number(user.currentgame) === gameId) {
+                        user.currentgame = null;
+                        affected++;
+                    }
+                });
+                return this._async(callback, null, { affectedRows: affected });
+            }
+
             if (/^DELETE FROM games WHERE id = \?/i.test(normalized)) {
                 const gameId = Number(params[0]);
                 const existed = this._games.delete(gameId);
@@ -525,6 +559,27 @@ class MockDatabase {
                     return this._async(callback, null, [{ count }]);
                 }
 
+                if (/^SELECT sectorid, type, COUNT\(\*\) as count FROM `?buildings\d+`? WHERE owner = \? GROUP BY sectorid, type/i.test(normalized)) {
+                    const owner = Number(params[0]);
+                    const counts = {};
+                    buildings.forEach(b => {
+                        if (b.owner === owner) {
+                            const key = `${b.sectorid}:${b.type}`;
+                            counts[key] = (counts[key] || 0) + 1;
+                        }
+                    });
+                    const rows = Object.entries(counts).map(([key, count]) => {
+                        const [sectorid, type] = key.split(':').map(Number);
+                        return { sectorid, type, count };
+                    });
+                    return this._async(callback, null, rows);
+                }
+
+                if (/^SELECT \* FROM `?buildings\d+`? WHERE owner = \?/i.test(normalized)) {
+                    const owner = Number(params[0]);
+                    return this._async(callback, null, buildings.filter(b => b.owner === owner).map(b => ({ ...b })));
+                }
+
                 if (/^SELECT type, COUNT\(\*\) as count FROM `?buildings\d+`? WHERE sectorid = \? AND owner = \? GROUP BY type/i.test(normalized)) {
                     const [sectorid, owner] = (params || []).map(Number);
                     const counts = {};
@@ -592,7 +647,24 @@ class MockDatabase {
                 const map = this._ensureMap(gameId);
 
                 if (/^INSERT INTO `?map\d+`?/i.test(normalized)) {
-                    if (Array.isArray(params) && params.length >= 4) {
+                    const columnsMatch = normalized.match(/^INSERT INTO `?map\d+`?\s*\(([^)]+)\)/i);
+                    if (columnsMatch && Array.isArray(params) && params.length >= 4) {
+                        const columns = columnsMatch[1].split(',').map(col => col.trim().toLowerCase());
+                        const values = {};
+                        columns.forEach((col, index) => { values[col] = params[index]; });
+                        const sectorid = Number(values.sectorid);
+                        const row = this._buildMapRow(
+                            sectorid,
+                            Number(values.x),
+                            Number(values.y),
+                            Number(values.type) || 0,
+                            Number.isFinite(Number(values.sectortype)) ? Number(values.sectortype) : (Number(values.type) || 0)
+                        );
+                        ['metalbonus', 'crystalbonus', 'terraformlvl', 'artifact'].forEach(col => {
+                            if (values[col] !== undefined) row[col] = Number(values[col]);
+                        });
+                        map.set(sectorid, row);
+                    } else if (Array.isArray(params) && params.length >= 4) {
                         const numericParams = params.map(Number);
                         const sectorid = Number(numericParams[0]);
                         const x = Number(numericParams[1]);
@@ -652,6 +724,41 @@ class MockDatabase {
                     return this._async(callback, null, { affectedRows: targets.length });
                 }
 
+                if (/^SELECT COUNT\(\*\) as total, SUM\(CASE WHEN owner = \? THEN 1 ELSE 0 END\) as owned FROM `?map\d+`? WHERE type BETWEEN \d+ AND \d+/i.test(normalized)) {
+                    const owner = Number(params[0]);
+                    const range = normalized.match(/type BETWEEN (\d+) AND (\d+)/i);
+                    const lo = Number(range[1]);
+                    const hi = Number(range[2]);
+                    const rows = Array.from(map.values()).filter(r => Number(r.type) >= lo && Number(r.type) <= hi);
+                    const owned = rows.filter(r => Number(r.owner) === owner).length;
+                    return this._async(callback, null, [{ total: rows.length, owned }]);
+                }
+
+                if (/^SELECT DISTINCT owner FROM `?map\d+`? WHERE owner IS NOT NULL AND owner != \?/i.test(normalized)) {
+                    const exclude = Number(params[0]);
+                    const owners = [...new Set(
+                        Array.from(map.values())
+                            .map(r => r.owner)
+                            .filter(o => o !== null && o !== undefined && Number(o) !== exclude)
+                            .map(Number)
+                    )];
+                    return this._async(callback, null, owners.map(owner => ({ owner })));
+                }
+
+                if (/^SELECT .* FROM `?map\d+`? WHERE sectorid IN \(/i.test(normalized)) {
+                    const ids = (params || []).map(Number).filter(Number.isFinite);
+                    const rows = ids.map(id => map.get(id)).filter(Boolean).map(r => ({ ...r }));
+                    return this._async(callback, null, rows);
+                }
+
+                if (/^SELECT .* FROM `?map\d+`? WHERE owner = \?/i.test(normalized)) {
+                    const owner = Number(params[0]);
+                    const rows = Array.from(map.values())
+                        .filter(r => Number(r.owner) === owner)
+                        .map(r => ({ ...r }));
+                    return this._async(callback, null, rows);
+                }
+
                 if (/^SELECT DISTINCT m2\.sectorid, m2\.owner FROM/i.test(normalized)) {
                     const owner = Number(params[0]);
                     const exclude = Number(params[1]);
@@ -682,7 +789,13 @@ class MockDatabase {
                 }
 
                 if (/^SELECT sectorid, type FROM `?map\d+`? WHERE owner IS NULL/i.test(normalized)) {
-                    const rows = Array.from(map.values()).filter(r => r.owner === null || r.owner === undefined);
+                    let rows = Array.from(map.values()).filter(r => r.owner === null || r.owner === undefined);
+                    const betweenMatch = normalized.match(/type BETWEEN (\d+) AND (\d+)/i);
+                    if (betweenMatch) {
+                        const lo = Number(betweenMatch[1]);
+                        const hi = Number(betweenMatch[2]);
+                        rows = rows.filter(r => Number(r.type) >= lo && Number(r.type) <= hi);
+                    }
                     return this._async(callback, null, rows.map(r => ({ sectorid: r.sectorid, type: r.type })));
                 }
 
@@ -702,7 +815,7 @@ class MockDatabase {
                     return this._async(callback, null, entry ? [{ ...entry }] : []);
                 }
 
-                if (/^SELECT owner FROM `?map\d+`? WHERE sectorid IN \\(\\?\\)/i.test(normalized)) {
+                if (/^SELECT owner FROM `?map\d+`? WHERE sectorid IN \(\?\)/i.test(normalized)) {
                     const sectorList = Array.isArray(params[0]) ? params[0] : String(params[0] || '').split(',').map(Number);
                     const excludeOwner = Number(params[1]);
                     const found = sectorList
@@ -761,6 +874,16 @@ class MockDatabase {
                     return this._async(callback, null, rows);
                 }
 
+                if (/^SELECT sectorid, COUNT\(\*\) as count FROM `?ships\d+`? WHERE owner = \? GROUP BY sectorid/i.test(normalized)) {
+                    const owner = Number(params[0]);
+                    const counts = {};
+                    ships.filter(s => s.owner === owner).forEach(s => {
+                        counts[s.sectorid] = (counts[s.sectorid] || 0) + 1;
+                    });
+                    const rows = Object.entries(counts).map(([sectorid, count]) => ({ sectorid: Number(sectorid), count }));
+                    return this._async(callback, null, rows);
+                }
+
                 if (/^SELECT owner, type, COUNT\(\*\) as count FROM `?ships\d+`? WHERE sectorid = \? GROUP BY owner, type/i.test(normalized)) {
                     const sectorid = Number(params[0]);
                     const counts = {};
@@ -813,7 +936,7 @@ class MockDatabase {
 
                 if (/^UPDATE `?ships\d+`? SET sectorid = \?/i.test(normalized)) {
                     const sectorid = Number(params[0]);
-                    const idListMatch = normalized.match(/id IN \\(([^)]+)\\)/i);
+                    const idListMatch = normalized.match(/id IN \(([^)]+)\)/i);
                     let affectedRows = 0;
                     if (idListMatch) {
                         const ids = idListMatch[1].split(',').map(v => Number(v.trim())).filter(Number.isFinite);
@@ -836,7 +959,16 @@ class MockDatabase {
 
                 if (/^DELETE FROM `?ships\d+`?/i.test(normalized)) {
                     let removed = 0;
-                    if (/WHERE id = \?/i.test(normalized)) {
+                    const idListMatch = normalized.match(/id IN \(([^)]+)\)/i);
+                    if (idListMatch) {
+                        const ids = idListMatch[1].split(',').map(v => Number(v.trim())).filter(Number.isFinite);
+                        for (let i = ships.length - 1; i >= 0; i--) {
+                            if (ids.includes(ships[i].id)) {
+                                ships.splice(i, 1);
+                                removed++;
+                            }
+                        }
+                    } else if (/WHERE id = \?/i.test(normalized)) {
                         const id = Number(params[0]);
                         const idx = ships.findIndex(s => s.id === id);
                         if (idx >= 0) {
@@ -847,6 +979,22 @@ class MockDatabase {
                         const [sectorid, owner] = (params || []).map(Number);
                         for (let i = ships.length - 1; i >= 0; i--) {
                             if (ships[i].sectorid === sectorid && ships[i].owner === owner) {
+                                ships.splice(i, 1);
+                                removed++;
+                            }
+                        }
+                    } else if (/WHERE owner = \? AND sectorid = \?/i.test(normalized)) {
+                        const [owner, sectorid] = (params || []).map(Number);
+                        for (let i = ships.length - 1; i >= 0; i--) {
+                            if (ships[i].sectorid === sectorid && ships[i].owner === owner) {
+                                ships.splice(i, 1);
+                                removed++;
+                            }
+                        }
+                    } else if (/WHERE owner = \?/i.test(normalized)) {
+                        const owner = Number(params[0]);
+                        for (let i = ships.length - 1; i >= 0; i--) {
+                            if (ships[i].owner === owner) {
                                 ships.splice(i, 1);
                                 removed++;
                             }
@@ -1029,8 +1177,9 @@ class MockDatabase {
     _buildMapRow(sectorid, x, y, type, sectortype) {
         const width = 14;
         const sector = Number(sectorid);
-        const resolvedX = Number.isFinite(x) ? Number(x) : sector % width;
-        const resolvedY = Number.isFinite(y) ? Number(y) : Math.floor(sector / width);
+        const zeroBased = Math.max(0, sector - 1);
+        const resolvedX = Number.isFinite(x) ? Number(x) : zeroBased % width;
+        const resolvedY = Number.isFinite(y) ? Number(y) : Math.floor(zeroBased / width);
         const resolvedType = Number.isFinite(sectortype) ? Number(sectortype) : (Number.isFinite(type) ? Number(type) : 0);
         return {
             sectorid: sector,
@@ -1052,8 +1201,9 @@ class MockDatabase {
         const height = 8;
         if (!this._maps.has(gameId)) {
             const map = new Map();
-            for (let i = 0; i < width * height; i++) {
-                map.set(i, this._buildMapRow(i, i % width, Math.floor(i / width), (i % 5) + 1, (i % 5) + 1));
+            for (let i = 1; i <= width * height; i++) {
+                const zeroBased = i - 1;
+                map.set(i, this._buildMapRow(i, zeroBased % width, Math.floor(zeroBased / width), (i % 5) + 1, (i % 5) + 1));
             }
             this._maps.set(gameId, map);
         }

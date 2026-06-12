@@ -17,7 +17,7 @@ const VICTORY_CONDITIONS = {
                     COUNT(*) as total,
                     SUM(CASE WHEN owner = ? THEN 1 ELSE 0 END) as owned
                  FROM map${gameId}
-                 WHERE type BETWEEN 5 AND 10`,
+                 WHERE type BETWEEN 6 AND 10`,
                 [playerId],
                 (err, results) => {
                     if (err) {
@@ -295,54 +295,38 @@ function checkAllPlayersForVictory(gameId, gameState, db, callback) {
     );
 }
 
-// End the game and record results
+// End the game and record results. Every step is best-effort: a bookkeeping
+// failure must never leave a finished game running.
 function endGame(gameId, winnerId, winCondition, gameState, db, callback) {
-    // Update game status
     db.query(
         'UPDATE games SET status = "completed", winner = ? WHERE id = ?',
         [winnerId, gameId],
         (err) => {
-            if (err) {
-                callback(err);
-                return;
-            }
-            
-            // Calculate final scores
-            calculateScores(gameId, db, (err, scores) => {
-                if (err) {
-                    callback(err);
-                    return;
-                }
-                
-                // Record game history
+            if (err) console.error(`endGame: marking game ${gameId} complete failed:`, err.message || err);
+
+            calculateScores(gameId, db, (scoreErr, scores) => {
+                if (scoreErr) console.error(`endGame: score calculation failed for game ${gameId}:`, scoreErr.message || scoreErr);
+                const safeScores = Array.isArray(scores) ? scores : [];
                 const duration = gameState.turns[gameId] || 0;
-                const playerCount = scores.length;
-                
+
                 db.query(
-                    `INSERT INTO game_history 
-                     (game_id, winner_id, end_reason, duration, player_count) 
+                    `INSERT INTO game_history
+                     (game_id, winner_id, end_reason, duration, player_count)
                      VALUES (?, ?, ?, ?, ?)`,
-                    [gameId, winnerId, winCondition, duration, playerCount],
-                    (err) => {
-                        if (err) {
-                            callback(err);
-                            return;
-                        }
-                        
-                        // Update player stats
-                        updatePlayerStats(gameId, winnerId, scores, db, (err) => {
-                            if (err) {
-                                callback(err);
-                                return;
-                            }
-                            
-                            // Clean up game state
+                    [gameId, winnerId, winCondition, duration, safeScores.length],
+                    (histErr) => {
+                        if (histErr) console.error(`endGame: history insert failed for game ${gameId}:`, histErr.message || histErr);
+
+                        updatePlayerStats(gameId, winnerId, safeScores, db, (statsErr) => {
+                            if (statsErr) console.error(`endGame: stats update failed for game ${gameId}:`, statsErr.message || statsErr);
+
+                            // Clean up game state regardless of bookkeeping success.
                             cleanupGame(gameId, gameState, db);
-                            
+
                             callback(null, {
                                 winner: winnerId,
                                 condition: winCondition,
-                                scores: scores
+                                scores: safeScores
                             });
                         });
                     }
@@ -406,11 +390,11 @@ function cleanupGame(gameId, gameState, db) {
         );
     }
 
-    // Disconnect players from this game
+    // Detach players from this game. The winner broadcast (gameover::winnerId::reason)
+    // is sent by the caller before cleanup, so no extra message here.
     gameState.clients.forEach(client => {
-        if (client.gameid === gameId) {
+        if (Number(client.gameid) === Number(gameId)) {
             client.gameid = null;
-            client.sendUTF('gameover::' + gameId);
         }
     });
 }

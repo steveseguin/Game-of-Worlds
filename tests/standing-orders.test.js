@@ -31,7 +31,7 @@ test('standing orders build econ and scouts when resources allow', async () => {
         res
     ));
     await new Promise(res => db.query(
-        `UPDATE map${gameId} SET ownerid = ? WHERE sectorid = ?`,
+        `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
         [1, 1],
         res
     ));

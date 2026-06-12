@@ -13,6 +13,16 @@
  * - CSS styles from style.css
  */
 document.addEventListener('DOMContentLoaded', function() {
+    if (window.__gameInitialized) {
+        return;
+    }
+    window.__gameInitialized = true;
+    
+    const sanitizedUserId = getSanitizedUserId();
+    if (sanitizedUserId) {
+        window.gameUserId = sanitizedUserId;
+    }
+
     // Initialize UI components
     if (window.GameUI) {
         GameUI.initialize();
@@ -35,25 +45,14 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize websocket connection
     initializeWebSocket();
-
-    // Initialize combat telemetry panel
-    if (window.CombatAnalytics) {
-        CombatAnalytics.initialize();
-    }
     
     // Initialize shop system
     if (window.Shop) {
-        // Get user ID from session/auth sources used by login/register flows.
-        const userId = window.gameUserId || localStorage.getItem('userId') || getCookie('userId');
-        if (userId) {
-            Shop.initialize(userId);
-        }
+        Shop.initialize(sanitizedUserId || null);
     }
     
-    // Prefer MediaManager for game music to avoid overlapping tracks.
-    if (window.MediaManager?.playMusic) {
-        window.MediaManager.playMusic('spaceAmbient');
-    } else if (window.SoundSystem) {
+    // Initialize sound system
+    if (window.SoundSystem) {
         SoundSystem.initialize();
         SoundSystem.playContextualMusic('menu');
     }
@@ -61,8 +60,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up global event handlers
     setupEventListeners();
     
+    const leaveButton = document.getElementById('leaveGameBtn');
+    if (leaveButton) {
+        leaveButton.addEventListener('click', () => {
+            if (typeof leaveCurrentGame === 'function') {
+                leaveCurrentGame();
+            } else {
+                window.location.href = '/lobby.html';
+            }
+        });
+    }
+    
     // Disable selection on game elements
-    disableSelection(document);
+    disableSelection(document.body);
     
     console.log('Game of Words initialized');
 });
@@ -98,9 +108,14 @@ function sendallmm() {
         message += ":" + shipList.options[i].value;
     }
     
-    if (confirm(`Send all ships to sector ${sectorId}?`)) {
+    const dispatchAll = () => {
         websocket.send("//sendmmf:" + message);
         document.getElementById('multiMove').style.display = 'none';
+    };
+    if (window.NotificationSystem?.confirm) {
+        window.NotificationSystem.confirm('Fleet Orders', `Send all ships to sector ${sectorId}?`, dispatchAll, null);
+    } else {
+        dispatchAll();
     }
 }
 
@@ -126,51 +141,66 @@ function sendaamm() {
     }
     
     if (totalShips === 0) {
-        alert("No attack ships available");
+        if (window.NotificationSystem?.notify) {
+            window.NotificationSystem.notify('Fleet Orders', 'No attack ships available.', 'warn', 4000);
+        }
         return;
     }
-    
-    if (confirm(`Send all attack ships to sector ${sectorId}?`)) {
+
+    const dispatchAttack = () => {
         websocket.send("//sendmmf:" + message);
         document.getElementById('multiMove').style.display = 'none';
+    };
+    if (window.NotificationSystem?.confirm) {
+        window.NotificationSystem.confirm('Fleet Orders', `Send all attack ships to sector ${sectorId}?`, dispatchAttack, null);
+    } else {
+        dispatchAttack();
     }
 }
 
 function adjustViewport() {
-    if (window.screen.availHeight < window.screen.availWidth) {
-        document.body.style.zoom = window.screen.availHeight / 700;
-    } else {
-        document.body.style.zoom = window.screen.availWidth / 700;
-    }
-    document.body.style.width = window.screen.availWidth;
-    document.body.style.height = window.screen.availHeight;
+    // Clear any legacy zoom/sizing — CSS media queries handle responsive layout.
+    // The previous formula (screen.availHeight / 700) caused 1.5x+ zoom on modern monitors,
+    // making elements overlap the viewport.
+    document.body.style.zoom = '';
+    document.body.style.width = '';
+    document.body.style.height = '';
 }
 
 function disableSelection(element) {
     if (!element) return;
+    
+    element.onselectstart = function() { return false; };
+    if (element.style) {
+        element.style.userSelect = "none";
+        element.style.webkitUserSelect = "none";
+        element.style.MozUserSelect = "none";
+        element.style.msUserSelect = "none";
+    }
+    
+    const children = element.getElementsByTagName('*');
+    for (let i = 0; i < children.length; i++) {
+        disableSelection(children[i]);
+    }
+}
 
-    const queue = [element];
-    while (queue.length > 0) {
-        const current = queue.pop();
-        if (!current) continue;
-
-        if (typeof current.onselectstart !== 'undefined') {
-            current.onselectstart = function() { return false; };
+function getSanitizedUserId() {
+    const candidates = [
+        window.gameUserId,
+        localStorage.getItem('userId'),
+        getCookie('userId')
+    ];
+    
+    for (const candidate of candidates) {
+        if (!candidate) {
+            continue;
         }
-
-        // Document nodes do not have style; only apply to element nodes.
-        if (current.nodeType === Node.ELEMENT_NODE && current.style) {
-            current.style.userSelect = "none";
-            current.style.webkitUserSelect = "none";
-            current.style.msUserSelect = "none";
-        }
-
-        if (current.children && current.children.length) {
-            for (let i = 0; i < current.children.length; i++) {
-                queue.push(current.children[i]);
-            }
+        const trimmed = String(candidate).trim();
+        if (/^\d+$/.test(trimmed)) {
+            return trimmed;
         }
     }
+    return null;
 }
 
 function getCookie(name) {

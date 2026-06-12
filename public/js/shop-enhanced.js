@@ -389,7 +389,7 @@ const Shop = (function() {
                 name: 'Quantum Entities',
                 description: 'Phase through enemy attacks, instant warp capabilities',
                 price: '$4.99',
-                image: './images/planet1.png',
+                image: './images/quantum-icon.svg',
                 features: ['Phase Shift', 'Instant Warp', 'Energy Shields']
             },
             {
@@ -397,7 +397,7 @@ const Shop = (function() {
                 name: 'Titan Lords',
                 description: 'Massive ships, extreme durability, area damage',
                 price: '$4.99',
-                image: './images/planet2.png',
+                image: './images/titan-icon.svg',
                 features: ['Massive Ships', '2x Hull Strength', 'Area Damage']
             },
             {
@@ -405,7 +405,7 @@ const Shop = (function() {
                 name: 'Shadow Realm',
                 description: 'Cloaking technology, sabotage abilities, stealth attacks',
                 price: '$4.99',
-                image: './images/planet3.png',
+                image: './images/shadow-icon.svg',
                 features: ['Cloaking', 'Sabotage', 'Surprise Attacks']
             }
         ];
@@ -586,7 +586,7 @@ const Shop = (function() {
                 price: '$3.99',
                 description: 'Custom UI skin, avatar frame, and lobby banner.',
                 features: ['Dynamic UI colors', 'Animated banner', 'Unique chat flair'],
-                image: './images/avatar1.jpg'
+                image: './images/terran-icon.svg'
             },
             {
                 id: 'cosmetic_fleet_trails',
@@ -594,7 +594,7 @@ const Shop = (function() {
                 price: '$2.49',
                 description: 'Leave prismatic trails across the galaxy map.',
                 features: ['Animated fleet trails', 'Custom warp animation'],
-                image: './images/avatar1.jpg'
+                image: './images/zephyr-icon.svg'
             },
             {
                 id: 'cosmetic_voice_pack',
@@ -602,7 +602,7 @@ const Shop = (function() {
                 price: '$1.99',
                 description: 'New voice lines for alerts and turn reminders.',
                 features: ['20+ voiced notifications', 'Toggle per category'],
-                image: './images/avatar1.jpg'
+                image: './images/quantum-icon.svg'
             }
         ];
         
@@ -1081,19 +1081,199 @@ const Shop = (function() {
 
             .shop-window {
                 position: relative;
-                background: #1a1a2e;
+                background:
+                    radial-gradient(circle at 16% 0%, rgba(66,216,200,0.12), transparent 28%),
+                    linear-gradient(145deg, rgba(19, 25, 48, 0.98), rgba(10, 13, 28, 0.98));
+                border: 1px solid rgba(255, 255, 255, 0.12);
                 border-radius: 12px;
-                max-width: 900px;
-                max-height: 80vh;
-                width: 90%;
-                overflow-y: auto;
-                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+                max-width: 980px;
+                max-height: 88vh;
+                width: min(94vw, 980px);
+                overflow: hidden;
+                box-shadow: 0 24px 70px rgba(0, 0, 0, 0.62);
+                color: #e8ecff;
             }
 
-            /* Previous styles enhanced with: */
+            .shop-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                padding: 18px 20px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(255, 255, 255, 0.035);
+            }
+
+            .shop-header h2 {
+                margin: 0;
+                font-size: 22px;
+                letter-spacing: 0;
+            }
+
+            .shop-header-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .shop-history-btn,
+            .shop-close,
+            .payment-close,
+            .history-close {
+                width: 34px;
+                height: 34px;
+                display: inline-grid;
+                place-items: center;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.06);
+                color: #e8ecff;
+                font-size: 18px;
+                line-height: 1;
+                cursor: pointer;
+            }
+
+            .shop-tabs {
+                display: flex;
+                gap: 6px;
+                padding: 10px 12px 0;
+                overflow-x: auto;
+                background: rgba(7, 10, 22, 0.72);
+            }
+
+            .shop-tab {
+                flex: 0 0 auto;
+                min-height: 38px;
+                padding: 9px 12px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-bottom: none;
+                border-radius: 8px 8px 0 0;
+                background: rgba(255, 255, 255, 0.04);
+                color: #cfd7ff;
+                font-weight: 700;
+                font-size: 13px;
+                cursor: pointer;
+            }
+
+            .shop-tab:hover,
+            .shop-tab.active {
+                background: linear-gradient(120deg, rgba(66,216,200,0.18), rgba(76,124,255,0.18));
+                color: #fff;
+                border-color: rgba(66,216,200,0.32);
+            }
+
+            .shop-payments-disabled {
+                margin: 12px 18px 0;
+                padding: 12px 14px;
+                border-radius: 8px;
+                background: rgba(255, 213, 108, 0.1);
+                border: 1px solid rgba(255, 213, 108, 0.24);
+                color: #ffe3a2;
+            }
+
+            .shop-payments-disabled p {
+                margin: 4px 0 0;
+                color: rgba(255, 227, 162, 0.84);
+            }
+
+            .shop-balance {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                gap: 8px;
+                margin: 14px 18px 0;
+                padding: 10px 12px;
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.045);
+                color: #dfe7ff;
+                font-weight: 700;
+            }
+
+            .crystal-icon {
+                width: 22px;
+                height: 22px;
+                object-fit: contain;
+            }
+
+            .shop-content {
+                max-height: calc(88vh - 162px);
+                overflow-y: auto;
+                padding: 18px;
+            }
+
+            .shop-section {
+                display: none;
+            }
+
+            .shop-section.active {
+                display: block;
+            }
+
+            .shop-section h3 {
+                margin: 0 0 8px;
+                font-size: 18px;
+                color: #fff;
+            }
+
+            .shop-items {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+                gap: 14px;
+            }
 
             .shop-item {
                 position: relative;
+                display: flex;
+                flex-direction: column;
+                min-height: 310px;
+                padding: 14px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.045);
+                cursor: pointer;
+                transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+                overflow: hidden;
+            }
+
+            .shop-item:hover {
+                transform: translateY(-2px);
+                border-color: rgba(66, 216, 200, 0.38);
+                background: rgba(255, 255, 255, 0.07);
+            }
+
+            .shop-item img {
+                display: block;
+                width: 100%;
+                height: 112px;
+                object-fit: contain;
+                margin-bottom: 12px;
+                border-radius: 6px;
+                background: rgba(7, 10, 22, 0.38);
+            }
+
+            .shop-item h4 {
+                margin: 0 0 8px;
+                font-size: 16px;
+                color: #fff;
+            }
+
+            .item-description {
+                margin: 0 0 8px;
+                color: rgba(232, 236, 255, 0.78);
+                font-size: 13px;
+                line-height: 1.42;
+            }
+
+            .price {
+                margin-top: auto;
+                display: inline-flex;
+                align-items: center;
+                min-height: 30px;
+                padding: 5px 10px;
+                border-radius: 999px;
+                background: linear-gradient(120deg, #42d8c8, #4c7cff);
+                color: #071021;
+                font-weight: 800;
             }
             
             .shop-item.popular {
@@ -1162,6 +1342,95 @@ const Shop = (function() {
                 width: 20px;
                 height: 20px;
                 object-fit: contain;
+            }
+
+            .payment-modal {
+                position: absolute;
+                inset: 0;
+                z-index: 120;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+                background: rgba(0, 0, 0, 0.78);
+            }
+
+            .payment-modal.hidden,
+            .button-loading.hidden {
+                display: none;
+            }
+
+            .payment-content {
+                width: min(560px, 96vw);
+                max-height: 86vh;
+                overflow-y: auto;
+                padding: 22px;
+                border-radius: 10px;
+                background: linear-gradient(145deg, #151c35, #0c1021);
+                border: 1px solid rgba(255,255,255,0.12);
+                box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+            }
+
+            .payment-header,
+            .history-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+
+            .payment-header h3,
+            .history-header h3 {
+                margin: 0;
+            }
+
+            .card-element {
+                padding: 12px;
+                border-radius: 8px;
+                background: #fff;
+            }
+
+            .payment-actions {
+                display: flex;
+                gap: 10px;
+                justify-content: flex-end;
+                margin-top: 16px;
+            }
+
+            .btn-primary,
+            .btn-secondary {
+                min-height: 38px;
+                padding: 8px 14px;
+                border-radius: 8px;
+                border: 1px solid rgba(255,255,255,0.12);
+                font-weight: 800;
+                cursor: pointer;
+            }
+
+            .btn-primary {
+                background: linear-gradient(120deg, #42d8c8, #4c7cff);
+                color: #071021;
+            }
+
+            .btn-primary:disabled {
+                opacity: 0.55;
+                cursor: not-allowed;
+            }
+
+            .btn-secondary {
+                background: rgba(255,255,255,0.08);
+                color: #e8ecff;
+            }
+
+            .payment-terms {
+                margin-top: 14px;
+                font-size: 12px;
+                color: rgba(232,236,255,0.62);
+            }
+
+            .payment-terms a {
+                color: #7bdcff;
             }
             
             .payment-product {
@@ -1234,6 +1503,10 @@ const Shop = (function() {
                 border-top-color: white;
                 border-radius: 50%;
                 animation: spin 0.8s linear infinite;
+            }
+
+            @keyframes spin {
+                to { transform: rotate(360deg); }
             }
             
             .balance-loading {

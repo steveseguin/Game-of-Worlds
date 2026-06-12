@@ -12,7 +12,12 @@
  * - None, but is used by game.js
  */
  const BuildSystem = (function() {
+    let initialized = false;
+
     function initialize() {
+        if (initialized) return;
+        initialized = true;
+
         // Set up building buttons
         setupBuildingButtons();
         
@@ -24,8 +29,10 @@
         for (let i = 1; i <= 6; i++) {
             const buildBtn = document.getElementById(`bb${i}`);
             if (buildBtn) {
+                const configuredId = Number.parseInt(buildBtn.dataset.buildingId, 10);
+                const buildingId = Number.isFinite(configuredId) ? configuredId : i - 1;
                 buildBtn.addEventListener('click', function() {
-                    buyBuilding(i);
+                    buyBuilding(buildingId);
                 });
             }
         }

@@ -42,27 +42,34 @@ const SoundSystem = (function() {
     
     // Music tracks
     const music = {
-        menu: { url: 'music/menu-theme.mp3', volume: 0.5 },
-        peace: { url: 'music/peace-theme.mp3', volume: 0.4 },
-        building: { url: 'music/building-theme.mp3', volume: 0.4 },
-        battle: { url: 'music/battle-theme.mp3', volume: 0.6 },
-        victory: { url: 'music/victory-theme.mp3', volume: 0.7 },
-        defeat: { url: 'music/defeat-theme.mp3', volume: 0.5 }
+        menu: { playlist: 'campaign', url: 'music/menu-theme.mp3', volume: 0.62 },
+        peace: { playlist: 'campaign', url: 'music/peace-theme.mp3', volume: 0.56 },
+        building: { playlist: 'building', url: 'music/building-theme.mp3', volume: 0.58 },
+        battle: { playlist: 'battle', url: 'music/battle-theme.mp3', volume: 0.68 },
+        victory: { playlist: 'victory', url: 'music/victory-theme.mp3', volume: 0.72, oneShot: true },
+        defeat: { playlist: 'defeat', url: 'music/defeat-theme.mp3', volume: 0.48, oneShot: true }
     };
     
     // Currently playing music
     let currentMusic = null;
     let currentMusicName = null;
+    let pendingMusicName = null;
+    let initialized = false;
+    let audioContextCreationFailed = false;
+    let proceduralMusic = null;
     
     // Audio buffer cache
     const audioBuffers = new Map();
     const audioElements = new Map();
-    let audioContextCreationFailed = false;
     
     // Initialize the sound system
     function initialize() {
+        if (initialized) return;
+        initialized = true;
+        
         // Load saved preferences
         loadPreferences();
+        ensureAudioContext();
         
         // Preload common sounds
         preloadSounds([
@@ -72,6 +79,8 @@ const SoundSystem = (function() {
         
         // Handle page visibility for pausing audio
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        document.addEventListener('pointerdown', unlockAudio, true);
+        document.addEventListener('keydown', unlockAudio, true);
         
         // Create UI controls
         createVolumeControls();
@@ -91,11 +100,33 @@ const SoundSystem = (function() {
 
             audioContext = new AudioContextCtor();
             return audioContext;
-        } catch (error) {
+        } catch (e) {
             audioContextCreationFailed = true;
-            console.warn('Unable to initialize audio context:', error);
+            console.warn('Web Audio API not supported:', e);
             return null;
         }
+    }
+
+    function unlockAudio() {
+        const ctx = ensureAudioContext();
+        if (!ctx) return;
+
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+
+        if (proceduralMusic && currentMusic?.type === 'procedural') {
+            proceduralMusic.resume();
+        }
+    }
+
+    function getProceduralMusic() {
+        const ctx = ensureAudioContext();
+        if (!ctx || !window.EpicMusicEngine) return null;
+        if (!proceduralMusic) {
+            proceduralMusic = new window.EpicMusicEngine(ctx);
+        }
+        return proceduralMusic;
     }
     
     // Load saved preferences
@@ -112,6 +143,11 @@ const SoundSystem = (function() {
                 console.error('Error loading sound preferences:', e);
             }
         }
+        try {
+            if (localStorage.getItem('gow-muted') === 'on') {
+                enabled = false;
+            }
+        } catch (_) {}
     }
     
     // Save preferences
@@ -188,24 +224,46 @@ const SoundSystem = (function() {
     // Play music
     function playMusic(trackName, fadeIn = true) {
         if (!enabled || !music[trackName]) return;
-        
+
+        const track = music[trackName];
+        const targetVolume = (track.volume || 0.5) * musicVolume * masterVolume;
+        const engine = track.playlist ? getProceduralMusic() : null;
+        const restart = currentMusicName !== trackName;
+
+        pendingMusicName = trackName;
+
+        if (engine) {
+            if (currentMusic?.type === 'audio') {
+                stopMusic(false);
+            }
+
+            currentMusic = { type: 'procedural' };
+            currentMusicName = trackName;
+            engine.start(track.playlist, {
+                volume: targetVolume,
+                fadeIn,
+                restart,
+                oneShot: track.oneShot
+            });
+            unlockAudio();
+            return;
+        }
+
         // Stop current music
         if (currentMusic) {
             stopMusic(true);
         }
-        
-        const track = music[trackName];
+
         currentMusic = new Audio(track.url);
-        currentMusic.loop = true;
+        currentMusic.loop = !track.oneShot;
         currentMusic.volume = 0;
         currentMusicName = trackName;
         
         // Fade in
         if (fadeIn) {
-            let targetVolume = (track.volume || 0.5) * musicVolume * masterVolume;
             fadeAudio(currentMusic, targetVolume, 2000);
         } else {
-            currentMusic.volume = (track.volume || 0.5) * musicVolume * masterVolume;
+            currentMusic.volume = targetVolume;
         }
         
         currentMusic.play().catch(e => {
@@ -218,12 +276,22 @@ const SoundSystem = (function() {
     // Stop music
     function stopMusic(fadeOut = true) {
         if (!currentMusic) return;
+
+        if (currentMusic.type === 'procedural') {
+            getProceduralMusic()?.stop(fadeOut);
+            currentMusic = null;
+            currentMusicName = null;
+            return;
+        }
         
+        const stoppingMusic = currentMusic;
         if (fadeOut) {
-            fadeAudio(currentMusic, 0, 1000, () => {
-                currentMusic.pause();
-                currentMusic = null;
-                currentMusicName = null;
+            fadeAudio(stoppingMusic, 0, 1000, () => {
+                stoppingMusic.pause();
+                if (currentMusic === stoppingMusic) {
+                    currentMusic = null;
+                    currentMusicName = null;
+                }
             });
         } else {
             currentMusic.pause();
@@ -263,10 +331,7 @@ const SoundSystem = (function() {
     // Set music volume
     function setMusicVolume(volume) {
         musicVolume = Math.max(0, Math.min(1, volume));
-        if (currentMusic) {
-            const track = music[currentMusicName];
-            currentMusic.volume = (track.volume || 0.5) * musicVolume * masterVolume;
-        }
+        updateAllVolumes();
         savePreferences();
     }
     
@@ -280,15 +345,27 @@ const SoundSystem = (function() {
     function updateAllVolumes() {
         if (currentMusic && currentMusicName) {
             const track = music[currentMusicName];
-            currentMusic.volume = (track.volume || 0.5) * musicVolume * masterVolume;
+            const volume = (track.volume || 0.5) * musicVolume * masterVolume;
+            if (currentMusic.type === 'procedural') {
+                getProceduralMusic()?.setVolume(volume, 0.2);
+            } else {
+                currentMusic.volume = volume;
+            }
         }
     }
     
     // Toggle sound on/off
     function toggle() {
-        enabled = !enabled;
+        return setEnabled(!enabled);
+    }
+
+    function setEnabled(value) {
+        enabled = Boolean(value);
         if (!enabled) {
+            pendingMusicName = currentMusicName || pendingMusicName;
             stopMusic(false);
+        } else if (pendingMusicName) {
+            playMusic(pendingMusicName);
         }
         savePreferences();
         return enabled;
@@ -298,12 +375,17 @@ const SoundSystem = (function() {
     function handleVisibilityChange() {
         if (document.hidden) {
             // Pause music when tab is hidden
-            if (currentMusic && !currentMusic.paused) {
+            if (currentMusic?.type === 'procedural') {
+                getProceduralMusic()?.pause();
+            } else if (currentMusic && !currentMusic.paused) {
                 currentMusic.pause();
             }
         } else {
             // Resume music when tab is visible
-            if (currentMusic && currentMusic.paused && enabled) {
+            if (currentMusic?.type === 'procedural' && enabled) {
+                unlockAudio();
+                getProceduralMusic()?.resume();
+            } else if (currentMusic && currentMusic.paused && enabled) {
                 currentMusic.play().catch(() => {});
             }
         }
@@ -341,14 +423,13 @@ const SoundSystem = (function() {
     
     // Placeholder sound generation (for missing audio files)
     function generatePlaceholderSound(type) {
-        const ctx = ensureAudioContext();
-        if (!ctx) return;
+        if (!ensureAudioContext()) return;
         
-        const oscillator = ctx.createOscillator();
-        const gainNode = ctx.createGain();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
         
         oscillator.connect(gainNode);
-        gainNode.connect(ctx.destination);
+        gainNode.connect(audioContext.destination);
         
         // Different sound types
         switch (type) {
@@ -374,10 +455,10 @@ const SoundSystem = (function() {
         }
         
         oscillator.start();
-        oscillator.stop(ctx.currentTime + 0.1);
+        oscillator.stop(audioContext.currentTime + 0.1);
         
         // Fade out
-        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
     }
     
     return {
@@ -390,6 +471,7 @@ const SoundSystem = (function() {
         setMusicVolume,
         setEffectsVolume,
         toggle,
+        setEnabled,
         enabled: () => enabled
     };
 })();

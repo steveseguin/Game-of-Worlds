@@ -11,6 +11,16 @@
  * Dependencies:
  * - Used by game.js for map rendering and interaction
  */
+// Forward map updates to the 3D galaxy view; queue them if it hasn't loaded yet
+// (galaxy3d.js is an ES module, so it executes after the classic scripts).
+function g3dCall(method, ...args) {
+    if (window.Galaxy3D && typeof window.Galaxy3D[method] === 'function') {
+        window.Galaxy3D[method](...args);
+    } else {
+        (window.__g3dQueue = window.__g3dQueue || []).push([method, args]);
+    }
+}
+
 window.GalaxyMap = (function() {
     // Sector status constants
     const SECTOR_STATUS = {
@@ -27,7 +37,7 @@ window.GalaxyMap = (function() {
 
     // Status colors
     const STATUS_COLORS = {
-        [SECTOR_STATUS.UNKNOWN]: "#888888",
+        [SECTOR_STATUS.UNKNOWN]: "#2e3442",
         [SECTOR_STATUS.OWNED]: "#40C040",
         [SECTOR_STATUS.ENEMY]: "#C04040",
         [SECTOR_STATUS.HAZARD]: "#C08040",
@@ -40,7 +50,7 @@ window.GalaxyMap = (function() {
 
     // Stroke colors
     const STROKE_COLORS = {
-        [SECTOR_STATUS.UNKNOWN]: "#666666",
+        [SECTOR_STATUS.UNKNOWN]: "#596176",
         [SECTOR_STATUS.OWNED]: "#208020",
         [SECTOR_STATUS.ENEMY]: "#802020",
         [SECTOR_STATUS.HAZARD]: "#805020",
@@ -65,15 +75,25 @@ window.GalaxyMap = (function() {
 
     // Initialize the map
     function initialize(width, height, containerId) {
-        // Prevent multiple initializations
+        const nextWidth = width || 14;
+        const nextHeight = height || 8;
+        const nextContainer = document.getElementById(containerId);
+
+        g3dCall('initialize', nextWidth, nextHeight);
+
         if (state.initialized) {
-            console.log('GalaxyMap already initialized, skipping');
-            return;
+            if (state.width === nextWidth && state.height === nextHeight && state.containerElement === nextContainer) {
+                resetSectorStatuses();
+                return true;
+            }
+            state.sectors = {};
+            state.selectedSector = null;
+            state.initialized = false;
         }
 
-        state.width = width || 14;
-        state.height = height || 8;
-        state.containerElement = document.getElementById(containerId);
+        state.width = nextWidth;
+        state.height = nextHeight;
+        state.containerElement = nextContainer;
 
         if (!state.containerElement) {
             console.error(`Container element ${containerId} not found`);
@@ -129,6 +149,19 @@ window.GalaxyMap = (function() {
         return true;
     }
 
+    function resetSectorStatuses() {
+        Object.values(state.sectors).forEach(sector => {
+            sector.status = SECTOR_STATUS.UNKNOWN;
+            sector.owner = null;
+            sector.buildings = [];
+            sector.path.setAttribute("fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
+            sector.path.setAttribute("data-original-fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
+            sector.path.setAttribute("stroke", STROKE_COLORS[SECTOR_STATUS.UNKNOWN]);
+            sector.fleetText.style.display = "none";
+            sector.colonizedText.style.display = "none";
+        });
+    }
+
     function createTooltip() {
         if (state.tooltip) return;
         const tip = document.createElement('div');
@@ -148,38 +181,48 @@ window.GalaxyMap = (function() {
         state.tooltip = tip;
     }
 	
-    function normalizeHexColor(color, fallback) {
-        if (typeof color !== 'string') return fallback;
-        const trimmed = color.trim();
-        if (!trimmed) return fallback;
-        if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed;
-        if (/^[0-9a-fA-F]{6}$/.test(trimmed)) return `#${trimmed}`;
-        return fallback;
-    }
+	function fade(from, to, element) {
+		if (!element) return;
 
-    function shiftColor(color, delta) {
-        const normalized = normalizeHexColor(color, '#888888');
-        const r = Math.max(0, Math.min(255, parseInt(normalized.slice(1, 3), 16) + delta));
-        const g = Math.max(0, Math.min(255, parseInt(normalized.slice(3, 5), 16) + delta));
-        const b = Math.max(0, Math.min(255, parseInt(normalized.slice(5, 7), 16) + delta));
-        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-    }
+		// Use the element's stored original fill if available (so fade restores
+		// real status color, not a hard-coded gray).
+		const originalFill = element.getAttribute('data-original-fill');
+		const targetHex = (originalFill && /^#[0-9a-fA-F]{6}$/.test(originalFill))
+			? originalFill.slice(1)
+			: to;
 
-    function getTextColorForFill(fillColor) {
-        const normalized = normalizeHexColor(fillColor, '#888888');
-        const r = parseInt(normalized.slice(1, 3), 16);
-        const g = parseInt(normalized.slice(3, 5), 16);
-        const b = parseInt(normalized.slice(5, 7), 16);
-        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-        return brightness > 150 ? '#0f172a' : '#f5f8ff';
-    }
+		const fromColor = parseInt(from, 16);
+		const toColor = parseInt(targetHex, 16);
+		if (!Number.isFinite(fromColor) || !Number.isFinite(toColor)) {
+			element.setAttribute("fill", `#${targetHex}`);
+			return;
+		}
 
-    function getBaseFillForSector(sectorId) {
-        const sector = state.sectors[sectorId];
-        if (!sector || !sector.path) return STATUS_COLORS[SECTOR_STATUS.UNKNOWN];
-        const baseFill = sector.path.getAttribute('data-base-fill');
-        return normalizeHexColor(baseFill, STATUS_COLORS[sector.status] || STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
-    }
+		// Interpolate per channel so we always emit a valid 6-char hex.
+		const fromR = (fromColor >> 16) & 0xff;
+		const fromG = (fromColor >> 8) & 0xff;
+		const fromB = fromColor & 0xff;
+		const toR = (toColor >> 16) & 0xff;
+		const toG = (toColor >> 8) & 0xff;
+		const toB = toColor & 0xff;
+
+		let step = 0;
+		const steps = 8;
+		const fadeInterval = setInterval(() => {
+			step += 1;
+			const t = step / steps;
+			if (step >= steps) {
+				clearInterval(fadeInterval);
+				element.setAttribute("fill", `#${targetHex}`);
+				return;
+			}
+			const r = Math.round(fromR + (toR - fromR) * t);
+			const g = Math.round(fromG + (toG - fromG) * t);
+			const b = Math.round(fromB + (toB - fromB) * t);
+			const hex = ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+			element.setAttribute("fill", `#${hex}`);
+		}, 40);
+	}
     
     // Create a hexagon
     function createHexagon(id, gridX, gridY, hexSize) {
@@ -213,7 +256,7 @@ window.GalaxyMap = (function() {
         const hexPath = document.createElementNS(svgNS, "path");
         hexPath.setAttribute("id", `tile${id}`);
         hexPath.setAttribute("fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
-        hexPath.setAttribute("data-base-fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
+        hexPath.setAttribute("data-original-fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
         hexPath.setAttribute("stroke", STROKE_COLORS[SECTOR_STATUS.UNKNOWN]);
         hexPath.setAttribute("stroke-width", "2");
 
@@ -233,20 +276,29 @@ window.GalaxyMap = (function() {
         hexPath.setAttribute("d", `M ${points.join(" L ")} Z`);
         
         // Add event listeners
-        hexPath.addEventListener("mouseover", function() {
-            const baseFill = getBaseFillForSector(id);
-            this.setAttribute("fill", shiftColor(baseFill, 18));
+        hexPath.addEventListener("mouseover", function(evt) {
+            window.tilefading = evt.target;
+            // Preserve current fill so we can restore it on mouseout
+            const currentFill = evt.target.getAttribute('data-original-fill') || evt.target.getAttribute('fill');
+            if (currentFill && /^#[0-9a-fA-F]{6}$/.test(currentFill)) {
+                evt.target.setAttribute('data-original-fill', currentFill);
+            }
+            evt.target.setAttribute('fill-opacity', '0.85');
+            evt.target.style.filter = 'brightness(1.18)';
         });
-        
-        hexPath.addEventListener("mouseout", function() {
-            this.setAttribute("fill", getBaseFillForSector(id));
+
+        hexPath.addEventListener("mouseout", function(evt) {
+            window.tilefading = "";
+            evt.target.setAttribute('fill-opacity', '1');
+            evt.target.style.filter = '';
         });
         hexPath.addEventListener("mousemove", function(evt) {
             showTooltip(evt, id);
         });
         hexPath.addEventListener("mouseleave", hideTooltip);
-        
-        hexPath.addEventListener("mousedown", function() {
+
+        hexPath.addEventListener("mousedown", function(evt) {
+            // Don't overwrite fill — selectSector will handle visual state
             selectSector(id);
         });
         
@@ -261,20 +313,24 @@ window.GalaxyMap = (function() {
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("font-size", "12");
         text.setAttribute("font-weight", "bold");
-        text.setAttribute("fill", "#0f172a");
+        text.setAttribute("fill", "#c7cede");
         text.textContent = id.toString(16).toUpperCase();
         
         // Add event listeners to text
         text.addEventListener("mouseover", function() {
             const tile = document.getElementById(`tile${id}`);
             if (!tile) return;
-            tile.setAttribute("fill", shiftColor(getBaseFillForSector(id), 18));
+            window.tilefading = tile;
+            tile.setAttribute('fill-opacity', '0.85');
+            tile.style.filter = 'brightness(1.18)';
         });
-        
+
         text.addEventListener("mouseout", function() {
             const tile = document.getElementById(`tile${id}`);
             if (!tile) return;
-            tile.setAttribute("fill", getBaseFillForSector(id));
+            window.tilefading = "";
+            tile.setAttribute('fill-opacity', '1');
+            tile.style.filter = '';
         });
         text.addEventListener("mousemove", function(evt) {
             showTooltip(evt, id);
@@ -282,6 +338,7 @@ window.GalaxyMap = (function() {
         text.addEventListener("mouseleave", hideTooltip);
         
         text.addEventListener("mousedown", function(evt) {
+            document.getElementById(`tile${id}`).setAttribute("fill", "#888888");
             selectSector(id);
             evt.preventDefault();
             return false;
@@ -322,7 +379,6 @@ window.GalaxyMap = (function() {
             fleetText: fleetText,
             colonizedText: colonizedText,
             status: SECTOR_STATUS.UNKNOWN,
-            explored: false,
             x: xPos,
             y: yPos,
             owner: null,
@@ -334,20 +390,12 @@ window.GalaxyMap = (function() {
     }
     
     // Select a sector
-    function selectSector(sectorId, options = {}) {
-        const normalizedSectorId = Number(sectorId);
-        if (!Number.isFinite(normalizedSectorId)) {
-            return;
-        }
-
-        const notifyServer = options.notifyServer !== false;
-        state.selectedSector = normalizedSectorId;
-
-        if (notifyServer && typeof window.changeSector === 'function') {
-            window.changeSector(normalizedSectorId.toString(16).toUpperCase(), { syncMap: false });
-        }
-
+    function selectSector(sectorId) {
+        state.selectedSector = sectorId;
+        changeSector(sectorId.toString(16).toUpperCase());
         hideTooltip();
+        g3dCall('setSelected', sectorId);
+        g3dCall('focusSector', sectorId);
         if (window.MediaManager?.playSfx) {
             window.MediaManager.playSfx('click');
         }
@@ -355,13 +403,13 @@ window.GalaxyMap = (function() {
 
     // Update sector status
     function updateSectorStatus(sectorId, status, details = {}) {
+        g3dCall('updateSector', sectorId, status, details);
         const sector = state.sectors[sectorId];
         if (!sector) return;
+        const normalizedStatus = STATUS_COLORS[status] ? status : SECTOR_STATUS.UNKNOWN;
         
         // Update status
-        const normalizedStatus = Number.isFinite(Number(status)) ? Number(status) : SECTOR_STATUS.UNKNOWN;
         sector.status = normalizedStatus;
-        sector.explored = normalizedStatus !== SECTOR_STATUS.UNKNOWN;
         if (details.owner !== undefined) {
             sector.owner = details.owner;
         }
@@ -370,11 +418,9 @@ window.GalaxyMap = (function() {
         }
         
         // Update colors
-        const fillColor = STATUS_COLORS[normalizedStatus] || STATUS_COLORS[SECTOR_STATUS.UNKNOWN];
-        sector.path.setAttribute("fill", fillColor);
-        sector.path.setAttribute("data-base-fill", fillColor);
-        sector.path.setAttribute("stroke", STROKE_COLORS[normalizedStatus] || STROKE_COLORS[SECTOR_STATUS.UNKNOWN]);
-        sector.text.setAttribute("fill", getTextColorForFill(fillColor));
+        sector.path.setAttribute("fill", STATUS_COLORS[normalizedStatus]);
+        sector.path.setAttribute("data-original-fill", STATUS_COLORS[normalizedStatus]);
+        sector.path.setAttribute("stroke", STROKE_COLORS[normalizedStatus]);
         
         // Update fleet size
         if (details.fleetSize !== undefined) {
@@ -487,19 +533,6 @@ window.GalaxyMap = (function() {
         if (!sector) return;
         const x = evt.clientX + 12;
         const y = evt.clientY + 12;
-        state.tooltip.style.left = `${x}px`;
-        state.tooltip.style.top = `${y}px`;
-
-        if (sector.status === SECTOR_STATUS.UNKNOWN) {
-            state.tooltip.innerHTML = `
-                <div style="font-weight:700;margin-bottom:4px;">Sector ${sectorId}</div>
-                <div>Unexplored</div>
-                <div style="opacity:0.85;margin-top:4px;">Scout or probe this area first.</div>
-            `;
-            state.tooltip.style.display = 'block';
-            return;
-        }
-
         const owner = sector.owner || 'Unknown';
         const statusLabel = Object.keys(SECTOR_STATUS).find(key => SECTOR_STATUS[key] === sector.status) || 'Unknown';
         const fleetText = sector.fleetText && sector.fleetText.textContent ? sector.fleetText.textContent : 'None';
@@ -508,6 +541,8 @@ window.GalaxyMap = (function() {
         const buildingLabel = Object.values(buildingCounts).some(v => v > 0)
             ? `Buildings: ${buildingCounts[0] || 0} metal, ${buildingCounts[1] || 0} crystal, ${buildingCounts[2] || 0} research`
             : '';
+        state.tooltip.style.left = `${x}px`;
+        state.tooltip.style.top = `${y}px`;
         state.tooltip.innerHTML = `
             <div style="font-weight:700;margin-bottom:4px;">Sector ${sectorId}</div>
             <div>Owner: ${owner}</div>
@@ -533,6 +568,7 @@ window.GalaxyMap = (function() {
         updateSectorStatus,
         SECTOR_STATUS,
         highlightSector: function(sectorId) {
+            g3dCall('highlightSector', sectorId);
             const sector = state.sectors[sectorId];
             if (!sector) return;
             sector.path.setAttribute('stroke', '#ffd166');
@@ -541,7 +577,11 @@ window.GalaxyMap = (function() {
                 sector.path.setAttribute('stroke-width', '1');
                 sector.path.setAttribute('stroke', STROKE_COLORS[sector.status] || '#555');
             }, 1800);
-        }
+        },
+        clearBattleSector: function(sectorId) {
+            g3dCall('clearBattleSector', sectorId);
+        },
+        resize
     };
 })();
 

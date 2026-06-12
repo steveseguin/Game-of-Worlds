@@ -29,29 +29,15 @@ const GameUI = (function() {
         
         // Initial UI state
         updateUIState();
-        hideMultiMoveDialog();
     }
     
     // Set up responsive sizing
     function setupResponsiveSizing() {
-        // Adjust game viewport based on screen size
-        const adjustViewport = () => {
-            if (window.screen.availHeight < window.screen.availWidth) {
-                document.body.style.zoom = window.screen.availHeight / 700;
-                document.body.style.width = window.screen.availWidth;
-                document.body.style.height = window.screen.availHeight;
-            } else {
-                document.body.style.zoom = window.screen.availWidth / 700;
-                document.body.style.width = window.screen.availWidth;
-                document.body.style.height = window.screen.availHeight;
-            }
-        };
-        
-        // Apply initially
-        adjustViewport();
-        
-        // Reapply on window resize
-        window.addEventListener('resize', adjustViewport);
+        // Clear any legacy zoom/sizing applied by older code paths.
+        // CSS media queries already handle responsive layout for game.html.
+        document.body.style.zoom = '';
+        document.body.style.width = '';
+        document.body.style.height = '';
     }
     
     // Set up event listeners
@@ -61,43 +47,30 @@ const GameUI = (function() {
 		document.getElementById('fleettab')?.addEventListener('click', () => switchTab('fleet'));
 		document.getElementById('techtab')?.addEventListener('click', () => switchTab('techtree'));
 		document.getElementById('colonizetab')?.addEventListener('click', () => switchTab('colonize'));
-		document.getElementById('analyticstab')?.addEventListener('click', () => switchTab('analytics'));
 	}
     
     // Switch tabs
     function switchTab(tabName) {
         state.selectedTab = tabName;
-        hideMultiMoveDialog();
-
-        const tabs = [
-            { panelId: 'build', buttonId: 'buildtab' },
-            { panelId: 'fleet', buttonId: 'fleettab' },
-            { panelId: 'techtree', buttonId: 'techtab' },
-            { panelId: 'colonize', buttonId: 'colonizetab' },
-            { panelId: 'analytics', buttonId: 'analyticstab' }
-        ];
-
+        
         // Hide all panels
-        tabs.forEach(tab => {
-            const panel = document.getElementById(tab.panelId);
-            if (panel) {
-                panel.classList.add('hidden');
-            }
+        const panels = ['build', 'fleet', 'techtree', 'colonize'];
+        panels.forEach(panel => {
+            const element = document.getElementById(panel);
+            if (element) element.classList.add('hidden');
         });
-
+        
         // Show selected panel
         const selectedPanel = document.getElementById(tabName);
-        if (selectedPanel) {
-            selectedPanel.classList.remove('hidden');
-        }
-
+        if (selectedPanel) selectedPanel.classList.remove('hidden');
+        
         // Update tab buttons
-        tabs.forEach(tab => {
-            const button = document.getElementById(tab.buttonId);
-            if (!button) {
-                return;
+        panels.forEach(panel => {
+            const button = document.getElementById(`${panel}tab`);
+            if (button) {
+                button.classList.remove('active');
+                if (panel === tabName) button.classList.add('active');
             }
-            button.classList.toggle('active', tab.panelId === tabName);
         });
     }
     
@@ -105,13 +78,6 @@ const GameUI = (function() {
     function updateUIState() {
         // Make sure the correct tab is displayed
         switchTab(state.selectedTab);
-    }
-
-    function hideMultiMoveDialog() {
-        const multiMove = document.getElementById('multiMove');
-        if (multiMove) {
-            multiMove.style.display = 'none';
-        }
     }
     
     // Update resource display
@@ -135,109 +101,55 @@ const GameUI = (function() {
             }
         }
     }
-
-    function getNumericValue(source, paths, fallback = 0) {
-        if (!source || typeof source !== 'object') {
-            return fallback;
-        }
-
-        for (let i = 0; i < paths.length; i++) {
-            const path = paths[i];
-            const segments = path.split('.');
-            let value = source;
-
-            for (let j = 0; j < segments.length; j++) {
-                if (value == null || typeof value !== 'object') {
-                    value = undefined;
-                    break;
-                }
-                value = value[segments[j]];
-            }
-
-            const parsed = Number(value);
-            if (Number.isFinite(parsed)) {
-                return parsed;
-            }
-        }
-
-        return fallback;
-    }
-
-    function getSectorType(sectorData) {
-        return getNumericValue(
-            sectorData,
-            ['type', 'sectortype', 'sectorType', 'sector.type', 'sector.sectortype'],
-            0
-        );
-    }
     
     // Update sector display
     function updateSectorDisplay(sectorData) {
         if (!sectorData) return;
-
-        const sectorType = getSectorType(sectorData);
-        const ownerName = sectorData.owner || sectorData?.sector?.owner || 'N/A';
         
         // Update basic sector info
         document.getElementById('sectorid').textContent = `Sector ${sectorData.id || 'N/A'}`;
-        document.getElementById('planetowner').textContent = `Owner: ${ownerName}`;
+        document.getElementById('planetowner').textContent = `Owner: ${sectorData.owner || 'N/A'}`;
         
         // Set sector type
         let planetType = 'Unknown';
-        switch (sectorType) {
+        switch (sectorData.type) {
             case 1: planetType = 'Asteroid Belt'; break;
             case 2: planetType = 'Black Hole'; break;
             case 3: planetType = 'Unstable Star'; break;
             case 4: planetType = 'Brown Dwarf'; break;
             case 5: planetType = 'Small Moon'; break;
-            case 6: planetType = 'Micro Planet (4)'; break;
-            case 7: planetType = 'Small Planet (6)'; break;
-            case 8: planetType = 'Medium Planet (8)'; break;
-            case 9: planetType = 'Large Planet (10)'; break;
-            case 10: planetType = 'Homeworld Planet (12)'; break;
+            case 6: planetType = 'Micro Planet (2 slots)'; break;
+            case 7: planetType = 'Small Planet (3 slots)'; break;
+            case 8: planetType = 'Medium Planet (4 slots)'; break;
+            case 9: planetType = 'Large Planet (5 slots)'; break;
+            case 10: planetType = 'Homeworld (6 slots)'; break;
         }
         document.getElementById('planettype').textContent = `Type: ${planetType}`;
         
         // Update resource bonuses
-        if (sectorType > 5) {
-            const metalPercent = Math.round(getNumericValue(
-                sectorData,
-                ['metalBonus', 'metalbonus', 'sector.metalBonus', 'sector.metalbonus'],
-                100
-            ));
-            const crystalPercent = Math.round(getNumericValue(
-                sectorData,
-                ['crystalBonus', 'crystalbonus', 'sector.crystalBonus', 'sector.crystalbonus'],
-                100
-            ));
-            const terraformRequirement = Math.round(getNumericValue(
-                sectorData,
-                ['terraformLevel', 'terraformlvl', 'sector.terraformLevel', 'sector.terraformlvl'],
-                0
-            ));
-
+        if (sectorData.type > 5) {
             // Set metal bonus
             const metalBonus = document.getElementById('metalbonus');
-            let metalColor = '#ffe28a';
-            if (metalPercent < 100) {
-                metalColor = '#ff8a8a';
-            } else if (metalPercent >= 200) {
-                metalColor = '#84f5a7';
+            let metalColor = 'yellow';
+            if (sectorData.metalBonus < 100) {
+                metalColor = 'red';
+            } else if (sectorData.metalBonus >= 200) {
+                metalColor = 'green';
             }
-            metalBonus.innerHTML = `Metal Production: <span style="color:${metalColor};font-weight:700;">${metalPercent}%</span>`;
+            metalBonus.innerHTML = `Metal Production: <font color="${metalColor}">${sectorData.metalBonus}%</font>`;
             
             // Set crystal bonus
             const crystalBonus = document.getElementById('crystalbonus');
-            let crystalColor = '#ffe28a';
-            if (crystalPercent < 100) {
-                crystalColor = '#ff8a8a';
-            } else if (crystalPercent >= 200) {
-                crystalColor = '#84f5a7';
+            let crystalColor = 'yellow';
+            if (sectorData.crystalBonus < 100) {
+                crystalColor = 'red';
+            } else if (sectorData.crystalBonus >= 200) {
+                crystalColor = 'green';
             }
-            crystalBonus.innerHTML = `Crystal Production: <span style="color:${crystalColor};font-weight:700;">${crystalPercent}%</span>`;
+            crystalBonus.innerHTML = `Crystal Production: <font color="${crystalColor}">${sectorData.crystalBonus}%</font>`;
             
             // Set terraform requirement
-            document.getElementById('terraformlvl').textContent = `Terraform Req: ${terraformRequirement}`;
+            document.getElementById('terraformlvl').textContent = `Terraform Req: ${sectorData.terraformLevel || 0}`;
         } else {
             // Non-colonizable sector
             document.getElementById('metalbonus').textContent = 'Metal Production: N/A';
@@ -245,12 +157,13 @@ const GameUI = (function() {
             document.getElementById('terraformlvl').textContent = 'Cannot be colonized';
         }
         
-        // Update sector image
+        // Update sector image (legacy backdrop; only type1-9.jpg exist, homeworld uses planet art)
         const sectorImg = document.getElementById('sectorimg');
         if (sectorImg) {
-            const rawType = Number(sectorType);
-            const imageType = Number.isFinite(rawType) && rawType >= 1 && rawType <= 10 ? rawType : 1;
-            sectorImg.style.backgroundImage = `url(./images/type${imageType}.gif)`;
+            const imagePath = sectorData.type === 10
+                ? './images/planet10.jpg'
+                : `./images/type${sectorData.type}.jpg`;
+            sectorImg.style.backgroundImage = `url(${imagePath})`;
         }
     }
     
@@ -351,6 +264,44 @@ const GameUI = (function() {
             }
         }
     }
+
+    function updateFleetDisplay(ships) {
+        const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+        const playerId = (() => {
+            const match = document.cookie.match(/(?:^|;\s*)userId=([^;]+)/);
+            return match ? Number(decodeURIComponent(match[1])) : null;
+        })();
+
+        if (Array.isArray(ships)) {
+            ships.forEach(ship => {
+                const owner = Number(ship.owner);
+                const type = Number(ship.type);
+                const count = Number(ship.count) || 0;
+                if (playerId && owner !== playerId) {
+                    return;
+                }
+                if (counts[type] !== undefined) {
+                    counts[type] += count;
+                }
+            });
+        }
+
+        const fields = {
+            'fleet-scouts': counts[3],
+            'fleet-frigates': counts[1],
+            'fleet-destroyers': counts[2],
+            'fleet-cruisers': counts[4],
+            'fleet-battleships': counts[5],
+            'fleet-colony': counts[6]
+        };
+
+        Object.entries(fields).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = String(value || 0);
+            }
+        });
+    }
     
 	// Update owned sector display on minimap
 	function updateOwnedSector(sectorId, fleetSize, indicator) {
@@ -439,6 +390,7 @@ const GameUI = (function() {
 		updateSectorDisplay,
 		updateBuildings,
 		updateFleet,
+		updateFleetDisplay,
 		updateOwnedSector,
 		showMultiMoveOptions,
 		switchTab,
@@ -446,5 +398,5 @@ const GameUI = (function() {
 	};
 })();
 
-// Export to window for connect.js and game.js access.
+// Export to window for connect.js and game.js access
 window.GameUI = GameUI;
