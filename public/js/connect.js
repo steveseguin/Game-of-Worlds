@@ -1,13 +1,13 @@
 /**
  * connect.js - Client-side WebSocket connection and game state management
- * 
+ *
  * Handles the WebSocket connection to the server, message parsing,
  * and updating the UI based on server responses. This file also contains
  * functions for sending commands to the server.
- * 
+ *
  * This module is client-side only and does not directly access the database.
  * It serves as the main communication layer between client and server.
- * 
+ *
  * Dependencies:
  * - Used by game.js for game initialization
  * - Uses GameUI, BattleSystem, GalaxyMap for UI updates
@@ -584,14 +584,14 @@ function buyBuilding(buildingId) {
 function authUser() {
     const userId = getCookie("userId");
     const tempKey = getCookie("tempKey");
-    
+
     if (userId && tempKey) {
         awaitingAuth = true;
         hasAuthenticated = false;
         websocket.send("//auth:" + userId + ":" + tempKey);
         return userId;
     }
-    
+
     return null;
 }
 
@@ -617,7 +617,7 @@ function initializeWebSocket() {
         scheduleReconnect();
         return;
     }
-    
+
     websocket.onopen = function() {
         console.log("Connection established");
         document.getElementById("status").innerHTML = "Connected";
@@ -627,22 +627,22 @@ function initializeWebSocket() {
         if (window.NotificationSystem && typeof window.NotificationSystem.initialize === 'function') {
             window.NotificationSystem.initialize();
         }
-        
+
         // Auto-authenticate if credentials exist
         if (!authUser()) {
             pendingInitialUpdate = false;
         }
     };
-    
+
     websocket.onmessage = function(evt) {
         handleWebSocketMessage(evt.data);
     };
-    
+
     websocket.onerror = function(evt) {
         console.error("WebSocket error:", evt);
         document.getElementById("status").innerHTML = "Connection error";
     };
-    
+
     websocket.onclose = function() {
         console.log("Connection closed");
         document.getElementById("status").innerHTML = "Disconnected";
@@ -652,7 +652,7 @@ function initializeWebSocket() {
         if (!pendingLobbyRedirect) {
             document.getElementById("lobbyWindow").style.display = "block";
         }
-        
+
         // Auto-reconnect after delay if needed
         scheduleReconnect();
     };
@@ -1000,7 +1000,7 @@ function escapeHtml(value) {
 function updateBuildings(message) {
     const parts = message.split(':');
     if (parts.length < 7) return;
-    
+
     // Parse building levels
     const buildings = {
         metalExtractor: parseInt(parts[1]) || 0,
@@ -1010,12 +1010,12 @@ function updateBuildings(message) {
         orbitalTurret: parseInt(parts[5]) || 0,
         warpgate: parseInt(parts[6]) || 0
     };
-    
+
     // Store in selected sector data
     if (GAME_STATE.selectedSectorData) {
         GAME_STATE.selectedSectorData.buildings = buildings;
     }
-    
+
     // Update UI
     if (window.GameUI && window.GameUI.updateBuildings) {
         window.GameUI.updateBuildings(buildings);
@@ -1195,20 +1195,20 @@ function updateSectorInfo(message) {
 function updateSectorStatus(message) {
     const parts = message.split(':');
     if (parts.length < 3) return;
-    
+
     const sectorId = parseInt(parts[1], 16);
     const sectorType = parseInt(parts[2]);
-    
+
     // Update map visualization
     if (window.GalaxyMap) {
         let status = window.GalaxyMap.SECTOR_STATUS.ENEMY;
-        
+
         if (sectorType === 2) {
             status = window.GalaxyMap.SECTOR_STATUS.BLACKHOLE;
         } else if (sectorType === 1) {
             status = window.GalaxyMap.SECTOR_STATUS.HAZARD;
         }
-        
+
         window.GalaxyMap.updateSectorStatus(sectorId, status);
     }
 }
@@ -1216,14 +1216,14 @@ function updateSectorStatus(message) {
 function updateResources(message) {
     const parts = message.split('::');
     if (parts.length < 4) return;
-    
+
     // Parse resource values
     const resources = {
         metal: parseInt(parts[1]) || 0,
         crystal: parseInt(parts[2]) || 0,
         research: parseInt(parts[3]) || 0
     };
-    
+
     // Capture previous resources BEFORE updating
     const previous = { ...GAME_STATE.player.resources };
 
@@ -1720,23 +1720,43 @@ function updateTechState(message) {
     }
 }
 
-// Grey out + lock ship hulls this race can't build. The resource/slot logic in
-// build.js owns enabling; this only ever *removes* options (and re-applies after
-// every sector refresh), so a locked hull can never be clicked into existence.
+// Authoritative client-side gate for the ship build buttons. Mirrors the two
+// deterministic rules the server enforces in buyShip: (1) per-race doctrine
+// (some hulls are off-limits) and (2) Military Shipyards tech level (heavier
+// hulls need a higher level). Resources + an in-sector spaceport are still
+// validated server-side. Safe to call repeatedly (it sets disabled both ways).
 function refreshShipBuildAccess() {
-    const access = (GAME_STATE.player && GAME_STATE.player.raceAccess) || {};
+    const player = GAME_STATE.player || {};
+    const access = player.raceAccess || {};
     const allowed = Array.isArray(access.shipAccess) ? access.shipAccess : null;
-    if (!allowed) return; // no profile yet => leave the panel untouched
     const raceLabel = access.raceName || 'your race';
+
+    const tech = window.TechSystem;
+    const shipyardLevel = (tech && typeof tech.aggregateEffects === 'function')
+        ? (Number(tech.aggregateEffects(player.techLevels || {}).shipyards) || 0)
+        : Infinity; // tech module not ready yet => don't tech-gate
+
     document.querySelectorAll('.ship-button[data-ship-id]').forEach(button => {
         const shipId = Number(button.getAttribute('data-ship-id'));
-        const locked = !allowed.includes(shipId);
-        button.classList.toggle('ship-locked', locked);
-        if (locked) {
+        const raceLocked = allowed ? !allowed.includes(shipId) : false;
+        const yardsNeeded = (tech && typeof tech.shipyardLevelRequired === 'function')
+            ? tech.shipyardLevelRequired(shipId) : 0;
+        const techLocked = !raceLocked && shipyardLevel < yardsNeeded;
+
+        button.classList.toggle('ship-locked', raceLocked);
+        button.classList.toggle('ship-techlocked', techLocked);
+
+        if (raceLocked) {
             button.disabled = true;
             button.title = `${raceLabel} cannot build this hull`;
-        } else if ((button.title || '').indexOf('cannot build this hull') !== -1) {
-            button.removeAttribute('title');
+        } else if (techLocked) {
+            button.disabled = true;
+            button.title = `Needs Military Shipyards Lv${yardsNeeded} — research it in the Research tab`;
+        } else {
+            button.disabled = false;
+            if (/cannot build this hull|Military Shipyards/.test(button.title || '')) {
+                button.removeAttribute('title');
+            }
         }
     });
 }
@@ -1831,7 +1851,7 @@ function updateTechLevels(message) {
 function updateFleet(message) {
     const parts = message.split(':');
     if (parts.length < 13) return;
-    
+
     // Parse fleet data
     const fleet = {
         ship1: parseInt(parts[1]) || 0,
@@ -1853,7 +1873,7 @@ function updateFleet(message) {
         building8: parseInt(parts[17]) || 0,
         building9: parseInt(parts[18]) || 0
     };
-    
+
     // Update UI
     if (window.GameUI && window.GameUI.updateFleet) {
         window.GameUI.updateFleet(fleet);
@@ -1863,11 +1883,11 @@ function updateFleet(message) {
 function updateOwnedSector(message) {
     const parts = message.split(':');
     if (parts.length < 3) return;
-    
+
     const sectorId = parseInt(parts[1], 16);
     const fleetSize = parseInt(parts[2]) || 0;
     const indicator = parts[3] || '';
-    
+
     if (window.GameUI && window.GameUI.updateOwnedSector) {
         window.GameUI.updateOwnedSector(sectorId, fleetSize, indicator);
     }
@@ -1893,10 +1913,10 @@ function sendmmf() {
     const shipList = document.getElementById('shipsFromNearBy');
 
     if (!sectorId || !shipList) return;
-    
+
     let message = sectorId;
     let totalShips = 0;
-    
+
     // Gather selected ships
     for (let i = 0; i < shipList.options.length; i++) {
         if (shipList.options[i].selected) {
@@ -1904,7 +1924,7 @@ function sendmmf() {
             totalShips++;
         }
     }
-    
+
     if (totalShips === 0) {
         if (window.NotificationSystem?.notify) {
             window.NotificationSystem.notify('Fleet Orders', 'No ships selected.', 'warn', 4000);

@@ -1,13 +1,13 @@
 /**
  * GUI.js - Client-side UI component for Game of Words
- * 
+ *
  * Handles the game's main user interface components and interactions.
  * Manages tab navigation, resource display, sectors visualization,
  * building information, and fleet details in the UI.
- * 
+ *
  * This module is client-side only and does not directly access the database.
  * It receives data from server responses via websocket messages.
- * 
+ *
  * Dependencies:
  * - None, but is used by game.js
  */
@@ -18,19 +18,19 @@ const GameUI = (function() {
         selectedTab: 'build',
         showBattleAnimation: true
     };
-    
+
     // Initialize UI elements
     function initialize() {
         // Set up responsive sizing
         setupResponsiveSizing();
-        
+
         // Set up event listeners
         setupEventListeners();
-        
+
         // Initial UI state
         updateUIState();
     }
-    
+
     // Set up responsive sizing
     function setupResponsiveSizing() {
         // Clear any legacy zoom/sizing applied by older code paths.
@@ -39,7 +39,7 @@ const GameUI = (function() {
         document.body.style.width = '';
         document.body.style.height = '';
     }
-    
+
     // Set up event listeners
 	function setupEventListeners() {
 		// Tab switching - needs to use our defined function instead of direct manipulation
@@ -49,7 +49,7 @@ const GameUI = (function() {
 		document.getElementById('colonizetab')?.addEventListener('click', () => switchTab('colonize'));
 		document.getElementById('analyticstab')?.addEventListener('click', () => switchTab('analytics'));
 	}
-    
+
     // Switch tabs
     function switchTab(tabName) {
         state.selectedTab = tabName;
@@ -57,18 +57,18 @@ const GameUI = (function() {
         if (multiMove) {
             multiMove.style.display = 'none';
         }
-        
+
         // Hide all panels
         const panels = ['build', 'fleet', 'techtree', 'colonize', 'analytics'];
         panels.forEach(panel => {
             const element = document.getElementById(panel);
             if (element) element.classList.add('hidden');
         });
-        
+
         // Show selected panel
         const selectedPanel = document.getElementById(tabName);
         if (selectedPanel) selectedPanel.classList.remove('hidden');
-        
+
         // Update tab buttons
         const tabButtons = {
             build: 'buildtab',
@@ -85,20 +85,20 @@ const GameUI = (function() {
             }
         });
     }
-    
+
     // Update UI state
     function updateUIState() {
         // Make sure the correct tab is displayed
         switchTab(state.selectedTab);
     }
-    
+
     // Update resource display
     function updateResources(metal, crystal, research) {
         document.getElementById('metalresource').textContent = ` ${metal} Metal,`;
         document.getElementById('crystalresource').textContent = ` ${crystal} Crystal,`;
         document.getElementById('researchresource').textContent = ` ${research} Research`;
     }
-    
+
     // Toggle fullscreen
     function toggleFullScreen() {
         if (!document.fullscreenElement) {
@@ -113,15 +113,15 @@ const GameUI = (function() {
             }
         }
     }
-    
+
     // Update sector display
     function updateSectorDisplay(sectorData) {
         if (!sectorData) return;
-        
+
         // Update basic sector info
         document.getElementById('sectorid').textContent = `Sector ${sectorData.id || 'N/A'}`;
         document.getElementById('planetowner').textContent = `Owner: ${sectorData.owner || 'N/A'}`;
-        
+
         // Set sector type
         let planetType = 'Unknown';
         switch (sectorData.type) {
@@ -137,7 +137,7 @@ const GameUI = (function() {
             case 10: planetType = 'Homeworld (6 slots)'; break;
         }
         document.getElementById('planettype').textContent = `Type: ${planetType}`;
-        
+
         // Update resource bonuses
         if (sectorData.type > 5) {
             // Set metal bonus
@@ -149,7 +149,7 @@ const GameUI = (function() {
                 metalColor = 'green';
             }
             metalBonus.innerHTML = `Metal Production: <font color="${metalColor}">${sectorData.metalBonus}%</font>`;
-            
+
             // Set crystal bonus
             const crystalBonus = document.getElementById('crystalbonus');
             let crystalColor = 'yellow';
@@ -159,7 +159,7 @@ const GameUI = (function() {
                 crystalColor = 'green';
             }
             crystalBonus.innerHTML = `Crystal Production: <font color="${crystalColor}">${sectorData.crystalBonus}%</font>`;
-            
+
             // Set terraform requirement
             document.getElementById('terraformlvl').textContent = `Terraform Req: ${sectorData.terraformLevel || 0}`;
         } else {
@@ -177,7 +177,7 @@ const GameUI = (function() {
             const used = Array.isArray(sectorData.buildings) ? sectorData.buildings.length : 0;
             slotsEl.textContent = maxSlots > 0 ? `Slots: ${used}/${maxSlots}` : 'Slots: none';
         }
-        
+
         // Update sector image (legacy backdrop; only type1-9.jpg exist, homeworld uses planet art)
         const sectorImg = document.getElementById('sectorimg');
         if (sectorImg) {
@@ -187,17 +187,17 @@ const GameUI = (function() {
             sectorImg.style.backgroundImage = `url(${imagePath})`;
         }
     }
-    
+
     // Update building levels
     function updateBuildings(buildings) {
         if (!buildings) return;
-        
+
         // Update building levels
         for (let i = 1; i <= 6; i++) {
             const currentLevel = document.getElementById(`bbb${i}`);
             if (currentLevel) {
                 let level = 0;
-                
+
                 switch (i) {
                     case 1: level = buildings.metalExtractor; break;
                     case 2: level = buildings.crystalRefinery; break;
@@ -206,15 +206,15 @@ const GameUI = (function() {
                     case 5: level = buildings.orbitalTurret; break;
                     case 6: level = buildings.warpgate; break;
                 }
-                
+
                 currentLevel.textContent = level || '0';
             }
-            
+
             // Next level
             const nextLevel = document.getElementById(`b${i}`);
             if (nextLevel) {
                 let level = 0;
-                
+
                 switch (i) {
                     case 1: level = buildings.metalExtractor; break;
                     case 2: level = buildings.crystalRefinery; break;
@@ -223,16 +223,16 @@ const GameUI = (function() {
                     case 5: level = buildings.orbitalTurret; break;
                     case 6: level = buildings.warpgate; break;
                 }
-                
+
                 nextLevel.textContent = (parseInt(level) || 0) + 1;
             }
-            
+
             // Building costs
             const costDisplay = document.getElementById(`m${i}`);
             if (costDisplay) {
                 let cost = 0;
                 let level = 0;
-                
+
                 switch (i) {
                     case 1: level = buildings.metalExtractor; break;
                     case 2: level = buildings.crystalRefinery; break;
@@ -241,17 +241,17 @@ const GameUI = (function() {
                     case 5: level = buildings.orbitalTurret; break;
                     case 6: break; // Warp Gate has fixed cost
                 }
-                
+
                 if (i <= 5) {
                     cost = ((parseInt(level) || 0) + 1) * 100;
                 } else {
                     cost = 2000; // Warp Gate cost
                 }
-                
+
                 costDisplay.textContent = cost;
             }
         }
-        
+
         // Special case for warp gate
         if (buildings.warpgate > 0) {
             const warpGateButton = document.getElementById('bb6');
@@ -260,24 +260,24 @@ const GameUI = (function() {
             }
         }
     }
-    
+
     // Update fleet information
     function updateFleet(fleet) {
         if (!fleet) return;
-        
+
         // Update ship counts
         for (let i = 1; i <= 9; i++) {
             const shipCount = document.getElementById(`f${i}`);
             if (shipCount) {
                 shipCount.textContent = fleet[`ship${i}`] || '0';
             }
-            
+
             // Ships being built
             const buildingCount = document.getElementById(`fa${i}`);
             if (buildingCount) {
                 buildingCount.textContent = fleet[`building${i}`] || '0';
             }
-            
+
             // Show/hide cancel buttons
             const cancelButton = document.getElementById(`fc${i}`);
             if (cancelButton) {
@@ -287,7 +287,7 @@ const GameUI = (function() {
     }
 
     function updateFleetDisplay(ships) {
-        const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+        const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
         const playerId = (() => {
             const match = document.cookie.match(/(?:^|;\s*)userId=([^;]+)/);
             return match ? Number(decodeURIComponent(match[1])) : null;
@@ -313,6 +313,9 @@ const GameUI = (function() {
             'fleet-destroyers': counts[2],
             'fleet-cruisers': counts[4],
             'fleet-battleships': counts[5],
+            'fleet-intruders': counts[8],
+            'fleet-dreadnoughts': counts[7],
+            'fleet-carriers': counts[9],
             'fleet-colony': counts[6]
         };
 
@@ -323,12 +326,12 @@ const GameUI = (function() {
             }
         });
     }
-    
+
 	// Update owned sector display on minimap
 	function updateOwnedSector(sectorId, fleetSize, indicator) {
 		if (window.GalaxyMap) {
 			let status = window.GalaxyMap.SECTOR_STATUS.OWNED;
-			
+
 			if (indicator === 'A') {
 				status = window.GalaxyMap.SECTOR_STATUS.HAZARD;
 			} else if (indicator === 'BH') {
@@ -340,7 +343,7 @@ const GameUI = (function() {
 			} else if (indicator === 'W') {
 				status = window.GalaxyMap.SECTOR_STATUS.WARPGATE;
 			}
-			
+
 			window.GalaxyMap.updateSectorStatus(sectorId, status, {
 				fleetSize: fleetSize,
 				indicator: indicator
@@ -352,7 +355,7 @@ const GameUI = (function() {
 	function showMultiMoveOptions(targetSector, shipsData) {
 		const multiMoveDiv = document.getElementById('multiMove');
 		if (!multiMoveDiv) return;
-		
+
 		// Update sector display: show decimal, keep the hex wire token aside
 		const sectorDisplay = document.getElementById('sectorofattack');
 		if (sectorDisplay) {
@@ -360,34 +363,34 @@ const GameUI = (function() {
 			const decimal = parseInt(targetSector, 16);
 			sectorDisplay.textContent = Number.isFinite(decimal) ? String(decimal) : targetSector;
 		}
-		
+
 		// Clear existing options
 		const shipList = document.getElementById('shipsFromNearBy');
 		if (shipList) {
 			while (shipList.options.length > 0) {
 				shipList.remove(0);
 			}
-			
+
 			// Parse ship data and add to select
 			const sectors = shipsData.split(':');
 			let i = 0;
-			
+
 			while (i < sectors.length) {
 				const sectorId = sectors[i++];
 				if (!sectorId) break;
-				
+
 				const shipCounts = [];
 				for (let j = 0; j < 9; j++) {
 					shipCounts.push(parseInt(sectors[i++]) || 0);
 				}
-				
+
 				// Ship type names
 				const shipNames = [
-					"Frigate", "Destroyer", "Scout", "Cruiser", 
-					"Battleship", "Colony Ship", "Dreadnought", 
+					"Frigate", "Destroyer", "Scout", "Cruiser",
+					"Battleship", "Colony Ship", "Dreadnought",
 					"Intruder", "Carrier"
 				];
-				
+
 				// Add options for each ship type (hex token in value, decimal in label)
 				const sectorLabel = Number.isFinite(parseInt(sectorId, 16)) ? parseInt(sectorId, 16) : sectorId;
 				shipCounts.forEach((count, idx) => {
@@ -402,7 +405,7 @@ const GameUI = (function() {
 				});
 			}
 		}
-		
+
 		// Show dialog
 		multiMoveDiv.style.display = 'block';
 	}

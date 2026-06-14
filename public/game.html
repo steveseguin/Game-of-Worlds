@@ -275,6 +275,13 @@
             box-shadow:none !important;
             cursor:not-allowed !important;
         }
+        /* Buildable by this race, but Military Shipyards tech is too low yet. */
+        .ship-button.ship-techlocked {
+            opacity:0.5 !important;
+            background:repeating-linear-gradient(135deg, #3a3320 0 8px, #2a2616 8px 16px) !important;
+            box-shadow:none !important;
+            cursor:not-allowed !important;
+        }
         #empireSummary {
             position:fixed;
             top:42px;
@@ -374,7 +381,7 @@
     </div>
     <div id="empireSummary">Income: +0M +0C +0R / turn | Worlds 0 | Fleet 0</div>
     <div id="victoryProgress">Victory: loading</div>
-    
+
     <!-- Turn Time Bar -->
     <div id="turnTimeBar">
         <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 14px;">
@@ -387,14 +394,14 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Connection Info - positioned to the right of resource bar, before utility buttons -->
     <div id="connectionInfo" style="position:fixed;top:12px;right:430px;z-index:240;display:flex;gap:8px;align-items:center;font-size:12px;">
         <span style="color:#cfd7ff;"><span id="status">…</span> · <span id="connected">-</span></span>
         <button onclick="Shop.open()" style="padding:6px 12px;background:linear-gradient(120deg,#f39c12,#e67e22);border:none;color:white;cursor:pointer;border-radius:7px;font-size:12px;font-weight:600;">Shop</button>
         <button id="leaveGameBtn" style="padding:6px 12px;background:rgba(192,57,43,0.85);border:1px solid rgba(255,126,126,0.4);color:white;cursor:pointer;border-radius:7px;font-size:12px;font-weight:600;">Leave</button>
     </div>
-    
+
     <!-- 3D galaxy map (main view). Sits above the starfield, below all HUD panels. -->
     <div id="galaxy3d" style="position:fixed;inset:0;z-index:1;"></div>
 
@@ -444,13 +451,28 @@
                 <td><div style="display:inline-block" id="fa5">N/A</div><div style="display:none;" id="fc5"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
+                <td>Intruders:</td>
+                <td><div style="display:inline-block" id="f8">N/A</div></td>
+                <td><div style="display:inline-block" id="fa8">N/A</div><div style="display:none;" id="fc8"><button>Cancel</button></div><br /></td>
+            </tr>
+            <tr>
+                <td>Dreadnoughts:</td>
+                <td><div style="display:inline-block" id="f7">N/A</div></td>
+                <td><div style="display:inline-block" id="fa7">N/A</div><div style="display:none;" id="fc7"><button>Cancel</button></div><br /></td>
+            </tr>
+            <tr>
+                <td>Carriers:</td>
+                <td><div style="display:inline-block" id="f9">N/A</div></td>
+                <td><div style="display:inline-block" id="fa9">N/A</div><div style="display:none;" id="fc9"><button>Cancel</button></div><br /></td>
+            </tr>
+            <tr>
                 <td>Colony Ships:</td>
                 <td><div style="display:inline-block" id="f6">N/A</div></td>
                 <td><div style="display:inline-block" id="fa6">N/A</div><div style="display:none;" id="fc6"><button>Cancel</button></div><br /></td>
             </tr>
         </table>
     </div>
-    
+
     <!-- Old log area - hidden, replaced by avatar notifications -->
     <div id="avatarbox" style="display:none;">
         <div id="empireupdates">
@@ -458,7 +480,7 @@
             <p id="timeSince" style="margin:4px 0 0 0;color:#666;font-size:11px;font-style:italic;"></p>
         </div>
     </div>
-    
+
     <!-- Control Pad -->
     <div id="controlPadGUI" style="position:fixed;left:0;bottom:40px;width:500px;height:320px;z-index:100;background:rgba(20,24,40,0.98);">
         <!-- Tab Buttons -->
@@ -469,7 +491,7 @@
             <button id="colonizetab" class="tab-button">Colonize</button>
             <button id="analyticstab" class="tab-button">Analytics</button>
         </div>
-        
+
         <!-- Build Tab -->
         <div id="build" class="tab-panel">
             <div style="font-weight:bold;margin-bottom:10px;">Economy Buildings</div>
@@ -488,9 +510,12 @@
             <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;">
                 <button class="ship-button" data-ship-id="3">Scout<br><small style="color:#888;">200M</small></button>
                 <button class="ship-button" data-ship-id="1">Frigate<br><small style="color:#888;">430M</small></button>
-                <button class="ship-button" data-ship-id="2">Destroyer<br><small style="color:#888;">780M</small></button>
-                <button class="ship-button" data-ship-id="4">Cruiser<br><small style="color:#888;">980M 120C</small></button>
-                <button class="ship-button" data-ship-id="5">Battleship<br><small style="color:#888;">1650M 220C</small></button>
+                <button class="ship-button" data-ship-id="2">Destroyer<br><small style="color:#888;">780M · Yard 1</small></button>
+                <button class="ship-button" data-ship-id="4">Cruiser<br><small style="color:#888;">980M 120C · Yard 1</small></button>
+                <button class="ship-button" data-ship-id="5">Battleship<br><small style="color:#888;">1650M 220C · Yard 2</small></button>
+                <button class="ship-button" data-ship-id="8">Intruder<br><small style="color:#888;">1950M 133C · Yard 2</small></button>
+                <button class="ship-button" data-ship-id="7">Dreadnought<br><small style="color:#888;">3200M 450C · Yard 3</small></button>
+                <button class="ship-button" data-ship-id="9">Carrier<br><small style="color:#888;">3000M 80C · Yard 3</small></button>
                 <button class="ship-button" data-ship-id="6">Colony Ship<br><small style="color:#888;">1000M</small></button>
             </div>
         </div>
@@ -504,6 +529,9 @@
                 <div>Destroyers: <span id="fleet-destroyers">0</span></div>
                 <div>Cruisers: <span id="fleet-cruisers">0</span></div>
                 <div>Battleships: <span id="fleet-battleships">0</span></div>
+                <div>Intruders: <span id="fleet-intruders">0</span></div>
+                <div>Dreadnoughts: <span id="fleet-dreadnoughts">0</span></div>
+                <div>Carriers: <span id="fleet-carriers">0</span></div>
                 <div>Colony Ships: <span id="fleet-colony">0</span></div>
             </div>
             <div style="margin-top:15px;font-weight:bold;margin-bottom:10px;">Move Fleet</div>
@@ -518,7 +546,7 @@
             </div>
             <div id="techTreeRoot"></div>
         </div>
-        
+
         <!-- Colonize Tab -->
         <div id="colonize" class="tab-panel hidden">
             <b><button id="colonizeBtn" style="padding:20px;">Attempt to Colonize Sector</button></b><br /><br />
@@ -545,7 +573,7 @@
             <div id="combatAnalyticsRecent" style="display:grid;gap:6px;"></div>
         </div>
     </div>
-    
+
     <!-- Mini Map -->
     <div id="minimapid"></div>
     <div id="mapLegend">
@@ -557,7 +585,7 @@
         <div class="legend-row"><span class="legend-swatch" style="background:#202020;"></span>Black hole</div>
         <div style="margin-top:5px;color:rgba(220,228,255,0.72);">H home, C colony ship, T turret, W gate, E enemy fleet. Dim tiles are old memory.</div>
     </div>
-    
+
     <!-- Multi-Move Dialog -->
     <div id="multiMove">
         <div class="multi-move-header" style="padding:15px 15px 10px;">
@@ -574,7 +602,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Chat Input -->
     <div id="chatFeed" style="position:fixed;left:0;bottom:368px;width:500px;max-width:100%;max-height:140px;z-index:151;padding:8px 10px;box-sizing:border-box;pointer-events:none;">
         <div id="chatMessages"></div>
@@ -586,16 +614,16 @@
             <input id="chat" type="text" style="width:100%;height:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(20,25,40,0.9);color:#e8ecff;font-size:14px;" placeholder="Type and press enter to chat" />
         </form>
     </div>
-    
+
     <!-- Reconnection Window -->
     <div id="lobbyWindow" style="display:none;">
         <center><br /><br /><h1>THE CONNECTION WAS LOST</h1><br />Please refresh the page to reconnect.<br /><br /><button onclick="location.reload(true)" style="padding:20px;">Refresh this page</button></center>
     </div>
-    
+
     <!-- Scripts -->
     <script src="js/ui.js?v=20260614d"></script>
     <script src="js/minimap.js?v=20260614b"></script>
-    <script src="js/GUI.js?v=20260614a"></script>
+    <script src="js/GUI.js?v=20260614i"></script>
     <script>
         // Authentication check for static hosting
         (function() {
@@ -606,17 +634,17 @@
                 if (parts.length === 2) return parts.pop().split(';').shift();
                 return null;
             }
-            
+
             const userId = getCookie('userId');
             const tempKey = getCookie('tempKey');
-            
+
             // If no authentication cookies, redirect to login
             if (!userId || !tempKey) {
                 window.location.href = '/login.html';
             }
         })();
     </script>
-    <script src="js/build.js?v=20260614h"></script>
+    <script src="js/build.js?v=20260614i"></script>
     <script src="js/battle.js?v=20260614d"></script>
     <script src="js/chat.js?v=20260430a"></script>
     <script src="js/controlpad.js?v=20260429a"></script>
