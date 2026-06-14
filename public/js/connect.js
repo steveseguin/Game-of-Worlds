@@ -46,6 +46,10 @@ let hasAuthenticated = false;
 let pendingInitialUpdate = false;
 let turnTimer = 180; // 3 minutes per turn
 let turnInterval;
+let turnFrozen = false; // true while a battle theater is playing (clock paused for everyone)
+let battleFreezeTimer = null;
+let currentTurnNumber = null;
+let currentGameModeLabel = 'Quick Match';
 let lastResources = { metal: 0, crystal: 0, research: 0 };
 let pendingTurnDigest = null; // Track pending turn for resource digest
 let lastTurnDigest = [];
@@ -62,15 +66,41 @@ const MESSAGE_HANDLERS = {
     },
     battle(payload) {
         const battle = parseBattlePayload(payload);
+        const sectorLabel = battle.sectorId ? formatSectorLabel(battle.sectorId) : '';
+
+        // Where does this viewer stand in this fight?
+        const myId = Number(getCookie('userId'));
+        let viewerRole = 'observer';
+        if (Number.isFinite(myId)) {
+            if (battle.attackerId === myId) viewerRole = 'attacker';
+            else if (battle.defenderId === myId) viewerRole = 'defender';
+        }
+        // Did the viewer win? (null for observers.)
+        let viewerWon = null;
+        if (viewerRole !== 'observer' && battle.result) {
+            const winnerRole = battle.result === 'att' ? 'attacker' : 'defender';
+            viewerWon = viewerRole === winnerRole;
+        }
+
         if (battle.sectorId && window.GalaxyMap?.markBattleSector) {
             window.GalaxyMap.markBattleSector(battle.sectorId, true);
         }
         if (battle.sectorId && window.GameScreen?.setTitle) {
-            window.GameScreen.setTitle(`Battle in Sector ${formatSectorLabel(battle.sectorId)}`, `Battle in Sector ${formatSectorLabel(battle.sectorId)} - Game of Worlds`);
+            window.GameScreen.setTitle(`Battle in Sector ${sectorLabel}`, `Battle in Sector ${sectorLabel} - Game of Worlds`);
         }
-        if (window.BattleSystem) {
-            window.BattleSystem.createBattleVisualization(battle.message, {
+        // Prefer the cinematic 3D theater; fall back to the 2D system when WebGL is absent.
+        const theater = (window.Battle3D && window.Battle3D.isAvailable && window.Battle3D.isAvailable())
+            ? window.Battle3D
+            : window.BattleSystem;
+        if (theater) {
+            theater.createBattleVisualization(battle.message, {
                 sectorId: battle.sectorId,
+                sectorLabel,
+                durationMs: window.__battlePauseMs || 0,
+                battleResult: battle.result, // 'att' | 'def' | null — authoritative banner
+                viewerRole,                  // 'attacker' | 'defender' | 'observer'
+                viewerWon,                   // true | false | null
+                planetType: battle.planetType || 0,
                 onComplete: () => {
                     if (window.MediaManager?.playMusic) {
                         window.MediaManager.playMusic('peace');
@@ -78,8 +108,15 @@ const MESSAGE_HANDLERS = {
                 }
             });
         }
+        // Start-of-battle alert, written from the viewer's point of view.
         if (window.NotificationSystem?.notify) {
-            window.NotificationSystem.notify("Battle update", "Combat detected. Check the map for details.", "info", 5000);
+            if (viewerRole === 'observer') {
+                window.NotificationSystem.notify('Battle detected',
+                    `Long-range sensors register a great battle near Sector ${sectorLabel}.`, 'info', 5000);
+            } else {
+                window.NotificationSystem.notify('Fleet engaged!',
+                    `Your fleet has engaged the enemy in Sector ${sectorLabel}.`, 'warning', 6000);
+            }
         }
         if (window.Advisor) {
             window.Advisor.say('battleStart', { sector: battle.sectorId });
@@ -88,8 +125,31 @@ const MESSAGE_HANDLERS = {
             window.MediaManager.playMusic('battle');
         }
         if (window.MediaManager?.playSfx) {
-            window.MediaManager.playSfx('explosion');
+            window.MediaManager.playSfx(viewerRole === 'observer' ? 'notification' : 'warp');
         }
+    },
+    battlePause(payload) {
+        // Wire: `<freezeMs>::<playbackMs>` — freezeMs holds the turn clock (it
+        // covers the theater PLUS a buffer so the world resumes only after playback
+        // ends everywhere); playbackMs is the theater animation budget. Multiple
+        // battles in one turn accumulate (played back-to-back), capped to the ceiling.
+        const parts = String(payload).split('::');
+        const freezeMs = Math.max(0, parseInt(parts[0], 10) || 0);
+        const playbackMs = Math.max(0, parseInt(parts[1], 10) || freezeMs); // old single-value fallback
+        window.__battlePauseMs = playbackMs;
+        const now = Date.now();
+        const base = (window.__battleFreezeUntil && window.__battleFreezeUntil > now) ? window.__battleFreezeUntil : now;
+        window.__battleFreezeUntil = Math.min(base + freezeMs, now + 26000);
+        turnFrozen = true;
+        const el = document.getElementById('turnRedFlashWhenLow');
+        if (el) { el.textContent = 'BATTLE'; el.style.color = '#ff8a6a'; }
+        clearTimeout(battleFreezeTimer);
+        battleFreezeTimer = setTimeout(() => {
+            turnFrozen = false;
+            window.__battlePauseMs = 0;
+            window.__battleFreezeUntil = 0;
+            renderTurnTimer();
+        }, Math.max(1, window.__battleFreezeUntil - now));
     },
     battleSummary(payload) {
         const summary = parseBattleSummaryPayload(payload);
@@ -117,7 +177,13 @@ const MESSAGE_HANDLERS = {
         if (window.NotificationSystem?.notify) {
             window.NotificationSystem.notify("Battle summary", `${detail} ${summary.reason}`.trim(), "info", 7000);
         }
+        renderBattleSummaryCard(summary, title, detail);
         pushEventFeed(`${title}: ${detail} ${summary.reason}`.trim(), 'battles');
+        // Stealth/summary viewers don't see the theater but the game is still
+        // frozen for them — give them the battle score so the pause feels intentional.
+        if (window.MediaManager?.playMusic) {
+            window.MediaManager.playMusic('battle');
+        }
         if (window.MediaManager?.playSfx) {
             window.MediaManager.playSfx('explosion');
         }
@@ -166,60 +232,86 @@ const MESSAGE_HANDLERS = {
     gameover(payload) {
         const parts = payload.split("::");
         const winnerId = parseInt(parts[0], 10);
-        const reason = parts[1] || "Victory condition met";
+        const hasWinner = Number.isFinite(winnerId);
+        const reason = safeDecodeURIComponent(parts[1] || "Victory condition met");
+        if (window.Battle3D?.cleanupBattleVisualization) {
+            window.Battle3D.cleanupBattleVisualization();
+        }
+        if (window.BattleSystem?.cleanupBattleVisualization) {
+            window.BattleSystem.cleanupBattleVisualization();
+        }
+        renderGameOverModal(winnerId, reason);
         if (window.NotificationSystem?.notify) {
-            window.NotificationSystem.notify("Game Over", `Player ${winnerId} wins (${reason}).`, "success", 8000);
+            const message = hasWinner
+                ? `Player ${winnerId} wins (${reason}).`
+                : `Game ended: ${reason}.`;
+            window.NotificationSystem.notify("Game Over", message, hasWinner ? "success" : "info", 8000);
         } else {
-            alert(`Game over! Player ${winnerId} wins! Reason: ${reason}`);
+            alert(hasWinner
+                ? `Game over! Player ${winnerId} wins! Reason: ${reason}`
+                : `Game over! ${reason}`);
         }
-        if (window.NotificationSystem?.confirm) {
-            window.NotificationSystem.confirm(
-                "Game Over",
-                `Player ${winnerId} wins (${reason}). Return to lobby?`,
-                () => navigateToLobby(),
-                null
-            );
-        }
-        if (window.NotificationSystem?.modal) {
-            window.NotificationSystem.modal(
-                'Game Complete',
-                `<div style="line-height:1.5;">Player ${winnerId} wins (${reason}).</div>`,
-                [
-                    { label: 'Return to lobby', action: () => navigateToLobby(), primary: true },
-                    { label: 'Stay here', action: null }
-                ]
-            );
-        }
-        pushEventFeed(`Game over: Player ${winnerId} wins (${reason}).`, 'system');
+        pushEventFeed(hasWinner
+            ? `Game over: Player ${winnerId} wins (${reason}).`
+            : `Game over: ${reason}.`, 'system');
         const iWon = Number(winnerId) === Number(getCookie('userId'));
-        if (window.MediaManager?.playMusic) {
+        if (hasWinner && window.MediaManager?.playMusic) {
             window.MediaManager.playMusic(iWon ? 'victory' : 'defeat');
         }
-        if (window.Advisor) {
+        if (hasWinner && window.Advisor) {
             window.Advisor.say(iWon ? 'gameWon' : 'gameLost');
         }
     }
 };
 
 function parseBattlePayload(payload) {
+    const hexSector = tok => {
+        const decimal = parseInt(tok, 16);
+        return Number.isFinite(decimal) ? decimal : tok;
+    };
+
+    // Full header: battle::<sectorHex>::<att|def>::<attackerId>::<defenderId>::<planetType>::battle:...
+    const full = /^battle::([^:]+)::(att|def)::(\d+)::(\d+)::(\d+)::(battle:.*)$/i.exec(payload);
+    if (full) {
+        return {
+            sectorId: hexSector(full[1]),
+            result: full[2].toLowerCase(),
+            attackerId: Number(full[3]),
+            defenderId: Number(full[4]),
+            planetType: Number(full[5]),
+            message: full[6]
+        };
+    }
+
+    // Back-compat: side only — battle::<sectorHex>::<att|def>::battle:...
+    const withResult = /^battle::([^:]+)::(att|def)::(battle:.*)$/i.exec(payload);
+    if (withResult) {
+        return {
+            sectorId: hexSector(withResult[1]),
+            result: withResult[2].toLowerCase(),
+            attackerId: null, defenderId: null, planetType: 0,
+            message: withResult[3]
+        };
+    }
+
+    // Back-compat: bare scope — battle::<sectorHex>::battle:...
     const scopedMatch = /^battle::([^:]+)::(battle:.*)$/i.exec(payload);
     if (scopedMatch) {
         return {
-            sectorId: scopedMatch[1],
+            sectorId: hexSector(scopedMatch[1]),
+            result: null, attackerId: null, defenderId: null, planetType: 0,
             message: scopedMatch[2]
         };
     }
 
-    return {
-        sectorId: null,
-        message: payload
-    };
+    return { sectorId: null, result: null, attackerId: null, defenderId: null, planetType: 0, message: payload };
 }
 
 function parseBattleSummaryPayload(payload) {
     const parts = payload.split("::");
+    const sectorDecimal = parseInt(parts[0], 16);
     return {
-        sectorId: parts[0] || null,
+        sectorId: Number.isFinite(sectorDecimal) ? sectorDecimal : (parts[0] || null),
         reason: safeDecodeURIComponent(parts[1] || ''),
         winnerId: parts[2] || '',
         attackerLosses: Number.parseInt(parts[3], 10) || 0,
@@ -237,11 +329,162 @@ function safeDecodeURIComponent(value) {
     }
 }
 
+// Human-facing sector labels are decimal everywhere (map tiles, panel,
+// messages); hex tokens only ever travel on the wire.
 function formatSectorLabel(value) {
     if (value === null || value === undefined || value === '') return '?';
     const text = String(value).trim();
     const number = /[a-f]/i.test(text) ? parseInt(text, 16) : parseInt(text, 10);
-    return Number.isFinite(number) ? number.toString(16).toUpperCase() : text.toUpperCase();
+    return Number.isFinite(number) ? String(number) : text.toUpperCase();
+}
+
+// Parse a sector reference that may be a hex wire token or a decimal label.
+function parseSectorRef(value) {
+    const text = String(value ?? '').trim();
+    if (!text) return NaN;
+    return /[a-f]/i.test(text) ? parseInt(text, 16) : parseInt(text, 10);
+}
+
+function renderBattleSummaryCard(summary, title, detail) {
+    const existing = document.getElementById('battleSummaryCard');
+    if (existing && existing.parentNode) {
+        existing.parentNode.removeChild(existing);
+    }
+
+    const card = document.createElement('aside');
+    card.id = 'battleSummaryCard';
+    const resultClass = String(summary.result || 'unknown').replace(/[^a-z0-9_-]/gi, '');
+    card.className = `battle-summary-card ${resultClass || 'unknown'}`;
+    card.setAttribute('role', 'status');
+    card.setAttribute('aria-live', 'polite');
+    card.innerHTML = `
+        <button class="battle-summary-close" type="button" aria-label="Dismiss battle summary">&times;</button>
+        <div class="battle-summary-eyebrow">Battle Summary</div>
+        <h3>${escapeHtml(title)}</h3>
+        <p>${escapeHtml(detail)}</p>
+        ${summary.reason ? `<p class="battle-summary-reason">${escapeHtml(summary.reason)}</p>` : ''}
+        <div class="battle-summary-stats">
+            <span>Attacker losses: ${summary.attackerLosses || 0}</span>
+            <span>Defender losses: ${summary.defenderLosses || 0}</span>
+            <span>Force ratio: ${(summary.forceRatio || 0).toFixed(2)}</span>
+        </div>
+    `;
+    card.querySelector('.battle-summary-close')?.addEventListener('click', () => card.remove());
+    document.body.appendChild(card);
+}
+
+function renderGameOverModal(winnerId, reason) {
+    const existing = document.getElementById('gameOverModal');
+    if (existing && existing.parentNode) {
+        existing.parentNode.removeChild(existing);
+    }
+
+    const hasWinner = Number.isFinite(Number(winnerId));
+    const iWon = hasWinner && Number(winnerId) === Number(getCookie('userId'));
+    const isGuest = localStorage.getItem('gowIsGuest') === '1';
+    const guestPrompt = isGuest
+        ? '<p class="game-over-guest-prompt">Register this guest commander to protect your progress before clearing browser storage or switching devices.</p>'
+        : '';
+    const title = hasWinner ? (iWon ? 'Victory' : 'Defeat') : 'Game Ended';
+    const body = hasWinner
+        ? `Player ${winnerId} won. ${reason || 'Completed'}.`
+        : `No winner was recorded. ${reason || 'Completed'}.`;
+    const modal = document.createElement('div');
+    modal.id = 'gameOverModal';
+    modal.className = 'game-over-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.innerHTML = `
+        <div class="game-over-card">
+            <div class="game-over-eyebrow">Game Complete</div>
+            <h2 id="gameOverTitle">${escapeHtml(title)}</h2>
+            <p id="gameOverBody">${escapeHtml(body)}</p>
+            ${guestPrompt}
+            <div class="game-over-actions">
+                ${isGuest ? '<button type="button" id="gameOverRegisterBtn" class="primary">Register to Save</button>' : ''}
+                <button type="button" id="gameOverLobbyBtn" class="primary">Return to Lobby</button>
+                <button type="button" id="gameOverStayBtn" class="ghost">Stay Here</button>
+            </div>
+        </div>
+    `;
+    modal.querySelector('#gameOverRegisterBtn')?.addEventListener('click', () => {
+        window.location.href = '/login.html?upgrade=1';
+    });
+    modal.querySelector('#gameOverLobbyBtn')?.addEventListener('click', navigateToLobby);
+    modal.querySelector('#gameOverStayBtn')?.addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+    document.body.appendChild(modal);
+}
+
+function renderProbeSuggestionCard(title, body, onProbe) {
+    const existing = document.getElementById('probeSuggestionCard');
+    if (existing && existing.parentNode) {
+        existing.parentNode.removeChild(existing);
+    }
+
+    const card = document.createElement('aside');
+    card.id = 'probeSuggestionCard';
+    card.className = 'probe-suggestion-card';
+    card.innerHTML = `
+        <button class="probe-suggestion-close" type="button" aria-label="Dismiss probe suggestion">&times;</button>
+        <div class="probe-suggestion-eyebrow">Optional Scan</div>
+        <h3>${escapeHtml(title)}</h3>
+        <p>${escapeHtml(body)}</p>
+        <div class="probe-suggestion-actions">
+            <button class="primary" type="button" id="probeSuggestionSend">Send Probe</button>
+            <button class="ghost" type="button" id="probeSuggestionDismiss">Move / Ignore</button>
+        </div>
+    `;
+    const close = () => card.remove();
+    card.querySelector('.probe-suggestion-close')?.addEventListener('click', close);
+    card.querySelector('#probeSuggestionDismiss')?.addEventListener('click', close);
+    card.querySelector('#probeSuggestionSend')?.addEventListener('click', () => {
+        close();
+        onProbe();
+    });
+    document.body.appendChild(card);
+}
+
+// Render probe intel (spy ladder results) into the sector panel + a notification.
+function renderSectorIntel(sectorId, intel) {
+    const lines = [];
+    if (intel.note) {
+        lines.push(`<div style="color:#ffb86b;">${escapeHtml(intel.note)}</div>`);
+    }
+    if (Number.isFinite(Number(intel.advantage)) && intel.advantage !== null) {
+        const adv = Number(intel.advantage);
+        const tone = adv > 0 ? '#7ee787' : (adv < 0 ? '#ff7b72' : '#cfd7ff');
+        lines.push(`<div>Spy advantage: <b style="color:${tone};">${adv > 0 ? '+' : ''}${adv}</b></div>`);
+    }
+    if (intel.ownerResources) {
+        const r = intel.ownerResources;
+        lines.push(`<div>Enemy ledgers: ${Math.floor(r.metal)}M · ${Math.floor(r.crystal)}C · ${Math.floor(r.research)}R</div>`);
+    }
+    if (intel.ownerTech && window.TechSystem?.getTechnology) {
+        const techs = Object.entries(intel.ownerTech)
+            .map(([id, level]) => {
+                const tech = window.TechSystem.getTechnology(id);
+                return tech ? `${tech.name} ${level}` : null;
+            })
+            .filter(Boolean);
+        if (techs.length) {
+            lines.push(`<div>Enemy research: ${escapeHtml(techs.join(', '))}</div>`);
+        }
+    }
+    if (!lines.length) {
+        lines.push('<div>Probe scan complete - sector details updated.</div>');
+    }
+
+    const box = document.getElementById('sectorIntel');
+    if (box) {
+        box.innerHTML = `<div style="font-weight:700;color:#d65db1;margin-bottom:4px;">Probe Intel - Sector ${sectorId}</div>${lines.join('')}`;
+        box.style.display = 'block';
+    }
+    if (window.NotificationSystem?.notify) {
+        const summary = lines.map(line => line.replace(/<[^>]+>/g, '')).join(' ');
+        window.NotificationSystem.notify(`Probe intel: sector ${sectorId}`, summary, 'info', 7000);
+    }
 }
 
 // Game state
@@ -252,25 +495,72 @@ const GAME_STATE = {
             crystal: 0,
             research: 0
         },
-        techLevels: {}
+        techLevels: {},
+        homeworld: null
     },
     selectedSector: null,
-    selectedSectorData: null
+    selectedSectorData: null,
+    mapSectors: {},
+    empire: null
 };
+
+function setNextTurnButtonLabel(label) {
+    const nextTurnText = document.getElementById("nextTurnText");
+    if (nextTurnText) {
+        nextTurnText.textContent = label;
+    }
+}
+
+function renderTurnHeader() {
+    const modeLabel = document.getElementById('gameModeLabel');
+    if (!modeLabel) {
+        return;
+    }
+    modeLabel.textContent = currentTurnNumber
+        ? `${currentGameModeLabel} - Turn ${currentTurnNumber}`
+        : currentGameModeLabel;
+}
+
+function setGameModeLabel(mode) {
+    currentGameModeLabel = mode === 'epic' ? 'Epic Campaign' : 'Quick Match';
+    renderTurnHeader();
+}
+
+function renderTurnTimer() {
+    const timerEl = document.getElementById("turnRedFlashWhenLow");
+    if (!timerEl) {
+        return;
+    }
+
+    if (turnTimer <= 0) {
+        timerEl.textContent = 'syncing';
+        timerEl.style.color = "#ffd3a8";
+    } else {
+        timerEl.textContent = `${turnTimer}s`;
+        timerEl.style.color = turnTimer < 30 && turnTimer % 2 === 0 ? "#FF0000" : "#ffd3a8";
+    }
+}
 
 // Update timer display
 function updateTimer() {
-    if (turnTimer <= 0) {
-        document.getElementById("turnRedFlashWhenLow").innerHTML = " (..loading)";
-    } else {
-        document.getElementById("turnRedFlashWhenLow").innerHTML = turnTimer + "s";
-        turnTimer = turnTimer - 1;
-        
-        // Flash when time is running low
-        if (turnTimer < 30) {
-            document.getElementById("turnRedFlashWhenLow").style.color = turnTimer % 2 === 0 ? "#FF0000" : "#FFFFFF";
-        }
+    // Battle theater on screen: the turn clock is paused for everyone.
+    if (turnFrozen) {
+        return;
     }
+    if (turnTimer > 0) {
+        turnTimer = turnTimer - 1;
+    }
+    renderTurnTimer();
+}
+
+function beginTurnCountdown(turnNumber, seconds = 180) {
+    currentTurnNumber = Number.parseInt(turnNumber, 10) || currentTurnNumber || 1;
+    turnTimer = Number.isFinite(Number(seconds)) && Number(seconds) > 0 ? Number(seconds) : 180;
+    setNextTurnButtonLabel('End Turn');
+    clearInterval(turnInterval);
+    renderTurnHeader();
+    renderTurnTimer();
+    turnInterval = setInterval(updateTimer, 1000);
 }
 
 // Game action functions
@@ -317,6 +607,10 @@ function initializeWebSocket() {
 
     try {
         websocket = new WebSocket(getWebSocketUrl());
+        window.websocket = websocket;
+        if (window.Onboarding?.attach) {
+            window.Onboarding.attach(websocket);
+        }
     } catch (error) {
         console.error("WebSocket initialization failed:", error);
         document.getElementById("status").innerHTML = "Connection error";
@@ -370,6 +664,9 @@ function isAuthSuccessMessage(message) {
         message === "The game has yet to begin. Welcome." ||
         message.indexOf("You have re-connected") === 0 ||
         message.indexOf("resources::") === 0 ||
+        message.indexOf("techstate::") === 0 ||
+        message.indexOf("empire::") === 0 ||
+        message.indexOf("victoryprogress::") === 0 ||
         message.indexOf("sector::") === 0 ||
         message.indexOf("pl:") === 0 ||
         message.indexOf("gamelist::") === 0 ||
@@ -393,6 +690,7 @@ function flushAuthenticatedCommands() {
     pendingInitialUpdate = false;
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send("//update");
+        websocket.send("//victoryprogress");
     }
 }
 
@@ -414,7 +712,10 @@ function scheduleReconnect() {
 // Handle WebSocket messages
 function handleWebSocketMessage(message) {
     console.log("Received message:", message);
-    
+    if (window.Onboarding?.observe) {
+        window.Onboarding.observe(message);
+    }
+
     if (message.indexOf("countdown::") === 0) {
         return handleCountdownMessage(message.split("::")[1]);
     }
@@ -464,12 +765,19 @@ function handleWebSocketMessage(message) {
                 if (snapshot.raceId && window.Advisor) {
                     window.Advisor.setRace(snapshot.raceId);
                 }
-                const modeLabel = document.getElementById('gameModeLabel');
-                if (modeLabel && snapshot.mode) {
-                    modeLabel.textContent = snapshot.mode === 'epic' ? 'Epic Campaign' : 'Quick Match';
+                if (snapshot.mode) {
+                    setGameModeLabel(snapshot.mode);
                 }
                 if (snapshot.started && window.SoundSystem?.playContextualMusic) {
                     window.SoundSystem.playContextualMusic('game');
+                }
+                if (snapshot.started) {
+                    beginTurnCountdown(snapshot.turn || currentTurnNumber || 1);
+                } else {
+                    setNextTurnButtonLabel('Start Game');
+                    currentTurnNumber = null;
+                    renderTurnHeader();
+                    renderTurnTimer();
                 }
             } catch (err) {
                 // snapshot parse failure is non-fatal
@@ -484,9 +792,12 @@ function handleWebSocketMessage(message) {
     if (message.indexOf("battle_summary::") === 0) {
         return MESSAGE_HANDLERS.battleSummary(message.replace("battle_summary::", ""));
     }
+    if (message.indexOf("battlepause::") === 0) {
+        return MESSAGE_HANDLERS.battlePause(message.replace("battlepause::", ""));
+    }
     if (message.indexOf("battle::") === 0 || message.indexOf("battle:") === 0) {
         return MESSAGE_HANDLERS.battle(message);
-    } 
+    }
     if (message.indexOf("battlereport::") === 0) {
         return MESSAGE_HANDLERS.battlereport(message.replace("battlereport::", ""));
     }
@@ -505,9 +816,14 @@ function handleWebSocketMessage(message) {
     }
     // Game started
     else if (message.indexOf("startgame::") === 0) {
-        // Hide lobby and show game
-        document.getElementById("lobbyWindow").style.display = "none";
-        document.getElementById("gameWindow").style.display = "block";
+        const lobbyWindow = document.getElementById("lobbyWindow");
+        if (lobbyWindow) {
+            lobbyWindow.style.display = "none";
+        }
+        const gameWindow = document.getElementById("gameWindow");
+        if (gameWindow) {
+            gameWindow.style.display = "block";
+        }
 
         // Initialize game UI
         if (window.GameUI && window.GameUI.initialize) {
@@ -520,7 +836,9 @@ function handleWebSocketMessage(message) {
         }
 
         // Request initial game state
+        beginTurnCountdown(currentTurnNumber || 1);
         websocket.send("//update");
+        websocket.send("//victoryprogress");
     }
     // Max build notification
     else if (message.indexOf("maxbuild::") === 0) {
@@ -538,17 +856,22 @@ function handleWebSocketMessage(message) {
     // Probe only notification
     else if (message.indexOf("probeonly:") === 0) {
         const sectorId = message.split(":")[1];
+        const numericSectorId = parseInt(sectorId, 16);
+        const knownState = GAME_STATE.mapSectors[numericSectorId];
+        const sectorLabel = Number.isFinite(numericSectorId)
+            ? String(numericSectorId)
+            : sectorId;
+        const staleMemory = knownState && knownState.seen && !knownState.live;
+        const title = staleMemory ? `Stale intel: Sector ${sectorLabel}` : `Unknown Sector ${sectorLabel}`;
+        const body = staleMemory
+            ? 'You only have old memory here. Send a probe to refresh live intel, or move ships there from the fleet menu if you want to risk exploration.'
+            : 'Long-range sensors cannot see in. Launch a probe to scan it? (300 Crystal; probes can be lost to hazards or counter-intelligence.)';
         const sendProbe = () => websocket.send("//probe:" + sectorId);
-        if (window.NotificationSystem?.confirm) {
-            window.NotificationSystem.confirm(
-                `Unknown Sector ${sectorId}`,
-                'Long-range sensors can\'t see in. Launch a probe to scan it? (300 Crystal — probes can be lost to hazards.)',
-                sendProbe,
-                null
-            );
-        } else if (confirm('You do not control this sector. Would you like to use a probe to scan it? (cost: 300 Crystal)')) {
-            sendProbe();
+        renderProbeSuggestionCard(title, body, sendProbe);
+        if (typeof window.NotificationSystem?.notify === 'function') {
+            window.NotificationSystem.notify(title, 'Probe scan is optional; fleet movement remains available if ships are nearby.', 'info', 5000);
         }
+        return;
     }
     // Multiple move options
     else if (message.indexOf("mmoptions:") === 0) {
@@ -562,24 +885,19 @@ function handleWebSocketMessage(message) {
     // New turn
     else if (message.indexOf("newturn::") === 0) {
         const turnNumber = message.split("::")[1];
-        document.getElementById("nextTurnText").innerHTML = `Turn ${turnNumber}`;
-        document.getElementById("turnRedFlashWhenLow").innerHTML = '180s';
-        turnTimer = 180;
-        clearInterval(turnInterval);
-        turnInterval = setInterval(updateTimer, 1000);
+        beginTurnCountdown(turnNumber);
         if (window.MediaManager?.playSfx) {
             window.MediaManager.playSfx('notification');
         }
         // Mark that we have a pending turn digest - will emit when resources arrive
         pendingTurnDigest = turnNumber;
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send("//victoryprogress");
+        }
     }
     // New round (legacy)
     else if (message === "newround:") {
-        document.getElementById("nextTurnText").innerHTML = 'Next Turn';
-        document.getElementById("turnRedFlashWhenLow").innerHTML = '180s';
-        turnTimer = 180;
-        clearInterval(turnInterval);
-        turnInterval = setInterval(updateTimer, 1000);
+        beginTurnCountdown(currentTurnNumber || 1);
     }
     // Owned sector information
     else if (message.indexOf("ownsector:") === 0) {
@@ -592,6 +910,15 @@ function handleWebSocketMessage(message) {
     // Technology information
     else if (message.indexOf("tech:") === 0) {
         updateTechLevels(message);
+    }
+    else if (message.indexOf("techstate::") === 0) {
+        updateTechState(message);
+    }
+    else if (message.indexOf("empire::") === 0) {
+        updateEmpireSummary(message);
+    }
+    else if (message.indexOf("victoryprogress::") === 0) {
+        updateVictoryProgress(message);
     }
     // 10 second countdown
     else if (message === "start10:") {
@@ -625,6 +952,10 @@ function handleWebSocketMessage(message) {
     else if (message.indexOf("mapstate::") === 0) {
         updateMapState(message);
     }
+    // Fleet movement broadcast (visible to everyone with sensor coverage)
+    else if (message.indexOf("fleetmove::") === 0) {
+        handleFleetMove(message);
+    }
     // Chat or other messages
     else {
         updateMapFromPlainTextMessage(message);
@@ -642,7 +973,9 @@ function updateMapFromPlainTextMessage(message) {
     const sectorCapture = battleReport || /(?:Victory|Defeat)!.*sector\s+([0-9a-f]+)/i.exec(message);
     if (!sectorCapture) return;
 
-    const sector = sectorCapture[1];
+    // Battle reports now use decimal sector numbers; old ones used hex tokens.
+    const sector = parseSectorRef(sectorCapture[1]);
+    if (!Number.isFinite(sector)) return;
     if (window.GalaxyMap?.clearBattleSector) {
         window.GalaxyMap.clearBattleSector(sector);
     }
@@ -650,8 +983,18 @@ function updateMapFromPlainTextMessage(message) {
         window.GalaxyMap.highlightSector(sector);
     }
     if (window.GameScreen?.setTitle) {
-        window.GameScreen.setTitle(`Battle Resolved: Sector ${formatSectorLabel(sector)}`, `Battle Resolved: Sector ${formatSectorLabel(sector)} - Game of Worlds`);
+        window.GameScreen.setTitle(`Battle Resolved: Sector ${sector}`, `Battle Resolved: Sector ${sector} - Game of Worlds`);
     }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
 }
 
 function updateBuildings(message) {
@@ -677,6 +1020,39 @@ function updateBuildings(message) {
     if (window.GameUI && window.GameUI.updateBuildings) {
         window.GameUI.updateBuildings(buildings);
     }
+}
+
+function getBuildingCounts(buildings) {
+    const counts = {
+        metalExtractor: 0,
+        crystalRefinery: 0,
+        researchAcademy: 0,
+        spaceport: 0,
+        orbitalTurret: 0,
+        warpgate: 0
+    };
+
+    const assignCount = (type, count = 1) => {
+        const numericType = Number(type);
+        const numericCount = Number(count) || 0;
+        if (numericCount <= 0) return;
+        switch (numericType) {
+            case 0: counts.metalExtractor += numericCount; break;
+            case 1: counts.crystalRefinery += numericCount; break;
+            case 2: counts.researchAcademy += numericCount; break;
+            case 3: counts.spaceport += numericCount; break;
+            case 4: counts.orbitalTurret += numericCount; break;
+            case 5: counts.warpgate += numericCount; break;
+        }
+    };
+
+    if (Array.isArray(buildings)) {
+        buildings.forEach(building => assignCount(building && building.type, building && building.count ? building.count : 1));
+    } else if (buildings && typeof buildings === 'object') {
+        Object.entries(buildings).forEach(([type, count]) => assignCount(type, count));
+    }
+
+    return counts;
 }
 
 function updateSectorInfo(message) {
@@ -708,20 +1084,40 @@ function updateSectorInfo(message) {
             buildings: data.buildings || []
         };
 
-        // Store in game state
-        GAME_STATE.selectedSectorData = sectorData;
-        GAME_STATE.selectedSector = sectorId;
+        const playerId = getCookie('userId');
+        const numericOwnerId = Number(ownerId);
+        const numericPlayerId = Number(playerId);
+        const selectedFromMap = Number(window.GalaxyMap?.getSelectedSector?.() || GAME_STATE.selectedSector || 0);
+        const isMyHomeworld = sectorType === 10 && numericOwnerId && numericOwnerId === numericPlayerId;
+        const shouldFocusPanel = selectedFromMap === sectorId || (!GAME_STATE.selectedSector && isMyHomeworld);
 
-        // Feed the 3D galaxy view with the full sector picture
-        if (window.Galaxy3D && window.Galaxy3D.setSectorDetail) {
-            window.Galaxy3D.setSectorDetail(sectorData);
+        GAME_STATE.mapSectors[sectorId] = {
+            ...(GAME_STATE.mapSectors[sectorId] || {}),
+            id: sectorId,
+            status: isMyHomeworld ? 'homeworld' : undefined,
+            type: sectorType,
+            live: true,
+            seen: true
+        };
+
+        if (shouldFocusPanel) {
+            GAME_STATE.selectedSectorData = sectorData;
+            GAME_STATE.selectedSector = sectorId;
+            if (window.Galaxy3D && window.Galaxy3D.setSectorDetail) {
+                window.Galaxy3D.setSectorDetail(sectorData);
+            }
+        }
+
+        // Probe intel report (spy ladder results travel with probed sector data)
+        if (data.intel) {
+            renderSectorIntel(sectorId, data.intel);
+        } else if (shouldFocusPanel) {
+            const intelBox = document.getElementById('sectorIntel');
+            if (intelBox) intelBox.style.display = 'none';
         }
 
         // Update minimap for this sector
-        const playerId = getCookie('userId');
         let status = 'neutral';
-        const numericOwnerId = Number(ownerId);
-        const numericPlayerId = Number(playerId);
 
         if (sectorType === 2) {
             status = 'blackhole';
@@ -772,12 +1168,16 @@ function updateSectorInfo(message) {
         }
 
         // Update UI
-        if (window.GameUI && window.GameUI.updateSectorDisplay) {
+        if (shouldFocusPanel && window.GameUI && window.GameUI.updateSectorDisplay) {
             window.GameUI.updateSectorDisplay(sectorData);
         }
 
+        if (shouldFocusPanel && window.GameUI && window.GameUI.updateBuildings) {
+            window.GameUI.updateBuildings(getBuildingCounts(sectorData.buildings));
+        }
+
         // Update ship counts
-        if (window.GameUI && window.GameUI.updateFleetDisplay) {
+        if (shouldFocusPanel && window.GameUI && window.GameUI.updateFleetDisplay) {
             window.GameUI.updateFleetDisplay(sectorData.ships);
         }
     } catch (e) {
@@ -827,6 +1227,7 @@ function updateResources(message) {
     if (window.GameUI && window.GameUI.updateResources) {
         window.GameUI.updateResources(resources.metal, resources.crystal, resources.research);
     }
+    renderTechTree();
 
     // If we have a pending turn digest, emit it now that resources are updated
     if (pendingTurnDigest !== null) {
@@ -900,7 +1301,7 @@ function updateMapConfig(message) {
 }
 
 function updateMapState(message) {
-    // Format: mapstate::sectorId:status:fleetSize,sectorId:status:fleetSize,...
+    // Format: mapstate::sectorId:status:fleetSize:sectorType:live:flags,...
     const parts = message.split('::');
     if (parts.length < 2) return;
 
@@ -914,19 +1315,41 @@ function updateMapState(message) {
         'colonized': 5,  // COLONIZED
         'homeworld': 6,  // HOMEWORLD
         'warpgate': 7,   // WARPGATE
-        'artifact': 8    // ARTIFACT
+        'artifact': 8,   // ARTIFACT
+        'fleet': 9       // FLEET - your ships hold an unclaimed sector
     };
 
     const sectorData = parts[1] ? parts[1].split(',') : [];
     sectorData.forEach(data => {
-        const [sectorId, status, fleetSize, sectorType] = data.split(':');
+        const [sectorId, status, fleetSize, sectorType, liveFlag, flagsRaw] = data.split(':');
         const id = parseInt(sectorId, 10);
+        if (!Number.isFinite(id)) return;
         const fleet = parseInt(fleetSize, 10) || 0;
         const numericStatus = statusMap[status] !== undefined ? statusMap[status] : 0;
-        const details = { fleetSize: fleet };
+        const flags = parseInt(flagsRaw, 10) || 0;
+        const live = liveFlag !== '0';
+        const details = {
+            fleetSize: fleet,
+            live,
+            flags,
+            indicator: mapFlagsToIndicator(flags, status)
+        };
         const parsedType = parseInt(sectorType, 10);
         if (Number.isFinite(parsedType)) {
             details.type = parsedType;
+        }
+
+        GAME_STATE.mapSectors[id] = {
+            id,
+            status,
+            fleetSize: fleet,
+            type: Number.isFinite(parsedType) ? parsedType : null,
+            live,
+            flags,
+            seen: true
+        };
+        if (flags & 1) {
+            GAME_STATE.player.homeworld = id;
         }
 
         // Update minimap + 3D galaxy view
@@ -934,6 +1357,68 @@ function updateMapState(message) {
             window.GalaxyMap.updateSectorStatus(id, numericStatus, details);
         }
     });
+}
+
+function handleFleetMove(message) {
+    const parts = message.split('::');
+    if (parts.length < 5) return;
+    const from = parseSectorRef(parts[1]);
+    const to = parseSectorRef(parts[2]);
+    const ownerId = Number(parts[3]);
+    const count = Number(parts[4]) || 0;
+    const viaWarpGate = parts[5] === '1';
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return;
+    const mine = ownerId === Number(getCookie('userId'));
+    if (typeof g3dCall === 'function') {
+        g3dCall('animateFleetMove', from, to, { mine, count, warp: viaWarpGate });
+    }
+    if (window.GalaxyMap?.flashSector) {
+        window.GalaxyMap.flashSector(to, mine ? '#66d9ff' : '#ff6b6b');
+    }
+    if (!mine) {
+        const text = `Enemy fleet (${count} ship${count === 1 ? '' : 's'}) moved from sector ${from} to ${to}${viaWarpGate ? ' via warp gate' : ''}.`;
+        pushEventFeed(text, 'battles');
+        if (window.NotificationSystem?.notify) {
+            window.NotificationSystem.notify('Enemy fleet movement', text, 'warning', 6000);
+        }
+    }
+}
+
+function mapFlagsToIndicator(flags, status) {
+    const labels = [];
+    if ((flags & 1) || status === 'homeworld') labels.push('H');
+    if (flags & 4) labels.push('C');
+    if (flags & 2) labels.push('T');
+    if (flags & 8) labels.push('W');
+    if (flags & 16) labels.push('E');
+    return labels.join('');
+}
+
+function focusHomeworld() {
+    const homeworld = Number(GAME_STATE.player.homeworld);
+    if (!Number.isFinite(homeworld) || homeworld <= 0) {
+        if (window.NotificationSystem?.notify) {
+            window.NotificationSystem.notify('Homeworld unknown', 'Homeworld data has not arrived yet.', 'warning', 3000);
+        }
+        return;
+    }
+    if (window.GalaxyMap?.selectSector) {
+        window.GalaxyMap.selectSector(homeworld);
+    } else {
+        changeSector(homeworld.toString(16).toUpperCase());
+    }
+}
+
+function colonizeSelectedSector() {
+    const selected = Number(window.GalaxyMap?.getSelectedSector?.() || GAME_STATE.selectedSector);
+    const suffix = Number.isFinite(selected) && selected > 0
+        ? `:${selected.toString(16).toUpperCase()}`
+        : '';
+    const multiMove = document.getElementById('multiMove');
+    if (multiMove) {
+        multiMove.style.display = 'none';
+    }
+    websocket.send(`//colonize${suffix}`);
 }
 
 function ensureEventPanel() {
@@ -1116,6 +1601,151 @@ function showCombatReportModal(report) {
     window.NotificationSystem.modal('Combat Report', body, actions);
 }
 
+function renderTechTree() {
+    const root = document.getElementById('techTreeRoot');
+    const techSystem = window.TechSystem;
+    if (!root || !techSystem || typeof techSystem.listByBranch !== 'function') return;
+
+    const levels = GAME_STATE.player.techLevels || {};
+    const research = Number(GAME_STATE.player.resources.research) || 0;
+    const researchEl = document.getElementById('techResearchAvailable');
+    if (researchEl) {
+        researchEl.textContent = String(Math.floor(research));
+    }
+
+    const branches = techSystem.BRANCHES || {};
+    const byBranch = techSystem.listByBranch();
+    root.innerHTML = '';
+
+    Object.keys(byBranch).forEach(branchKey => {
+        const branch = branches[branchKey] || { name: branchKey, color: '#4c7cff', blurb: '' };
+        const wrapper = document.createElement('section');
+        wrapper.className = 'tech-branch';
+        wrapper.style.borderColor = `${branch.color}66`;
+
+        const title = document.createElement('div');
+        title.className = 'tech-branch-title';
+        title.style.background = `${branch.color}2b`;
+        title.innerHTML = `<span>${escapeHtml(branch.name)}</span><small>${escapeHtml(branch.blurb || '')}</small>`;
+        wrapper.appendChild(title);
+
+        const grid = document.createElement('div');
+        grid.className = 'tech-grid';
+
+        byBranch[branchKey].forEach(tech => {
+            const current = Number(levels[tech.id]) || 0;
+            const maxed = current >= tech.maxLevel;
+            const cost = techSystem.nextLevelCost(tech.id, current);
+            const check = techSystem.canResearch(tech.id, levels, research);
+            const missing = techSystem.missingRequirements(tech, levels);
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'tech-card';
+            button.dataset.techId = String(tech.id);
+            button.style.borderLeft = `5px solid ${branch.color}`;
+            button.disabled = maxed || !check.ok;
+
+            const reason = maxed
+                ? 'Max level reached.'
+                : (missing.length ? `Requires ${missing.join(', ')}.` : (!check.ok ? check.reason : ''));
+            button.innerHTML = `
+                <div class="tech-name">${escapeHtml(tech.name)} Lv${current}/${tech.maxLevel}</div>
+                <div class="tech-cost">${maxed ? 'MAX' : `${cost}R`}</div>
+                <div class="tech-summary">${escapeHtml(tech.summary || '')}</div>
+                ${reason && !check.ok ? `<div class="tech-req">${escapeHtml(reason)}</div>` : ''}
+            `;
+            button.addEventListener('click', () => buyTech(tech.id));
+            grid.appendChild(button);
+        });
+
+        wrapper.appendChild(grid);
+        root.appendChild(wrapper);
+    });
+}
+
+function updateTechState(message) {
+    const payload = message.replace('techstate::', '');
+    try {
+        const data = JSON.parse(payload);
+        GAME_STATE.player.techLevels = data.levels || {};
+        if (Number.isFinite(Number(data.research))) {
+            GAME_STATE.player.resources.research = Number(data.research);
+            const researchEl = document.getElementById('researchresource');
+            if (researchEl) {
+                researchEl.textContent = ` ${Math.floor(Number(data.research))} Research`;
+            }
+        }
+        if (Number.isFinite(Number(data.homeworld))) {
+            GAME_STATE.player.homeworld = Number(data.homeworld);
+            const btn = document.getElementById('homeworldBtn');
+            if (btn) {
+                btn.title = `Focus homeworld sector ${GAME_STATE.player.homeworld}`;
+            }
+        }
+        renderTechTree();
+    } catch (err) {
+        console.warn('Failed to parse tech state', err);
+    }
+}
+
+function updateEmpireSummary(message) {
+    const payload = message.replace('empire::', '');
+    try {
+        const data = JSON.parse(payload);
+        GAME_STATE.empire = data;
+        const income = data.income || {};
+        const fleetTotal = Object.values(data.fleet || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+        const el = document.getElementById('empireSummary');
+        if (el) {
+            el.textContent = `Income: +${Math.floor(Number(income.metal) || 0)}M +${Math.floor(Number(income.crystal) || 0)}C +${Math.floor(Number(income.research) || 0)}R / turn | Worlds ${Number(data.worlds) || 0} | Sectors ${Number(data.sectors) || 0} | Fleet ${fleetTotal}`;
+        }
+    } catch (err) {
+        console.warn('Failed to parse empire summary', err);
+    }
+}
+
+function updateVictoryProgress(message) {
+    const payload = message.replace('victoryprogress::', '');
+    const el = document.getElementById('victoryProgress');
+    if (!el) return;
+
+    try {
+        const data = JSON.parse(payload);
+        const conditions = data.conditions || {};
+        const order = [
+            'Domination Victory',
+            'Elimination Victory',
+            'Economic Victory',
+            'Scientific Victory',
+            'Time Victory'
+        ];
+        const shortNames = {
+            'Domination Victory': 'Dom',
+            'Elimination Victory': 'Elim',
+            'Economic Victory': 'Econ',
+            'Scientific Victory': 'Sci',
+            'Time Victory': 'Time'
+        };
+
+        const entries = Object.entries(conditions)
+            .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
+            .map(([name, detail]) => {
+                const progress = Math.max(0, Math.min(100, Number(detail && detail.progress) || 0));
+                const suffix = detail && detail.achieved ? ' ready' : '';
+                return `${shortNames[name] || name.replace(' Victory', '')}: ${Math.floor(progress)}%${suffix}`;
+            });
+
+        el.textContent = entries.length > 0
+            ? `Victory: ${entries.join(' | ')}`
+            : 'Victory: none active';
+        el.title = Object.entries(conditions)
+            .map(([name, detail]) => `${name}: ${detail && detail.description ? detail.description : ''}`)
+            .join('\n');
+    } catch (err) {
+        console.warn('Failed to parse victory progress', err);
+    }
+}
+
 function updateTechLevels(message) {
     const parts = message.split(':');
     if (parts.length < 5) return;
@@ -1141,6 +1771,7 @@ function updateTechLevels(message) {
     if (tech2El) tech2El.textContent = techLevels.hulls;
     if (tech3El) tech3El.textContent = techLevels.shields;
     if (tech4El) tech4El.textContent = techLevels.engines;
+    renderTechTree();
 }
 
 function updateFleet(message) {
@@ -1202,9 +1833,11 @@ function updatePlayerList(message) {
 
 // Send multiple move fleet command
 function sendmmf() {
-    const sectorId = document.getElementById('sectorofattack').innerHTML;
+    // The hex wire token lives in data-token; the visible text is decimal.
+    const sectorEl = document.getElementById('sectorofattack');
+    const sectorId = sectorEl ? (sectorEl.dataset.token || sectorEl.innerHTML) : '';
     const shipList = document.getElementById('shipsFromNearBy');
-    
+
     if (!sectorId || !shipList) return;
     
     let message = sectorId;
@@ -1300,8 +1933,12 @@ window.buyBuilding = buyBuilding;
 window.sendmmf = sendmmf;
 window.changeSector = changeSector;
 window.leaveCurrentGame = leaveCurrentGame;
+window.focusHomeworld = focusHomeworld;
+window.colonizeSelectedSector = colonizeSelectedSector;
 
 document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('homeworldBtn')?.addEventListener('click', focusHomeworld);
+    document.getElementById('colonizeBtn')?.addEventListener('click', colonizeSelectedSector);
     // Standing orders panel removed - human players manage their empire manually
     // AI players use server-side automation instead
 });

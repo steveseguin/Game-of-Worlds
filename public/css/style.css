@@ -357,6 +357,244 @@ td {
     z-index: 1000;
 }
 
+.battle-summary-card {
+    position: fixed;
+    right: 18px;
+    top: 84px;
+    width: min(360px, calc(100vw - 36px));
+    z-index: 1200;
+    padding: 16px 18px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(117, 194, 255, 0.42);
+    background: linear-gradient(145deg, rgba(10, 15, 30, 0.96), rgba(24, 35, 60, 0.96));
+    color: #eef5ff;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.45);
+}
+
+.battle-summary-card h3 {
+    margin: 4px 28px 8px 0;
+    font-size: 18px;
+}
+
+.battle-summary-card p {
+    margin: 0 0 8px;
+    color: rgba(238, 245, 255, 0.82);
+    line-height: 1.4;
+}
+
+.battle-summary-eyebrow {
+    color: #77e7d1;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.battle-summary-reason {
+    font-size: 13px;
+}
+
+.battle-summary-stats {
+    display: grid;
+    gap: 5px;
+    margin-top: 10px;
+    color: #bdd5ff;
+    font-size: 12px;
+}
+
+.battle-summary-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #eaf1ff;
+    cursor: pointer;
+}
+
+.game-over-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 6200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(3, 6, 14, 0.74);
+    backdrop-filter: blur(5px);
+}
+
+.game-over-modal.hidden {
+    display: none;
+}
+
+.game-over-card {
+    width: min(460px, calc(100vw - 40px));
+    padding: 24px;
+    border-radius: 14px;
+    border: 1px solid rgba(117, 194, 255, 0.35);
+    background: linear-gradient(145deg, rgba(10, 15, 30, 0.98), rgba(25, 35, 60, 0.98));
+    color: #eef5ff;
+    box-shadow: 0 22px 58px rgba(0, 0, 0, 0.5);
+}
+
+.game-over-eyebrow {
+    color: #77e7d1;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.game-over-card h2 {
+    margin: 6px 0 10px;
+    font-size: 30px;
+}
+
+.game-over-card p {
+    margin: 0;
+    color: rgba(238, 245, 255, 0.82);
+    line-height: 1.5;
+}
+
+.game-over-card .game-over-guest-prompt {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 210, 122, 0.45);
+    border-radius: 8px;
+    background: rgba(255, 184, 77, 0.1);
+    color: rgba(255, 234, 190, 0.92);
+    font-size: 13px;
+}
+
+.game-over-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+}
+
+.game-over-actions button {
+    padding: 10px 14px;
+    border-radius: 9px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.probe-suggestion-card {
+    position: fixed;
+    right: 18px;
+    top: 150px;
+    width: min(320px, calc(100vw - 36px));
+    z-index: 1190;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 210, 122, 0.45);
+    background: linear-gradient(145deg, rgba(12, 16, 32, 0.96), rgba(42, 34, 20, 0.96));
+    color: #eef5ff;
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
+}
+
+.probe-suggestion-card h3 {
+    margin: 4px 28px 8px 0;
+    font-size: 16px;
+}
+
+.probe-suggestion-card p {
+    margin: 0;
+    color: rgba(238, 245, 255, 0.8);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.probe-suggestion-eyebrow {
+    color: #ffd27a;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.probe-suggestion-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.probe-suggestion-actions button {
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.probe-suggestion-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #eaf1ff;
+    cursor: pointer;
+}
+
+.analytics-player-card,
+.analytics-recent-item {
+    padding: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.035);
+    color: #dbe6ff;
+    font-size: 12px;
+}
+
+.analytics-player-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    color: #eef5ff;
+}
+
+.analytics-ship-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.analytics-ship-table th,
+.analytics-ship-table td {
+    padding: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    text-align: left;
+}
+
+.analytics-ship-positive {
+    color: #7ff0c4;
+}
+
+.analytics-ship-negative {
+    color: #ffb4a8;
+}
+
+.analytics-status-good {
+    color: #7ff0c4 !important;
+}
+
+.analytics-status-warn {
+    color: #ffd27a !important;
+}
+
+.analytics-status-error {
+    color: #ff9f9f !important;
+}
+
 /* Multi-move dialog */
 #multiMove {
     z-index: 200;

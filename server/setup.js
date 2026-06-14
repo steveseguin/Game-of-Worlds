@@ -102,6 +102,25 @@ function ensureReferralSchema(conn, callback) {
     });
 }
 
+function ensureGuestAccessSchema(conn, callback) {
+    ensureColumn(conn, 'users', 'is_guest', 'TINYINT DEFAULT 0', err => {
+        if (err) {
+            return callback(err);
+        }
+        ensureColumn(conn, 'users', 'guest_token_hash', 'VARCHAR(128) DEFAULT NULL', err => {
+            if (err) {
+                return callback(err);
+            }
+            ensureColumn(conn, 'games', 'registered_only', 'TINYINT DEFAULT 0', err => {
+                if (err) {
+                    return callback(err);
+                }
+                ensureColumn(conn, 'games', 'min_level', 'INT DEFAULT 0', callback);
+            });
+        });
+    });
+}
+
 function finalizeSetup() {
     if (autoCreateGame) {
         createNewGame();
@@ -168,6 +187,8 @@ connection.connect(err => {
                     email VARCHAR(255),
                     currentgame INT,
                     tempkey VARCHAR(64),
+                    is_guest TINYINT DEFAULT 0,
+                    guest_token_hash VARCHAR(128) DEFAULT NULL,
                     created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             `, err => {
@@ -192,6 +213,8 @@ connection.connect(err => {
                         winner INT DEFAULT NULL,
                         mode VARCHAR(16) DEFAULT 'quick',
                         status VARCHAR(32) DEFAULT 'waiting',
+                        registered_only TINYINT DEFAULT 0,
+                        min_level INT DEFAULT 0,
                         created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (creator) REFERENCES users(id)
                     )
@@ -268,10 +291,17 @@ connection.connect(err => {
                                         console.error('Error configuring referral columns:', err);
                                         process.exit(1);
                                     }
-                                    
-                                    console.log('All tables created successfully!');
-                                    
-                                    finalizeSetup();
+
+                                    ensureGuestAccessSchema(connection, err => {
+                                        if (err) {
+                                            console.error('Error configuring guest/access columns:', err);
+                                            process.exit(1);
+                                        }
+
+                                        console.log('All tables created successfully!');
+
+                                        finalizeSetup();
+                                    });
                                 });
                             });
                         });

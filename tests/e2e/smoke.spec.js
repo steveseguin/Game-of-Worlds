@@ -31,6 +31,10 @@ test('signup → lobby → create game → add AI → start game', async ({ page
   await page.getByPlaceholder('Game Name').fill(`Smoke ${Date.now()}`);
   await page.getByRole('button', { name: /Create Game/i }).click();
 
+  await expect(page.locator('#raceSelectionModal')).toBeVisible({ timeout: 10000 });
+  await page.locator('.race-card:not(.locked)').first().click();
+  await page.getByRole('button', { name: /Confirm Selection/i }).click();
+
   await expect(page.getByText(/Waiting in Game/)).toBeVisible({ timeout: 10000 });
 
   // Add AI (defaults)

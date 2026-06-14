@@ -151,17 +151,18 @@
                 // Get required slots and cost
                 let requiredSlots = 0;
                 let metalCost = 0;
+                let crystalCost = 0;
                 
                 switch (i) {
-                    case 1: requiredSlots = 3; metalCost = 300; break; // Frigate
-                    case 2: requiredSlots = 5; metalCost = 500; break; // Destroyer
+                    case 1: requiredSlots = 3; metalCost = 430; break; // Frigate
+                    case 2: requiredSlots = 5; metalCost = 780; break; // Destroyer
                     case 3: requiredSlots = 1; metalCost = 200; break; // Scout
-                    case 4: requiredSlots = 8; metalCost = 900; break; // Cruiser
-                    case 5: requiredSlots = 12; metalCost = 1600; break; // Battleship
+                    case 4: requiredSlots = 8; metalCost = 980; crystalCost = 120; break; // Cruiser
+                    case 5: requiredSlots = 12; metalCost = 1650; crystalCost = 220; break; // Battleship
                     case 6: requiredSlots = 7; metalCost = 1000; break; // Colony Ship
-                    case 7: requiredSlots = 20; metalCost = 4400; break; // Dreadnought
-                    case 8: requiredSlots = 5; metalCost = 1200; break; // Intruder
-                    case 9: requiredSlots = 15; metalCost = 3000; break; // Carrier
+                    case 7: requiredSlots = 24; metalCost = 3200; crystalCost = 450; break; // Dreadnought
+                    case 8: requiredSlots = 7; metalCost = 1950; crystalCost = 133; break; // Intruder
+                    case 9: requiredSlots = 16; metalCost = 3000; crystalCost = 80; break; // Carrier
                 }
                 
                 // Check for warp gate requirement for carriers
@@ -174,8 +175,8 @@
                     shipButton.classList.add('disabled');
                     shipButton.disabled = true;
                 }
-                // Check if enough metal
-                else if ((playerResources?.metal || 0) < metalCost) {
+                // Check if enough resources
+                else if ((playerResources?.metal || 0) < metalCost || (playerResources?.crystal || 0) < crystalCost) {
                     shipButton.classList.add('disabled');
                     shipButton.disabled = true;
                 }

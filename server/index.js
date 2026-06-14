@@ -213,6 +213,15 @@ function connectToDatabase() {
 
             console.log(`Connected to database (pool size: ${DB_POOL_SIZE})`);
             setActiveDatabase(pool);
+            serverLogic.resumeActiveGamesFromDatabase()
+                .then(count => {
+                    if (count > 0) {
+                        console.log(`Resumed turn timers for ${count} active game${count === 1 ? '' : 's'}`);
+                    }
+                })
+                .catch(resumeErr => {
+                    console.error('Unable to resume active game timers:', resumeErr.message || resumeErr);
+                });
         });
     });
 
@@ -244,6 +253,11 @@ const httpServer = http.createServer((request, response) => {
     // Handle API endpoints
     if (pathname === '/login' && request.method === 'POST') {
         serverLogic.handleLogin(request, response);
+        return;
+    }
+
+    if (pathname === '/guest-login' && request.method === 'POST') {
+        serverLogic.handleGuestLogin(request, response);
         return;
     }
     
@@ -341,6 +355,12 @@ const httpServer = http.createServer((request, response) => {
     const combatTelemetryMatch = pathname.match(/^\/api\/game\/(\d+)\/combat-telemetry$/);
     if (combatTelemetryMatch && request.method === 'GET') {
         serverLogic.handleGetCombatTelemetry(request, response, combatTelemetryMatch[1]);
+        return;
+    }
+
+    const testMapTerrainMatch = pathname.match(/^\/api\/game\/(\d+)\/test-map-terrain$/);
+    if (testMapTerrainMatch && request.method === 'GET') {
+        serverLogic.handleGetTestMapTerrain(request, response, testMapTerrainMatch[1]);
         return;
     }
     
@@ -564,6 +584,7 @@ wsServer.on('request', request => {
 // Handle commands from clients
 function handleCommand(data, connection) {
     const command = data.split(":")[0].substring(2);
+    serverLogic.markPlayerGameActivity(connection);
     
     switch (command) {
         case "start":
@@ -591,10 +612,16 @@ function handleCommand(data, connection) {
             serverLogic.handleSurrender(connection);
             break;
         case "colonize":
-            serverLogic.colonizePlanet(connection);
+            serverLogic.colonizePlanet(connection, data);
             break;
         case "buytech":
             serverLogic.buyTech(data, connection);
+            break;
+        case "techstate":
+            serverLogic.handleTechStateRequest(data, connection);
+            break;
+        case "victoryprogress":
+            serverLogic.handleVictoryProgressRequest(connection);
             break;
         case "probe":
             serverLogic.probeSector(data, connection);
@@ -620,6 +647,9 @@ function handleCommand(data, connection) {
         case "update":
             serverLogic.updateResources(connection);
             if (connection.gameid) {
+                serverLogic.sendTechState(connection);
+                serverLogic.sendEmpireSummary(connection);
+                serverLogic.sendVictoryProgress(connection);
                 serverLogic.updateAllSectors(connection.gameid, connection);
             }
             break;
@@ -710,6 +740,9 @@ function authUser(message, connection) {
                 if (payload && payload.started) {
                     connection.sendUTF("You have re-connected to a game that is already in progress.");
                     serverLogic.updateResources(connection);
+                    serverLogic.sendTechState(connection);
+                    serverLogic.sendEmpireSummary(connection);
+                    serverLogic.sendVictoryProgress(connection);
                     serverLogic.updateAllSectors(connection.gameid, connection);
                 } else if (payload && payload.gameId) {
                     connection.sendUTF("The game has yet to begin. Welcome.");

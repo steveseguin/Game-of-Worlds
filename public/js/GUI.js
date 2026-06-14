@@ -47,14 +47,19 @@ const GameUI = (function() {
 		document.getElementById('fleettab')?.addEventListener('click', () => switchTab('fleet'));
 		document.getElementById('techtab')?.addEventListener('click', () => switchTab('techtree'));
 		document.getElementById('colonizetab')?.addEventListener('click', () => switchTab('colonize'));
+		document.getElementById('analyticstab')?.addEventListener('click', () => switchTab('analytics'));
 	}
     
     // Switch tabs
     function switchTab(tabName) {
         state.selectedTab = tabName;
+        const multiMove = document.getElementById('multiMove');
+        if (multiMove) {
+            multiMove.style.display = 'none';
+        }
         
         // Hide all panels
-        const panels = ['build', 'fleet', 'techtree', 'colonize'];
+        const panels = ['build', 'fleet', 'techtree', 'colonize', 'analytics'];
         panels.forEach(panel => {
             const element = document.getElementById(panel);
             if (element) element.classList.add('hidden');
@@ -65,8 +70,15 @@ const GameUI = (function() {
         if (selectedPanel) selectedPanel.classList.remove('hidden');
         
         // Update tab buttons
+        const tabButtons = {
+            build: 'buildtab',
+            fleet: 'fleettab',
+            techtree: 'techtab',
+            colonize: 'colonizetab',
+            analytics: 'analyticstab'
+        };
         panels.forEach(panel => {
-            const button = document.getElementById(`${panel}tab`);
+            const button = document.getElementById(tabButtons[panel]);
             if (button) {
                 button.classList.remove('active');
                 if (panel === tabName) button.classList.add('active');
@@ -155,6 +167,15 @@ const GameUI = (function() {
             document.getElementById('metalbonus').textContent = 'Metal Production: N/A';
             document.getElementById('crystalbonus').textContent = 'Crystal Production: N/A';
             document.getElementById('terraformlvl').textContent = 'Cannot be colonized';
+        }
+
+        // Building slots: mirrors BUILDING_SLOTS_BY_TYPE on the server.
+        const slotsByType = { 1: 1, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6 };
+        const slotsEl = document.getElementById('sectorslots');
+        if (slotsEl) {
+            const maxSlots = slotsByType[sectorData.type] || 0;
+            const used = Array.isArray(sectorData.buildings) ? sectorData.buildings.length : 0;
+            slotsEl.textContent = maxSlots > 0 ? `Slots: ${used}/${maxSlots}` : 'Slots: none';
         }
         
         // Update sector image (legacy backdrop; only type1-9.jpg exist, homeworld uses planet art)
@@ -332,10 +353,12 @@ const GameUI = (function() {
 		const multiMoveDiv = document.getElementById('multiMove');
 		if (!multiMoveDiv) return;
 		
-		// Update sector display
+		// Update sector display: show decimal, keep the hex wire token aside
 		const sectorDisplay = document.getElementById('sectorofattack');
 		if (sectorDisplay) {
-			sectorDisplay.textContent = targetSector;
+			sectorDisplay.dataset.token = targetSector;
+			const decimal = parseInt(targetSector, 16);
+			sectorDisplay.textContent = Number.isFinite(decimal) ? String(decimal) : targetSector;
 		}
 		
 		// Clear existing options
@@ -365,13 +388,14 @@ const GameUI = (function() {
 					"Intruder", "Carrier"
 				];
 				
-				// Add options for each ship type
+				// Add options for each ship type (hex token in value, decimal in label)
+				const sectorLabel = Number.isFinite(parseInt(sectorId, 16)) ? parseInt(sectorId, 16) : sectorId;
 				shipCounts.forEach((count, idx) => {
 					if (count > 0) {
 						for (let k = 1; k <= count; k++) {
 							const option = document.createElement('option');
 							option.value = `${sectorId}:${idx + 1}:${k}`;
-							option.text = `${shipNames[idx]} ${k} in sector ${sectorId}`;
+							option.text = `${shipNames[idx]} ${k} in sector ${sectorLabel}`;
 							shipList.add(option);
 						}
 					}

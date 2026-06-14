@@ -57,10 +57,25 @@ const GAME_MODE_OPTIONS = [
 ];
 let currentPlayerDetails = [];
 let currentGameMode = 'quick';
+let currentRegisteredOnly = false;
+let currentMinLevel = 0;
 let countdownSeconds = null;
 
 function formatModeLabel(mode) {
     return mode === 'epic' ? 'Epic (1/day turn)' : 'Quick (fast turns)';
+}
+
+function renderAccessBadges(registeredOnly, minLevel) {
+    const badges = [];
+    if (registeredOnly) {
+        badges.push('<span class="chip chip-waiting">Registered</span>');
+    } else {
+        badges.push('<span class="chip chip-mode">Guests OK</span>');
+    }
+    if (Number(minLevel) > 0) {
+        badges.push(`<span class="chip chip-progress">Level ${Number(minLevel)}+</span>`);
+    }
+    return badges.join('');
 }
 
 function setLobbyConnectionState(state, message) {
@@ -100,11 +115,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     setLobbyConnectionState('connecting');
+    configureGuestCreateOptions();
     initWebSocket();
 
     document.getElementById('createGameBtn').addEventListener('click', createGame);
     document.getElementById('refreshGamesBtn').addEventListener('click', refreshGames);
 });
+
+function configureGuestCreateOptions() {
+    const isGuest = localStorage.getItem('gowIsGuest') === '1';
+    const registeredOnly = document.getElementById('registeredOnly');
+    const minLevel = document.getElementById('minLevel');
+    if (registeredOnly) {
+        registeredOnly.disabled = isGuest;
+        registeredOnly.checked = false;
+        registeredOnly.title = isGuest ? 'Register to create registered-only rooms' : '';
+    }
+    if (minLevel) {
+        minLevel.disabled = isGuest;
+        minLevel.value = '0';
+        minLevel.title = isGuest ? 'Register to create level-gated rooms' : '';
+    }
+}
 
 function initWebSocket() {
     websocket = new WebSocket(getWebSocketUrl());
@@ -351,9 +383,12 @@ function createGame() {
     const maxPlayers = document.getElementById('maxPlayers').value;
     const modeSelect = document.getElementById('gameMode');
     const mode = modeSelect ? modeSelect.value : 'quick';
+    const registeredOnly = document.getElementById('registeredOnly')?.checked ? 1 : 0;
+    const minLevelSelect = document.getElementById('minLevel');
+    const minLevel = Math.max(0, Math.min(100, parseInt(minLevelSelect?.value || '0', 10) || 0));
     isCreatingGame = true;
     setCreateGameButtonState(true);
-    websocket.send(`//creategame:${encodeURIComponent(gameName)}:${maxPlayers}:${mode}`);
+    websocket.send(`//creategame:${encodeURIComponent(gameName)}:${maxPlayers}:${mode}:${registeredOnly}:${minLevel}`);
 }
 
 function refreshGames() {
@@ -421,6 +456,8 @@ function updateGameList(rawPayload) {
         const maxPlayers = parseInt(parts[3], 10) || 0;
         const statusRaw = (parts[4] || 'waiting').toLowerCase();
         const mode = (parts[5] || 'quick').toLowerCase();
+        const registeredOnly = parts[6] === '1';
+        const minLevel = parseInt(parts[7], 10) || 0;
 
         const safeName = escapeHtml(name || `Game ${gameId}`);
         const statusLabel = statusRaw === 'waiting'
@@ -429,12 +466,15 @@ function updateGameList(rawPayload) {
         const canJoin = statusRaw === 'waiting' && (maxPlayers === 0 || playerCount < maxPlayers);
         const statusBadge = `<span class="chip ${statusRaw === 'waiting' ? 'chip-waiting' : statusRaw === 'full' ? 'chip-error' : 'chip-progress'}">${statusLabel}</span>`;
         const modeBadge = `<span class="chip chip-mode">${formatModeLabel(mode)}</span>`;
+        const accessBadges = renderAccessBadges(registeredOnly, minLevel);
 
         if (currentGameId === gameId) {
             currentGameName = safeName;
             currentMaxPlayers = maxPlayers;
             currentPlayerCount = playerCount;
             currentGameMode = mode;
+            currentRegisteredOnly = registeredOnly;
+            currentMinLevel = minLevel;
             currentGameStatus = 'waiting';
             currentGameStarted = false;
             waitingGameUpdated = true;
@@ -457,6 +497,7 @@ function updateGameList(rawPayload) {
                 <td data-label="Name">${safeName}</td>
                 <td data-label="Players">${playersLabel}</td>
                 <td data-label="Mode">${modeBadge}</td>
+                <td data-label="Access">${accessBadges}</td>
                 <td data-label="Status">${statusBadge}</td>
                 <td data-label="Action">${action}</td>
             </tr>
@@ -490,6 +531,7 @@ function renderGameTable(rows, renderedRows) {
             <th>Name</th>
             <th>Players</th>
             <th>Mode</th>
+            <th>Access</th>
             <th>Status</th>
             <th>Action</th>
         </tr>
@@ -500,7 +542,7 @@ function renderGameTable(rows, renderedRows) {
     if (renderedRows === 0) {
         html += `
             <tr>
-                <td colspan="6" style="text-align:center;">No games available</td>
+                <td colspan="7" style="text-align:center;">No games available</td>
             </tr>
         `;
     }
@@ -535,6 +577,7 @@ function renderWaitingView() {
     const inviteLink = `${window.location.origin}/lobby.html?game=${currentGameId}`;
     const modeLabel = formatModeLabel(currentGameMode);
     const titleName = currentGameName ? escapeHtml(currentGameName) : `Game ${currentGameId}`;
+    const accessBadges = renderAccessBadges(currentRegisteredOnly, currentMinLevel);
 
     // Status pill (color depends on state)
     let statusText, statusClass;
@@ -578,7 +621,7 @@ function renderWaitingView() {
 
     const aiControls = isCurrentGameCreator && hasOpenSeat && !countdownActive
         ? `
-            <details class="ai-section">
+            <details class="ai-section" open>
                 <summary>Add AI opponent</summary>
                 <div class="ai-section-row">
                     <label>Difficulty
@@ -591,7 +634,7 @@ function renderWaitingView() {
                             ${AI_STRATEGY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
                         </select>
                     </label>
-                    <button class="ghost" onclick="addAiPlayer()" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>+ Add AI</button>
+                    <button class="ghost" onclick="addAiPlayer()" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Add AI Opponent</button>
                 </div>
             </details>
           `
@@ -604,17 +647,19 @@ function renderWaitingView() {
 
     gameList.innerHTML = `
         <tr>
-            <td colspan="6" class="waiting-cell">
+            <td colspan="7" class="waiting-cell">
                 <div class="waiting-view">
                     <header class="waiting-header">
                         <div>
                             <div class="waiting-eyebrow">🎮 Waiting room · Game ${currentGameId}</div>
-                            <h3>${titleName}</h3>
+                            <h3>Waiting in Game ${currentGameId}</h3>
+                            <div class="waiting-game-name">${titleName}</div>
                         </div>
                         <div class="waiting-meta">
                             <span class="chip ${statusClass}">${statusText}</span>
                             <span class="chip chip-mode">${modeLabel}</span>
-                            <span class="chip">${currentPlayerCount}/${maxLabel} players</span>
+                            ${accessBadges}
+                            <span class="chip">Players: ${currentPlayerCount}/${maxLabel}</span>
                         </div>
                     </header>
 
@@ -668,6 +713,7 @@ function renderActiveGameView() {
     const titleName = currentGameName ? escapeHtml(currentGameName) : `Game ${currentGameId}`;
     const modeLabel = formatModeLabel(currentGameMode);
     const playerLabel = currentPlayerCount > 0 ? `${currentPlayerCount} players` : 'Players loading';
+    const accessBadges = renderAccessBadges(currentRegisteredOnly, currentMinLevel);
     const playersHtml = currentPlayerDetails.length > 0
         ? `<section class="waiting-players">
                <div class="section-label">Commanders</div>
@@ -677,7 +723,7 @@ function renderActiveGameView() {
 
     gameList.innerHTML = `
         <tr>
-            <td colspan="6" class="waiting-cell">
+            <td colspan="7" class="waiting-cell">
                 <div class="waiting-view">
                     <header class="waiting-header">
                         <div>
@@ -687,6 +733,7 @@ function renderActiveGameView() {
                         <div class="waiting-meta">
                             <span class="chip chip-progress">In progress</span>
                             <span class="chip chip-mode">${modeLabel}</span>
+                            ${accessBadges}
                             <span class="chip">${playerLabel}</span>
                         </div>
                     </header>
@@ -712,11 +759,14 @@ function renderPlayerSlot(player) {
     const aiBadges = isAi
         ? `<span class="slot-tag ai">${escapeHtml(player.aiDiff || 'ai')}</span><span class="slot-tag ai">${escapeHtml(player.aiStrat || 'balanced')}</span>`
         : '';
+    const accountBadges = isAi
+        ? ''
+        : `<span class="slot-tag level">Lvl ${Number(player.level) || 1}</span><span class="slot-tag ${player.isGuest ? 'guest' : 'registered'}">${player.isGuest ? 'Guest' : 'Registered'}</span>`;
     return `<li class="player-slot ${isAi ? 'is-ai' : ''}">
         <span class="slot-icon">${isAi ? '🤖' : '👤'}</span>
         <span class="slot-text">
             <span class="slot-name">${safeName}${meBadge}</span>
-            <span class="slot-meta"><span class="slot-tag">${race}</span>${aiBadges}</span>
+            <span class="slot-meta"><span class="slot-tag">${race}</span>${accountBadges}${aiBadges}</span>
         </span>
     </li>`;
 }
@@ -733,11 +783,12 @@ function renderGameListSkeleton(message) {
             <th>Name</th>
             <th>Players</th>
             <th>Mode</th>
+            <th>Access</th>
             <th>Status</th>
             <th>Action</th>
         </tr>
         <tr>
-            <td colspan="6">${escapeHtml(message)}</td>
+            <td colspan="7">${escapeHtml(message)}</td>
         </tr>
     `;
 }
@@ -778,6 +829,8 @@ function clearCurrentGameTracking() {
     currentRaceId = null;
     currentRaceName = '';
     currentGameMode = 'quick';
+    currentRegisteredOnly = false;
+    currentMinLevel = 0;
     currentGameStatus = 'waiting';
     currentGameStarted = false;
     countdownSeconds = null;
@@ -994,6 +1047,8 @@ function hydrateCurrentGame(payload) {
     currentRaceId = Number(payload.raceId) || currentRaceId || null;
     currentRaceName = payload.raceName || currentRaceName || getRaceName(currentRaceId);
     currentGameMode = (payload.mode || 'quick').toLowerCase();
+    currentRegisteredOnly = payload.registeredOnly === true || payload.registeredOnly === 1 || payload.registeredOnly === '1';
+    currentMinLevel = Math.max(0, Math.min(100, Number(payload.minLevel) || 0));
     currentGameStatus = (payload.status || (payload.started ? 'in-progress' : 'waiting')).toLowerCase();
     currentGameStarted = Boolean(payload.started) || currentGameStatus === 'in-progress' || currentGameStatus === 'started';
     renderWaitingView();
@@ -1010,7 +1065,7 @@ function updatePlayerList(rawList) {
     }
 
     const players = entries.map(entry => {
-        const [id, encodedName, isAi, raceIdRaw, aiDiffRaw, aiStratRaw] = entry.split('|');
+        const [id, encodedName, isAi, raceIdRaw, aiDiffRaw, aiStratRaw, isGuestRaw, levelRaw] = entry.split('|');
         const decodedName = encodedName ? decodeURIComponent(encodedName) : `Player ${id}`;
         const isSelf = String(id) === String(userId);
         const raceLabel = getRaceName(Number(raceIdRaw)) || 'Race ?';
@@ -1021,6 +1076,8 @@ function updatePlayerList(rawList) {
             race: raceLabel,
             aiDiff: (aiDiffRaw || 'medium').toLowerCase(),
             aiStrat: (aiStratRaw || 'balanced').toLowerCase(),
+            isGuest: isGuestRaw === '1',
+            level: Math.max(1, Number(levelRaw) || 1),
             isSelf
         };
     });

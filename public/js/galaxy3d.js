@@ -30,7 +30,8 @@ import * as THREE from './vendor/three.module.min.js';
         COLONIZED: 5,
         HOMEWORLD: 6,
         WARPGATE: 7,
-        ARTIFACT: 8
+        ARTIFACT: 8,
+        FLEET: 9
     };
 
     const STATUS_COLORS = {
@@ -42,7 +43,8 @@ import * as THREE from './vendor/three.module.min.js';
         [STATUS.COLONIZED]: 0x2bb5a0,
         [STATUS.HOMEWORLD]: 0xffc04d,
         [STATUS.WARPGATE]: 0x9b59d0,
-        [STATUS.ARTIFACT]: 0x3fc6ff
+        [STATUS.ARTIFACT]: 0x3fc6ff,
+        [STATUS.FLEET]: 0x3fc1c9
     };
 
     // Sector type → planet texture (public/images/planetN.jpg).
@@ -75,6 +77,7 @@ import * as THREE from './vendor/three.module.min.js';
         selectionRing: null,
         selectedSector: null,
         battlePulses: new Map(),
+        fleetMoves: [],
         center: new THREE.Vector3(),
         camTarget: new THREE.Vector3(),
         camOffset: new THREE.Vector3(),
@@ -102,13 +105,13 @@ import * as THREE from './vendor/three.module.min.js';
         return state.textures.get(path);
     }
 
-    function makeBadgeTexture(text) {
+    function makeBadgeTexture(text, borderColor) {
         const canvas = document.createElement('canvas');
         canvas.width = 128;
         canvas.height = 64;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = 'rgba(10,14,28,0.85)';
-        ctx.strokeStyle = 'rgba(120,180,255,0.9)';
+        ctx.strokeStyle = borderColor || 'rgba(120,180,255,0.9)';
         ctx.lineWidth = 4;
         const r = 18;
         ctx.beginPath();
@@ -334,6 +337,7 @@ import * as THREE from './vendor/three.module.min.js';
         }
         entry.tileMaterial.emissive = new THREE.Color(color);
         entry.tileMaterial.emissiveIntensity = entry.status === STATUS.UNKNOWN ? 0.12 : 0.4;
+        entry.tileMaterial.opacity = entry.live ? 0.92 : 0.5;
         entry.tile.material = entry.tileMaterial;
         entry.tile.visible = true;
     }
@@ -346,8 +350,9 @@ import * as THREE from './vendor/three.module.min.js';
             entry.badge = null;
         }
         if (entry.fleetSize > 0) {
+            const enemyFleet = (entry.flags & 16) !== 0;
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-                map: makeBadgeTexture(`⚔ ${entry.fleetSize}`),
+                map: makeBadgeTexture(`⚔ ${entry.fleetSize}`, enemyFleet ? 'rgba(255,90,90,0.95)' : undefined),
                 transparent: true,
                 depthWrite: false
             }));
@@ -356,6 +361,41 @@ import * as THREE from './vendor/three.module.min.js';
             entry.group.add(sprite);
             entry.badge = sprite;
         }
+    }
+
+    // Small decimal sector number (plus marker letters) so map tiles match the
+    // sector numbers used in messages and the sector panel.
+    function updateIdLabel(entry) {
+        if (entry.idLabel) {
+            entry.group.remove(entry.idLabel);
+            entry.idLabel.material.map.dispose();
+            entry.idLabel.material.dispose();
+            entry.idLabel = null;
+        }
+        if (!entry.explored) return;
+        const text = entry.indicator ? `${entry.id} ${entry.indicator}` : String(entry.id);
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 48;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = entry.live ? 'rgba(225,233,255,0.95)' : 'rgba(160,170,200,0.6)';
+        ctx.font = 'bold 26px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = 6;
+        ctx.fillText(text, 64, 24);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: tex,
+            transparent: true,
+            depthWrite: false
+        }));
+        sprite.scale.set(0.95, 0.36, 1);
+        sprite.position.set(0, 0.22, 0.55);
+        entry.group.add(sprite);
+        entry.idLabel = sprite;
     }
 
     // ------------------------------------------------------------------
@@ -396,9 +436,13 @@ import * as THREE from './vendor/three.module.min.js';
                 tile,
                 content: null,
                 badge: null,
+                idLabel: null,
                 status: STATUS.UNKNOWN,
                 explored: false,
+                live: false,
                 type: null,
+                flags: 0,
+                indicator: '',
                 fleetSize: 0,
                 tileMaterial: null
             });
@@ -421,7 +465,14 @@ import * as THREE from './vendor/three.module.min.js';
         const status = Number(statusNum) || 0;
         const changedStatus = entry.status !== status;
         entry.status = status;
-        if (status !== STATUS.UNKNOWN) entry.explored = true;
+        if (details.live !== undefined) {
+            entry.live = Boolean(details.live);
+        } else if (status !== STATUS.UNKNOWN) {
+            entry.live = true;
+        }
+        if (status !== STATUS.UNKNOWN || entry.live || details.live === false || details.type !== undefined) {
+            entry.explored = true;
+        }
 
         let changedType = false;
         if (details.type !== undefined && details.type !== null && Number.isFinite(Number(details.type))) {
@@ -432,10 +483,27 @@ import * as THREE from './vendor/three.module.min.js';
             }
         }
 
+        let changedBadge = false;
+        if (details.flags !== undefined) {
+            const f = Number(details.flags) || 0;
+            if (entry.flags !== f) {
+                entry.flags = f;
+                changedBadge = true;
+            }
+        }
         const fleet = Number(details.fleetSize);
         if (Number.isFinite(fleet) && fleet !== entry.fleetSize) {
             entry.fleetSize = fleet;
-            updateBadge(entry);
+            changedBadge = true;
+        }
+        if (changedBadge) updateBadge(entry);
+
+        const indicator = details.indicator !== undefined ? (details.indicator || '') : entry.indicator;
+        entry.indicator = indicator;
+        const labelKey = `${entry.explored}|${entry.live}|${indicator}`;
+        if (entry.labelKey !== labelKey) {
+            entry.labelKey = labelKey;
+            updateIdLabel(entry);
         }
 
         applyStatusVisual(entry);
@@ -444,11 +512,50 @@ import * as THREE from './vendor/three.module.min.js';
         }
     }
 
+    /**
+     * Animate a fleet moving between two sectors: a glowing tracer that arcs
+     * from the source tile to the destination, teal for your fleets and red
+     * for enemy fleets seen inside your sensor range.
+     */
+    function animateFleetMove(fromId, toId, opts = {}) {
+        const from = state.sectors.get(Number(fromId));
+        const to = state.sectors.get(Number(toId));
+        if (!from || !to || !state.ready) return;
+        const color = opts.mine ? 0x4dd8e0 : 0xff5f5f;
+        const group = new THREE.Group();
+        const dot = new THREE.Mesh(
+            state.sharedGeo.planet,
+            new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
+        );
+        dot.scale.setScalar(0.14);
+        group.add(dot);
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: state.swirlTexture,
+            color,
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        }));
+        glow.scale.set(0.7, 0.7, 1);
+        group.add(glow);
+        group.position.copy(from.group.position).setY(0.6);
+        state.scene.add(group);
+        state.fleetMoves.push({
+            group,
+            from: from.group.position.clone().setY(0.6),
+            to: to.group.position.clone().setY(0.6),
+            time: 0,
+            duration: opts.warp ? 0.7 : 1.4
+        });
+    }
+
     function setSectorDetail(sectorData) {
         if (!sectorData || sectorData.id === undefined) return;
         const entry = state.sectors.get(Number(sectorData.id));
         if (!entry) return;
         entry.explored = true;
+        entry.live = true;
         const t = Number(sectorData.type);
         if (Number.isFinite(t) && entry.type !== t) {
             entry.type = t;
@@ -669,6 +776,11 @@ import * as THREE from './vendor/three.module.min.js';
 
     function animate() {
         state.animHandle = requestAnimationFrame(animate);
+        // Frozen while the battle theater is on screen (the map is hidden behind it).
+        if (state.paused) {
+            state.clock.getDelta(); // keep the clock from accumulating a huge delta
+            return;
+        }
         const dt = Math.min(state.clock.getDelta(), 0.05);
         const t = state.clock.elapsedTime;
 
@@ -696,6 +808,27 @@ import * as THREE from './vendor/three.module.min.js';
             state.selectionRing.material.opacity = 0.65 + Math.sin(t * 4) * 0.3;
         }
 
+        // Fleet movement tracers
+        if (state.fleetMoves.length) {
+            state.fleetMoves = state.fleetMoves.filter(move => {
+                move.time += dt;
+                const progress = Math.min(1, move.time / move.duration);
+                const eased = progress < 0.5
+                    ? 2 * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+                move.group.position.lerpVectors(move.from, move.to, eased);
+                move.group.position.y = 0.6 + Math.sin(progress * Math.PI) * 0.9;
+                if (progress >= 1) {
+                    state.scene.remove(move.group);
+                    move.group.children.forEach(child => {
+                        if (child.material && !child.material.__shared) child.material.dispose();
+                    });
+                    return false;
+                }
+                return true;
+            });
+        }
+
         // Battle pulses
         state.battlePulses.forEach((pulse, id) => {
             pulse.time += dt;
@@ -720,7 +853,10 @@ import * as THREE from './vendor/three.module.min.js';
         focusSector,
         highlightSector,
         clearBattleSector,
+        animateFleetMove,
         resize,
+        // Battle theater freezes the map render loop while it owns the screen.
+        setPaused(paused) { state.paused = !!paused; },
         STATUS
     };
 

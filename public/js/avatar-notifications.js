@@ -11,6 +11,7 @@ const AvatarNotifications = (function() {
     let notifications = [];
     let currentIndex = 0;
     let maxNotifications = 50;
+    const WELCOME_STORAGE_KEY = 'gow-avatar-welcome-dismissed-v1';
 
     // Race avatar configurations (id matches server race IDs)
     const raceAvatars = {
@@ -55,6 +56,7 @@ const AvatarNotifications = (function() {
                         <button class="nav-btn" id="navUp" title="Previous message">▲</button>
                         <span class="nav-counter" id="navCounter">1/1</span>
                         <button class="nav-btn" id="navDown" title="Next message">▼</button>
+                        <button class="nav-btn speech-dismiss" id="speechDismiss" title="Dismiss message" aria-label="Dismiss message">&times;</button>
                     </div>
                 </div>
                 <div class="speech-pointer"></div>
@@ -67,14 +69,18 @@ const AvatarNotifications = (function() {
         // Set up event listeners
         document.getElementById('navUp').addEventListener('click', () => navigate(-1));
         document.getElementById('navDown').addEventListener('click', () => navigate(1));
+        document.getElementById('speechDismiss').addEventListener('click', dismissCurrent);
         document.getElementById('navUp').textContent = String.fromCharCode(9650);
         document.getElementById('navDown').textContent = String.fromCharCode(9660);
 
         // Set default avatar
         updateAvatar(currentRaceId);
 
-        // Add initial welcome message
-        addNotification('Welcome to Game of Worlds, Commander!', 'info');
+        if (!hasDismissedWelcome()) {
+            addNotification('Welcome to Game of Worlds, Commander!', 'info', { welcome: true });
+        } else {
+            updateDisplay();
+        }
     }
 
     function addStyles() {
@@ -188,6 +194,11 @@ const AvatarNotifications = (function() {
                 cursor: not-allowed;
             }
 
+            .speech-dismiss {
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                color: #ffd3d3;
+            }
+
             .nav-counter {
                 font-size: 11px;
                 color: rgba(207, 215, 255, 0.6);
@@ -274,11 +285,26 @@ const AvatarNotifications = (function() {
         }
     }
 
-    function addNotification(message, type = 'info') {
+    function hasDismissedWelcome() {
+        try {
+            return localStorage.getItem(WELCOME_STORAGE_KEY) === '1';
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function markWelcomeDismissed() {
+        try {
+            localStorage.setItem(WELCOME_STORAGE_KEY, '1');
+        } catch (err) { /* ignore */ }
+    }
+
+    function addNotification(message, type = 'info', options = {}) {
         const notification = {
             message,
             type,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            welcome: Boolean(options.welcome)
         };
 
         notifications.unshift(notification);
@@ -306,13 +332,40 @@ const AvatarNotifications = (function() {
         }
     }
 
+    function dismissCurrent() {
+        if (notifications.length === 0) {
+            updateDisplay();
+            return;
+        }
+
+        const current = notifications[currentIndex];
+        if (current && current.welcome) {
+            markWelcomeDismissed();
+        }
+
+        notifications.splice(currentIndex, 1);
+        currentIndex = Math.max(0, Math.min(currentIndex, notifications.length - 1));
+        updateDisplay();
+    }
+
     function updateDisplay() {
         const contentEl = document.getElementById('speechContent');
         const counterEl = document.getElementById('navCounter');
         const upBtn = document.getElementById('navUp');
         const downBtn = document.getElementById('navDown');
+        const bubbleEl = document.getElementById('speechBubble');
 
-        if (!contentEl || notifications.length === 0) return;
+        if (!contentEl) return;
+        if (notifications.length === 0) {
+            if (bubbleEl) {
+                bubbleEl.style.display = 'none';
+            }
+            return;
+        }
+
+        if (bubbleEl) {
+            bubbleEl.style.display = 'block';
+        }
 
         const current = notifications[currentIndex];
         contentEl.textContent = current.message;

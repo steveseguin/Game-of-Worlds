@@ -97,38 +97,30 @@ const BattleSystem = (function() {
         skipButton.onclick = completeBattle;
         battleDiv.appendChild(skipButton);
         
-        // Add headers
-        const attackerHeader = document.createElement('h1');
-        attackerHeader.id = 'atttxt';
-        attackerHeader.style.position = 'absolute';
-        attackerHeader.style.right = '15%';
-        attackerHeader.style.top = '12%';
-        attackerHeader.innerHTML = 'Attackers';
-        battleDiv.appendChild(attackerHeader);
-        
-        const defenderHeader = document.createElement('h1');
-        defenderHeader.id = 'deftxt';
-        defenderHeader.style.position = 'absolute';
-        defenderHeader.style.right = '80%';
-        defenderHeader.style.top = '12%';
-        defenderHeader.innerHTML = 'Defenders';
-        battleDiv.appendChild(defenderHeader);
-        
-        // Create ships for attackers (index 1-9)
+        // Side panels: who is fighting and how much of each fleet remains.
+        const defenderHud = createSideHud(battleDiv, 'left', 'Defenders', '#7ec7ff');
+        const attackerHud = createSideHud(battleDiv, 'right', 'Attackers', '#ff9d7e');
+
+        const roundHud = document.createElement('div');
+        roundHud.id = 'battleRoundHud';
+        roundHud.style.cssText = 'position:absolute;top:8%;left:50%;transform:translateX(-50%);color:#cfd7ff;font-weight:700;letter-spacing:2px;font-size:14px;text-transform:uppercase;text-shadow:0 1px 8px rgba(0,0,0,0.8);z-index:5;';
+        roundHud.textContent = 'Fleets engaging…';
+        battleDiv.appendChild(roundHud);
+
+        // Initial counts per type (attacker parts 1-9, defender parts 10-18).
+        const initialAttackers = [];
+        const initialDefenders = [];
         for (let shipType = 0; shipType < 9; shipType++) {
-            const shipCount = parseInt(parts[shipType + 1]) || 0;
-            for (let i = 0; i < shipCount; i++) {
-                createShipImage(battleDiv, '1a' + i + shipType, 'right', shipType + 1);
-            }
+            initialAttackers.push(parseInt(parts[shipType + 1]) || 0);
+            initialDefenders.push(parseInt(parts[shipType + 10]) || 0);
         }
-        
-        // Create ships for defenders (index 10-18)
-        for (let shipType = 0; shipType < 9; shipType++) {
-            const shipCount = parseInt(parts[shipType + 10]) || 0;
-            for (let i = 0; i < shipCount; i++) {
-                createShipImage(battleDiv, '1d' + i + shipType, 'left', shipType + 1);
-            }
-        }
+
+        // Deterministic formations: one column per ship type, count labels
+        // under each stack, so the battle reads as fleets instead of confetti.
+        layoutFleet(battleDiv, 'attacker', initialAttackers);
+        layoutFleet(battleDiv, 'defender', initialDefenders);
+        updateSideHud(attackerHud, initialAttackers);
+        updateSideHud(defenderHud, initialDefenders);
         
         // Add ground defenses if present
         const groundDefense = parseInt(parts[19]) || 0;
@@ -170,9 +162,13 @@ const BattleSystem = (function() {
             }
             const banner = document.createElement('div');
             banner.style.cssText = 'position:absolute;top:42%;left:50%;transform:translateX(-50%) scale(0.6);color:#fff;font-weight:900;letter-spacing:6px;font-size:46px;text-transform:uppercase;text-shadow:0 0 24px rgba(255,140,60,0.9);z-index:6;transition:transform 0.4s ease, opacity 0.4s ease;opacity:0;';
-            banner.textContent = attackersLeft > 0 && defendersLeft === 0
-                ? 'Attackers Prevail'
-                : (defendersLeft > 0 && attackersLeft === 0 ? 'Defense Holds' : 'Stalemate');
+            // Personal verdict for combatants; authoritative result otherwise.
+            banner.textContent = options.viewerWon === true ? 'VICTORY'
+                : options.viewerWon === false ? 'DEFEAT'
+                : options.battleResult === 'att' ? 'Attackers Prevail'
+                : options.battleResult === 'def' ? 'Defense Holds'
+                : (attackersLeft > 0 && defendersLeft === 0 ? 'Attackers Prevail'
+                    : (defendersLeft > 0 && attackersLeft === 0 ? 'Defense Holds' : 'Stalemate'));
             battleDiv.appendChild(banner);
             requestAnimationFrame(() => {
                 banner.style.opacity = '1';
@@ -192,24 +188,93 @@ const BattleSystem = (function() {
         battleAnimationTimers.push(closeTimer);
     }
     
-    function createShipImage(container, id, side, shipType) {
-        const img = document.createElement('img');
-        img.id = id;
-        img.style.position = 'absolute';
-        
-        if (side === 'right') {
-            img.style.left = Math.round(Math.random() * 20 + 60) + '%';
-            img.style.transform = 'scaleX(-1)';
-            img.style.webkitTransform = 'scaleX(-1)';
-        } else {
-            img.style.left = Math.round(Math.random() * 20 + 20) + '%';
-        }
-        
-        img.style.top = Math.round(Math.random() * 60 + 20) + '%';
-        img.src = './images/ship' + shipType + '.gif';
-        container.appendChild(img);
+    const SHIP_NAMES = ['Frigate', 'Destroyer', 'Scout', 'Cruiser', 'Battleship', 'Colony', 'Dreadnought', 'Intruder', 'Carrier'];
+    const VISIBLE_CAP = 8; // ships drawn per type; the count label carries the rest
+
+    function createSideHud(container, side, title, color) {
+        const hud = document.createElement('div');
+        hud.id = side === 'left' ? 'battleHudDef' : 'battleHudAtt';
+        hud.style.cssText = `position:absolute;top:7%;${side}:3%;min-width:130px;padding:8px 12px;`
+            + 'background:rgba(8,12,24,0.78);border:1px solid rgba(255,255,255,0.14);border-radius:10px;'
+            + `color:#e8ecff;font-size:13px;z-index:5;text-align:${side};`;
+        hud.innerHTML = `<div style="font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:${color};">${title}</div>`
+            + '<div class="hud-count" style="font-size:18px;font-weight:800;"></div>'
+            + '<div class="hud-bar" style="height:6px;margin-top:5px;border-radius:3px;background:rgba(255,255,255,0.15);overflow:hidden;">'
+            + `<div class="hud-bar-fill" style="height:100%;width:100%;background:${color};transition:width 0.6s ease;"></div></div>`;
+        container.appendChild(hud);
+        return hud;
     }
-    
+
+    function updateSideHud(hud, counts) {
+        if (!hud) return;
+        const total = counts.reduce((sum, n) => sum + n, 0);
+        if (hud.dataset.initial === undefined) {
+            hud.dataset.initial = String(Math.max(1, total));
+        }
+        const countEl = hud.querySelector('.hud-count');
+        if (countEl) countEl.textContent = `${total} ship${total === 1 ? '' : 's'}`;
+        const fill = hud.querySelector('.hud-bar-fill');
+        if (fill) fill.style.width = `${Math.max(0, Math.min(100, (total / Number(hud.dataset.initial)) * 100))}%`;
+    }
+
+    function layoutFleet(container, side, counts) {
+        const prefix = side === 'attacker' ? '1a' : '1d';
+        const presentTypes = [];
+        counts.forEach((count, type) => { if (count > 0) presentTypes.push(type); });
+        if (!presentTypes.length) return;
+
+        presentTypes.forEach((type, columnIndex) => {
+            const count = counts[type];
+            // Columns fan out from each side's edge toward the middle.
+            const columnOffset = 8 + columnIndex * Math.min(9, 26 / presentTypes.length);
+            const left = side === 'attacker' ? (88 - columnOffset) : columnOffset;
+            const visible = Math.min(count, VISIBLE_CAP);
+
+            for (let i = 0; i < visible; i++) {
+                const img = document.createElement('img');
+                img.id = prefix + i + type;
+                img.style.position = 'absolute';
+                img.style.left = `${left + (i % 2 ? 2 : 0)}%`;
+                img.style.top = `${22 + (i * 52) / Math.max(visible, 1)}%`;
+                img.style.maxHeight = '9%';
+                if (side === 'attacker') {
+                    img.style.transform = 'scaleX(-1)';
+                }
+                img.src = './images/ship' + (type + 1) + '.gif';
+                container.appendChild(img);
+            }
+
+            const label = document.createElement('div');
+            label.id = `fleetlabel_${prefix}_${type}`;
+            label.style.cssText = `position:absolute;left:${left - 2}%;top:80%;width:72px;text-align:center;`
+                + 'color:#dce6ff;font-size:11px;font-weight:700;text-shadow:0 1px 6px rgba(0,0,0,0.9);z-index:5;';
+            label.textContent = `${SHIP_NAMES[type]} ×${count}`;
+            container.appendChild(label);
+        });
+    }
+
+    function updateFleetLabels(container, battleData, round) {
+        for (let i = 0; i < 18; i++) {
+            const prefix = i < 9 ? '1a' : '1d';
+            const type = i < 9 ? i : i - 9;
+            const label = container.querySelector(`#fleetlabel_${prefix}_${type}`);
+            if (!label) continue;
+            const remaining = parseInt(battleData[i + 1 + round * 20]) || 0;
+            label.textContent = `${SHIP_NAMES[type]} ×${remaining}`;
+            label.style.opacity = remaining > 0 ? '1' : '0.35';
+        }
+    }
+
+    function sideTotals(battleData, round) {
+        const attackers = [];
+        const defenders = [];
+        for (let i = 0; i < 9; i++) {
+            attackers.push(parseInt(battleData[i + 1 + round * 20]) || 0);
+            defenders.push(parseInt(battleData[i + 10 + round * 20]) || 0);
+        }
+        return { attackers, defenders };
+    }
+
     const ROUND_MS = 2600;
 
     function fireLaser(container, fromEl, toEl) {
@@ -244,6 +309,14 @@ const BattleSystem = (function() {
         const delay = ROUND_MS * round;
 
         const roundTimer = setTimeout(() => {
+            // Update the scoreboard first so losses can be read against it.
+            const roundHud = container.querySelector('#battleRoundHud');
+            if (roundHud) roundHud.textContent = `Round ${round}`;
+            const totals = sideTotals(battleData, round);
+            updateSideHud(container.querySelector('#battleHudAtt'), totals.attackers);
+            updateSideHud(container.querySelector('#battleHudDef'), totals.defenders);
+            updateFleetLabels(container, battleData, round);
+
             // Exchange of fire: a volley of lasers between random living ships.
             const attackers = shipElements(container, 'attacker');
             const defenders = shipElements(container, 'defender');

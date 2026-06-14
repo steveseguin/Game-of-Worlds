@@ -32,7 +32,8 @@ window.GalaxyMap = (function() {
         COLONIZED: 5,    // Blue-green - colonized owned sector
         HOMEWORLD: 6,    // Gold - homeworld
         WARPGATE: 7,     // Purple - contains warp gate
-        ARTIFACT: 8      // Cyan - contains artifact
+        ARTIFACT: 8,     // Cyan - contains artifact
+        FLEET: 9         // Teal - your ships hold this unclaimed sector
     };
 
     // Status colors
@@ -45,7 +46,8 @@ window.GalaxyMap = (function() {
         [SECTOR_STATUS.COLONIZED]: "#40C0A0",
         [SECTOR_STATUS.HOMEWORLD]: "#FFC040",
         [SECTOR_STATUS.WARPGATE]: "#8040C0",
-        [SECTOR_STATUS.ARTIFACT]: "#40C0FF"
+        [SECTOR_STATUS.ARTIFACT]: "#40C0FF",
+        [SECTOR_STATUS.FLEET]: "#3FC1C9"
     };
 
     // Stroke colors
@@ -58,7 +60,8 @@ window.GalaxyMap = (function() {
         [SECTOR_STATUS.COLONIZED]: "#208060",
         [SECTOR_STATUS.HOMEWORLD]: "#C09020",
         [SECTOR_STATUS.WARPGATE]: "#602080",
-        [SECTOR_STATUS.ARTIFACT]: "#2080C0"
+        [SECTOR_STATUS.ARTIFACT]: "#2080C0",
+        [SECTOR_STATUS.FLEET]: "#1F8A91"
     };
 
     // Internal state
@@ -157,8 +160,14 @@ window.GalaxyMap = (function() {
             sector.path.setAttribute("fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
             sector.path.setAttribute("data-original-fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
             sector.path.setAttribute("stroke", STROKE_COLORS[SECTOR_STATUS.UNKNOWN]);
+            sector.path.setAttribute("stroke-dasharray", "");
+            sector.path.setAttribute("opacity", "1");
+            sector.text.setAttribute("opacity", "1");
             sector.fleetText.style.display = "none";
             sector.colonizedText.style.display = "none";
+            sector.live = false;
+            sector.flags = 0;
+            sector.type = null;
         });
     }
 
@@ -314,7 +323,9 @@ window.GalaxyMap = (function() {
         text.setAttribute("font-size", "12");
         text.setAttribute("font-weight", "bold");
         text.setAttribute("fill", "#c7cede");
-        text.textContent = id.toString(16).toUpperCase();
+        text.style.pointerEvents = "none";
+        // Decimal labels: server messages refer to sectors by decimal number.
+        text.textContent = String(id);
         
         // Add event listeners to text
         text.addEventListener("mouseover", function() {
@@ -355,6 +366,7 @@ window.GalaxyMap = (function() {
         fleetText.setAttribute("font-size", "10");
         fleetText.setAttribute("font-weight", "bold");
         fleetText.setAttribute("fill", "#FFFFFF");
+        fleetText.style.pointerEvents = "none";
         fleetText.style.display = "none";
         svg.appendChild(fleetText);
         
@@ -367,6 +379,7 @@ window.GalaxyMap = (function() {
         colonizedText.setAttribute("font-size", "10");
         colonizedText.setAttribute("font-weight", "bold");
         colonizedText.setAttribute("fill", "#FFFFFF");
+        colonizedText.style.pointerEvents = "none";
         colonizedText.style.display = "none";
         svg.appendChild(colonizedText);
         
@@ -382,7 +395,10 @@ window.GalaxyMap = (function() {
             x: xPos,
             y: yPos,
             owner: null,
-            buildings: []
+            buildings: [],
+            type: null,
+            live: false,
+            flags: 0
         };
         
         // Add to container
@@ -416,16 +432,30 @@ window.GalaxyMap = (function() {
         if (details.buildings !== undefined) {
             sector.buildings = details.buildings;
         }
+        if (details.type !== undefined) {
+            sector.type = details.type;
+        }
+        if (details.live !== undefined) {
+            sector.live = Boolean(details.live);
+        } else if (normalizedStatus !== SECTOR_STATUS.UNKNOWN) {
+            sector.live = true;
+        }
+        if (details.flags !== undefined) {
+            sector.flags = Number(details.flags) || 0;
+        }
         
         // Update colors
         sector.path.setAttribute("fill", STATUS_COLORS[normalizedStatus]);
         sector.path.setAttribute("data-original-fill", STATUS_COLORS[normalizedStatus]);
         sector.path.setAttribute("stroke", STROKE_COLORS[normalizedStatus]);
+        sector.path.setAttribute("opacity", sector.live ? "1" : "0.58");
+        sector.path.setAttribute("stroke-dasharray", sector.live ? "" : "4 3");
+        sector.text.setAttribute("opacity", sector.live ? "1" : "0.62");
         
         // Update fleet size
         if (details.fleetSize !== undefined) {
             if (details.fleetSize > 0) {
-                sector.fleetText.textContent = `S:${details.fleetSize}`;
+                sector.fleetText.textContent = (sector.flags & 16) ? `E:${details.fleetSize}` : `F:${details.fleetSize}`;
                 sector.fleetText.style.display = "block";
             } else {
                 sector.fleetText.style.display = "none";
@@ -436,6 +466,7 @@ window.GalaxyMap = (function() {
         if (details.indicator !== undefined) {
             if (details.indicator) {
                 sector.colonizedText.textContent = details.indicator;
+                sector.colonizedText.setAttribute("font-size", details.indicator.length > 2 ? "8" : "10");
                 sector.colonizedText.style.display = "block";
             } else {
                 sector.colonizedText.style.display = "none";
@@ -535,6 +566,8 @@ window.GalaxyMap = (function() {
         const y = evt.clientY + 12;
         const owner = sector.owner || 'Unknown';
         const statusLabel = Object.keys(SECTOR_STATUS).find(key => SECTOR_STATUS[key] === sector.status) || 'Unknown';
+        const freshness = sector.live ? 'Live' : (sector.status === SECTOR_STATUS.UNKNOWN ? 'Fog' : 'Memory');
+        const markers = sector.colonizedText && sector.colonizedText.textContent ? sector.colonizedText.textContent : 'None';
         const fleetText = sector.fleetText && sector.fleetText.textContent ? sector.fleetText.textContent : 'None';
         const buildingCounts = normalizeBuildingCounts(sector.buildings);
         const projections = estimateProduction(buildingCounts);
@@ -547,6 +580,8 @@ window.GalaxyMap = (function() {
             <div style="font-weight:700;margin-bottom:4px;">Sector ${sectorId}</div>
             <div>Owner: ${owner}</div>
             <div>Status: ${statusLabel}</div>
+            <div>Intel: ${freshness}</div>
+            <div>Markers: ${markers}</div>
             <div>Fleet: ${fleetText}</div>
             ${buildingLabel ? `<div>${buildingLabel}</div>` : ''}
             <div style="margin-top:4px;opacity:0.85;">Est. yields/turn: M ${projections.metal} · C ${projections.crystal} · R ${projections.research}</div>
@@ -574,12 +609,26 @@ window.GalaxyMap = (function() {
             sector.path.setAttribute('stroke', '#ffd166');
             sector.path.setAttribute('stroke-width', '3');
             setTimeout(() => {
-                sector.path.setAttribute('stroke-width', '1');
+                sector.path.setAttribute('stroke-width', '2');
                 sector.path.setAttribute('stroke', STROKE_COLORS[sector.status] || '#555');
             }, 1800);
         },
+        // Brief stroke pulse used for fleet arrivals (teal for yours, red for enemy).
+        flashSector: function(sectorId, color) {
+            const sector = state.sectors[Number(sectorId)];
+            if (!sector) return;
+            sector.path.setAttribute('stroke', color || '#66d9ff');
+            sector.path.setAttribute('stroke-width', '4');
+            setTimeout(() => {
+                sector.path.setAttribute('stroke-width', '2');
+                sector.path.setAttribute('stroke', STROKE_COLORS[sector.status] || '#555');
+            }, 1400);
+        },
         clearBattleSector: function(sectorId) {
             g3dCall('clearBattleSector', sectorId);
+        },
+        getSelectedSector: function() {
+            return state.selectedSector;
         },
         resize
     };

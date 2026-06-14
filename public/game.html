@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260429a">
+    <link rel="stylesheet" href="css/style.css?v=20260614b">
     <style>
         /* Critical layout fixes & visual polish */
         html, body {
@@ -183,6 +183,142 @@
             font-weight: 600 !important;
             box-shadow: 0 4px 12px rgba(33,150,243,0.25);
         }
+        .tech-panel-header {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            margin-bottom:10px;
+        }
+        .tech-branch {
+            margin-bottom:10px;
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:8px;
+            overflow:hidden;
+            background:rgba(255,255,255,0.035);
+        }
+        .tech-branch-title {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:8px;
+            padding:7px 9px;
+            font-weight:700;
+            font-size:13px;
+        }
+        .tech-branch-title small {
+            opacity:0.72;
+            font-weight:500;
+            line-height:1.2;
+            text-align:right;
+        }
+        .tech-grid {
+            display:grid;
+            grid-template-columns:1fr;
+            gap:7px;
+            padding:8px;
+        }
+        .tech-card {
+            display:grid;
+            grid-template-columns:1fr auto;
+            gap:6px 10px;
+            align-items:center;
+            width:100%;
+            min-height:58px;
+            padding:8px;
+            border:1px solid rgba(255,255,255,0.12);
+            border-radius:7px;
+            background:rgba(10,14,28,0.72);
+            color:#eef3ff;
+            text-align:left;
+            cursor:pointer;
+        }
+        .tech-card:hover:not(:disabled) {
+            filter:brightness(1.12);
+        }
+        .tech-card:disabled {
+            cursor:not-allowed;
+            opacity:0.62;
+        }
+        .tech-card .tech-name {
+            font-weight:700;
+            font-size:13px;
+        }
+        .tech-card .tech-summary {
+            grid-column:1 / -1;
+            color:rgba(232,236,255,0.72);
+            font-size:11px;
+            line-height:1.25;
+        }
+        .tech-card .tech-cost {
+            font-size:12px;
+            font-weight:700;
+            color:#f2d77a;
+            white-space:nowrap;
+        }
+        .tech-card .tech-req {
+            grid-column:1 / -1;
+            color:#ffb4a8;
+            font-size:11px;
+        }
+        #empireSummary {
+            position:fixed;
+            top:42px;
+            left:10px;
+            z-index:235;
+            max-width:500px;
+            padding:5px 9px;
+            border-radius:7px;
+            border:1px solid rgba(255,255,255,0.08);
+            background:rgba(10,14,28,0.78);
+            color:#cfd7ff;
+            font-size:12px;
+            line-height:1.35;
+            pointer-events:none;
+        }
+        #victoryProgress {
+            position:fixed;
+            top:74px;
+            left:10px;
+            z-index:235;
+            max-width:560px;
+            padding:5px 9px;
+            border-radius:7px;
+            border:1px solid rgba(255,255,255,0.08);
+            background:rgba(10,14,28,0.78);
+            color:#dce4ff;
+            font-size:12px;
+            line-height:1.35;
+            white-space:normal;
+            pointer-events:none;
+        }
+        #mapLegend {
+            position:fixed;
+            right:10px;
+            bottom:260px;
+            z-index:110;
+            max-width:260px;
+            padding:8px 10px;
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:8px;
+            background:rgba(10,14,28,0.86);
+            color:#dce4ff;
+            font-size:11px;
+            line-height:1.45;
+        }
+        .legend-row {
+            display:flex;
+            align-items:center;
+            gap:7px;
+            white-space:nowrap;
+        }
+        .legend-swatch {
+            width:12px;
+            height:12px;
+            border-radius:3px;
+            border:1px solid rgba(255,255,255,0.24);
+            flex:0 0 auto;
+        }
 
         /* Help overlay polish - inherited from inline already */
         #helpBtn:hover, #audioBtn:hover { transform: translateY(-1px) !important; box-shadow: 0 8px 20px rgba(0,0,0,0.4) !important; }
@@ -197,6 +333,8 @@
     <div id="utilityButtons" style="position:fixed;right:340px;top:10px;z-index:250;display:flex;gap:8px;align-items:center;">
         <button id="audioBtn" style="width:36px;height:36px;border-radius:50%;border:none;background:linear-gradient(120deg,#ffb347,#ffcc33);color:#0c1021;font-weight:800;font-size:16px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0;" title="Toggle sound">🔊</button>
         <button id="helpBtn" style="width:36px;height:36px;border-radius:50%;border:none;background:linear-gradient(120deg,#42d8c8,#4c7cff);color:#071021;font-weight:800;font-size:16px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0;" title="Help">?</button>
+        <button id="homeworldBtn" style="height:36px;border:none;background:rgba(255,192,64,0.92);color:#0c1021;font-weight:800;font-size:12px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0 10px;border-radius:7px;" title="Focus homeworld">Home</button>
+        <button id="surrenderBtn" style="height:36px;border:1px solid rgba(255,126,126,0.5);background:rgba(70,22,32,0.94);color:#ffb6b6;font-weight:800;font-size:12px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0 10px;border-radius:7px;" title="Surrender this game">Surrender</button>
     </div>
     <div id="viewTitle" style="position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:60;color:rgba(232,236,255,0.6);font-weight:600;letter-spacing:1.5px;font-size:11px;text-transform:uppercase;background:rgba(12,16,33,0.7);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:4px 14px;pointer-events:none;">Galaxy Map</div>
     <div id="helpOverlay" style="display:none;position:fixed;inset:0;background:rgba(5,8,16,0.78);backdrop-filter:blur(6px);z-index:2999;align-items:center;justify-content:center;padding:20px;">
@@ -220,6 +358,8 @@
         <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:0;" alt="Crystal"/></div><span id="crystalresource"> 0 Crystal,</span>
         <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:-50px;" alt="Research"/></div><span id="researchresource"> 0 Research</span>
     </div>
+    <div id="empireSummary">Income: +0M +0C +0R / turn | Worlds 0 | Fleet 0</div>
+    <div id="victoryProgress">Victory: loading</div>
     
     <!-- Turn Time Bar -->
     <div id="turnTimeBar">
@@ -254,7 +394,9 @@
             <tr><td>Metal Production:</td><td><div style="display:inline-block" id="metalbonus">N/A</div></td></tr>
             <tr><td>Crystal Production:</td><td><div style="display:inline-block" id="crystalbonus">N/A</div></td></tr>
             <tr><td>Terraform Req.:</td><td><div style="display:inline-block" id="terraformlvl">N/A</div></td></tr>
+            <tr><td>Building Slots:</td><td><div style="display:inline-block" id="sectorslots">N/A</div></td></tr>
         </table>
+        <div id="sectorIntel" style="display:none;max-width:280px;margin-top:8px;background:rgba(38,18,40,0.88);border:1px solid rgba(214,93,177,0.45);border-radius:10px;padding:8px 10px;font-size:12px;color:#e8ecff;line-height:1.5;"></div>
         <br />
         <table border="0px">
             <tr>
@@ -311,6 +453,7 @@
             <button id="fleettab" class="tab-button">Fleet</button>
             <button id="techtab" class="tab-button">Research</button>
             <button id="colonizetab" class="tab-button">Colonize</button>
+            <button id="analyticstab" class="tab-button">Analytics</button>
         </div>
         
         <!-- Build Tab -->
@@ -330,10 +473,10 @@
             <div style="font-weight:bold;margin-bottom:10px;">Build Ships</div>
             <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;">
                 <button class="ship-button" data-ship-id="3">Scout<br><small style="color:#888;">200M</small></button>
-                <button class="ship-button" data-ship-id="1">Frigate<br><small style="color:#888;">300M</small></button>
-                <button class="ship-button" data-ship-id="2">Destroyer<br><small style="color:#888;">500M</small></button>
-                <button class="ship-button" data-ship-id="4">Cruiser<br><small style="color:#888;">900M</small></button>
-                <button class="ship-button" data-ship-id="5">Battleship<br><small style="color:#888;">1600M</small></button>
+                <button class="ship-button" data-ship-id="1">Frigate<br><small style="color:#888;">430M</small></button>
+                <button class="ship-button" data-ship-id="2">Destroyer<br><small style="color:#888;">780M</small></button>
+                <button class="ship-button" data-ship-id="4">Cruiser<br><small style="color:#888;">980M 120C</small></button>
+                <button class="ship-button" data-ship-id="5">Battleship<br><small style="color:#888;">1650M 220C</small></button>
                 <button class="ship-button" data-ship-id="6">Colony Ship<br><small style="color:#888;">1000M</small></button>
             </div>
         </div>
@@ -355,14 +498,11 @@
 
         <!-- Tech Tab -->
         <div id="techtree" class="tab-panel hidden">
-            <div style="font-weight:bold;margin-bottom:10px;">Research Technologies</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <button class="tech-button" onclick="buyTech(1)">Weapons Lvl <span id="tech1">0</span><br><small style="color:#888;">100R base</small></button>
-                <button class="tech-button" onclick="buyTech(2)">Hulls Lvl <span id="tech2">0</span><br><small style="color:#888;">100R base</small></button>
-                <button class="tech-button" onclick="buyTech(3)">Shields Lvl <span id="tech3">0</span><br><small style="color:#888;">100R base</small></button>
-                <button class="tech-button" onclick="buyTech(4)">Engines Lvl <span id="tech4">0</span><br><small style="color:#888;">100R base</small></button>
+            <div class="tech-panel-header">
+                <div style="font-weight:bold;">Research Technologies</div>
+                <div style="font-size:12px;color:#f2d77a;">Available: <span id="techResearchAvailable">0</span> R</div>
             </div>
-            <div style="margin-top:10px;font-size:12px;color:#aaa;">Cost scales with level (100 x 1.5^level)</div>
+            <div id="techTreeRoot"></div>
         </div>
         
         <!-- Colonize Tab -->
@@ -373,10 +513,36 @@
             -You need a terraform tech level equal or greater to the sector's terraform requirement<br /><br />
             -The sector must contain a planet
         </div>
+
+        <!-- Analytics Tab -->
+        <div id="analytics" class="tab-panel hidden">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
+                <div style="font-weight:bold;">Combat Analytics</div>
+                <button id="combatAnalyticsRefresh" class="ghost" type="button" style="padding:7px 10px;">Refresh</button>
+            </div>
+            <div id="combatAnalyticsStatus" class="analytics-status-idle" style="font-size:12px;color:#bdd5ff;margin-bottom:10px;">Loading live combat telemetry...</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px;margin-bottom:10px;">
+                <div>Game: <b id="combatAnalyticsGameId">-</b></div>
+                <div>Battles: <b id="combatAnalyticsBattleCount">0</b></div>
+                <div>Updated: <b id="combatAnalyticsUpdatedAt">-</b></div>
+            </div>
+            <div id="combatAnalyticsPlayers" style="display:grid;gap:8px;"></div>
+            <div style="font-weight:bold;margin:12px 0 6px;">Recent Battles</div>
+            <div id="combatAnalyticsRecent" style="display:grid;gap:6px;"></div>
+        </div>
     </div>
     
     <!-- Mini Map -->
     <div id="minimapid"></div>
+    <div id="mapLegend">
+        <div class="legend-row"><span class="legend-swatch" style="background:#ffc040;"></span>Home</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#40c040;"></span>Owned/live</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#c04040;"></span>Enemy seen</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#3fc1c9;"></span>Your fleet (unclaimed)</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#c08040;"></span>Asteroid/star hazard</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#202020;"></span>Black hole</div>
+        <div style="margin-top:5px;color:rgba(220,228,255,0.72);">H home, C colony ship, T turret, W gate, E enemy fleet. Dim tiles are old memory.</div>
+    </div>
     
     <!-- Multi-Move Dialog -->
     <div id="multiMove">
@@ -399,8 +565,10 @@
     <div id="chatFeed" style="position:fixed;left:0;bottom:368px;width:500px;max-width:100%;max-height:140px;z-index:151;padding:8px 10px;box-sizing:border-box;pointer-events:none;">
         <div id="chatMessages"></div>
     </div>
-    <div id="chatContainer" style="position:fixed;bottom:0;left:0;width:500px;max-width:100%;height:40px;z-index:150;background:rgba(10,14,28,0.95);padding:5px 10px;box-sizing:border-box;">
-        <form id="chatForm" style="margin:0;height:100%;">
+    <div id="chatContainer" style="position:fixed;bottom:0;left:0;width:500px;max-width:100%;height:40px;z-index:150;background:rgba(10,14,28,0.95);padding:5px 10px;box-sizing:border-box;display:flex;gap:6px;align-items:center;">
+        <button id="chatHistoryUp" type="button" title="Previous chat" style="height:30px;width:30px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;">^</button>
+        <button id="chatHistoryDown" type="button" title="Latest chat" style="height:30px;width:30px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;">v</button>
+        <form id="chatForm" style="margin:0;height:100%;flex:1;">
             <input id="chat" type="text" style="width:100%;height:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(20,25,40,0.9);color:#e8ecff;font-size:14px;" placeholder="Type and press enter to chat" />
         </form>
     </div>
@@ -411,9 +579,9 @@
     </div>
     
     <!-- Scripts -->
-    <script src="js/ui.js?v=20260429a"></script>
+    <script src="js/ui.js?v=20260612b"></script>
     <script src="js/minimap.js?v=20260429a"></script>
-    <script src="js/GUI.js?v=20260429a"></script>
+    <script src="js/GUI.js?v=20260614a"></script>
     <script>
         // Authentication check for static hosting
         (function() {
@@ -434,24 +602,28 @@
             }
         })();
     </script>
-    <script src="js/build.js?v=20260429a"></script>
-    <script src="js/battle.js?v=20260429a"></script>
+    <script src="js/build.js?v=20260614a"></script>
+    <script src="js/battle.js?v=20260614d"></script>
     <script src="js/chat.js?v=20260430a"></script>
     <script src="js/controlpad.js?v=20260429a"></script>
     <script src="js/epic-music.js?v=20260429a"></script>
     <script src="js/sound.js?v=20260429a"></script>
+    <script src="js/tech.js?v=20260612a"></script>
     <script src="js/notification-system.js?v=20251105"></script>
-    <script src="js/avatar-notifications.js?v=20260429a"></script>
+    <script src="js/avatar-notifications.js?v=20260613a"></script>
     <script src="js/advisor.js?v=20260611a"></script>
     <script src="js/media.js?v=20260429a"></script>
+    <script src="js/combat-analytics.js?v=20260612a"></script>
     <script src="/config.js?v=20251105"></script>
     <script src="js/shop-enhanced.js?v=20260429a"></script>
     <script src="https://js.stripe.com/v3/"></script>
     <script src="js/game-screen.js?v=20260429a"></script>
-    <script type="module" src="js/galaxy3d.js?v=20260611a"></script>
-    <script src="js/connect.js?v=20260430a"></script>
-    <script src="js/tour.js?v=20251105"></script>
-    <script src="js/game.js?v=20260429a"></script>
+    <script type="module" src="js/galaxy3d.js?v=20260614b"></script>
+    <script type="module" src="js/battle3d.js?v=20260614e"></script>
+    <script src="js/onboarding.js?v=20260613a"></script>
+    <script src="js/connect.js?v=20260614g"></script>
+    <script src="js/tour.js?v=20260613a"></script>
+    <script src="js/game.js?v=20260612b"></script>
     <script src="js/loader.js?v=20251105"></script>
     <script>
         (function() {

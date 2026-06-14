@@ -42,6 +42,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window.ChatSystem) {
         ChatSystem.initialize();
     }
+
+    if (window.CombatAnalytics) {
+        CombatAnalytics.initialize();
+    }
     
     // Initialize websocket connection
     initializeWebSocket();
@@ -85,6 +89,17 @@ function setupEventListeners() {
     
     // Next turn button
     document.getElementById('nextTurnBtn')?.addEventListener('click', nextTurn);
+    document.getElementById('surrenderBtn')?.addEventListener('click', function() {
+        if (!window.websocket || window.websocket.readyState !== WebSocket.OPEN) {
+            if (window.NotificationSystem?.notify) {
+                window.NotificationSystem.notify('Surrender unavailable', 'Connection is not ready yet.', 'warn', 4000);
+            }
+            return;
+        }
+        if (window.confirm('Surrender this game?')) {
+            window.websocket.send('//surrender');
+        }
+    });
     
     // Multi-move controls
     document.getElementById('closeMultiMove')?.addEventListener('click', function() {
@@ -96,35 +111,40 @@ function setupEventListeners() {
 }
 
 function sendallmm() {
-    const sectorId = document.getElementById('sectorofattack').innerHTML;
+    // Hex wire token lives in data-token; the visible text is the decimal label.
+    const sectorEl = document.getElementById('sectorofattack');
+    const sectorId = sectorEl ? (sectorEl.dataset.token || sectorEl.innerHTML) : '';
+    const sectorLabel = sectorEl ? sectorEl.textContent : sectorId;
     const shipList = document.getElementById('shipsFromNearBy');
-    
+
     if (!sectorId || !shipList) return;
-    
+
     let message = sectorId;
-    
+
     // Add all ships
     for (let i = 0; i < shipList.options.length; i++) {
         message += ":" + shipList.options[i].value;
     }
-    
+
     const dispatchAll = () => {
         websocket.send("//sendmmf:" + message);
         document.getElementById('multiMove').style.display = 'none';
     };
     if (window.NotificationSystem?.confirm) {
-        window.NotificationSystem.confirm('Fleet Orders', `Send all ships to sector ${sectorId}?`, dispatchAll, null);
+        window.NotificationSystem.confirm('Fleet Orders', `Send all ships to sector ${sectorLabel}?`, dispatchAll, null);
     } else {
         dispatchAll();
     }
 }
 
 function sendaamm() {
-    const sectorId = document.getElementById('sectorofattack').innerHTML;
+    const sectorEl = document.getElementById('sectorofattack');
+    const sectorId = sectorEl ? (sectorEl.dataset.token || sectorEl.innerHTML) : '';
+    const sectorLabel = sectorEl ? sectorEl.textContent : sectorId;
     const shipList = document.getElementById('shipsFromNearBy');
-    
+
     if (!sectorId || !shipList) return;
-    
+
     let message = sectorId;
     let totalShips = 0;
     
@@ -152,7 +172,7 @@ function sendaamm() {
         document.getElementById('multiMove').style.display = 'none';
     };
     if (window.NotificationSystem?.confirm) {
-        window.NotificationSystem.confirm('Fleet Orders', `Send all attack ships to sector ${sectorId}?`, dispatchAttack, null);
+        window.NotificationSystem.confirm('Fleet Orders', `Send all attack ships to sector ${sectorLabel}?`, dispatchAttack, null);
     } else {
         dispatchAttack();
     }

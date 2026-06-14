@@ -5,6 +5,33 @@
  * Handles game ending, winner determination, and stat updates.
  */
 
+const techSystem = require('./tech');
+
+const ACTIVE_VICTORY_KEYS = new Set([
+    'DOMINATION',
+    'ELIMINATION',
+    'ECONOMIC',
+    'SCIENTIFIC',
+    'TIME'
+]);
+
+function researchedTechProgress(storedTech) {
+    const levels = techSystem.parseTechLevels(storedTech || '');
+    const techs = Object.values(techSystem.TECHNOLOGIES);
+    const researched = techs.filter(tech => techSystem.getLevel(levels, tech.id) > 0).length;
+    return {
+        researched,
+        total: techs.length,
+        percentage: techs.length > 0 ? (researched / techs.length) * 100 : 0
+    };
+}
+
+function activeVictoryConditions() {
+    return Object.entries(VICTORY_CONDITIONS)
+        .filter(([key, condition]) => ACTIVE_VICTORY_KEYS.has(key) && condition.enabled !== false)
+        .map(([key, condition], index) => ({ key, condition, priority: index }));
+}
+
 const VICTORY_CONDITIONS = {
     DOMINATION: {
         id: 1,
@@ -94,11 +121,9 @@ const VICTORY_CONDITIONS = {
                         callback(false, 0);
                         return;
                     }
-                    
-                    const playerTech = results[0].tech ? results[0].tech.split(',').map(Number) : [];
-                    const totalTechs = 20; // Adjust based on actual tech tree
-                    const percentage = (playerTech.length / totalTechs) * 100;
-                    callback(playerTech.length >= totalTechs, percentage);
+
+                    const progress = researchedTechProgress(results[0].tech);
+                    callback(progress.total > 0 && progress.researched >= progress.total, progress.percentage);
                 }
             );
         }
@@ -106,8 +131,9 @@ const VICTORY_CONDITIONS = {
     
     WONDER: {
         id: 5,
+        enabled: false,
         name: 'Wonder Victory',
-        description: 'Build and protect the Galactic Wonder for 10 turns',
+        description: 'Disabled until Galactic Wonder construction is implemented',
         check: function(gameId, playerId, gameState, db, callback) {
             // Check if player has built the wonder
             db.query(
@@ -133,8 +159,9 @@ const VICTORY_CONDITIONS = {
     
     ALLIANCE: {
         id: 6,
+        enabled: false,
         name: 'Alliance Victory',
-        description: 'Form an alliance controlling 90% of the galaxy',
+        description: 'Disabled until player alliance formation is implemented',
         check: function(gameId, playerId, gameState, db, callback) {
             // Get player's alliance
             db.query(
@@ -187,16 +214,14 @@ const VICTORY_CONDITIONS = {
             
             // Calculate scores and determine winner
             calculateScores(gameId, db, (err, scores) => {
-                if (err) {
+                if (err || !Array.isArray(scores) || scores.length === 0) {
                     callback(false, 100);
                     return;
                 }
-                
-                const highestScore = Math.max(...scores.map(s => s.score));
-                const playerScore = scores.find(s => s.playerId === playerId);
-                
+
+                const winner = scores[0];
                 callback(
-                    playerScore && playerScore.score === highestScore,
+                    winner && Number(winner.playerId) === Number(playerId),
                     100
                 );
             });
@@ -209,11 +234,11 @@ function calculateScores(gameId, db, callback) {
     db.query(
         `SELECT 
             p.userid as playerId,
-            p.metal + p.crystal + p.research as resources,
+            MAX(p.metal + p.crystal + p.research) as resources,
+            MAX(p.tech) as tech,
             COUNT(DISTINCT m.sectorid) as planets,
             COUNT(DISTINCT s.id) as ships,
-            COUNT(DISTINCT b.id) as buildings,
-            LENGTH(p.tech) - LENGTH(REPLACE(p.tech, ',', '')) + 1 as techs
+            COUNT(DISTINCT b.id) as buildings
          FROM players${gameId} p
          LEFT JOIN map${gameId} m ON m.owner = p.userid
          LEFT JOIN ships${gameId} s ON s.owner = p.userid
@@ -225,14 +250,24 @@ function calculateScores(gameId, db, callback) {
                 return;
             }
             
-            const scores = results.map(player => ({
-                playerId: player.playerId,
-                score: player.resources + 
-                       (player.planets * 1000) +
-                       (player.ships * 100) +
-                       (player.buildings * 500) +
-                       (player.techs * 2000)
-            }));
+            const scores = (results || [])
+                .map(player => {
+                    const techs = researchedTechProgress(player.tech).researched;
+                    return {
+                        playerId: Number(player.playerId),
+                        resources: Number(player.resources) || 0,
+                        planets: Number(player.planets) || 0,
+                        ships: Number(player.ships) || 0,
+                        buildings: Number(player.buildings) || 0,
+                        techs,
+                        score: (Number(player.resources) || 0) +
+                               ((Number(player.planets) || 0) * 1000) +
+                               ((Number(player.ships) || 0) * 100) +
+                               ((Number(player.buildings) || 0) * 500) +
+                               (techs * 2000)
+                    };
+                })
+                .sort((a, b) => b.score - a.score || a.playerId - b.playerId);
             
             callback(null, scores);
         }
@@ -241,22 +276,29 @@ function calculateScores(gameId, db, callback) {
 
 // Check all victory conditions for a player
 function checkVictoryConditions(gameId, playerId, gameState, db, callback) {
-    const conditions = Object.values(VICTORY_CONDITIONS);
-    const results = [];
+    const conditions = activeVictoryConditions();
+    const results = new Array(conditions.length);
     let checked = 0;
+
+    if (conditions.length === 0) {
+        callback(null, []);
+        return;
+    }
     
-    conditions.forEach(condition => {
+    conditions.forEach(({ condition, priority }, index) => {
         condition.check(gameId, playerId, gameState, db, (achieved, progress) => {
-            results.push({
+            results[index] = {
                 condition: condition.name,
+                conditionId: condition.id,
+                priority,
                 achieved,
                 progress
-            });
+            };
             
             checked++;
             if (checked === conditions.length) {
                 // Check if any victory condition is met
-                const victory = results.find(r => r.achieved);
+                const victory = results.filter(Boolean).find(r => r.achieved);
                 callback(victory || null, results);
             }
         });
@@ -266,27 +308,40 @@ function checkVictoryConditions(gameId, playerId, gameState, db, callback) {
 // Check all players for victory
 function checkAllPlayersForVictory(gameId, gameState, db, callback) {
     db.query(
-        `SELECT userid FROM players${gameId}`,
+        `SELECT userid FROM players${gameId} ORDER BY userid ASC`,
         (err, players) => {
             if (err) {
                 callback(err);
                 return;
             }
+
+            if (!Array.isArray(players) || players.length < 2) {
+                callback(null, null);
+                return;
+            }
             
             let checked = 0;
-            let winner = null;
+            const candidates = [];
             
-            players.forEach(player => {
+            players.forEach((player, playerOrder) => {
                 checkVictoryConditions(gameId, player.userid, gameState, db, (victory, progress) => {
-                    if (victory && !winner) {
-                        winner = {
+                    if (victory) {
+                        candidates.push({
                             playerId: player.userid,
-                            condition: victory.condition
-                        };
+                            condition: victory.condition,
+                            priority: victory.priority,
+                            playerOrder
+                        });
                     }
                     
                     checked++;
                     if (checked === players.length) {
+                        const winner = candidates
+                            .sort((a, b) =>
+                                a.priority - b.priority ||
+                                a.playerOrder - b.playerOrder ||
+                                Number(a.playerId) - Number(b.playerId)
+                            )[0] || null;
                         callback(null, winner);
                     }
                 });
@@ -298,6 +353,20 @@ function checkAllPlayersForVictory(gameId, gameState, db, callback) {
 // End the game and record results. Every step is best-effort: a bookkeeping
 // failure must never leave a finished game running.
 function endGame(gameId, winnerId, winCondition, gameState, db, callback) {
+    if (gameState.activeGames && gameState.activeGames[gameId] && gameState.activeGames[gameId].status === 'completed') {
+        if (callback) {
+            callback(null, { winner: winnerId, condition: winCondition, scores: [] });
+        }
+        return;
+    }
+
+    if (gameState.activeGames) {
+        gameState.activeGames[gameId] = {
+            ...(gameState.activeGames[gameId] || {}),
+            status: 'completed'
+        };
+    }
+
     db.query(
         'UPDATE games SET status = "completed", winner = ? WHERE id = ?',
         [winnerId, gameId],
@@ -339,9 +408,14 @@ function endGame(gameId, winnerId, winCondition, gameState, db, callback) {
 // Update player statistics after game ends
 function updatePlayerStats(gameId, winnerId, scores, db, callback) {
     const updates = [];
+
+    if (!Array.isArray(scores) || scores.length === 0) {
+        callback(null);
+        return;
+    }
     
     scores.forEach(score => {
-        const isWinner = score.playerId === winnerId;
+        const isWinner = Number(score.playerId) === Number(winnerId);
         
         updates.push(new Promise((resolve, reject) => {
             db.query(
@@ -395,15 +469,21 @@ function cleanupGame(gameId, gameState, db) {
     gameState.clients.forEach(client => {
         if (Number(client.gameid) === Number(gameId)) {
             client.gameid = null;
+            client.raceid = null;
         }
     });
 }
 
 // Get victory progress for all conditions
 function getVictoryProgress(gameId, playerId, gameState, db, callback) {
-    const conditions = Object.values(VICTORY_CONDITIONS);
+    const conditions = activeVictoryConditions().map(entry => entry.condition);
     const progress = {};
     let checked = 0;
+
+    if (conditions.length === 0) {
+        callback(null, progress);
+        return;
+    }
     
     conditions.forEach(condition => {
         condition.check(gameId, playerId, gameState, db, (achieved, percent) => {

@@ -1,5 +1,6 @@
 // tour.js - lightweight guided tour for new players
 (function() {
+    const STORAGE_KEY = 'gow-tour-dismissed-v1';
     const steps = [
         {
             id: 'step-resources',
@@ -17,7 +18,7 @@
         },
         {
             id: 'step-actions',
-            selector: '#controlpad',
+            selector: '#controlPadGUI',
             title: 'Build & Move',
             body: 'Use the control pad to build ships/buildings on owned sectors. Moves and colonization happen from selected sectors.',
             placement: 'top'
@@ -40,8 +41,8 @@
         overlay.id = 'tour-overlay';
         Object.assign(overlay.style, {
             position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.55)', zIndex: 4000,
+            pointerEvents: 'none',
         });
-        overlay.addEventListener('click', endTour);
         document.body.appendChild(overlay);
     }
 
@@ -52,7 +53,7 @@
             <div id="tour-title" style="font-weight:700;margin-bottom:6px;"></div>
             <div id="tour-body" style="font-size:13px;line-height:1.4;margin-bottom:10px;color:#cfd7ff;"></div>
             <div style="display:flex;justify-content:space-between;align-items:center;">
-                <button id="tour-skip" style="background:transparent;border:1px solid #555;color:#cfd7ff;padding:6px 10px;border-radius:6px;cursor:pointer;">Skip</button>
+                <button id="tour-skip" style="background:transparent;border:1px solid #555;color:#cfd7ff;padding:6px 10px;border-radius:6px;cursor:pointer;">Dismiss</button>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <button id="tour-prev" style="background:#2b334f;border:none;color:#e8ecff;padding:6px 10px;border-radius:6px;cursor:pointer;">Back</button>
                     <button id="tour-next" style="background:#4c7cff;border:none;color:#0b1020;padding:6px 12px;border-radius:6px;font-weight:700;cursor:pointer;">Next</button>
@@ -62,7 +63,7 @@
         Object.assign(bubble.style, {
             position: 'fixed', zIndex: 4001, maxWidth: '320px', background: '#0f1424',
             border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '12px',
-            boxShadow: '0 12px 30px rgba(0,0,0,0.35)', color: '#e8ecff'
+            boxShadow: '0 12px 30px rgba(0,0,0,0.35)', color: '#e8ecff', pointerEvents: 'auto'
         });
         document.body.appendChild(bubble);
         bubble.querySelector('#tour-skip').onclick = endTour;
@@ -98,12 +99,22 @@
         bubble.querySelector('#tour-title').textContent = step.title;
         bubble.querySelector('#tour-body').textContent = step.body;
         const nextBtn = bubble.querySelector('#tour-next');
-        nextBtn.textContent = current === steps.length - 1 ? 'Finish' : 'Next';
+        const prevBtn = bubble.querySelector('#tour-prev');
+        nextBtn.textContent = current === steps.length - 1 ? 'Done' : 'Next';
+        if (prevBtn) {
+            prevBtn.disabled = current === 0;
+            prevBtn.style.opacity = current === 0 ? '0.5' : '1';
+        }
         positionBubble(step);
     }
 
     function move(delta) {
-        current = Math.max(0, Math.min(steps.length - 1, current + delta));
+        const next = current + delta;
+        if (next >= steps.length) {
+            endTour();
+            return;
+        }
+        current = Math.max(0, next);
         renderStep();
     }
 
@@ -113,11 +124,24 @@
         overlay = null;
         bubble = null;
         current = 0;
-        sessionStorage.setItem('gow-tour-dismissed', '1');
+        try {
+            localStorage.setItem(STORAGE_KEY, '1');
+        } catch (err) {
+            sessionStorage.setItem(STORAGE_KEY, '1');
+        }
     }
 
     function startTour(force = false) {
-        if (!force && sessionStorage.getItem('gow-tour-dismissed') === '1') return;
+        if (overlay || bubble) return;
+        if (!force) {
+            let dismissed = false;
+            try {
+                dismissed = localStorage.getItem(STORAGE_KEY) === '1';
+            } catch (err) {
+                dismissed = sessionStorage.getItem(STORAGE_KEY) === '1';
+            }
+            if (dismissed) return;
+        }
         createOverlay();
         createBubble();
         renderStep();

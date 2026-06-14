@@ -30,6 +30,13 @@ test.describe('Battle visibility UX', () => {
         await page.goto('/game.html');
         await expect(page.locator('#resourceBar')).toBeVisible({ timeout: 15000 });
 
+        // Force the 2D fallback overlay so this assertion is deterministic in
+        // headless CI. The 3D theater (window.Battle3D) renders to a WebGL canvas
+        // and is verified manually; here we exercise the fallback render path.
+        await page.evaluate(() => {
+            if (window.Battle3D) window.Battle3D.isAvailable = () => false;
+        });
+
         // Build a minimal battle payload with initial and final fleet counts.
         await page.evaluate(() => {
             const fields = new Array(40).fill(0);

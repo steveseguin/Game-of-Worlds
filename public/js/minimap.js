@@ -69,6 +69,7 @@ const MiniMap = (function() {
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("font-size", "12");
         text.setAttribute("fill", "#000000");
+        text.style.pointerEvents = "none";
         text.textContent = id.toString(16).toUpperCase();
         
         // Fleet size indicator (hidden by default)
@@ -79,6 +80,7 @@ const MiniMap = (function() {
         fleetText.setAttribute("text-anchor", "middle");
         fleetText.setAttribute("font-size", "10");
         fleetText.setAttribute("fill", "#FFFFFF");
+        fleetText.style.pointerEvents = "none";
         fleetText.style.display = "none";
         
         // Colonized indicator (hidden by default)
@@ -89,6 +91,7 @@ const MiniMap = (function() {
         colonizedText.setAttribute("text-anchor", "middle");
         colonizedText.setAttribute("font-size", "10");
         colonizedText.setAttribute("fill", "#FFFFFF");
+        colonizedText.style.pointerEvents = "none";
         colonizedText.style.display = "none";
         
         // Add event listeners

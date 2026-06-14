@@ -74,6 +74,8 @@
         const sectorImage = document.getElementById('sectorimg');
         const viewTitle = document.getElementById('viewTitle');
         const avatar = document.getElementById('avatar-notification-system');
+        const empireSummary = document.getElementById('empireSummary');
+        const mapLegend = document.getElementById('mapLegend');
 
         if (chatContainer) {
             setImportant(chatContainer, 'width', px(controlWidth));
@@ -102,12 +104,31 @@
             setImportant(minimap, 'bottom', px(minimapBottom));
         }
 
+        if (mapLegend) {
+            const legendWidth = clamp(220 * scale, 150, 260);
+            setImportant(mapLegend, 'width', px(legendWidth));
+            setImportant(mapLegend, 'right', stackBottomPanels ? '8px' : '10px');
+            setImportant(mapLegend, 'bottom', px(minimapBottom + minimapHeight + 8));
+            setImportant(mapLegend, 'display', shortLandscape || veryNarrow ? 'none' : 'block');
+            mapLegend.style.fontSize = `${clamp(11 * scale, 9.5, 12)}px`;
+        }
+
         if (resourceBar) {
             const resourceWidth = veryNarrow
                 ? Math.max(140, viewportWidth - turnWidth - 8)
                 : Math.min(500 * scale, viewportWidth - turnWidth - 24);
             setImportant(resourceBar, 'width', px(Math.min(viewportWidth, Math.max(140, resourceWidth))));
             resourceBar.style.fontSize = `${clamp(13 * scale, 10.5, 14)}px`;
+        }
+
+        if (empireSummary) {
+            const summaryWidth = veryNarrow
+                ? Math.max(150, viewportWidth - 16)
+                : Math.min(500 * scale, viewportWidth - turnWidth - 24);
+            setImportant(empireSummary, 'width', px(Math.max(150, summaryWidth)));
+            setImportant(empireSummary, 'top', px(veryNarrow ? turnHeight + 78 : 42 * scale));
+            setImportant(empireSummary, 'left', '10px');
+            empireSummary.style.fontSize = `${clamp(12 * scale, 10, 13)}px`;
         }
 
         if (turnBar) {

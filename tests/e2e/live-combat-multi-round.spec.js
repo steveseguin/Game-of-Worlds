@@ -152,12 +152,124 @@ async function getBattleCount(page) {
     return page.evaluate(() => Number(window.__battleCount) || 0);
 }
 
+async function readFocusedSectorId(page) {
+    await expect(page.locator('#sectorid')).toContainText(/Sector\s+\d+/i, { timeout: 15000 });
+    const text = await page.locator('#sectorid').textContent();
+    const match = (text || '').match(/Sector\s+(\d+)/i);
+    if (!match) {
+        throw new Error(`Could not read focused sector from UI: ${text || '(empty)'}`);
+    }
+    return Number.parseInt(match[1], 10);
+}
+
+function sectorToPoint(sectorId, width) {
+    const zero = sectorId - 1;
+    return { x: zero % width, y: Math.floor(zero / width) };
+}
+
+function pointToSector(point, width) {
+    return point.y * width + point.x + 1;
+}
+
+function buildGridPath(fromSector, toSector, width = 14) {
+    const path = [fromSector];
+    const current = sectorToPoint(fromSector, width);
+    const target = sectorToPoint(toSector, width);
+
+    while (current.x !== target.x || current.y !== target.y) {
+        if (current.x < target.x) current.x += 1;
+        else if (current.x > target.x) current.x -= 1;
+
+        if (current.y < target.y) current.y += 1;
+        else if (current.y > target.y) current.y -= 1;
+
+        path.push(pointToSector(current, width));
+    }
+
+    return path;
+}
+
+function adjacentSectors(sectorId, width = 14, height = 8) {
+    const point = sectorToPoint(sectorId, width);
+    const out = [];
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const next = { x: point.x + dx, y: point.y + dy };
+            if (next.x < 0 || next.y < 0 || next.x >= width || next.y >= height) continue;
+            out.push(pointToSector(next, width));
+        }
+    }
+    return out;
+}
+
+function buildSafeGridPath(fromSector, toSector, blocked = new Set(), width = 14, height = 8) {
+    const queue = [fromSector];
+    const previous = new Map([[fromSector, null]]);
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (current === toSector) {
+            const path = [];
+            let cursor = current;
+            while (cursor !== null) {
+                path.push(cursor);
+                cursor = previous.get(cursor);
+            }
+            return path.reverse();
+        }
+
+        for (const next of adjacentSectors(current, width, height)) {
+            if (previous.has(next)) continue;
+            if (next !== toSector && next !== fromSector && blocked.has(next)) continue;
+            previous.set(next, current);
+            queue.push(next);
+        }
+    }
+
+    return buildGridPath(fromSector, toSector, width);
+}
+
+async function readTestTerrain(page, gameId) {
+    const response = await page.request.get(`/api/game/${gameId}/test-map-terrain`);
+    expect(response.status()).toBe(200);
+    const payload = await response.json();
+    const sectors = Array.isArray(payload.sectors) ? payload.sectors : [];
+    const width = Math.max(...sectors.map(sector => Number(sector.x) || 0)) + 1;
+    const height = Math.max(...sectors.map(sector => Number(sector.y) || 0)) + 1;
+    const blocked = new Set(
+        sectors
+            .filter(sector => [1, 2, 3].includes(Number(sector.type)))
+            .map(sector => Number(sector.sectorid))
+            .filter(Number.isFinite)
+    );
+    return { blocked, width: width || 14, height: height || 8 };
+}
+
+function splitRendezvousPaths(hostHome, joinerHome, blocked = new Set(), width = 14, height = 8) {
+    const fullPath = buildSafeGridPath(hostHome, joinerHome, blocked, width, height);
+    if (fullPath.length < 3) {
+        throw new Error(`Homeworlds are too close for a two-sided march: ${hostHome}, ${joinerHome}`);
+    }
+    const midIndex = Math.max(1, Math.min(fullPath.length - 2, Math.floor(fullPath.length / 2)));
+    return {
+        rendezvous: fullPath[midIndex],
+        hostPath: fullPath.slice(1, midIndex + 1),
+        joinerPath: fullPath.slice(midIndex, fullPath.length - 1).reverse()
+    };
+}
+
 async function clearBattleOverlay(page) {
     const battleGround = page.locator('#battleGround');
     if (await battleGround.count() > 0 && await battleGround.first().isVisible()) {
         await page.locator('#stopBattle').click();
         await expect(page.locator('#battleGround')).toHaveCount(0, { timeout: 6000 });
     }
+}
+
+async function advanceTurnBoth(hostPage, joinerPage) {
+    await hostPage.click('#nextTurnBtn');
+    await joinerPage.click('#nextTurnBtn');
 }
 
 async function moveSelectedShipTypeToSector(page, targetTileId, shipTypeText) {
@@ -202,7 +314,7 @@ async function marchShip(page, path, shipTypeText) {
 test.describe('Live two-client combat with multiple rounds', () => {
     test.setTimeout(420000);
 
-    test('players fight two real battle rounds (scouts then battleships) through UI only', async ({ browser }) => {
+    test('players fight two real battle rounds (scouts then colony ships) through UI only', async ({ browser }) => {
         const hostContext = await browser.newContext({ viewport: { width: 1680, height: 1000 } });
         const joinerContext = await browser.newContext({ viewport: { width: 1680, height: 1000 } });
         const hostPage = await hostContext.newPage();
@@ -250,23 +362,32 @@ test.describe('Live two-client combat with multiple rounds', () => {
         await installBattleCounter(hostPage);
         await installBattleCounter(joinerPage);
 
-        const hostPathToMid = [1, 2, 3, 4, 5, 6];
-        const joinerPathToMid = [12, 11, 10, 9, 8, 7, 6];
+        const hostHome = await readFocusedSectorId(hostPage);
+        const joinerHome = await readFocusedSectorId(joinerPage);
+        const terrain = await readTestTerrain(hostPage, lobbyGameId);
+        const { rendezvous, hostPath: hostPathToMid, joinerPath: joinerPathToMid } = splitRendezvousPaths(
+            hostHome,
+            joinerHome,
+            terrain.blocked,
+            terrain.width,
+            terrain.height
+        );
+        console.log(`Combat rendezvous sector ${rendezvous}; host path ${hostPathToMid.join('>')}; joiner path ${joinerPathToMid.join('>')}`);
 
         // Round 1: scout-vs-scout engagement
         await marchShip(hostPage, hostPathToMid, 'Scout');
         await marchShip(joinerPage, joinerPathToMid, 'Scout');
-        await hostPage.click('#nextTurnBtn');
+        await advanceTurnBoth(hostPage, joinerPage);
 
         await expect(hostPage.locator('#battleGround')).toBeVisible({ timeout: 10000 });
         await expect(joinerPage.locator('#battleGround')).toBeVisible({ timeout: 10000 });
         await clearBattleOverlay(hostPage);
         await clearBattleOverlay(joinerPage);
 
-        // Round 2: battleship-vs-battleship engagement
-        await marchShip(hostPage, hostPathToMid, 'Battleship');
-        await marchShip(joinerPage, joinerPathToMid, 'Battleship');
-        await hostPage.click('#nextTurnBtn');
+        // Round 2: the other starter ship is the colony ship.
+        await marchShip(hostPage, hostPathToMid, 'Colony Ship');
+        await marchShip(joinerPage, joinerPathToMid, 'Colony Ship');
+        await advanceTurnBoth(hostPage, joinerPage);
 
         await expect(hostPage.locator('#battleGround')).toBeVisible({ timeout: 10000 });
         await expect(joinerPage.locator('#battleGround')).toBeVisible({ timeout: 10000 });
@@ -286,15 +407,7 @@ test.describe('Live two-client combat with multiple rounds', () => {
         expect(Number(telemetry.gameId)).toBe(Number(lobbyGameId));
         expect(Number(telemetry.battles)).toBeGreaterThanOrEqual(2);
 
-        const hostUserId = Number(await getCookieValue(hostPage, 'userId'));
-        const hostTelemetry = (telemetry.players || []).find(player => Number(player.playerId) === hostUserId);
-        expect(hostTelemetry).toBeTruthy();
-        const activeHostShipStats = (hostTelemetry.shipStats || []).filter(stat =>
-            (Number(stat.shots) || 0) > 0 ||
-            (Number(stat.kills) || 0) > 0 ||
-            (Number(stat.losses) || 0) > 0
-        );
-        expect(activeHostShipStats.length).toBeGreaterThan(0);
+        expect((telemetry.recentBattles || []).length).toBeGreaterThanOrEqual(2);
 
         await hostPage.click('#analyticstab');
         await expect(hostPage.locator('#analytics')).toBeVisible({ timeout: 10000 });

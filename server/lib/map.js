@@ -385,10 +385,14 @@ function generateGameMap(width, height, playerCount) {
             const metalBonus = Math.floor(Math.random() * 200 + 50); // 50-250%
             const crystalBonus = Math.floor(Math.random() * 200 + 50); // 50-250%
             
-            // Generate terraform level (0-5)
+            // Terraform requirement scales with planet size: micro worlds are
+            // easy starters, large worlds demand real terraforming investment.
             let terraformLevel = 0;
             if (sectorType >= SECTOR_TYPES.MICRO_PLANET.id && sectorType <= SECTOR_TYPES.LARGE_PLANET.id) {
-                terraformLevel = Math.floor(Math.random() * 6);
+                const tier = sectorType - SECTOR_TYPES.MICRO_PLANET.id; // 0..3
+                const ranges = [[0, 1], [0, 2], [1, 3], [2, 5]];
+                const [minReq, maxReq] = ranges[tier] || [0, 2];
+                terraformLevel = minReq + Math.floor(Math.random() * (maxReq - minReq + 1));
             }
             
             // Artifact chance (25% chance on planets)

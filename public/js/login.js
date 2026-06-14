@@ -22,6 +22,11 @@ const LoginSystem = (function() {
         if (registerForm) {
             registerForm.addEventListener('submit', handleRegister);
         }
+
+        const guestLoginBtn = document.getElementById('guestLoginBtn');
+        if (guestLoginBtn) {
+            guestLoginBtn.addEventListener('click', handleGuestLogin);
+        }
         
         const registerLink = document.getElementById('registerLink');
         if (registerLink) {
@@ -47,6 +52,14 @@ const LoginSystem = (function() {
                 event.preventDefault();
                 switchPanels('register');
             });
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('upgrade') === '1' || localStorage.getItem('gowIsGuest') === '1') {
+            prepareGuestUpgradeNotice();
+            if (params.get('upgrade') === '1') {
+                switchPanels('register');
+            }
         }
     }
     
@@ -105,6 +118,37 @@ const LoginSystem = (function() {
             }
         }
     }
+
+    function persistAuth(data) {
+        const isGuest = data.isGuest === true || data.isGuest === 1 || data.isGuest === '1';
+        const maxAge = isGuest ? 60 * 60 * 24 * 30 : 60 * 60 * 24;
+
+        document.cookie = `userId=${data.userId}; path=/; max-age=${maxAge}`;
+        document.cookie = `tempKey=${data.tempKey}; path=/; max-age=${maxAge}`;
+
+        localStorage.setItem('userId', data.userId);
+        localStorage.setItem('username', data.username || '');
+        localStorage.setItem('gowIsGuest', isGuest ? '1' : '0');
+
+        if (isGuest && data.guestToken) {
+            localStorage.setItem('gowGuestToken', data.guestToken);
+        }
+        if (!isGuest) {
+            localStorage.removeItem('gowGuestToken');
+        }
+    }
+
+    function prepareGuestUpgradeNotice() {
+        const notice = document.getElementById('upgradeNotice');
+        if (notice && localStorage.getItem('gowIsGuest') === '1') {
+            notice.hidden = false;
+        }
+        const usernameField = document.getElementById('registerUsername');
+        const currentName = localStorage.getItem('username');
+        if (usernameField && currentName && !usernameField.value) {
+            usernameField.value = currentName;
+        }
+    }
     
     function handleLogin(e) {
         e.preventDefault();
@@ -120,15 +164,9 @@ const LoginSystem = (function() {
             body: JSON.stringify({ username, password })
         })
         .then(response => response.json())
-        .then(data => {
+            .then(data => {
             if (data.success) {
-                // Store auth tokens in cookies
-                document.cookie = `userId=${data.userId}; path=/; max-age=86400`;
-                document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
-                
-                // Store user ID in localStorage for shop access
-                localStorage.setItem('userId', data.userId);
-                localStorage.setItem('username', data.username);
+                persistAuth(data);
                 
                 // Redirect to game
                 window.location.href = '/lobby.html';
@@ -138,6 +176,53 @@ const LoginSystem = (function() {
         })
         .catch(error => {
             console.error('Login error:', error);
+        });
+    }
+
+    function handleGuestLogin() {
+        const usernameField = document.getElementById('guestUsername');
+        const errorEl = document.getElementById('guestError');
+        const button = document.getElementById('guestLoginBtn');
+        const username = usernameField ? usernameField.value.trim() : '';
+        const guestToken = localStorage.getItem('gowGuestToken') || '';
+
+        if (errorEl) {
+            errorEl.textContent = '';
+        }
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Connecting...';
+        }
+
+        fetch('/guest-login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, guestToken })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                persistAuth(data);
+                window.location.href = '/lobby.html';
+                return;
+            }
+            if (errorEl) {
+                errorEl.textContent = data.error || 'Guest access failed';
+            }
+        })
+        .catch(error => {
+            console.error('Guest login error:', error);
+            if (errorEl) {
+                errorEl.textContent = 'Guest access failed';
+            }
+        })
+        .finally(() => {
+            if (button) {
+                button.disabled = false;
+                button.textContent = 'Continue as Guest';
+            }
         });
     }
     
@@ -169,17 +254,20 @@ const LoginSystem = (function() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ username, password, email })
+            body: JSON.stringify({
+                username,
+                password,
+                email,
+                guestToken: localStorage.getItem('gowGuestToken') || ''
+            })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Store auth tokens in cookies
-                document.cookie = `userId=${data.userId}; path=/; max-age=86400`;
-                document.cookie = `tempKey=${data.tempKey}; path=/; max-age=86400`;
+                persistAuth(data);
                 
                 // Show success and redirect
-                successEl.textContent = 'Registration successful!';
+                successEl.textContent = data.upgraded ? 'Guest progress linked!' : 'Registration successful!';
                 setTimeout(() => {
                     window.location.href = '/lobby.html';
                 }, 1000);

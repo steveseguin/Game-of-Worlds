@@ -16,7 +16,8 @@ const ControlPad = (function() {
         BUILD: 'build',
         FLEET: 'fleet',
         TECH: 'techtree',
-        COLONIZE: 'colonize'
+        COLONIZE: 'colonize',
+        ANALYTICS: 'analytics'
     };
     
     let currentTab = null;
@@ -76,6 +77,7 @@ const ControlPad = (function() {
         document.getElementById(TABS.FLEET)?.classList.add('hidden');
         document.getElementById(TABS.TECH)?.classList.add('hidden');
         document.getElementById(TABS.COLONIZE)?.classList.add('hidden');
+        document.getElementById(TABS.ANALYTICS)?.classList.add('hidden');
         
         // Show selected tab
         document.getElementById(tabName)?.classList.remove('hidden');
@@ -85,6 +87,7 @@ const ControlPad = (function() {
         document.getElementById('fleettab')?.classList.remove('active');
         document.getElementById('techtab')?.classList.remove('active');
         document.getElementById('colonizetab')?.classList.remove('active');
+        document.getElementById('analyticstab')?.classList.remove('active');
         
         document.getElementById(tabName + 'tab')?.classList.add('active');
         

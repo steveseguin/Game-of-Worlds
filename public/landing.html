@@ -3,171 +3,449 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game of Worlds - Welcome!</title>
-    <link rel="stylesheet" href="css/landing.css">
+    <title>Game of Worlds — Galactic Conquest</title>
+    <script>document.documentElement.classList.add('js');</script>
+    <meta name="description" content="A turn-based multiplayer space-strategy game. Twelve asymmetric factions, real risk-and-reward exploration, and decisive fleet warfare. Play free in your browser.">
+    <meta name="theme-color" content="#05070d">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Game of Worlds — Galactic Conquest">
+    <meta property="og:description" content="Probe the dark. Seize the hazards. Command real fleets across a living galaxy of twelve factions.">
+    <meta property="og:image" content="images/title2.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/landing.css?v=20260613m">
 </head>
 <body>
-    <header class="site-header">
-        <h1 class="site-title">Game of Worlds</h1>
-        <a class="cta-button header-cta" href="/login.html">
-            Play Now
-            <svg aria-hidden="true" focusable="false" viewBox="0 0 20 20">
-                <path fill="currentColor" d="M4 9h8.586L9.293 5.707a1 1 0 1 1 1.414-1.414l5.999 6.001a1 1 0 0 1 0 1.412l-6 6a1 1 0 1 1-1.414-1.414L12.586 11H4a1 1 0 1 1 0-2Z"/>
-            </svg>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
+
+    <!-- ======================= TOP COMMAND BAR ======================= -->
+    <header class="hud-bar">
+        <a class="brand" href="/" aria-label="Game of Worlds home">
+            <span class="brand__sigil" aria-hidden="true">
+                <span></span><span></span><span></span>
+            </span>
+            <span class="brand__text">
+                <span class="brand__name">GAME OF WORLDS</span>
+                <span class="brand__sub">// GALACTIC CONQUEST</span>
+            </span>
+        </a>
+
+        <div class="hud-status" aria-hidden="true">
+            <span class="led led--ok"></span>
+            <span class="hud-status__label">COMMAND NET</span>
+            <span class="hud-status__val" data-online>ONLINE</span>
+            <span class="hud-stardate">
+                <span class="hud-divider"></span>
+                <span class="hud-status__label">STARDATE</span>
+                <span class="hud-status__val" id="stardate">—</span>
+            </span>
+        </div>
+
+        <a class="btn btn--key" href="/login.html">
+            <span class="btn__full">ENTER COMMAND</span>
+            <span class="btn__short">PLAY</span>
+            <span class="btn__chev" aria-hidden="true">▸</span>
         </a>
     </header>
 
-    <main class="landing">
-        <section class="hero card">
-            <div class="hero-media">
-                <img src="images/radio-galaxy.svg"
-                     alt="A fleet preparing for battle beside a luminous radio galaxy."
-                     class="hero-art"
-                     decoding="async"
-                     fetchpriority="high">
+    <!-- ======================= HERO ======================= -->
+    <section class="hero" id="top">
+        <canvas class="hero__canvas" id="hero-canvas" aria-hidden="true"></canvas>
+        <div class="hero__fallback" aria-hidden="true"></div>
+        <div class="hero__grid" aria-hidden="true"></div>
+
+        <div class="hero__inner">
+            <div class="hero__copy">
+                <p class="kicker"><span class="kicker__tick"></span>INCOMING TRANSMISSION // SECTOR 0</p>
+                <h1 class="hero__title">GAME&nbsp;OF<br><span>WORLDS</span></h1>
+                <p class="hero__lede">
+                    Twelve factions. One contested galaxy. Probe the dark, seize the
+                    hazards that kill lesser fleets, and rewrite who rules the stars.
+                </p>
+
+                <div class="hero__actions">
+                    <a class="btn btn--primary" href="/login.html">
+                        DEPLOY FLEET
+                        <span class="btn__sub">▸ PLAY FREE</span>
+                    </a>
+                    <div class="mode-chips" role="list">
+                        <span class="chip" role="listitem"><b>QUICK</b><i>fast turns · one sitting</i></span>
+                        <span class="chip" role="listitem"><b>EPIC</b><i>one turn a day · for weeks</i></span>
+                    </div>
+                </div>
+
+                <dl class="hero__stats" aria-label="Game facts">
+                    <div><dt>FACTIONS</dt><dd>12</dd></div>
+                    <div><dt>TURN ENGINE</dt><dd>REAL-TIME</dd></div>
+                    <div><dt>ORIGIN</dt><dd>EST. 2012</dd></div>
+                </dl>
             </div>
-            <div class="hero-copy">
-                <h2>Rewrite the Fate of the Galaxy</h2>
-                <p>Game of Worlds is a modern revival of the 2012 original—rebuilt with faster lobbies, AI opponents, and refreshed art direction for decisive galactic conquest.</p>
-                <p>Pick your pace: Quick (fast turns) or Epic (one turn a day). Command your empire, research bold tech, and outmaneuver rivals—whether you binge a session in 20 minutes or trade daily turns with a friend.</p>
-                <a class="cta-button" href="/login.html">
-                    Play Free Now
-                    <svg aria-hidden="true" focusable="false" viewBox="0 0 20 20">
-                        <path fill="currentColor" d="M4 9h8.586L9.293 5.707a1 1 0 1 1 1.414-1.414l5.999 6.001a1 1 0 0 1 0 1.412l-6 6a1 1 0 1 1-1.414-1.414L12.586 11H4a1 1 0 1 1 0-2Z"/>
-                    </svg>
-                </a>
+        </div>
+
+        <div class="ticker" aria-hidden="true">
+            <div class="ticker__track">
+                <span>◉ COMMAND NET SYNCHRONISED</span>
+                <span>▴ 12 FACTIONS STANDING BY</span>
+                <span>⚠ BLACK HOLE DETECTED — GRID 07</span>
+                <span>▸ WARP GATES NOMINAL</span>
+                <span>✕ PROBE LOST — SECTOR 19</span>
+                <span>◈ ASTEROID FIELD SECURED — GRID 12</span>
+                <span>▴ FLEET INBOUND — ETA 1 TURN</span>
+                <span>◉ COMMAND NET SYNCHRONISED</span>
+                <span>▴ 12 FACTIONS STANDING BY</span>
+                <span>⚠ BLACK HOLE DETECTED — GRID 07</span>
+                <span>▸ WARP GATES NOMINAL</span>
+                <span>✕ PROBE LOST — SECTOR 19</span>
+                <span>◈ ASTEROID FIELD SECURED — GRID 12</span>
+                <span>▴ FLEET INBOUND — ETA 1 TURN</span>
+            </div>
+        </div>
+    </section>
+
+    <main class="console">
+
+        <!-- ======================= 01 · DOCTRINE ======================= -->
+        <section class="module reveal" id="doctrine" aria-labelledby="doctrine-h">
+            <div class="module__head">
+                <p class="module__id">// 01 — FIELD DOCTRINE</p>
+                <h2 class="module__title" id="doctrine-h">How the galaxy is won</h2>
+                <p class="module__lede">Exploration is a gamble, not a formality. Every sector you enter can hand you a homeworld — or erase your fleet. This is the game's spine.</p>
+            </div>
+
+            <div class="doctrine-grid">
+                <article class="pillar pillar--danger">
+                    <div class="pillar__art">
+                        <img src="images/type2.gif" alt="A black hole — swirling darkness collapsing to a void." loading="lazy" decoding="async">
+                        <span class="pillar__tag">HAZARD</span>
+                    </div>
+                    <h3>Explore at your peril</h3>
+                    <p>Unknown sectors hide planets, ore fields — and black holes that crush a fleet the instant it arrives. Scout with a <b>300-crystal probe</b>, or gamble warships and pray the dark is empty.</p>
+                </article>
+
+                <article class="pillar pillar--danger">
+                    <div class="pillar__art">
+                        <img src="images/type1.gif" alt="An asteroid belt strewn with glinting ore." loading="lazy" decoding="async">
+                        <span class="pillar__tag">CONTEST</span>
+                    </div>
+                    <h3>Seize the hazards</h3>
+                    <p>An asteroid belt shreds ships on entry — random losses, every pass — <b>until you own it</b>. Secure the deadly sectors and turn death-traps into safe supply lanes no rival dares cross.</p>
+                </article>
+
+                <article class="pillar">
+                    <div class="pillar__art pillar__art--row">
+                        <img src="images/metal.png" alt="Refined metal ore." loading="lazy" decoding="async">
+                        <img src="images/crystal.png" alt="A crystal cluster." loading="lazy" decoding="async">
+                        <img src="images/research.png" alt="Research data." loading="lazy" decoding="async">
+                        <span class="pillar__tag">ECONOMY</span>
+                    </div>
+                    <h3>Forge an empire</h3>
+                    <p>Metal Extractors, Crystal Refineries, Research Academies, Spaceports, Orbital Turrets, Warp Gates. Every world you hold becomes a factory for the war to come.</p>
+                </article>
+
+                <article class="pillar">
+                    <div class="pillar__art pillar__art--ship">
+                        <img src="images/dreadnaught.png" alt="A top-down dreadnought warship." loading="lazy" decoding="async">
+                        <span class="pillar__tag">WARFARE</span>
+                    </div>
+                    <h3>Command real fleets</h3>
+                    <p>Raid supply lines with fast interceptors; break worlds with orbital dreadnoughts. Read the enemy's doctrine and counter it with the right tech at the right turn.</p>
+                </article>
+
+                <article class="pillar">
+                    <div class="pillar__art pillar__art--glyph">
+                        <span class="glyph glyph--tempo" aria-hidden="true"></span>
+                        <span class="pillar__tag">TEMPO</span>
+                    </div>
+                    <h3>Quick or Epic</h3>
+                    <p>Binge a whole campaign in twenty minutes of fast turns — or trade one decisive move a day with friends over weeks. Epic mode boosts income so every order lands hard.</p>
+                </article>
+
+                <article class="pillar">
+                    <div class="pillar__art pillar__art--glyph">
+                        <span class="glyph glyph--ai" aria-hidden="true"></span>
+                        <span class="pillar__tag">AI CORE</span>
+                    </div>
+                    <h3>Allies &amp; foes on tap</h3>
+                    <p>Fill empty seats in seconds. Drill against an AI-only sandbox, or blend humans and bots so a match always fires — no waiting on a full lobby.</p>
+                </article>
             </div>
         </section>
 
-        <section class="card">
-            <h2 class="section-heading">Fresh Updates</h2>
-            <p class="section-subtitle">We’re polishing the live build weekly. Here’s what just landed:</p>
-            <ul class="feature-list">
-                <li>
-                    <span class="feature-icon">🛰️</span>
-                    <div class="feature-copy">
-                        <h3 class="feature-title">Combat Reports</h3>
-                        <p class="feature-text">Battles now ship with sector highlights, modal summaries, and sound cues so you never miss a clash.</p>
+        <!-- ======================= BATTLE THEATRE ======================= -->
+        <section class="theatre reveal" aria-labelledby="theatre-h">
+            <div class="theatre__frame">
+                <img class="theatre__ship" src="images/dreadnaught.png" alt="" aria-hidden="true" loading="lazy" decoding="async">
+                <div class="theatre__copy">
+                    <p class="kicker"><span class="kicker__tick"></span>THEATRE OF WAR</p>
+                    <h2 id="theatre-h">The bridge is yours.<br>Give the order.</h2>
+                    <p>Capital ships hang over a burning frontier. Every turn, somewhere in the grid, a fleet commits and a world changes hands. Step onto the bridge and make the next move count.</p>
+                    <a class="btn btn--primary" href="/login.html">TAKE THE BRIDGE <span class="btn__sub">▸ PLAY FREE</span></a>
+                </div>
+                <div class="theatre__readout" aria-hidden="true">
+                    <p class="readout__line"><span>SECTOR</span><b>07 · CONTESTED</b></p>
+                    <p class="readout__line"><span>FLEET</span><b>DREADNOUGHT × 4</b></p>
+                    <p class="readout__line"><span>THREAT</span><b class="hot">BLACK HOLE</b></p>
+                    <p class="readout__line"><span>ORDER</span><b>SIEGE // HOLD</b></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ======================= 02 · FACTION DATABASE ======================= -->
+        <section class="module reveal" id="factions" aria-labelledby="factions-h">
+            <div class="module__head">
+                <p class="module__id">// 02 — FACTION DATABASE</p>
+                <h2 class="module__title" id="factions-h">Twelve ways to rule</h2>
+                <p class="module__lede">No two factions play alike. Each rewrites production, speed, and war — and most must be earned. Start as the Terrans; unlock the rest through conquest.</p>
+            </div>
+
+            <div class="dossier">
+                <!-- 1 -->
+                <article class="race" style="--fac:#5aa9ff">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/terran-icon.svg" alt="Terran Empire insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Terran Empire</h3>
+                        <p class="race__role">Balanced human powers · steady on every front</p>
+                        <p class="race__ability"><span>ABILITY</span>Adaptable — buildings raise 10% faster</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:55%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:55%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:55%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock chip--starter">STARTER</span>
+                </article>
+                <!-- 2 -->
+                <article class="race" style="--fac:#3ee0cf">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/silicon-icon.svg" alt="Silicon Collective insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Silicon Collective</h3>
+                        <p class="race__role">A machine hive of pure computation</p>
+                        <p class="race__ability"><span>ABILITY</span>Neural Network — research costs 20% less</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:58%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:82%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:50%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock">WIN 3 GAMES</span>
+                </article>
+                <!-- 3 -->
+                <article class="race" style="--fac:#7fd957">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/zephyr-icon.svg" alt="Zephyr Swarm insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Zephyr Swarm</h3>
+                        <p class="race__role">A hive mind that drowns the map in cheap hulls</p>
+                        <p class="race__ability"><span>ABILITY</span>Swarm — ships cost 30% less</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:60%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:45%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:52%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock">COLONISE 20 WORLDS</span>
+                </article>
+                <!-- 4 -->
+                <article class="race" style="--fac:#8fd9ff">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/crystalline-icon.svg" alt="Crystalline Entity insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Crystalline Entity</h3>
+                        <p class="race__role">Energy beings sheathed in living crystal</p>
+                        <p class="race__ability"><span>ABILITY</span>Crystal Matrix — ships gain +30% shields</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:62%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:62%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:80%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock">MINE 50,000 CRYSTAL</span>
+                </article>
+                <!-- 5 -->
+                <article class="race" style="--fac:#b18bff">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/void-icon.svg" alt="Void Walkers insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Void Walkers</h3>
+                        <p class="race__role">Ancients who fold space and strike from nowhere</p>
+                        <p class="race__ability"><span>ABILITY</span>Phase Shift — fleets move 50% faster</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:50%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:68%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:54%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock">PLAY 25 GAMES</span>
+                </article>
+                <!-- 6 -->
+                <article class="race" style="--fac:#ff9a4d">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/mechanicus-icon.svg" alt="Mechanicus insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Mechanicus</h3>
+                        <p class="race__role">A machine civilisation that simply won't stop</p>
+                        <p class="race__ability"><span>ABILITY</span>Auto-Repair — hulls mend 5% each turn</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:68%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:50%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:82%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock">BUILD 500 SHIPS</span>
+                </article>
+                <!-- 7 -->
+                <article class="race" style="--fac:#62e08a">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/bioform-icon.svg" alt="Bioform Collective insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Bioform Collective</h3>
+                        <p class="race__role">Living ships that evolve the longer they survive</p>
+                        <p class="race__ability"><span>ABILITY</span>Evolution — +2% stats every turn alive</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:58%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:55%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:58%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock">WIN 50 BATTLES</span>
+                </article>
+                <!-- 8 -->
+                <article class="race" style="--fac:#ffc24d">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/nomad-icon.svg" alt="Star Nomads insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Star Nomads</h3>
+                        <p class="race__role">Rootless fleets that build anywhere and run fast</p>
+                        <p class="race__ability"><span>ABILITY</span>Nomadic — no shipyards required</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:55%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:55%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:60%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock">EXPLORE 100 SECTORS</span>
+                </article>
+                <!-- 9 -->
+                <article class="race" style="--fac:#ffd97a">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/ancient-icon.svg" alt="The Ancients insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">The Ancients</h3>
+                        <p class="race__role">Precursors wielding every tech — at a steep price</p>
+                        <p class="race__ability"><span>ABILITY</span>Precursor Tech — all tech, +50% cost</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:45%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:88%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:86%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock">REFER 3 ALLIES</span>
+                </article>
+                <!-- 10 -->
+                <article class="race race--premium" style="--fac:#ff6cf0">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/quantum-icon.svg" alt="Quantum Entities insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Quantum Entities</h3>
+                        <p class="race__role">Pure energy that teleports across the board</p>
+                        <p class="race__ability"><span>ABILITY</span>Entanglement — blink fleets across space</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:64%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:82%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:70%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock chip--premium">◆ PREMIUM</span>
+                </article>
+                <!-- 11 -->
+                <article class="race race--premium" style="--fac:#ffae5c">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/titan-icon.svg" alt="Titan Lords insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Titan Lords</h3>
+                        <p class="race__role">Giants who field colossal, devastating ships</p>
+                        <p class="race__ability"><span>ABILITY</span>Colossal — 2× power, 2× cost</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:62%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:40%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:100%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock chip--premium">◆ PREMIUM</span>
+                </article>
+                <!-- 12 -->
+                <article class="race race--premium" style="--fac:#9b7bff">
+                    <div class="race__emblem"><span class="race__ring"></span><img src="images/shadow-icon.svg" alt="Shadow Realm insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__body">
+                        <h3 class="race__name">Shadow Realm</h3>
+                        <p class="race__role">Cloaked raiders who strike from the dark</p>
+                        <p class="race__ability"><span>ABILITY</span>Cloak — 30% chance to slip detection</p>
+                        <div class="race__bars">
+                            <div class="bar"><i>ECO</i><span><b style="width:58%"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="width:62%"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="width:62%"></b></span></div>
+                        </div>
+                    </div>
+                    <span class="race__lock chip--premium">◆ PREMIUM</span>
+                </article>
+            </div>
+        </section>
+
+        <!-- ======================= 03 · FIELD LOG ======================= -->
+        <section class="module reveal" id="log" aria-labelledby="log-h">
+            <div class="module__head">
+                <p class="module__id">// 03 — FIELD LOG</p>
+                <h2 class="module__title" id="log-h">Latest from the front</h2>
+                <p class="module__lede">The live build ships fixes and features on a steady cadence. Recent transmissions:</p>
+            </div>
+
+            <ul class="log">
+                <li class="log__row">
+                    <span class="log__led"></span>
+                    <span class="log__ver">PATCH&nbsp;·&nbsp;COMBAT</span>
+                    <div class="log__copy">
+                        <h3>Battle reports you can read</h3>
+                        <p>Clashes now resolve with sector highlights, a modal after-action summary, and sound cues — so you never miss the turn a war is decided.</p>
                     </div>
                 </li>
-                <li>
-                    <span class="feature-icon">📜</span>
-                    <div class="feature-copy">
-                        <h3 class="feature-title">Standing Orders</h3>
-                        <p class="feature-text">Auto-rebuild economies and keep scouts online—Epic mode enables these by default for daily-turn pacing.</p>
+                <li class="log__row">
+                    <span class="log__led"></span>
+                    <span class="log__ver">PATCH&nbsp;·&nbsp;ECONOMY</span>
+                    <div class="log__copy">
+                        <h3>Standing orders</h3>
+                        <p>Auto-rebuild your economy and keep scouts in the black between turns. Epic mode arms these by default so daily-turn games keep their momentum.</p>
                     </div>
                 </li>
-                <li>
-                    <span class="feature-icon">⏱️</span>
-                    <div class="feature-copy">
-                        <h3 class="feature-title">10s Launch Countdown</h3>
-                        <p class="feature-text">Start locks the lobby with a visible countdown; if anyone leaves, the launch is cancelled cleanly.</p>
+                <li class="log__row">
+                    <span class="log__led"></span>
+                    <span class="log__ver">PATCH&nbsp;·&nbsp;LOBBY</span>
+                    <div class="log__copy">
+                        <h3>Clean launch countdown</h3>
+                        <p>Hitting start locks the lobby behind a visible ten-second countdown. If anyone bails, the launch aborts cleanly — no half-empty games.</p>
                     </div>
                 </li>
             </ul>
         </section>
 
-        <section class="card">
-            <h2 class="section-heading">Strategise, Expand, Dominate</h2>
-            <p class="section-subtitle">Every match is a four-dimensional chess match where production, research, diplomacy, and decisive strikes determine the victor.</p>
-            <ul class="feature-list">
-                <li>
-                    <span class="feature-icon">12</span>
-                    <div class="feature-copy">
-                        <h3 class="feature-title">Distinct Factions</h3>
-                        <p class="feature-text">Master twelve asymmetric races, each with unique perks, unlock criteria, and late-game tech spikes.</p>
-                    </div>
-                </li>
-                <li>
-                    <span class="feature-icon">FX</span>
-                    <div class="feature-copy">
-                        <h3 class="feature-title">Meaningful Combat</h3>
-                        <p class="feature-text">Outfit fleets for orbital sieges, raid supply lines, and counter enemy doctrines with targeted tech picks.</p>
-                    </div>
-                </li>
-                <li>
-                    <span class="feature-icon">PR</span>
-                    <div class="feature-copy">
-                        <h3 class="feature-title">Persistent Progression</h3>
-                        <p class="feature-text">Earn achievements, unlock premium factions, and build your legend with every campaign you finish.</p>
-                    </div>
-                </li>
-                <li>
-                    <span class="feature-icon">⚡/🕒</span>
-                    <div class="feature-copy">
-                        <h3 class="feature-title">Quick or Epic</h3>
-                        <p class="feature-text">Sprint through fast turns or play one decisive turn a day with friends over weeks. Epic mode boosts income so daily moves stay meaningful.</p>
-                    </div>
-                </li>
-                <li>
-                    <span class="feature-icon">🤖</span>
-                    <div class="feature-copy">
-                        <h3 class="feature-title">AI Allies & Foes</h3>
-                        <p class="feature-text">Fill empty seats instantly, spar against AI-only sandboxes, or blend humans with bots for flexible, low-friction matches.</p>
-                    </div>
-                </li>
-            </ul>
-        </section>
-
-        <section class="race-gallery card">
-            <h2 class="section-heading">Discover the Races</h2>
-            <p class="section-subtitle">Choose your path to galactic domination with one of twelve factions—each offering distinct advantages, tech paths, and playstyles.</p>
-            <div class="race-grid">
-                <article class="race-card">
-                    <img src="images/terran-icon.svg" alt="Terran Empire icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Terran Empire</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/silicon-icon.svg" alt="Silicon Collective icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Silicon Collective</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/zephyr-icon.svg" alt="Zephyr Swarm icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Zephyr Swarm</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/crystalline-icon.svg" alt="Crystalline Entity icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Crystalline Entity</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/void-icon.svg" alt="Void Walkers icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Void Walkers</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/mechanicus-icon.svg" alt="Mechanicus icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Mechanicus</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/bioform-icon.svg" alt="Bioform Collective icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Bioform Collective</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/nomad-icon.svg" alt="Star Nomads icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Star Nomads</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/ancient-icon.svg" alt="Ancients icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">The Ancients</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/quantum-icon.svg" alt="Quantum Entities icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Quantum Entities</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/titan-icon.svg" alt="Titan Lords icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Titan Lords</p>
-                </article>
-                <article class="race-card">
-                    <img src="images/shadow-icon.svg" alt="Shadow Realm icon" class="race-icon" loading="lazy" decoding="async">
-                    <p class="race-name">Shadow Realm</p>
-                </article>
+        <!-- ======================= ENLIST ======================= -->
+        <section class="enlist reveal" aria-labelledby="enlist-h">
+            <div class="enlist__inner">
+                <span class="enlist__corner enlist__corner--tl" aria-hidden="true"></span>
+                <span class="enlist__corner enlist__corner--tr" aria-hidden="true"></span>
+                <span class="enlist__corner enlist__corner--bl" aria-hidden="true"></span>
+                <span class="enlist__corner enlist__corner--br" aria-hidden="true"></span>
+                <p class="kicker"><span class="kicker__tick"></span>AWAITING ORDERS, COMMANDER</p>
+                <h2 id="enlist-h">The galaxy won't conquer itself.</h2>
+                <p class="enlist__lede">Free to play in your browser. No download, no wait — pick a faction and take your first sector in under a minute.</p>
+                <a class="btn btn--primary btn--xl" href="/login.html">START YOUR CONQUEST <span class="btn__sub">▸ PLAY FREE</span></a>
             </div>
         </section>
     </main>
 
-    <footer class="footer">
-        <p>&copy; 2024 <span>Game of Worlds</span>. All rights reserved.</p>
-        <p>Originally created by Steve Seguin and reimagined with AI assistance.</p>
+    <footer class="hud-foot">
+        <div class="hud-foot__line" aria-hidden="true"></div>
+        <div class="hud-foot__row">
+            <p class="hud-foot__brand">GAME OF WORLDS <span>// GALACTIC CONQUEST</span></p>
+            <p class="hud-foot__credit">Created by Steve Seguin in 2012 · rebuilt for the modern web.</p>
+        </div>
+        <p class="hud-foot__legal">© 2026 Game of Worlds. All systems nominal.</p>
     </footer>
+
+    <script type="module" src="js/landing.js?v=20260613n"></script>
 </body>
 </html>

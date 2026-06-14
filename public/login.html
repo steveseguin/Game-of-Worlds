@@ -16,14 +16,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game of Worlds - Login</title>
-    <link rel="stylesheet" href="css/auth.css">
+    <title>Game of Worlds — Access Terminal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/auth.css?v=20260614a">
 </head>
 <body class="auth-body">
+    <header class="auth-topbar">
+        <a class="auth-brandmark" href="/">
+            <span class="auth-sigil" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span><b>GAME OF WORLDS</b><i>// GALACTIC CONQUEST</i></span>
+        </a>
+        <a class="auth-back" href="/">◂ RETURN TO BASE</a>
+    </header>
     <main class="auth-shell">
         <section class="auth-hero" aria-labelledby="authHeading">
+            <p class="kicker">Secure Uplink // Sector 0</p>
             <div class="auth-brand">
-                <span class="auth-logo">Game of Worlds</span>
+                <span class="auth-logo">Commander Access</span>
                 <h1 id="authHeading">Claim your place among the stars</h1>
                 <p>Rally your fleets, deploy covert agents, and bend entire systems to your will in a fast three-minute turn structure designed for competitive play.</p>
             </div>
@@ -34,7 +45,8 @@
             </ul>
             <div class="auth-cta-note">Looking for the original Game of Worlds experience? Sign in to sync your legacy account automatically.</div>
             <figure class="auth-illustration">
-                <img src="images/auth-constellation.svg" alt="Stylised map of spiral arms linking connected colonies." loading="lazy" decoding="async">
+                <span class="viewscreen__label">Target World // Sector 0</span>
+                <img src="images/type8.gif" alt="A contested world rendered on the command viewscreen." loading="lazy" decoding="async">
             </figure>
         </section>
 
@@ -56,11 +68,24 @@
                         </div>
                         <div id="loginError" class="form-message form-message--error" role="alert"></div>
                         <button type="submit" class="btn primary">Login</button>
+                        <div class="guest-access" aria-label="Guest access">
+                            <div class="guest-copy">
+                                <strong>Play without an account</strong>
+                                <span>Your guest progress stays linked to this browser until you register.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="guestUsername">Guest name (optional)</label>
+                                <input type="text" id="guestUsername" name="guestUsername" autocomplete="nickname" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="Random name if blank">
+                            </div>
+                            <div id="guestError" class="form-message form-message--error" role="alert"></div>
+                            <button type="button" id="guestLoginBtn" class="btn secondary">Continue as Guest</button>
+                        </div>
                         <p class="form-switch">New commander? <a href="#" id="registerLink">Create an account</a></p>
                     </form>
                 </div>
                 <div id="registerPanel" class="auth-form-container" role="tabpanel" aria-labelledby="registerTab" hidden>
                     <form id="registerForm" novalidate>
+                        <div id="upgradeNotice" class="upgrade-notice" hidden>Register now to link this guest commander to your email.</div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="registerUsername">Username</label>
@@ -90,9 +115,10 @@
                 </div>
             </div>
             <p class="auth-footer-note">By signing in you accept the Game of Worlds community guidelines and interstellar terms of service.</p>
+            <div class="auth-sysline" aria-hidden="true"><span class="led"></span>SECURE CHANNEL · ENCRYPTED · NODE 00</div>
         </section>
     </main>
 
-    <script src="js/login.js" defer></script>
+    <script src="js/login.js?v=20260614a" defer></script>
 </body>
 </html>

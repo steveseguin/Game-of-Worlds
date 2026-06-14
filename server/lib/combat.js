@@ -287,6 +287,18 @@ function getAliveShips(ships) {
     return ships.filter(ship => !ship.destroyed);
 }
 
+// Snapshot of how many ships of each type are still alive — used to serialize a
+// faithful per-round timeline for the battle theater (client plays each round out).
+function countAliveByType(ships) {
+    const counts = createEmptyTypeStatMap();
+    ships.forEach(ship => {
+        if (!ship.destroyed) {
+            counts[ship.type] = (counts[ship.type] || 0) + 1;
+        }
+    });
+    return counts;
+}
+
 function createEmptyTypeStatMap() {
     const map = {};
     SHIP_TYPE_IDS.forEach(typeId => {
@@ -736,6 +748,12 @@ function conductBattle(attackerFleet, defenderFleet, attackerTech, defenderTech)
         groundTurrets = Math.max(0, groundTurrets - turretResult.groundLoss);
         orbitalTurrets = Math.max(0, orbitalTurrets - turretResult.orbitalLoss);
 
+        // Post-round survivor snapshot (end-of-round state) for the battle timeline.
+        roundResult.attackerCounts = countAliveByType(attackers);
+        roundResult.defenderCounts = countAliveByType(defenders);
+        roundResult.orbitalTurrets = orbitalTurrets;
+        roundResult.groundTurrets = groundTurrets;
+
         battleLog.rounds.push(roundResult);
 
         const attackersStillAlive = getAliveShips(attackers).length > 0;
@@ -802,43 +820,50 @@ function conductBattle(attackerFleet, defenderFleet, attackerTech, defenderTech)
  * @param {object} battleLog - Battle result from conductBattle()
  * @return {string} - Formatted battle message for client
  */
+// Wire format consumed by the client battle theater. Each "block" is 20 fields:
+//   [9 attacker counts][9 defender counts][groundTurrets][orbitalTurrets]
+// Block 0 is the initial state; every following block is the END-OF-ROUND state
+// for one combat round, so the client can play the fight out volley by volley.
+// The last block always equals battleLog.final. When per-round snapshots are
+// absent (older/synthetic logs) we fall back to a single final block, which
+// reproduces the legacy initial->final "pop".
 function formatBattleMessage(battleLog) {
-    let message = "battle:";
-    
-    // Add initial fleet counts
-    const initialAttackerCounts = countShipsByType(battleLog.initial.attackers);
-    const initialDefenderCounts = countShipsByType(battleLog.initial.defenders);
-    
-    // Add initial attacker counts
-    for (let i = 1; i <= 9; i++) {
-        message += `${initialAttackerCounts[i] || 0}:`;
+    const fields = [];
+
+    const pushBlock = (attackerCounts, defenderCounts, ground, orbital) => {
+        for (let i = 1; i <= 9; i++) fields.push((attackerCounts && attackerCounts[i]) || 0);
+        for (let i = 1; i <= 9; i++) fields.push((defenderCounts && defenderCounts[i]) || 0);
+        fields.push(Number(ground) || 0);
+        fields.push(Number(orbital) || 0);
+    };
+
+    // Block 0: initial state.
+    pushBlock(
+        countShipsByType(battleLog.initial.attackers),
+        countShipsByType(battleLog.initial.defenders),
+        battleLog.initial.groundTurrets,
+        battleLog.initial.orbitalTurrets
+    );
+
+    const rounds = Array.isArray(battleLog.rounds) ? battleLog.rounds : [];
+    const hasRoundSnapshots = rounds.length > 0 && rounds[0] && rounds[0].attackerCounts;
+
+    if (hasRoundSnapshots) {
+        // One block per round; the final round's snapshot equals battleLog.final.
+        rounds.forEach(round => {
+            pushBlock(round.attackerCounts, round.defenderCounts, round.groundTurrets, round.orbitalTurrets);
+        });
+    } else if (battleLog.final) {
+        // Back-compat: single final block.
+        pushBlock(
+            battleLog.final.attackers,
+            battleLog.final.defenders,
+            battleLog.final.groundTurrets,
+            battleLog.final.orbitalTurrets
+        );
     }
-    
-    // Add initial defender counts
-    for (let i = 1; i <= 9; i++) {
-        message += `${initialDefenderCounts[i] || 0}:`;
-    }
-    
-    // Add initial defense counts
-    message += `${battleLog.initial.groundTurrets}:${battleLog.initial.orbitalTurrets}:`;
-    
-    // Add final counts if we have them
-    if (battleLog.final) {
-        // Add final attacker counts
-        for (let i = 1; i <= 9; i++) {
-            message += `${battleLog.final.attackers[i] || 0}:`;
-        }
-        
-        // Add final defender counts
-        for (let i = 1; i <= 9; i++) {
-            message += `${battleLog.final.defenders[i] || 0}:`;
-        }
-        
-        // Add final defense counts
-        message += `${battleLog.final.groundTurrets}:${battleLog.final.orbitalTurrets}`;
-    }
-    
-    return message;
+
+    return 'battle:' + fields.join(':');
 }
 
 /**
