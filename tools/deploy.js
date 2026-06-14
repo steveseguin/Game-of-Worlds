@@ -72,6 +72,10 @@ const FILES = [
     'public/js/battle.js'
 ];
 
+const DELETE_FILES = [
+    'public/index.html'
+];
+
 function loadCredentials() {
     const raw = fs.readFileSync(path.join(REPO, 'secrets/readme/claude/agents/ssh'), 'utf8');
     const get = label => {
@@ -145,6 +149,12 @@ async function main() {
         const remote = `${REMOTE_ROOT}/${file.replace(/\\/g, '/')}`;
         await upload(sftp, local, remote);
         console.log(`  PUT   ${file}`);
+    }
+
+    for (const file of DELETE_FILES) {
+        const remote = `${REMOTE_ROOT}/${file.replace(/\\/g, '/')}`;
+        await exec(conn, `rm -f '${remote}'`);
+        console.log(`  RM    ${file}`);
     }
 
     if (!noRestart) {

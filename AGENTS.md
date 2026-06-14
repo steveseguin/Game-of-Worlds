@@ -131,7 +131,7 @@ Run `npm run setup` to create tables. Key tables:
 
 ### Exploration & Map Visibility
 - ✅ DONE: Fog-of-war (players only see explored/owned sectors)
-- ❌ TODO: Restore visual "fog" for unexplored sectors on client
+- ✅ DONE: Restore visual "fog" for unexplored sectors on client
 
 ### Hazard Mechanics
 - **Black Holes (sectortype 2)**: Fleet enters → INSTANT ANNIHILATION

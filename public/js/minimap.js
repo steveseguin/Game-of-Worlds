@@ -21,7 +21,7 @@ const MiniMap = (function() {
         
         container.innerHTML = '';
         
-        let id = 0;
+        let id = 1;
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
                 createHexTile(container, id, x, y);
@@ -57,9 +57,13 @@ const MiniMap = (function() {
         const hex = document.createElementNS(svgNS, "polygon");
         hex.setAttribute("id", "tile" + id);
         hex.setAttribute("points", "10,0 30,0 40,23 30,46 10,46 0,23");
-        hex.setAttribute("fill", "#DDDDDD");
-        hex.setAttribute("stroke", "#666666");
+        hex.setAttribute("fill", "#101522");
+        hex.setAttribute("stroke", "#263149");
         hex.setAttribute("stroke-width", "2");
+        hex.setAttribute("stroke-dasharray", "2 4");
+        hex.setAttribute("opacity", "0.42");
+        hex.setAttribute("data-intel", "fog");
+        hex.setAttribute("aria-label", "Unexplored sector " + id);
         
         // Text for sector ID
         const text = document.createElementNS(svgNS, "text");
@@ -68,9 +72,10 @@ const MiniMap = (function() {
         text.setAttribute("y", "20");
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("font-size", "12");
-        text.setAttribute("fill", "#000000");
+        text.setAttribute("fill", "#c7cede");
+        text.setAttribute("opacity", "0");
         text.style.pointerEvents = "none";
-        text.textContent = id.toString(16).toUpperCase();
+        text.textContent = String(id);
         
         // Fleet size indicator (hidden by default)
         const fleetText = document.createElementNS(svgNS, "text");
@@ -131,7 +136,7 @@ const MiniMap = (function() {
         };
     }
     
-    function updateSector(id, status, fleetSize, indicator) {
+    function updateSector(id, status, fleetSize, indicator, details = {}) {
         if (window.GalaxyMap?.updateSectorStatus) {
             const statusMap = {
                 neutral: window.GalaxyMap.SECTOR_STATUS.UNKNOWN,
@@ -145,7 +150,7 @@ const MiniMap = (function() {
                 artifact: window.GalaxyMap.SECTOR_STATUS.ARTIFACT
             };
             const numericStatus = statusMap[status] ?? window.GalaxyMap.SECTOR_STATUS.UNKNOWN;
-            window.GalaxyMap.updateSectorStatus(id, numericStatus, { fleetSize, indicator });
+            window.GalaxyMap.updateSectorStatus(id, numericStatus, { ...details, fleetSize, indicator });
         }
 
         const elem = hexElements[id];
@@ -188,12 +193,20 @@ const MiniMap = (function() {
                 strokeColor = "#666666";
         }
         
-        elem.hex.setAttribute("fill", fillColor);
-        elem.hex.setAttribute("stroke", strokeColor);
-        elem.hex.setAttribute("data-original-fill", fillColor);
+        const known = status !== 'neutral' || details.live === false || details.live === true || details.type !== undefined;
+        const live = details.live !== false;
+        const appliedFill = known ? fillColor : "#101522";
+        elem.hex.setAttribute("fill", appliedFill);
+        elem.hex.setAttribute("stroke", known ? strokeColor : "#263149");
+        elem.hex.setAttribute("opacity", known ? (live ? "1" : "0.50") : "0.42");
+        elem.hex.setAttribute("stroke-dasharray", known ? (live ? "" : "4 3") : "2 4");
+        elem.hex.setAttribute("data-intel", known ? (live ? "live" : "memory") : "fog");
+        elem.hex.setAttribute("aria-label", (known ? (live ? "Live intel sector " : "Stale memory sector ") : "Unexplored sector ") + id);
+        elem.hex.setAttribute("data-original-fill", appliedFill);
+        elem.text.setAttribute("opacity", known ? (live ? "1" : "0.58") : "0");
         
         // Update fleet size
-        if (fleetSize && fleetSize > 0) {
+        if (known && fleetSize && fleetSize > 0) {
             elem.fleetText.textContent = "S:" + fleetSize;
             elem.fleetText.style.display = "block";
         } else {
@@ -201,7 +214,7 @@ const MiniMap = (function() {
         }
         
         // Update indicator
-        if (indicator) {
+        if (known && indicator) {
             elem.colonizedText.textContent = indicator;
             elem.colonizedText.style.display = "block";
         } else {

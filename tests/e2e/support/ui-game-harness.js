@@ -49,6 +49,35 @@ async function signInGuest(page, guestName = '') {
     await waitForLobbyReady(page);
 }
 
+async function upgradeGuestToRegistered(page, { username, email, password }) {
+    const guestUserId = await page.evaluate(() => localStorage.getItem('userId'));
+    await page.goto('/login.html?upgrade=1');
+    await expect(page.locator('#upgradeNotice')).toBeVisible({ timeout: 10000 });
+    await page.fill('#registerUsername', username);
+    await page.fill('#registerEmail', email);
+    await page.fill('#registerPassword', password);
+    await page.fill('#confirmPassword', password);
+
+    const responsePromise = page.waitForResponse(res => res.url().endsWith('/register') && res.request().method() === 'POST');
+    await page.click('#registerForm button[type="submit"]');
+    const response = await responsePromise;
+    const body = await response.json();
+    if (!body.success || !body.upgraded) {
+        throw new Error(`Guest upgrade failed for ${username}: ${body.error || 'not upgraded'}`);
+    }
+
+    await page.waitForURL('**/lobby.html', { timeout: 20000 });
+    await waitForLobbyReady(page);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('gowIsGuest')), {
+        timeout: 5000
+    }).toBe('0');
+    if (guestUserId) {
+        await expect.poll(() => page.evaluate(() => localStorage.getItem('userId')), {
+            timeout: 5000
+        }).toBe(guestUserId);
+    }
+}
+
 async function waitForLobbyReady(page, timeout = 25000) {
     await page.waitForFunction(() => {
         const statusPill = document.getElementById('lobbyConnectionState');
@@ -122,6 +151,24 @@ async function joinGameByName(page, gameName) {
     await row.locator('button', { hasText: 'Join' }).click();
     await chooseFirstAvailableRace(page);
     await waitForMatchLobby(page);
+}
+
+async function attemptJoinGameByNameExpectingError(page, gameName, expectedText) {
+    await waitForLobbyReady(page);
+    const row = page.locator('#gameList tr', { hasText: gameName }).first();
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+        if (await row.isVisible().catch(() => false)) {
+            break;
+        }
+        await page.click('#refreshGamesBtn');
+        await page.waitForTimeout(500);
+    }
+    await expect(row).toBeVisible({ timeout: 10000 });
+    await row.locator('button', { hasText: 'Join' }).click();
+    await chooseFirstAvailableRace(page);
+    await expect(page.locator('.toast-error')).toContainText(expectedText, { timeout: 10000 });
+    await expect(page.locator('.waiting-view')).toHaveCount(0, { timeout: 2000 });
 }
 
 async function startGame(hostPage, playerPages) {
@@ -318,6 +365,12 @@ async function focusSector(page, sectorId) {
     await expect(page.locator('#sectorid')).toContainText(new RegExp(`Sector\\s+${sectorId}\\b`), {
         timeout: 15000
     });
+}
+
+async function expectSectorIntelState(page, sectorId, expectedState) {
+    const tile = page.locator(`#tile${sectorId}`);
+    await tile.waitFor({ state: 'visible', timeout: 15000 });
+    await expect(tile).toHaveAttribute('data-intel', expectedState, { timeout: 10000 });
 }
 
 async function dismissProbeSuggestion(page) {
@@ -538,11 +591,9 @@ function pickColonizationTargets(homeSector, otherHomeSector, terrain, count = 2
 }
 
 function splitRendezvousPaths(hostHome, joinerHome, terrain, extraBlocked = new Set()) {
-    const fullPath = buildSafePath(hostHome, joinerHome, terrain, extraBlocked);
-    if (!fullPath || fullPath.length < 2) {
-        throw new Error(`Homeworlds are too close or blocked for a two-sided battle path: ${hostHome}, ${joinerHome}`);
-    }
-    if (fullPath.length === 2) {
+    let fullPath = buildSafePath(hostHome, joinerHome, terrain, extraBlocked) ||
+        buildSafePath(hostHome, joinerHome, terrain);
+    if (fullPath && fullPath.length === 2) {
         return {
             rendezvous: Number(hostHome),
             hostPath: [],
@@ -550,13 +601,50 @@ function splitRendezvousPaths(hostHome, joinerHome, terrain, extraBlocked = new 
             fullPath
         };
     }
-    const midIndex = Math.max(1, Math.min(fullPath.length - 2, Math.floor(fullPath.length / 2)));
-    return {
-        rendezvous: fullPath[midIndex],
-        hostPath: fullPath.slice(1, midIndex + 1),
-        joinerPath: fullPath.slice(midIndex, fullPath.length - 1).reverse(),
-        fullPath
-    };
+    if (fullPath && fullPath.length > 2) {
+        const midIndex = Math.max(1, Math.min(fullPath.length - 2, Math.floor(fullPath.length / 2)));
+        return {
+            rendezvous: fullPath[midIndex],
+            hostPath: fullPath.slice(1, midIndex + 1),
+            joinerPath: fullPath.slice(midIndex, fullPath.length - 1).reverse(),
+            fullPath
+        };
+    }
+
+    const host = Number(hostHome);
+    const joiner = Number(joinerHome);
+    const blockedTypes = new Set([1, 2]);
+    const candidates = terrain.sectors
+        .map(sector => ({
+            id: Number(sector.sectorid),
+            type: Number(sector.type)
+        }))
+        .filter(sector => sector.id !== host &&
+            sector.id !== joiner &&
+            !extraBlocked.has(sector.id) &&
+            !blockedTypes.has(sector.type))
+        .map(sector => {
+            const hostPath = buildSafePath(host, sector.id, terrain, extraBlocked) ||
+                buildSafePath(host, sector.id, terrain);
+            const joinerPath = buildSafePath(joiner, sector.id, terrain, extraBlocked) ||
+                buildSafePath(joiner, sector.id, terrain);
+            if (!hostPath || !joinerPath) return null;
+            return {
+                rendezvous: sector.id,
+                hostPath: hostPath.slice(1),
+                joinerPath: joinerPath.slice(1),
+                fullPath: hostPath.concat(joinerPath.slice(0, -1).reverse()),
+                score: hostPath.length + joinerPath.length
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.score - b.score);
+
+    if (candidates.length === 0) {
+        throw new Error(`No safe two-sided battle rendezvous found for homeworlds ${hostHome}, ${joinerHome}`);
+    }
+
+    return candidates[0];
 }
 
 async function waitForBattleOverlay(page, timeout = 15000) {
@@ -592,12 +680,14 @@ module.exports = {
     uniqueId,
     registerUser,
     signInGuest,
+    upgradeGuestToRegistered,
     waitForLobbyReady,
     chooseFirstAvailableRace,
     waitForMatchLobby,
     extractLobbyGameId,
     createGame,
     joinGameByName,
+    attemptJoinGameByNameExpectingError,
     startGame,
     dismissFirstRunGuidance,
     completeFirstRunGuidance,
@@ -617,6 +707,7 @@ module.exports = {
     readEmpireSummary,
     selectSector,
     focusSector,
+    expectSectorIntelState,
     sendProbeForSector,
     moveSelectedShipTypeToSector,
     marchShip,

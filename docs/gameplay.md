@@ -533,26 +533,27 @@ Game of Words is a multiplayer real-time turn-based strategy game set in space. 
 
 ## Priority Improvements
 
-Based on the analysis, these are the highest priority improvements needed:
+Status note, 2026-06-14: several items in the original analysis have since
+landed. Game end conditions, first-run tutorial dismissal, battle
+visualization, guest play, and turn abandonment are now covered by automated
+tests. The remaining near-term work should focus on polish and coverage gaps,
+not rebuilding those systems from scratch.
 
 1. **Game Flow Enhancements**
-   - Complete implementation of game end conditions
-   - Add proper turn transitions with summary screens
-   - Implement dynamic turn times based on game state
+   - Continue improving turn summaries and end-of-game clarity
+   - Expand reconnect and leave/rejoin UI coverage
 
 2. **User Experience Improvements**
-   - Add first-time user tutorial
    - Improve fleet management interface
-   - Add visual tech tree
-   - Enhance battle visualizations
+   - Continue improving the visual tech tree and race-doctrine clarity
 
 3. **Gameplay Depth**
-   - Implement diplomacy system
+   - Keep diplomacy/alliance systems deferred until the core loop is stable
    - Add colony development stages
    - Create more strategic options beyond combat
 
 4. **Technical Optimizations**
-   - Fix connection handling
+   - Keep connection handling covered by UI and unit tests
    - Optimize battle calculations
    - Address memory leaks
 

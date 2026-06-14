@@ -163,6 +163,8 @@ window.GalaxyMap = (function() {
             sector.buildings = [];
             sector.path.setAttribute("fill", UNKNOWN_FILL);
             sector.path.setAttribute("data-original-fill", UNKNOWN_FILL);
+            sector.path.setAttribute("data-intel", "fog");
+            sector.path.setAttribute("aria-label", `Unexplored sector ${sector.id}`);
             sector.path.setAttribute("stroke", UNKNOWN_STROKE);
             sector.path.setAttribute("stroke-dasharray", "2 4");
             sector.path.setAttribute("opacity", "0.42");
@@ -270,6 +272,8 @@ window.GalaxyMap = (function() {
         hexPath.setAttribute("id", `tile${id}`);
         hexPath.setAttribute("fill", UNKNOWN_FILL);
         hexPath.setAttribute("data-original-fill", UNKNOWN_FILL);
+        hexPath.setAttribute("data-intel", "fog");
+        hexPath.setAttribute("aria-label", `Unexplored sector ${id}`);
         hexPath.setAttribute("stroke", UNKNOWN_STROKE);
         hexPath.setAttribute("stroke-width", "2");
         hexPath.setAttribute("stroke-dasharray", "2 4");
@@ -430,7 +434,9 @@ window.GalaxyMap = (function() {
         const sector = state.sectors[sectorId];
         if (!sector) return;
         const normalizedStatus = STATUS_COLORS[status] ? status : SECTOR_STATUS.UNKNOWN;
-        const known = normalizedStatus !== SECTOR_STATUS.UNKNOWN || details.live === false || details.type !== undefined;
+        const hasTerrainMemory = details.live === false ||
+            (details.type !== undefined && details.type !== null && Number.isFinite(Number(details.type)));
+        const known = normalizedStatus !== SECTOR_STATUS.UNKNOWN || hasTerrainMemory;
         
         // Update status
         sector.status = normalizedStatus;
@@ -447,6 +453,8 @@ window.GalaxyMap = (function() {
             sector.live = Boolean(details.live);
         } else if (normalizedStatus !== SECTOR_STATUS.UNKNOWN) {
             sector.live = true;
+        } else if (known) {
+            sector.live = details.live !== false;
         }
         if (details.flags !== undefined) {
             sector.flags = Number(details.flags) || 0;
@@ -462,6 +470,15 @@ window.GalaxyMap = (function() {
         sector.path.setAttribute("opacity", known ? (sector.live ? "1" : MEMORY_OPACITY) : "0.42");
         sector.path.setAttribute("stroke-dasharray", known ? (sector.live ? "" : "4 3") : "2 4");
         sector.text.setAttribute("opacity", known ? (sector.live ? "1" : "0.58") : "0");
+        const intelState = known ? (sector.live ? "live" : "memory") : "fog";
+        sector.path.setAttribute("data-intel", intelState);
+        sector.element.setAttribute("data-intel", intelState);
+        const labelPrefix = intelState === "fog"
+            ? "Unexplored"
+            : intelState === "memory"
+                ? "Stale memory"
+                : "Live intel";
+        sector.path.setAttribute("aria-label", `${labelPrefix} sector ${sectorId}`);
         
         // Update fleet size
         if (details.fleetSize !== undefined) {
@@ -576,9 +593,12 @@ window.GalaxyMap = (function() {
         const x = evt.clientX + 12;
         const y = evt.clientY + 12;
         const owner = sector.owner || 'Unknown';
-        const statusLabel = Object.keys(SECTOR_STATUS).find(key => SECTOR_STATUS[key] === sector.status) || 'Unknown';
-        const freshness = sector.live ? 'Live' : (sector.status === SECTOR_STATUS.UNKNOWN ? 'Fog' : 'Memory');
-        if (sector.status === SECTOR_STATUS.UNKNOWN) {
+        const hasKnownIntel = sector.status !== SECTOR_STATUS.UNKNOWN || sector.live === false || sector.type !== null;
+        const statusLabel = sector.status === SECTOR_STATUS.UNKNOWN && hasKnownIntel
+            ? 'Neutral'
+            : (Object.keys(SECTOR_STATUS).find(key => SECTOR_STATUS[key] === sector.status) || 'Unknown');
+        const freshness = !hasKnownIntel ? 'Fog' : (sector.live ? 'Live' : 'Memory');
+        if (!hasKnownIntel) {
             state.tooltip.style.left = `${x}px`;
             state.tooltip.style.top = `${y}px`;
             state.tooltip.innerHTML = `

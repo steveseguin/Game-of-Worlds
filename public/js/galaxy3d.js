@@ -153,6 +153,33 @@ import * as THREE from './vendor/three.module.min.js';
         return tex;
     }
 
+    function makeFogTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 192;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(96, 96, 14, 96, 96, 96);
+        gradient.addColorStop(0, 'rgba(88, 103, 143, 0.42)');
+        gradient.addColorStop(0.55, 'rgba(38, 50, 82, 0.34)');
+        gradient.addColorStop(1, 'rgba(6, 10, 24, 0.08)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 192, 192);
+
+        for (let i = 0; i < 240; i++) {
+            const alpha = 0.04 + Math.random() * 0.16;
+            const radius = 1 + Math.random() * 8;
+            ctx.fillStyle = `rgba(190, 210, 255, ${alpha})`;
+            ctx.beginPath();
+            ctx.arc(Math.random() * 192, Math.random() * 192, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+    }
+
     function buildStarfield() {
         const starCount = 2400;
         const positions = new Float32Array(starCount * 3);
@@ -320,7 +347,7 @@ import * as THREE from './vendor/three.module.min.js';
         const color = STATUS_COLORS[entry.status] ?? STATUS_COLORS[STATUS.UNKNOWN];
 
         if (!explored) {
-            // Fog of war: barely-there outline, no contents.
+            // Fog of war: visible static/fog surface, no contents.
             entry.tile.material = state.fogMaterial;
             entry.tile.visible = true;
             return;
@@ -657,11 +684,14 @@ import * as THREE from './vendor/three.module.min.js';
         state.sharedGeo.disc = new THREE.CircleGeometry(0.85, 40);
         state.sharedGeo.rock = new THREE.DodecahedronGeometry(1, 0);
         state.swirlTexture = makeSwirlTexture();
+        state.fogTexture = makeFogTexture();
 
         state.fogMaterial = new THREE.MeshBasicMaterial({
             color: 0x0c1020,
+            map: state.fogTexture,
             transparent: true,
-            opacity: 0.28
+            opacity: 0.48,
+            depthWrite: false
         });
         state.fogMaterial.__shared = true;
 
@@ -806,6 +836,11 @@ import * as THREE from './vendor/three.module.min.js';
         // Selection ring shimmer
         if (state.selectionRing && state.selectionRing.visible) {
             state.selectionRing.material.opacity = 0.65 + Math.sin(t * 4) * 0.3;
+        }
+
+        if (state.fogTexture) {
+            state.fogTexture.offset.x = (t * 0.015) % 1;
+            state.fogTexture.offset.y = (t * 0.009) % 1;
         }
 
         // Fleet movement tracers

@@ -1,25 +1,23 @@
-// ============================================================================
-// WEBSOCKET MESSAGE HANDLERS
-// Centralizes all WebSocket message handling logic
-// Phase 1: Placeholder for future reorganization
-// ============================================================================
+// Websocket handler compatibility module.
+//
+// Runtime command handling is intentionally centralized in server/server.js.
+// This module exists only for older imports that expect server/lib/handlers.
 
-// TODO: Extract WebSocket message handlers from server.js
-// This will include handlers for:
-// - handleCreateGame
-// - handleGameList
-// - handleGameStart
-// - handleJoinGame
-// - handleChangeRace
-// - handleLeaveGame
-// - handleAddAi
-// - handleSurrender
-// - handleGetCombatTelemetry
-// - handleGetUnlockedRaces
-// - handleGetCurrentGame
-// - handleLogin
-// - handleRegister
+function createUnavailableHandler(name) {
+    return () => {
+        throw new Error(`${name} is handled by server/server.js; import the live server module instead.`);
+    };
+}
 
 module.exports = {
-    // Handlers will be exported here after extraction
+    handleCreateGame: createUnavailableHandler('handleCreateGame'),
+    handleGameList: createUnavailableHandler('handleGameList'),
+    handleGameStart: createUnavailableHandler('handleGameStart'),
+    handleJoinGame: createUnavailableHandler('handleJoinGame'),
+    handleChangeRace: createUnavailableHandler('handleChangeRace'),
+    handleLeaveGame: createUnavailableHandler('handleLeaveGame'),
+    handleAddAi: createUnavailableHandler('handleAddAi'),
+    handleSurrender: createUnavailableHandler('handleSurrender'),
+    handleGetUnlockedRaces: createUnavailableHandler('handleGetUnlockedRaces'),
+    handleGetCurrentGame: createUnavailableHandler('handleGetCurrentGame')
 };

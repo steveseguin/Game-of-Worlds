@@ -1142,7 +1142,12 @@ function updateSectorInfo(message) {
         }
 
         if (window.MiniMap && window.MiniMap.updateSector) {
-            window.MiniMap.updateSector(sectorId, status, fleetSize, null);
+            window.MiniMap.updateSector(sectorId, status, fleetSize, null, {
+                type: sectorType,
+                live: true,
+                owner: ownerId,
+                buildings: sectorData.buildings
+            });
         }
 
         if (window.GalaxyMap && window.GalaxyMap.updateSectorStatus) {
@@ -1161,6 +1166,8 @@ function updateSectorInfo(message) {
                 {
                     owner: ownerId,
                     fleetSize,
+                    type: sectorType,
+                    live: true,
                     buildings: sectorData.buildings,
                     indicator: numericOwnerId && numericOwnerId === numericPlayerId ? 'C' : null
                 }

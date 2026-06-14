@@ -15,7 +15,7 @@ Originally built in 2012 as a PHP-based web game, Game of Worlds has been comple
 - **Multiplayer Battles**: Compete against other players in real-time
 - **Tech Tree**: Research advanced technologies to gain an edge
 - **Resource Management**: Balance metal, crystal, and research production
-- **Premium Content**: Optional purchases for cosmetic items and convenience features
+- **Premium Content**: Optional balanced race unlocks and cosmetics only; no paid gameplay advantage
 - **Cross-Platform**: Play in any modern web browser
 
 ## Technology Stack
@@ -23,7 +23,7 @@ Originally built in 2012 as a PHP-based web game, Game of Worlds has been comple
 - **Backend**: Node.js with WebSocket for real-time communication
 - **Database**: MySQL for persistent game state
 - **Frontend**: Vanilla JavaScript with HTML5 Canvas
-- **Payments**: Stripe integration for premium features
+- **Payments**: Stripe integration planned for premium races and cosmetics
 - **Hosting**: Deployable to any Node.js hosting service
 
 ## Project Structure
@@ -111,15 +111,15 @@ Game-of-Worlds/
 - **Resource Production**: Build extractors and refineries
 - **Military**: Construct various ship types for defense and conquest
 - **Research**: Unlock new technologies and ship types
-- **Diplomacy**: Form alliances or declare war on other players
+- **Diplomacy**: Deferred; near-term play is focused on exploration, economy, movement, and combat
 
 ### Victory Conditions
 Win by achieving any of these conditions:
-- Control 75% of the galaxy
-- Research all technologies
-- Accumulate massive resources
-- Build the wonder structure
+- Control a configured share of colonizable worlds
 - Eliminate all opponents
+- Reach the scientific tech objective
+- Reach the economic objective
+- Win the deterministic time-limit tiebreaker
 
 ## Development
 

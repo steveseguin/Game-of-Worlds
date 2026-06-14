@@ -1,5 +1,11 @@
 # Game of Words Database and Code Analysis
 
+> Status note, 2026-06-14: this document is historical analysis. The active
+> runtime now includes guest upgrades, hashed authentication, reconnection
+> state, turn abandonment, active victory conditions, and mock-DB integration
+> tests. Treat the "missing" sections below as archival unless verified against
+> `server/server.js`, `server/lib/victory.js`, and the current test suite.
+
 ## Database Structure Overview
 
 ### Current Tables

@@ -10,6 +10,7 @@ const {
     completeFirstRunGuidance,
     verifyFirstRunGuidanceStaysDismissed,
     focusHomeworld,
+    expectSectorIntelState,
     sendProbeForSector,
     buildBuilding,
     researchTech,
@@ -44,7 +45,14 @@ function pickProbeTarget(homeSector, joinerHomeSector, terrain, reserved = new S
     const candidates = terrain.sectors
         .filter(sector => {
             const id = Number(sector.sectorid);
-            return id !== home && id !== joinerHome && !reserved.has(id) && !sector.owner;
+            const type = Number(sector.type);
+            return id !== home &&
+                id !== joinerHome &&
+                !reserved.has(id) &&
+                !sector.owner &&
+                type >= 6 &&
+                type <= 9 &&
+                distance(id, home, terrain.width) > 2;
         })
         .sort((a, b) => distance(b.sectorid, home, terrain.width) - distance(a.sectorid, home, terrain.width));
 
@@ -132,7 +140,9 @@ test.describe('Complete multiplayer UI harness', () => {
                 contentType: 'application/json'
             });
 
+            await expectSectorIntelState(hostPage, probeTarget, 'fog');
             await sendProbeForSector(hostPage, probeTarget);
+            await expectSectorIntelState(hostPage, probeTarget, /^(live|memory)$/);
             await buildBuilding(hostPage, '#bb4'); // Spaceport
             await buildBuilding(hostPage, '#bb2'); // Crystal Refinery
             await researchTech(hostPage, /Metal Extraction/i);
