@@ -28,6 +28,12 @@ module.exports = defineConfig({
             HOST,
             USE_MOCK_DB: '1',
             NODE_ENV: 'test',
+            ENABLE_TEST_GAME_MODE: '1',
+            TEST_MAP_WIDTH: '8',
+            TEST_MAP_HEIGHT: '5',
+            TEST_RESOURCE_MULTIPLIER: '20',
+            TURN_INTERVAL_TEST_MS: '30000',
+            VICTORY_DOMINATION_PERCENT: '20',
             STRIPE_SECRET_KEY: '',
             STRIPE_PUBLISHABLE_KEY: '',
             STRIPE_WEBHOOK_SECRET: ''

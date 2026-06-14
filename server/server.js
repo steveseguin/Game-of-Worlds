@@ -57,13 +57,18 @@ const DEFAULT_CREATOR_RACE_ID = 1;
 const MIN_PLAYERS_TO_START = 1;
 const TURN_SPEEDS_MS = {
     quick: Number(process.env.TURN_INTERVAL_QUICK_MS) || 180000, // 3 minutes
-    epic: Number(process.env.TURN_INTERVAL_EPIC_MS) || 86400000 // 24 hours
+    epic: Number(process.env.TURN_INTERVAL_EPIC_MS) || 86400000, // 24 hours
+    test: Number(process.env.TURN_INTERVAL_TEST_MS) || 30000
 };
 const DEFAULT_GAME_MODE = 'quick';
+const TEST_GAME_MODE_ENABLED = /^(true|1|yes)$/i.test((process.env.ENABLE_TEST_GAME_MODE || '').trim()) || process.env.NODE_ENV === 'test';
+const TEST_MAP_WIDTH = parsePositiveInt(process.env.TEST_MAP_WIDTH, 8);
+const TEST_MAP_HEIGHT = parsePositiveInt(process.env.TEST_MAP_HEIGHT, 5);
 const MAX_ROOM_MIN_LEVEL = 100;
 const GUEST_TOKEN_BYTES = 32;
 const GUEST_TOKEN_PATTERN = /^[a-f0-9]{64}$/i;
 const EPIC_RESOURCE_MULTIPLIER = Number(process.env.EPIC_RESOURCE_MULTIPLIER) || 12;
+const TEST_RESOURCE_MULTIPLIER = Number(process.env.TEST_RESOURCE_MULTIPLIER) || 20;
 const EPIC_AUTO_BUILD_ENABLED = String(process.env.EPIC_AUTO_BUILD || 'true').toLowerCase() !== 'false';
 const BUILDING_COSTS = {
     0: { name: "Metal Extractor", metal: 50, crystal: 20 },
@@ -92,6 +97,11 @@ const COUNTERSPY_KILL_ADVANTAGE = 2;
 // Enough crystal for one opening probe (300) plus some fleet moves — probing
 // versus blind exploration is the game's first meaningful decision.
 const STARTING_RESOURCES = Object.freeze({ metal: 300, crystal: 400, research: 100 });
+const TEST_STARTING_RESOURCES = Object.freeze({
+    metal: Number(process.env.TEST_STARTING_METAL) || 3000,
+    crystal: Number(process.env.TEST_STARTING_CRYSTAL) || 3000,
+    research: Number(process.env.TEST_STARTING_RESEARCH) || 1200
+});
 // Building slots scale with the body being built on.
 const BUILDING_SLOTS_BY_TYPE = Object.freeze({
     1: 1,  // secured asteroid belt: one mining rig
@@ -370,7 +380,11 @@ function formatSectorToken(sectorId) {
     return Number(sectorId).toString(16).toUpperCase();
 }
 
-function calculateMapSize(maxPlayers) {
+function calculateMapSize(maxPlayers, mode = DEFAULT_GAME_MODE) {
+    if (normalizeMode(mode) === 'test') {
+        return { width: TEST_MAP_WIDTH, height: TEST_MAP_HEIGHT };
+    }
+
     const players = Math.max(2, Math.min(MAX_LOBBY_PLAYERS, parsePositiveInt(maxPlayers, DEFAULT_MAX_PLAYERS)));
     if (players <= 8) {
         return { width: 14, height: 8 };
@@ -412,7 +426,7 @@ function getMapSizeFromGameRow(game) {
     if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
         return { width, height };
     }
-    return calculateMapSize(game && game.maxplayers);
+    return calculateMapSize(game && game.maxplayers, game && game.mode);
 }
 
 function restoreStartedGameRuntime(game, options = {}) {
@@ -475,7 +489,14 @@ function getAdjacentSectorIds(sectorId, width = 14, height = 8) {
 }
 
 function normalizeMode(mode) {
+    if (mode === 'test' && TEST_GAME_MODE_ENABLED) {
+        return 'test';
+    }
     return mode === 'epic' ? 'epic' : 'quick';
+}
+
+function getStartingResources(mode) {
+    return normalizeMode(mode) === 'test' ? TEST_STARTING_RESOURCES : STARTING_RESOURCES;
 }
 
 function normalizeAiDifficulty(raw) {
@@ -1305,8 +1326,9 @@ async function initializeGame(gameId, connection, game = {}) {
         // Initialize turn counter.
         gameState.turns[gameId] = 1;
         const maxPlayersForMap = parsePositiveInt(game.maxplayers, Math.max(playerRows.length, DEFAULT_MAX_PLAYERS));
-        const mapSize = calculateMapSize(maxPlayersForMap);
         const mode = normalizeMode((gameState.activeGames[gameId] && gameState.activeGames[gameId].mode) || game.mode);
+        const mapSize = calculateMapSize(maxPlayersForMap, mode);
+        const startingResources = getStartingResources(mode);
         const activeState = ensureActiveGameState(gameId);
         activeState.status = 'in-progress';
         activeState.mapSize = mapSize;
@@ -1328,6 +1350,15 @@ async function initializeGame(gameId, connection, game = {}) {
         const generatedHomeworlds = generatedMap && Array.isArray(generatedMap.homeworlds)
             ? generatedMap.homeworlds
             : [];
+
+        if (mode === 'test') {
+            map.forEach(sector => {
+                const sectorType = Number(sector && (sector.type ?? sector.sectortype)) || 0;
+                if (sectorType >= 6 && sectorType <= 9) {
+                    sector.terraformlvl = 0;
+                }
+            });
+        }
 
         await Promise.all(map.map((sector, index) => {
             const sectorId = Number(sector && sector.sectorid) || (index + 1);
@@ -1352,7 +1383,7 @@ async function initializeGame(gameId, connection, game = {}) {
                      metal = ?, crystal = ?, research = ?,
                      homeworld = ?, currentsector = ?
                      WHERE userid = ?`,
-                    [STARTING_RESOURCES.metal, STARTING_RESOURCES.crystal, STARTING_RESOURCES.research, homeworld, homeworld, row.userid]
+                    [startingResources.metal, startingResources.crystal, startingResources.research, homeworld, homeworld, row.userid]
                 );
                 await queryDb(
                     `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
@@ -1594,8 +1625,10 @@ function processTurnUnchecked(gameId) {
     applyStandingOrdersForGame(gameId);
 
     const activeState = gameState.activeGames[gameId] || {};
-    const isEpic = normalizeMode(activeState.mode) === 'epic';
-    const modeMultiplier = isEpic ? EPIC_RESOURCE_MULTIPLIER : 1;
+    const mode = normalizeMode(activeState.mode);
+    const modeMultiplier = mode === 'test'
+        ? TEST_RESOURCE_MULTIPLIER
+        : (mode === 'epic' ? EPIC_RESOURCE_MULTIPLIER : 1);
 
     // Process resource generation with race modifiers
     db.query(`SELECT * FROM players${gameId}`, (err, players) => {
@@ -1741,6 +1774,23 @@ function parseBattleTech(techCsv) {
         shields: effects.shields,
         missiles: effects.missiles,
         orbital: effects.orbital
+    };
+}
+
+// Fold a race's innate combat character into the tech-effect points before the
+// fight, so the race actually matters in battle (not just at the shipyard). A
+// race multiplier maps to bonus "tech points" since each point ≈ +10%: e.g.
+// Titan ×2.0 attack -> +10 weapon points, Crystalline ×1.3 shields -> +3 shields.
+// This is intentionally an approximation that needs no changes to combat.js.
+function applyRaceCombat(techFx, raceId) {
+    const m = raceSystem.raceCombatModifiers(raceId);
+    const toPts = mult => ((Number(mult) || 1) - 1) / 0.1;
+    return {
+        weapons: Math.max(0, techFx.weapons + toPts(m.attack)),
+        hull: Math.max(0, techFx.hull + toPts(m.hull)),
+        shields: Math.max(0, techFx.shields + toPts(m.shields)),
+        missiles: techFx.missiles,
+        orbital: techFx.orbital
     };
 }
 
@@ -2226,8 +2276,8 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
             return;
         }
 
-        const attackerTech = parseBattleTech(attackerProfile.tech);
-        const defenderTech = parseBattleTech(defenderProfile.tech);
+        const attackerTech = applyRaceCombat(parseBattleTech(attackerProfile.tech), attackerProfile.race_id);
+        const defenderTech = applyRaceCombat(parseBattleTech(defenderProfile.tech), defenderProfile.race_id);
         // Missiles burn through deflectors: each missile point strips half a shield point.
         const attackerShields = Math.max(0, attackerTech.shields - 0.5 * defenderTech.missiles);
         const defenderShields = Math.max(0, defenderTech.shields - 0.5 * attackerTech.missiles);
@@ -2697,7 +2747,7 @@ function buyTech(data, connection) {
     }
 
     db.query(
-        `SELECT research, tech FROM players${gameId} WHERE userid = ?`,
+        `SELECT research, tech, race_id FROM players${gameId} WHERE userid = ?`,
         [playerId],
         (err, results) => {
             if (err || results.length === 0) {
@@ -2710,6 +2760,17 @@ function buyTech(data, connection) {
             const check = techSystem.canResearch(tech.key, levels, player.research);
             if (!check.ok) {
                 connection.sendUTF(`Error: ${check.reason}`);
+                return;
+            }
+
+            // Per-race tech access: some races can't reach (or even enter) a branch.
+            const raceId = Number(player.race_id) || 1;
+            const techCap = raceSystem.getTechLevelCap(raceId, tech);
+            if (check.nextLevel > techCap) {
+                const raceName = getRaceById(raceId).name;
+                connection.sendUTF(techCap <= 0
+                    ? `Error: ${raceName} cannot research ${tech.name} — that path is closed to them.`
+                    : `Error: ${raceName} can only research ${tech.name} to Lv${techCap}.`);
                 return;
             }
 
@@ -2930,11 +2991,18 @@ function buyShip(data, connection) {
             }
             
             const player = results[0];
-            
+
             // Apply race modifiers to ship cost
             const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === player.race_id) || raceSystem.RACE_TYPES.TERRAN;
+
+            // Per-race ship access: some races simply can't build certain hulls.
+            if (!raceSystem.canRaceBuildShip(player.race_id, shipType)) {
+                connection.sendUTF(`Error: ${race.name} cannot build ${shipData.name} — it's outside their doctrine.`);
+                return;
+            }
+
             const modifiedShip = raceSystem.applyShipModifiers(player.race_id, shipType, shipData);
-            
+
             // Check resources
             if (player.metal < modifiedShip.cost.metal || player.crystal < modifiedShip.cost.crystal) {
                 connection.sendUTF("Error: Not enough resources");
@@ -3599,8 +3667,14 @@ function updateSector2(gameId, sectorId) {
 }
 
 function surroundShips(data, connection) {
-    // This appears to be for moving multiple fleets - implement as needed
-    connection.sendUTF("Error: Multi-move not yet implemented");
+    if (!connection) {
+        return;
+    }
+
+    const payload = typeof data === 'string' && data.startsWith('//mmove')
+        ? data.replace(/^\/\/mmove/, '//sendmmf')
+        : data;
+    preMoveFleet(payload, connection);
 }
 
 function sendMultiMoveOptions(connection, gameId, targetSector) {
@@ -4851,6 +4925,15 @@ async function handlePaymentWebhook(request, response) {
     return paymentEndpoints.handleWebhook(request, response);
 }
 
+async function handleConfirmTestPayment(request, response) {
+    if (!paymentEndpoints) {
+        response.writeHead(503, {'Content-Type': 'application/json'});
+        response.end(JSON.stringify({error: 'Payment system not available'}));
+        return;
+    }
+    return paymentEndpoints.handleConfirmTestPayment(request, response);
+}
+
 async function handleSpendCrystals(request, response) {
     if (!paymentEndpoints) {
         response.writeHead(503, {'Content-Type': 'application/json'});
@@ -5561,6 +5644,7 @@ module.exports = {
     handleCreatePaymentIntent,
     handleCreateSubscription,
     handlePaymentWebhook,
+    handleConfirmTestPayment,
     handleSpendCrystals,
     handleGetBalance,
     handleGetOwnedItems,

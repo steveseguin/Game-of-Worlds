@@ -209,7 +209,7 @@ const Shop = (function() {
             console.error('Stripe library failed to load while payments are enabled.');
             notify('Payment processing is temporarily unavailable. Please refresh and try again.', 'error', 6000);
         } else {
-            console.info('Payments disabled. Showing cosmetics and crystal shop only.');
+            console.info('Payments disabled. Purchases can be browsed but not completed.');
         }
         
         createShopUI(runtimeConfig);
@@ -219,7 +219,7 @@ const Shop = (function() {
             return;
         }
         
-        const tasks = [loadUserBalance()];
+        const tasks = [];
         if (paymentsEnabled) {
             tasks.push(loadOwnedItems(), loadPurchaseHistory());
         }
@@ -249,11 +249,7 @@ const Shop = (function() {
                 
                 <div class="shop-tabs">
                     <button class="shop-tab active" data-tab="races" onclick="Shop.showTab('races', event)">Premium Races</button>
-                    <button class="shop-tab" data-tab="crystals" onclick="Shop.showTab('crystals', event)">Crystals</button>
-                    <button class="shop-tab" data-tab="vip" onclick="Shop.showTab('vip', event)">VIP Membership</button>
-                    <button class="shop-tab" data-tab="boosters" onclick="Shop.showTab('boosters', event)">Boosters</button>
                     <button class="shop-tab" data-tab="cosmetics" onclick="Shop.showTab('cosmetics', event)">Cosmetics</button>
-                    <button class="shop-tab" data-tab="crystal-shop" onclick="Shop.showTab('crystal-shop', event)">Crystal Shop</button>
                 </div>
                 
                 ${!paymentsEnabled ? `
@@ -261,14 +257,6 @@ const Shop = (function() {
                     <strong>Payments Offline</strong>
                     <p>Stripe payments are not configured for this environment. You can still browse cosmetic and crystal options, but purchases are disabled.</p>
                 </div>` : ''}
-                
-                <div class="shop-balance">
-                    <img src="./images/crystal.png" alt="Crystals" class="crystal-icon">
-                    <span id="crystal-balance">
-                        <span class="balance-loading">Loading...</span>
-                    </span> Crystals
-                    <button class="refresh-balance" onclick="Shop.refreshBalance()" title="Refresh Balance">🔄</button>
-                </div>
                 
                 <div class="shop-content">
                     ${generateShopSections()}
@@ -333,33 +321,9 @@ const Shop = (function() {
         return `
             <div id="shop-races" class="shop-section active">
                 <h3>Premium Races</h3>
-                <div class="shop-info">Unlock powerful races with unique abilities!</div>
+                <div class="shop-info">Unlock additional balanced race options. Paid races do not receive paid stat advantages.</div>
                 <div class="shop-items">
                     ${generateRaceItems()}
-                </div>
-            </div>
-            
-            <div id="shop-crystals" class="shop-section">
-                <h3>Premium Crystals</h3>
-                <div class="shop-info">Purchase crystals to unlock content instantly!</div>
-                <div class="shop-items">
-                    ${generateCrystalItems()}
-                </div>
-            </div>
-            
-            <div id="shop-vip" class="shop-section">
-                <h3>VIP Membership</h3>
-                <div class="shop-info">Enjoy exclusive benefits and bonuses!</div>
-                <div class="shop-items">
-                    ${generateVIPItems()}
-                </div>
-            </div>
-            
-            <div id="shop-boosters" class="shop-section">
-                <h3>Boosters</h3>
-                <div class="shop-info">Temporary power-ups to accelerate your progress!</div>
-                <div class="shop-items">
-                    ${generateBoosterItems()}
                 </div>
             </div>
             
@@ -368,14 +332,6 @@ const Shop = (function() {
                 <div class="shop-info">Customize your empire with unique visuals!</div>
                 <div class="shop-items">
                     ${generateCosmeticItems()}
-                </div>
-            </div>
-            
-            <div id="shop-crystal-shop" class="shop-section">
-                <h3>Crystal Shop</h3>
-                <div class="shop-info">Spend your crystals on instant rewards!</div>
-                <div class="shop-items">
-                    ${generateCrystalShopItems()}
                 </div>
             </div>
         `;
@@ -387,26 +343,26 @@ const Shop = (function() {
             {
                 id: 'race_quantum',
                 name: 'Quantum Entities',
-                description: 'Phase through enemy attacks, instant warp capabilities',
+                description: 'A high-tech faction theme with balanced competitive stats.',
                 price: '$4.99',
                 image: './images/quantum-icon.svg',
-                features: ['Phase Shift', 'Instant Warp', 'Energy Shields']
+                features: ['Quantum visuals', 'Unique faction portrait', 'Balanced race option']
             },
             {
                 id: 'race_titan',
                 name: 'Titan Lords',
-                description: 'Massive ships, extreme durability, area damage',
+                description: 'A monumental empire theme with balanced competitive stats.',
                 price: '$4.99',
                 image: './images/titan-icon.svg',
-                features: ['Massive Ships', '2x Hull Strength', 'Area Damage']
+                features: ['Titan visuals', 'Unique faction portrait', 'Balanced race option']
             },
             {
                 id: 'race_shadow',
                 name: 'Shadow Realm',
-                description: 'Cloaking technology, sabotage abilities, stealth attacks',
+                description: 'A covert empire theme with balanced competitive stats.',
                 price: '$4.99',
                 image: './images/shadow-icon.svg',
-                features: ['Cloaking', 'Sabotage', 'Surprise Attacks']
+                features: ['Shadow visuals', 'Unique faction portrait', 'Balanced race option']
             }
         ];
         
@@ -432,55 +388,6 @@ const Shop = (function() {
         }
         const trimmed = String(value).trim();
         return /^\d+$/.test(trimmed) ? trimmed : null;
-    }
-    
-    function generateCrystalItems() {
-        const packs = [
-            {
-                id: 'crystals_500',
-                name: '500 Crystals',
-                price: '$4.99',
-                description: 'Jump-start your empire with a handy stash.',
-                bonus: 'Perfect for rushing early tech.',
-                badge: ''
-            },
-            {
-                id: 'crystals_1200',
-                name: '1,200 Crystals',
-                price: '$9.99',
-                description: 'More than double the starter pack.',
-                bonus: '+200 bonus crystals',
-                badge: 'BEST VALUE'
-            },
-            {
-                id: 'crystals_2500',
-                name: '2,500 Crystals',
-                price: '$19.99',
-                description: 'Stockpile enough to outfit an entire fleet.',
-                bonus: '+500 bonus crystals',
-                badge: ''
-            },
-            {
-                id: 'crystals_6500',
-                name: '6,500 Crystals',
-                price: '$49.99',
-                description: 'For emperors who never want to wait.',
-                bonus: '+1,500 bonus crystals',
-                badge: 'TOP DEAL'
-            }
-        ];
-        
-        return packs.map(pack => `
-            <div class="shop-item ${pack.badge ? 'popular' : ''}" data-product-id="${pack.id}"
-                 onclick="Shop.purchaseCrystals('${pack.id}')">
-                ${pack.badge ? `<div class="popular-badge">${pack.badge}</div>` : ''}
-                <img src="./images/crystal.png" alt="${pack.name}" loading="lazy">
-                <h4>${pack.name}</h4>
-                <p class="item-description">${pack.description}</p>
-                ${pack.bonus ? `<p class="item-subtext">${pack.bonus}</p>` : ''}
-                <div class="price">${pack.price}</div>
-            </div>
-        `).join('');
     }
     
     function generateVIPItems() {
@@ -732,6 +639,9 @@ const Shop = (function() {
     // Update balance display
     function updateBalanceDisplay(amount, error = false) {
         const balanceElement = document.getElementById('crystal-balance');
+        if (!balanceElement) {
+            return;
+        }
         if (error) {
             balanceElement.innerHTML = '<span class="balance-error">Error</span>';
         } else {
@@ -784,6 +694,24 @@ const Shop = (function() {
                 notifyRaceUnlocked(productId);
             }
         });
+    }
+
+    async function purchaseCosmetic(productId) {
+        if (ownedItems.has(productId)) {
+            notify('You already own this cosmetic!', 'warning');
+            return;
+        }
+
+        await processPurchase(productId, 'cosmetic', {
+            onSuccess: () => {
+                ownedItems.add(productId);
+                updateOwnedItemsDisplay();
+            }
+        });
+    }
+
+    function notifyGameplayPurchaseDisabled() {
+        notify('Gameplay-affecting premium purchases are disabled. Only race unlocks and cosmetics are available.', 'warning', 7000);
     }
     
     // Enhanced purchase process
@@ -905,6 +833,24 @@ const Shop = (function() {
             submitButton.onclick = () => handlePaymentSubmission(paymentData, options);
         }
     }
+
+    async function confirmPaymentOnServer(paymentIntentId) {
+        const response = await fetch('/api/payment/confirm-test', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId,
+                paymentIntentId
+            })
+        });
+
+        const payload = await parseJsonResponse(response, 'Failed to confirm purchase');
+        if (!response.ok || payload.error) {
+            throw new Error(payload.error || 'Failed to confirm purchase');
+        }
+        return payload;
+    }
     
     // Handle payment submission with better error handling
     async function handlePaymentSubmission(paymentData, options) {
@@ -949,6 +895,8 @@ const Shop = (function() {
                 buttonText.classList.remove('hidden');
                 buttonLoading.classList.add('hidden');
             } else {
+                await confirmPaymentOnServer(paymentIntent.id);
+
                 // Payment successful
                 closePayment();
                 notifyPayment('success', currentProduct.productId);
@@ -957,9 +905,6 @@ const Shop = (function() {
                 if (options.onSuccess) {
                     options.onSuccess();
                 }
-                
-                // Refresh balance after purchase
-                setTimeout(() => loadUserBalance(), 1000);
                 
                 // Track successful purchase
                 if (window.analytics) {
@@ -985,6 +930,9 @@ const Shop = (function() {
     
     // Spend crystals with confirmation
     async function spendCrystals(itemId) {
+        notifyGameplayPurchaseDisabled();
+        return;
+        /*
         const item = getCrystalShopItem(itemId);
         if (!item) return;
         
@@ -1026,6 +974,7 @@ const Shop = (function() {
                 }
             }
         );
+        */
     }
     
     // Show purchase history
@@ -1633,23 +1582,54 @@ const Shop = (function() {
             'race_quantum': 'Quantum Entities Race',
             'race_titan': 'Titan Lords Race',
             'race_shadow': 'Shadow Realm Race',
-            'crystals_500': '500 Crystals',
-            'crystals_1200': '1200 Crystals',
-            'crystals_2500': '2500 Crystals',
-            'crystals_6500': '6500 Crystals',
-            'vip_bronze': 'Bronze VIP',
-            'vip_silver': 'Silver VIP',
-            'vip_gold': 'Gold VIP'
+            'skin_pack_neon': 'Neon Ship Skins Pack',
+            'avatar_pack_legendary': 'Legendary Avatars Pack',
+            'cosmetic_empire_theme': 'Empire Theme Pack',
+            'cosmetic_fleet_trails': 'Fleet Engine Trails',
+            'cosmetic_voice_pack': 'AI Advisor Voice Pack'
         };
         return products[productId] || productId;
     }
     
     function getProductDetails(productId) {
-        // Return detailed product information
+        const details = {
+            race_quantum: {
+                description: 'Balanced premium race option with a quantum faction theme.',
+                image: './images/quantum-icon.svg'
+            },
+            race_titan: {
+                description: 'Balanced premium race option with a titan faction theme.',
+                image: './images/titan-icon.svg'
+            },
+            race_shadow: {
+                description: 'Balanced premium race option with a shadow faction theme.',
+                image: './images/shadow-icon.svg'
+            },
+            cosmetic_empire_theme: {
+                description: 'Custom UI skin, avatar frame, and lobby banner.',
+                image: './images/terran-icon.svg'
+            },
+            cosmetic_fleet_trails: {
+                description: 'Prismatic fleet trails and warp animation.',
+                image: './images/zephyr-icon.svg'
+            },
+            cosmetic_voice_pack: {
+                description: 'Additional advisor alert voice lines.',
+                image: './images/quantum-icon.svg'
+            },
+            skin_pack_neon: {
+                description: 'Neon ship visual variants.',
+                image: './images/quantum-icon.svg'
+            },
+            avatar_pack_legendary: {
+                description: 'Additional profile avatar cosmetics.',
+                image: './images/titan-icon.svg'
+            }
+        };
         return {
             name: getProductName(productId),
-            description: 'Premium game content',
-            image: './images/resources.png'
+            description: details[productId]?.description || 'Premium cosmetic content',
+            image: details[productId]?.image || './images/resources.png'
         };
     }
     
@@ -1724,7 +1704,6 @@ const Shop = (function() {
             const container = document.getElementById('shop-container');
             if (!container) return;
             container.classList.remove('shop-hidden');
-            loadUserBalance(); // Refresh on open
         },
         close: () => {
             const container = document.getElementById('shop-container');
@@ -1760,11 +1739,11 @@ const Shop = (function() {
             document.getElementById(`shop-${tabName}`)?.classList.add('active');
         },
         purchaseRace,
-        purchaseCrystals: (productId) => processPurchase(productId, 'crystals'),
-        purchaseVIP: (productId) => processPurchase(productId, 'subscription'),
-        purchaseBooster: (productId) => processPurchase(productId, 'booster'),
-        purchaseCosmetic: (productId) => processPurchase(productId, 'cosmetic'),
-        purchaseBattlePass: () => processPurchase('battle_pass', 'battle_pass'),
+        purchaseCrystals: notifyGameplayPurchaseDisabled,
+        purchaseVIP: notifyGameplayPurchaseDisabled,
+        purchaseBooster: notifyGameplayPurchaseDisabled,
+        purchaseCosmetic,
+        purchaseBattlePass: notifyGameplayPurchaseDisabled,
         spendCrystals,
         refreshBalance: loadUserBalance,
         showHistory,

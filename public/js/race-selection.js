@@ -444,7 +444,7 @@ const RaceSelection = (function() {
             case 'referral':
                 return `Refer ${race.unlockRequirement.count} friends`;
             case 'premium':
-                return `<button onclick="RaceSelection.purchaseRace(${race.id})" style="
+                return `<button class="race-purchase-btn" onclick="RaceSelection.purchaseRace(${race.id})" style="
                     padding: 5px 10px;
                     background: #FFD700;
                     color: #000;
@@ -548,16 +548,10 @@ const RaceSelection = (function() {
     }
     
     function purchaseRace(raceId) {
-        // Initialize Stripe checkout for premium race
         const race = unlockedRaces.find(r => r.id === raceId);
         if (!race || race.unlockType !== 'premium') return;
-        
-        // This would integrate with Stripe
-        // For now, show a placeholder
-        alert(`Premium race purchase would open Stripe checkout for $${race.unlockRequirement.amount}`);
-        
-        // In production:
-        // window.location.href = `/purchase-race?race=${raceId}`;
+
+        window.location.href = `/purchase-race.html?race=${encodeURIComponent(raceId)}`;
     }
     
     // Handle server response with unlocked races

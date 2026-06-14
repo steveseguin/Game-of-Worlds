@@ -167,13 +167,11 @@ INSERT IGNORE INTO product_catalog (id, name, price, category) VALUES
 ('race_quantum', 'Quantum Entities Race', 499, 'race'),
 ('race_titan', 'Titan Lords Race', 499, 'race'),
 ('race_shadow', 'Shadow Realm Race', 499, 'race'),
-('crystals_500', '500 Premium Crystals', 499, 'currency'),
-('crystals_1200', '1200 Premium Crystals', 999, 'currency'),
-('crystals_2500', '2500 Premium Crystals', 1999, 'currency'),
-('crystals_6500', '6500 Premium Crystals', 4999, 'currency'),
-('vip_bronze', 'Bronze VIP Membership', 499, 'subscription'),
-('vip_silver', 'Silver VIP Membership', 999, 'subscription'),
-('vip_gold', 'Gold VIP Membership', 1999, 'subscription');
+('skin_pack_neon', 'Neon Ship Skins Pack', 699, 'cosmetic'),
+('avatar_pack_legendary', 'Legendary Avatars Pack', 499, 'cosmetic'),
+('cosmetic_empire_theme', 'Empire Theme Pack', 399, 'cosmetic'),
+('cosmetic_fleet_trails', 'Fleet Engine Trails', 249, 'cosmetic'),
+('cosmetic_voice_pack', 'AI Advisor Voice Pack', 199, 'cosmetic');
 
 -- Create stored procedures for common operations
 

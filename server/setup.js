@@ -271,10 +271,11 @@ connection.connect(err => {
                                 CREATE TABLE IF NOT EXISTS premium_purchases (
                                     id INT AUTO_INCREMENT PRIMARY KEY,
                                     user_id INT NOT NULL,
-                                    race_id INT NOT NULL,
-                                    amount DECIMAL(10,2) NOT NULL,
+                                    race_id INT DEFAULT NULL,
+                                    product_id VARCHAR(64) DEFAULT NULL,
+                                    amount INT DEFAULT 0,
                                     stripe_payment_id VARCHAR(255),
-                                    status VARCHAR(32) DEFAULT 'pending',
+                                    status VARCHAR(32) DEFAULT 'completed',
                                     purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                     FOREIGN KEY (user_id) REFERENCES users(id),
                                     UNIQUE KEY unique_user_race (user_id, race_id)

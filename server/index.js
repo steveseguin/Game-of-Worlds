@@ -92,6 +92,7 @@ const DB_CONFIG = {
 };
 const DB_POOL_SIZE = parsePoolSize(process.env.DB_POOL_SIZE);
 const USE_MOCK_DB = /^(true|1|yes)$/i.test((process.env.USE_MOCK_DB || '').trim());
+const TEST_GAME_MODE_ENABLED = /^(true|1|yes)$/i.test((process.env.ENABLE_TEST_GAME_MODE || '').trim()) || process.env.NODE_ENV === 'test';
 
 function buildPoolConfig() {
     return {
@@ -280,6 +281,11 @@ const httpServer = http.createServer((request, response) => {
         serverLogic.handlePaymentWebhook(request, response);
         return;
     }
+
+    if (pathname === '/api/payment/confirm-test' && request.method === 'POST') {
+        serverLogic.handleConfirmTestPayment(request, response);
+        return;
+    }
     
     if (pathname === '/api/payment/spend-crystals' && request.method === 'POST') {
         serverLogic.handleSpendCrystals(request, response);
@@ -290,7 +296,7 @@ const httpServer = http.createServer((request, response) => {
         const paymentsEnabled = Boolean(process.env.STRIPE_SECRET_KEY && publishableKey);
         const payload = [
             `window.STRIPE_PUBLISHABLE_KEY = ${JSON.stringify(publishableKey)};`,
-            `window.GAME_FEATURES = Object.assign({ paymentsEnabled: ${paymentsEnabled} }, window.GAME_FEATURES || {});`
+            `window.GAME_FEATURES = Object.assign({ paymentsEnabled: ${paymentsEnabled}, testGameMode: ${TEST_GAME_MODE_ENABLED} }, window.GAME_FEATURES || {});`
         ].join('\n');
         response.writeHead(200, {
             'Content-Type': 'application/javascript; charset=utf-8',
@@ -311,7 +317,8 @@ const httpServer = http.createServer((request, response) => {
         const paymentsEnabled = Boolean(process.env.STRIPE_SECRET_KEY && publishableKey);
         const body = JSON.stringify({
             stripePublishableKey: publishableKey,
-            paymentsEnabled
+            paymentsEnabled,
+            testGameMode: TEST_GAME_MODE_ENABLED
         });
         response.writeHead(200, {
             'Content-Type': 'application/json; charset=utf-8',
@@ -367,6 +374,26 @@ const httpServer = http.createServer((request, response) => {
     // Default to index.html for root path
     if (pathname === '/') {
       pathname = `/${DEFAULT_DOCUMENT}`;
+    }
+
+    if (pathname === '/index.html') {
+        response.writeHead(302, {
+            Location: '/landing.html',
+            ...SECURITY_HEADERS,
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+        });
+        response.end();
+        return;
+    }
+
+    if (pathname === '/js/shop.js') {
+        response.writeHead(410, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            ...SECURITY_HEADERS,
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+        });
+        response.end('Legacy shop script disabled. Use shop-enhanced.js.');
+        return;
     }
 
     if (pathname === '/race-selection.js') {

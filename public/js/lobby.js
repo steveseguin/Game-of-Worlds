@@ -53,7 +53,8 @@ const AI_DIFFICULTY_OPTIONS = ['chill', 'medium', 'aggressive'];
 const AI_STRATEGY_OPTIONS = ['balanced', 'aggressive', 'economic'];
 const GAME_MODE_OPTIONS = [
     { value: 'quick', label: 'Quick (fast turns)' },
-    { value: 'epic', label: 'Epic (1 turn/day)' }
+    { value: 'epic', label: 'Epic (1 turn/day)' },
+    { value: 'test', label: 'Test (accelerated)' }
 ];
 let currentPlayerDetails = [];
 let currentGameMode = 'quick';
@@ -62,7 +63,13 @@ let currentMinLevel = 0;
 let countdownSeconds = null;
 
 function formatModeLabel(mode) {
-    return mode === 'epic' ? 'Epic (1/day turn)' : 'Quick (fast turns)';
+    if (mode === 'epic') {
+        return 'Epic (1/day turn)';
+    }
+    if (mode === 'test') {
+        return 'Test (accelerated)';
+    }
+    return 'Quick (fast turns)';
 }
 
 function renderAccessBadges(registeredOnly, minLevel) {
@@ -115,12 +122,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     setLobbyConnectionState('connecting');
+    configureGameModeOptions();
     configureGuestCreateOptions();
     initWebSocket();
 
     document.getElementById('createGameBtn').addEventListener('click', createGame);
     document.getElementById('refreshGamesBtn').addEventListener('click', refreshGames);
 });
+
+function configureGameModeOptions() {
+    const testOption = document.getElementById('testGameModeOption');
+    if (!testOption) {
+        return;
+    }
+
+    const enabled = Boolean(window.GAME_FEATURES && window.GAME_FEATURES.testGameMode);
+    testOption.hidden = !enabled;
+    testOption.disabled = !enabled;
+}
 
 function configureGuestCreateOptions() {
     const isGuest = localStorage.getItem('gowIsGuest') === '1';
@@ -904,7 +923,7 @@ function loadRaceSelectionScript(callback) {
     }
 
     const script = document.createElement('script');
-    script.src = 'js/race-selection.js?v=20251212';
+    script.src = 'js/race-selection.js?v=20260614b';
     script.onload = () => {
         requestUnlockedRaces();
         callback();

@@ -23,7 +23,6 @@ const {
     splitRendezvousPaths,
     waitForBattleOverlay,
     closeBattleOverlay,
-    surrender,
     returnToLobbyFromGameOver
 } = require('./support/ui-game-harness');
 
@@ -77,7 +76,7 @@ test.describe('Complete multiplayer UI harness', () => {
                 password
             });
 
-            const gameId = await createGame(hostPage, gameName, { maxPlayers: '2', mode: 'quick' });
+            const gameId = await createGame(hostPage, gameName, { maxPlayers: '2', mode: 'test' });
             await expect(hostPage.locator('.waiting-view')).toContainText('Guests OK', { timeout: 10000 });
 
             await signInGuest(guestPage);
@@ -96,7 +95,12 @@ test.describe('Complete multiplayer UI harness', () => {
             const hostHome = await focusHomeworld(hostPage);
             const guestHome = await focusHomeworld(guestPage);
             const terrain = await readTestTerrain(hostPage, gameId);
-            const colonizationTargets = pickColonizationTargets(hostHome, guestHome, terrain, 2);
+            const colonizableCount = terrain.sectors.filter(sector => {
+                const type = Number(sector.type);
+                return type >= 6 && type <= 10;
+            }).length;
+            const requiredWorlds = Math.max(4, Math.ceil(colonizableCount * 0.20));
+            const colonizationTargets = pickColonizationTargets(hostHome, guestHome, terrain, requiredWorlds - 1);
             const reserved = new Set(colonizationTargets.map(target => target.id));
             const probeTarget = pickProbeTarget(hostHome, guestHome, terrain, reserved);
             const battlePaths = splitRendezvousPaths(hostHome, guestHome, terrain, reserved);
@@ -107,6 +111,8 @@ test.describe('Complete multiplayer UI harness', () => {
                     gameId,
                     hostHome,
                     guestHome,
+                    colonizableCount,
+                    requiredWorlds,
                     probeTarget,
                     colonizationTargets: colonizationTargets.map(target => ({
                         sector: target.id,
@@ -159,21 +165,32 @@ test.describe('Complete multiplayer UI harness', () => {
             await closeBattleOverlay(hostPage);
             await closeBattleOverlay(guestPage);
 
-            await surrender(guestPage);
+            if (!(await hostPage.locator('#gameOverModal').isVisible().catch(() => false))) {
+                for (let index = 2; index < colonizationTargets.length; index++) {
+                    await endTurnsUntilResources([hostPage, guestPage], hostPage, { metal: 1000 }, 20);
+                    await buildShip(hostPage, 6);
+                    await marchShip(hostPage, colonizationTargets[index].path.slice(1), 'Colony Ship');
+                    await focusSector(hostPage, colonizationTargets[index].id);
+                    await colonizeSelectedSector(hostPage, index + 2);
+                    await hostPage.screenshot({ path: testInfo.outputPath(`06-colony-${index + 1}.png`), fullPage: true });
+                }
+                await endTurnAll([hostPage, guestPage], 1);
+            }
+
             await expect(hostPage.locator('#gameOverModal')).toBeVisible({ timeout: 15000 });
             await expect(guestPage.locator('#gameOverModal')).toBeVisible({ timeout: 15000 });
             await expect(hostPage.locator('#gameOverTitle')).toHaveText('Victory');
             await expect(guestPage.locator('#gameOverTitle')).toHaveText('Defeat');
-            await expect(hostPage.locator('#gameOverBody')).toContainText('Surrender');
+            await expect(hostPage.locator('#gameOverBody')).toContainText('Domination');
             await expect(guestPage.locator('#gameOverRegisterBtn')).toBeVisible();
-            await hostPage.screenshot({ path: testInfo.outputPath('06-game-over.png'), fullPage: true });
+            await hostPage.screenshot({ path: testInfo.outputPath('07-game-over.png'), fullPage: true });
 
             await Promise.all([
                 returnToLobbyFromGameOver(hostPage),
                 returnToLobbyFromGameOver(guestPage)
             ]);
             await expect(hostPage.locator('#createGameBtn')).toBeVisible({ timeout: 10000 });
-            await hostPage.screenshot({ path: testInfo.outputPath('07-returned-lobby.png'), fullPage: true });
+            await hostPage.screenshot({ path: testInfo.outputPath('08-returned-lobby.png'), fullPage: true });
 
             expect(pageErrors).toEqual([]);
         } finally {

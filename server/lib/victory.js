@@ -7,6 +7,9 @@
 
 const techSystem = require('./tech');
 
+const DOMINATION_PERCENT = Number(process.env.VICTORY_DOMINATION_PERCENT) || 75;
+const TIME_VICTORY_TURN_LIMIT = Number(process.env.VICTORY_TIME_TURN_LIMIT) || 300;
+
 const ACTIVE_VICTORY_KEYS = new Set([
     'DOMINATION',
     'ELIMINATION',
@@ -36,7 +39,7 @@ const VICTORY_CONDITIONS = {
     DOMINATION: {
         id: 1,
         name: 'Domination Victory',
-        description: 'Control 75% of all colonizable planets',
+        description: `Control ${DOMINATION_PERCENT}% of all colonizable planets`,
         check: function(gameId, playerId, gameState, db, callback) {
             // Count total colonizable planets and player's planets
             db.query(
@@ -54,7 +57,7 @@ const VICTORY_CONDITIONS = {
                     
                     const { total, owned } = results[0];
                     const percentage = total > 0 ? (owned / total) * 100 : 0;
-                    callback(percentage >= 75, percentage);
+                    callback(percentage >= DOMINATION_PERCENT, percentage);
                 }
             );
         }
@@ -203,12 +206,12 @@ const VICTORY_CONDITIONS = {
     TIME: {
         id: 7,
         name: 'Time Victory',
-        description: 'Have the highest score after 300 turns',
+        description: `Have the highest score after ${TIME_VICTORY_TURN_LIMIT} turns`,
         check: function(gameId, playerId, gameState, db, callback) {
             const currentTurn = gameState.turns[gameId] || 0;
             
-            if (currentTurn < 300) {
-                callback(false, (currentTurn / 300) * 100);
+            if (currentTurn < TIME_VICTORY_TURN_LIMIT) {
+                callback(false, (currentTurn / TIME_VICTORY_TURN_LIMIT) * 100);
                 return;
             }
             

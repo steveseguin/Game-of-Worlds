@@ -450,8 +450,16 @@ function pickColonizationTargets(homeSector, otherHomeSector, terrain, count = 2
 
 function splitRendezvousPaths(hostHome, joinerHome, terrain, extraBlocked = new Set()) {
     const fullPath = buildSafePath(hostHome, joinerHome, terrain, extraBlocked);
-    if (!fullPath || fullPath.length < 3) {
+    if (!fullPath || fullPath.length < 2) {
         throw new Error(`Homeworlds are too close or blocked for a two-sided battle path: ${hostHome}, ${joinerHome}`);
+    }
+    if (fullPath.length === 2) {
+        return {
+            rendezvous: Number(hostHome),
+            hostPath: [],
+            joinerPath: [Number(hostHome)],
+            fullPath
+        };
     }
     const midIndex = Math.max(1, Math.min(fullPath.length - 2, Math.floor(fullPath.length / 2)));
     return {

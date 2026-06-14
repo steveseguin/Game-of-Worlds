@@ -64,6 +64,10 @@ window.GalaxyMap = (function() {
         [SECTOR_STATUS.FLEET]: "#1F8A91"
     };
 
+    const UNKNOWN_FILL = "#101522";
+    const UNKNOWN_STROKE = "#263149";
+    const MEMORY_OPACITY = "0.50";
+
     // Internal state
     let state = {
         initialized: false,
@@ -157,12 +161,12 @@ window.GalaxyMap = (function() {
             sector.status = SECTOR_STATUS.UNKNOWN;
             sector.owner = null;
             sector.buildings = [];
-            sector.path.setAttribute("fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
-            sector.path.setAttribute("data-original-fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
-            sector.path.setAttribute("stroke", STROKE_COLORS[SECTOR_STATUS.UNKNOWN]);
-            sector.path.setAttribute("stroke-dasharray", "");
-            sector.path.setAttribute("opacity", "1");
-            sector.text.setAttribute("opacity", "1");
+            sector.path.setAttribute("fill", UNKNOWN_FILL);
+            sector.path.setAttribute("data-original-fill", UNKNOWN_FILL);
+            sector.path.setAttribute("stroke", UNKNOWN_STROKE);
+            sector.path.setAttribute("stroke-dasharray", "2 4");
+            sector.path.setAttribute("opacity", "0.42");
+            sector.text.setAttribute("opacity", "0");
             sector.fleetText.style.display = "none";
             sector.colonizedText.style.display = "none";
             sector.live = false;
@@ -264,10 +268,12 @@ window.GalaxyMap = (function() {
         // Create hexagon path
         const hexPath = document.createElementNS(svgNS, "path");
         hexPath.setAttribute("id", `tile${id}`);
-        hexPath.setAttribute("fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
-        hexPath.setAttribute("data-original-fill", STATUS_COLORS[SECTOR_STATUS.UNKNOWN]);
-        hexPath.setAttribute("stroke", STROKE_COLORS[SECTOR_STATUS.UNKNOWN]);
+        hexPath.setAttribute("fill", UNKNOWN_FILL);
+        hexPath.setAttribute("data-original-fill", UNKNOWN_FILL);
+        hexPath.setAttribute("stroke", UNKNOWN_STROKE);
         hexPath.setAttribute("stroke-width", "2");
+        hexPath.setAttribute("stroke-dasharray", "2 4");
+        hexPath.setAttribute("opacity", "0.42");
 
         // Flat-top hexagon that fills the viewBox exactly
         // ViewBox is 100 x 86.6, hex radius = 50, centered at (50, 43.3)
@@ -323,6 +329,7 @@ window.GalaxyMap = (function() {
         text.setAttribute("font-size", "12");
         text.setAttribute("font-weight", "bold");
         text.setAttribute("fill", "#c7cede");
+        text.setAttribute("opacity", "0");
         text.style.pointerEvents = "none";
         // Decimal labels: server messages refer to sectors by decimal number.
         text.textContent = String(id);
@@ -423,6 +430,7 @@ window.GalaxyMap = (function() {
         const sector = state.sectors[sectorId];
         if (!sector) return;
         const normalizedStatus = STATUS_COLORS[status] ? status : SECTOR_STATUS.UNKNOWN;
+        const known = normalizedStatus !== SECTOR_STATUS.UNKNOWN || details.live === false || details.type !== undefined;
         
         // Update status
         sector.status = normalizedStatus;
@@ -444,17 +452,20 @@ window.GalaxyMap = (function() {
             sector.flags = Number(details.flags) || 0;
         }
         
-        // Update colors
-        sector.path.setAttribute("fill", STATUS_COLORS[normalizedStatus]);
-        sector.path.setAttribute("data-original-fill", STATUS_COLORS[normalizedStatus]);
-        sector.path.setAttribute("stroke", STROKE_COLORS[normalizedStatus]);
-        sector.path.setAttribute("opacity", sector.live ? "1" : "0.58");
-        sector.path.setAttribute("stroke-dasharray", sector.live ? "" : "4 3");
-        sector.text.setAttribute("opacity", sector.live ? "1" : "0.62");
+        // Update colors. Unknown tiles remain selectable, but they do not reveal
+        // labels or terrain until the server marks them explored.
+        const fill = known ? STATUS_COLORS[normalizedStatus] : UNKNOWN_FILL;
+        const stroke = known ? STROKE_COLORS[normalizedStatus] : UNKNOWN_STROKE;
+        sector.path.setAttribute("fill", fill);
+        sector.path.setAttribute("data-original-fill", fill);
+        sector.path.setAttribute("stroke", stroke);
+        sector.path.setAttribute("opacity", known ? (sector.live ? "1" : MEMORY_OPACITY) : "0.42");
+        sector.path.setAttribute("stroke-dasharray", known ? (sector.live ? "" : "4 3") : "2 4");
+        sector.text.setAttribute("opacity", known ? (sector.live ? "1" : "0.58") : "0");
         
         // Update fleet size
         if (details.fleetSize !== undefined) {
-            if (details.fleetSize > 0) {
+            if (known && details.fleetSize > 0) {
                 sector.fleetText.textContent = (sector.flags & 16) ? `E:${details.fleetSize}` : `F:${details.fleetSize}`;
                 sector.fleetText.style.display = "block";
             } else {
@@ -464,7 +475,7 @@ window.GalaxyMap = (function() {
         
         // Update colonized indicator
         if (details.indicator !== undefined) {
-            if (details.indicator) {
+            if (known && details.indicator) {
                 sector.colonizedText.textContent = details.indicator;
                 sector.colonizedText.setAttribute("font-size", details.indicator.length > 2 ? "8" : "10");
                 sector.colonizedText.style.display = "block";
@@ -567,6 +578,16 @@ window.GalaxyMap = (function() {
         const owner = sector.owner || 'Unknown';
         const statusLabel = Object.keys(SECTOR_STATUS).find(key => SECTOR_STATUS[key] === sector.status) || 'Unknown';
         const freshness = sector.live ? 'Live' : (sector.status === SECTOR_STATUS.UNKNOWN ? 'Fog' : 'Memory');
+        if (sector.status === SECTOR_STATUS.UNKNOWN) {
+            state.tooltip.style.left = `${x}px`;
+            state.tooltip.style.top = `${y}px`;
+            state.tooltip.innerHTML = `
+                <div style="font-weight:700;margin-bottom:4px;">Unknown sector</div>
+                <div>Intel: Fog</div>
+            `;
+            state.tooltip.style.display = 'block';
+            return;
+        }
         const markers = sector.colonizedText && sector.colonizedText.textContent ? sector.colonizedText.textContent : 'None';
         const fleetText = sector.fleetText && sector.fleetText.textContent ? sector.fleetText.textContent : 'None';
         const buildingCounts = normalizeBuildingCounts(sector.buildings);

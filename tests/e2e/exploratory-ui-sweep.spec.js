@@ -274,11 +274,8 @@ async function exerciseInGameUi(page, label, issues) {
         await page.waitForTimeout(600);
         const shopVisible = await page.locator('#shop-container:not(.shop-hidden)').count();
         if (shopVisible > 0) {
-            await safeClick(page, '.shop-tab:has-text("Crystals")', issues, label);
-            await safeClick(page, '.shop-tab:has-text("VIP Membership")', issues, label);
-            await safeClick(page, '.shop-tab:has-text("Boosters")', issues, label);
+            await safeClick(page, '.shop-tab:has-text("Premium Races")', issues, label);
             await safeClick(page, '.shop-tab:has-text("Cosmetics")', issues, label);
-            await safeClick(page, '.shop-tab:has-text("Crystal Shop")', issues, label);
             await safeClick(page, '.shop-history-btn', issues, label);
             await safeClick(page, '.history-close', issues, label);
             await safeClick(page, '.shop-close', issues, label);

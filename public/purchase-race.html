@@ -5,205 +5,257 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Purchase Premium Race - Game of Worlds</title>
     <script>
-        // Authentication check for static hosting
         (function() {
-            // Check if user has authentication cookies
             function getCookie(name) {
                 const value = `; ${document.cookie}`;
                 const parts = value.split(`; ${name}=`);
-                if (parts.length === 2) return parts.pop().split(';').shift();
-                return null;
+                return parts.length === 2 ? parts.pop().split(';').shift() : null;
             }
-            
-            const userId = getCookie('userId');
-            const tempKey = getCookie('tempKey');
-            
-            // If no authentication cookies, redirect to login
-            if (!userId || !tempKey) {
+
+            if (!getCookie('userId') || !getCookie('tempKey')) {
                 window.location.href = '/login.html';
             }
         })();
     </script>
+    <script src="/config.js"></script>
     <script src="https://js.stripe.com/v3/"></script>
     <style>
         body {
-            background: #000 url('./images/spacebak.jpg') no-repeat center center fixed;
+            min-height: 100vh;
+            margin: 0;
+            background: #050812 url('./images/spacebak.jpg') no-repeat center center fixed;
             background-size: cover;
-            color: white;
+            color: #eef3fb;
             font-family: Arial, sans-serif;
-            padding: 20px;
         }
-        
+
         .purchase-container {
-            max-width: 600px;
-            margin: 50px auto;
-            background: rgba(0, 0, 0, 0.8);
-            border: 2px solid #444;
-            border-radius: 10px;
-            padding: 30px;
-            text-align: center;
-        }
-        
-        h1 {
-            color: #FFD700;
-            margin-bottom: 30px;
-        }
-        
-        .race-preview {
-            background: rgba(255, 255, 255, 0.1);
+            width: min(620px, calc(100% - 32px));
+            margin: 48px auto;
+            background: rgba(7, 10, 20, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.16);
             border-radius: 8px;
-            padding: 20px;
+            padding: 28px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+        }
+
+        h1 {
+            margin: 0 0 18px;
+            color: #ffd76a;
+            font-size: 28px;
+        }
+
+        .race-preview {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 18px;
             margin: 20px 0;
         }
-        
+
+        .race-preview h2 {
+            margin: 0 0 8px;
+            color: #7bdcff;
+        }
+
         .price {
-            font-size: 36px;
-            color: #4CAF50;
-            margin: 20px 0;
+            font-size: 32px;
+            color: #68e29a;
+            margin: 18px 0;
+            font-weight: 700;
         }
-        
+
         #card-element {
             background: white;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 20px 0;
+            padding: 14px;
+            border-radius: 6px;
+            margin: 18px 0 10px;
         }
-        
-        .btn-purchase {
-            background: #FFD700;
-            color: #000;
-            padding: 15px 40px;
-            border: none;
-            border-radius: 4px;
-            font-size: 18px;
-            font-weight: bold;
+
+        .btn-purchase,
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 700;
+            text-decoration: none;
             cursor: pointer;
         }
-        
-        .btn-purchase:hover {
-            background: #FFC000;
+
+        .btn-purchase {
+            border: 0;
+            background: #ffd76a;
+            color: #151006;
         }
-        
+
         .btn-purchase:disabled {
-            background: #666;
+            opacity: 0.55;
             cursor: not-allowed;
         }
-        
-        #error-message {
-            color: #ff6666;
-            margin-top: 10px;
-        }
-        
+
         .back-link {
-            display: inline-block;
-            margin-top: 20px;
-            color: #40C0A0;
-            text-decoration: none;
+            margin-left: 8px;
+            color: #dfe7ff;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .status {
+            min-height: 20px;
+            margin-top: 12px;
+            color: #ffd76a;
+        }
+
+        .status.error {
+            color: #ff8a80;
+        }
+
+        .status.success {
+            color: #68e29a;
         }
     </style>
 </head>
 <body>
-    <div class="purchase-container">
+    <main class="purchase-container">
         <h1>Unlock Premium Race</h1>
-        
-        <div class="race-preview" id="racePreview">
-            <!-- Race details will be inserted here -->
-        </div>
-        
+        <div class="race-preview" id="racePreview"></div>
         <div class="price" id="price">$4.99</div>
-        
         <form id="payment-form">
-            <div id="card-element">
-                <!-- Stripe Elements will be inserted here -->
-            </div>
-            
-            <div id="error-message"></div>
-            
-            <button type="submit" class="btn-purchase" id="submit">
-                Complete Purchase
-            </button>
+            <div id="card-element"></div>
+            <div id="status" class="status"></div>
+            <button type="submit" class="btn-purchase" id="submit">Complete Purchase</button>
+            <a href="/lobby.html" class="back-link">Back to Lobby</a>
         </form>
-        
-        <a href="/lobby.html" class="back-link">← Back to Lobby</a>
-    </div>
-    
+    </main>
+
     <script>
-        // Get race ID from URL params
-        const urlParams = new URLSearchParams(window.location.search);
-        const raceId = urlParams.get('race');
-        
-        // Race data (in production, fetch from server)
         const races = {
-            10: { name: "Quantum Entities", price: 4.99, description: "Beings of pure energy with reality-bending abilities" },
-            11: { name: "Titan Lords", price: 4.99, description: "Giants who build massive, powerful ships" },
-            12: { name: "Shadow Realm", price: 4.99, description: "Masters of stealth and subterfuge" }
-        };
-        
-        const race = races[raceId];
-        if (race) {
-            document.getElementById('racePreview').innerHTML = `
-                <h2>${race.name}</h2>
-                <p>${race.description}</p>
-            `;
-            document.getElementById('price').textContent = `$${race.price}`;
-        }
-        
-        // Initialize Stripe
-        const stripe = Stripe('YOUR_STRIPE_PUBLISHABLE_KEY'); // Replace with your key
-        const elements = stripe.elements();
-        
-        // Create card element
-        const cardElement = elements.create('card', {
-            style: {
-                base: {
-                    color: '#32325d',
-                    fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
-                    fontSmoothing: 'antialiased',
-                    fontSize: '16px',
-                    '::placeholder': {
-                        color: '#aab7c4'
-                    }
-                },
-                invalid: {
-                    color: '#fa755a',
-                    iconColor: '#fa755a'
-                }
+            10: {
+                name: 'Quantum Entities',
+                productId: 'race_quantum',
+                description: 'Balanced premium race option with a quantum faction theme.'
+            },
+            11: {
+                name: 'Titan Lords',
+                productId: 'race_titan',
+                description: 'Balanced premium race option with a titan faction theme.'
+            },
+            12: {
+                name: 'Shadow Realm',
+                productId: 'race_shadow',
+                description: 'Balanced premium race option with a shadow faction theme.'
             }
-        });
-        
-        cardElement.mount('#card-element');
-        
-        // Handle form submission
-        const form = document.getElementById('payment-form');
+        };
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            return parts.length === 2 ? parts.pop().split(';').shift() : null;
+        }
+
+        async function parseJson(response, context) {
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                throw new Error(`${context} failed`);
+            }
+            return response.json();
+        }
+
+        function setStatus(message, type = '') {
+            const status = document.getElementById('status');
+            status.textContent = message || '';
+            status.className = `status ${type}`.trim();
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const race = races[Number(params.get('race'))];
         const submitButton = document.getElementById('submit');
-        const errorMessage = document.getElementById('error-message');
-        
-        form.addEventListener('submit', async (event) => {
+
+        if (!race) {
+            document.getElementById('racePreview').innerHTML = '<h2>Race unavailable</h2><p>This race cannot be purchased from this page.</p>';
+            submitButton.disabled = true;
+            setStatus('Choose a premium race from the lobby race selector.', 'error');
+        } else {
+            document.getElementById('racePreview').innerHTML = `<h2>${race.name}</h2><p>${race.description}</p>`;
+        }
+
+        const userId = getCookie('userId');
+        const stripeKey = window.STRIPE_PUBLISHABLE_KEY || '';
+        const paymentsEnabled = Boolean(window.GAME_FEATURES && window.GAME_FEATURES.paymentsEnabled && stripeKey);
+        let stripe = null;
+        let cardElement = null;
+
+        if (paymentsEnabled && window.Stripe && race) {
+            stripe = Stripe(stripeKey);
+            const elements = stripe.elements();
+            cardElement = elements.create('card');
+            cardElement.mount('#card-element');
+            cardElement.on('change', event => {
+                setStatus(event.error ? event.error.message : '', event.error ? 'error' : '');
+            });
+        } else if (race) {
+            submitButton.disabled = true;
+            setStatus('Payments are not configured for this environment.', 'error');
+        }
+
+        document.getElementById('payment-form').addEventListener('submit', async event => {
             event.preventDefault();
-            
+            if (!stripe || !cardElement || !race || !userId) {
+                return;
+            }
+
             submitButton.disabled = true;
             submitButton.textContent = 'Processing...';
-            
-            // In production, you would:
-            // 1. Create a payment intent on your server
-            // 2. Confirm the payment with Stripe
-            // 3. Update the database to unlock the race
-            // 4. Redirect back to the game
-            
-            // For now, just show a message
-            setTimeout(() => {
-                alert('Stripe integration would process the payment here.\n\nIn production:\n1. Create payment intent\n2. Process payment\n3. Unlock race in database\n4. Redirect to game');
+            setStatus('Preparing secure checkout...');
+
+            try {
+                const intentResponse = await fetch('/api/payment/create-intent', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId,
+                        productId: race.productId,
+                        metadata: { type: 'race', raceId: params.get('race') }
+                    })
+                });
+                const intent = await parseJson(intentResponse, 'Payment setup');
+                if (!intentResponse.ok || intent.error) {
+                    throw new Error(intent.error || 'Payment setup failed');
+                }
+
+                setStatus('Confirming payment...');
+                const { error, paymentIntent } = await stripe.confirmCardPayment(intent.clientSecret, {
+                    payment_method: { card: cardElement }
+                });
+                if (error) {
+                    throw new Error(error.message || 'Payment failed');
+                }
+
+                const confirmResponse = await fetch('/api/payment/confirm-test', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId,
+                        paymentIntentId: paymentIntent.id
+                    })
+                });
+                const confirmation = await parseJson(confirmResponse, 'Purchase confirmation');
+                if (!confirmResponse.ok || confirmation.error) {
+                    throw new Error(confirmation.error || 'Purchase confirmation failed');
+                }
+
+                setStatus(`${race.name} unlocked.`, 'success');
+                submitButton.textContent = 'Unlocked';
+            } catch (error) {
+                setStatus(error.message || 'Purchase failed', 'error');
                 submitButton.disabled = false;
                 submitButton.textContent = 'Complete Purchase';
-            }, 2000);
-        });
-        
-        // Handle card errors
-        cardElement.on('change', (event) => {
-            if (event.error) {
-                errorMessage.textContent = event.error.message;
-            } else {
-                errorMessage.textContent = '';
             }
         });
     </script>

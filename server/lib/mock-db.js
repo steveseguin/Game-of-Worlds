@@ -16,9 +16,14 @@ class MockDatabase {
         this._maps = new Map();
         this._ships = new Map();
         this._buildings = new Map();
+        this._paymentTransactions = new Map();
+        this._premiumPurchases = [];
+        this._userCosmetics = [];
         this._exploredSectors = new Map();
         this._shipIds = new Map();
         this._buildingIds = new Map();
+        this._nextPaymentTransactionId = 1;
+        this._nextPremiumPurchaseId = 1;
         this._nextUserId = 1;
         this._nextGameId = 1;
     }
@@ -53,6 +58,20 @@ class MockDatabase {
                     callback,
                     null,
                     user ? [{ ...user }] : []
+                );
+            }
+
+            if (/^SELECT id, username, email, created FROM users WHERE id = \?( AND active = 1)?/i.test(normalized)) {
+                const user = this._users.get(Number(params[0]));
+                return this._async(
+                    callback,
+                    null,
+                    user ? [{
+                        id: user.id,
+                        username: user.username,
+                        email: user.email,
+                        created: user.created || null
+                    }] : []
                 );
             }
 
@@ -1365,6 +1384,60 @@ class MockDatabase {
                 return this._async(callback, null, [{ premium_crystals: 0 }]);
             }
 
+            if (/^INSERT INTO payment_transactions/i.test(normalized)) {
+                const [userId, productId, stripeId, amount, currency, status] = params;
+                let transaction = this._paymentTransactions.get(stripeId);
+                if (!transaction) {
+                    transaction = {
+                        id: this._nextPaymentTransactionId++,
+                        user_id: Number(userId),
+                        product_id: productId,
+                        stripe_id: stripeId,
+                        amount,
+                        currency,
+                        status,
+                        created_at: new Date(),
+                        updated_at: new Date()
+                    };
+                    this._paymentTransactions.set(stripeId, transaction);
+                    return this._async(callback, null, { insertId: transaction.id, affectedRows: 1 });
+                }
+                transaction.status = status;
+                transaction.updated_at = new Date();
+                return this._async(callback, null, { insertId: 0, affectedRows: 2 });
+            }
+
+            if (/^SELECT \* FROM payment_transactions WHERE stripe_id = \? LIMIT 1/i.test(normalized)) {
+                const transaction = this._paymentTransactions.get(params[0]);
+                return this._async(callback, null, transaction ? [{ ...transaction }] : []);
+            }
+
+            if (/^UPDATE payment_transactions SET status = \? WHERE stripe_id = \?/i.test(normalized)) {
+                const [status, stripeId] = params;
+                const transaction = this._paymentTransactions.get(stripeId);
+                if (transaction) {
+                    transaction.status = status;
+                    transaction.updated_at = new Date();
+                }
+                return this._async(callback, null, { affectedRows: transaction ? 1 : 0 });
+            }
+
+            if (/^SELECT \* FROM payment_transactions WHERE user_id = \? AND created_at > \? ORDER BY created_at DESC/i.test(normalized)) {
+                const userId = Number(params[0]);
+                const rows = Array.from(this._paymentTransactions.values())
+                    .filter(row => Number(row.user_id) === userId)
+                    .sort((a, b) => Number(b.created_at) - Number(a.created_at));
+                return this._async(callback, null, rows.map(row => ({ ...row })));
+            }
+
+            if (/^SELECT \* FROM payment_disputes WHERE user_id = \?/i.test(normalized)) {
+                return this._async(callback, null, []);
+            }
+
+            if (/^INSERT INTO payment_logs/i.test(normalized)) {
+                return this._async(callback, null, { insertId: 1 });
+            }
+
             if (/FROM vip_memberships WHERE user_id = \?/i.test(normalized)) {
                 return this._async(callback, null, []);
             }
@@ -1400,8 +1473,102 @@ class MockDatabase {
                 return this._async(callback, null, []);
             }
 
+            if (/^SELECT id FROM premium_purchases WHERE user_id = \? AND product_id = \? AND status = 'completed'/i.test(normalized)) {
+                const [userId, productId] = params;
+                const rows = this._premiumPurchases.filter(row =>
+                    Number(row.user_id) === Number(userId) &&
+                    row.product_id === productId &&
+                    row.status === 'completed'
+                );
+                return this._async(callback, null, rows.map(row => ({ id: row.id })));
+            }
+
+            if (/^SELECT id FROM premium_purchases WHERE user_id = \? AND race_id = \? AND status = 'completed'/i.test(normalized)) {
+                const [userId, raceId] = params;
+                const rows = this._premiumPurchases.filter(row =>
+                    Number(row.user_id) === Number(userId) &&
+                    Number(row.race_id) === Number(raceId) &&
+                    row.status === 'completed'
+                );
+                return this._async(callback, null, rows.map(row => ({ id: row.id })));
+            }
+
+            if (/^SELECT id FROM premium_purchases WHERE stripe_payment_id = \? LIMIT 1/i.test(normalized)) {
+                const row = this._premiumPurchases.find(purchase => purchase.stripe_payment_id === params[0]);
+                return this._async(callback, null, row ? [{ id: row.id }] : []);
+            }
+
+            if (/^INSERT INTO premium_purchases/i.test(normalized)) {
+                let values = {};
+                if (/VALUES \(\?, NULL, \?, \?, \?, 'completed'\)/i.test(normalized)) {
+                    values = {
+                        user_id: params[0],
+                        race_id: null,
+                        product_id: params[1],
+                        amount: params[2],
+                        stripe_payment_id: params[3],
+                        status: 'completed'
+                    };
+                } else {
+                    const columnsMatch = normalized.match(/^INSERT INTO premium_purchases\s*\(([^)]+)\)/i);
+                    if (columnsMatch) {
+                    columnsMatch[1].split(',').map(col => col.trim().toLowerCase()).forEach((column, index) => {
+                        values[column] = params[index];
+                    });
+                    }
+                }
+
+                const existingRace = values.race_id !== null && values.race_id !== undefined
+                    ? this._premiumPurchases.find(row =>
+                        Number(row.user_id) === Number(values.user_id) &&
+                        Number(row.race_id) === Number(values.race_id)
+                    )
+                    : null;
+                if (existingRace) {
+                    existingRace.product_id = values.product_id;
+                    existingRace.amount = values.amount;
+                    existingRace.stripe_payment_id = values.stripe_payment_id;
+                    existingRace.status = 'completed';
+                    return this._async(callback, null, { insertId: 0, affectedRows: 2 });
+                }
+
+                const purchase = {
+                    id: this._nextPremiumPurchaseId++,
+                    user_id: Number(values.user_id),
+                    race_id: values.race_id === undefined ? null : values.race_id,
+                    product_id: values.product_id || null,
+                    amount: values.amount || 0,
+                    stripe_payment_id: values.stripe_payment_id || null,
+                    status: 'completed',
+                    created_at: new Date()
+                };
+                this._premiumPurchases.push(purchase);
+                return this._async(callback, null, { insertId: purchase.id, affectedRows: 1 });
+            }
+
+            if (/^INSERT IGNORE INTO user_cosmetics/i.test(normalized)) {
+                const [userId, itemId] = params;
+                const exists = this._userCosmetics.some(row => Number(row.user_id) === Number(userId) && row.item_id === itemId);
+                if (!exists) {
+                    this._userCosmetics.push({ user_id: Number(userId), item_id: itemId });
+                }
+                return this._async(callback, null, { affectedRows: exists ? 0 : 1 });
+            }
+
             if (/^SELECT DISTINCT product_id FROM premium_purchases WHERE user_id = \? AND status = 'completed' UNION SELECT CONCAT\('race_', race_id\) as product_id FROM premium_purchases WHERE user_id = \? AND status = 'completed'/i.test(normalized)) {
-                return this._async(callback, null, []);
+                const userId = Number(params[0]);
+                const rows = [];
+                this._premiumPurchases
+                    .filter(row => Number(row.user_id) === userId && row.status === 'completed')
+                    .forEach(row => {
+                        if (row.product_id) {
+                            rows.push({ product_id: row.product_id });
+                        }
+                        if (row.race_id) {
+                            rows.push({ product_id: `race_${row.race_id}` });
+                        }
+                    });
+                return this._async(callback, null, rows);
             }
 
             if (/FROM payment_transactions pt LEFT JOIN product_catalog pp ON pt\.product_id = pp\.id WHERE pt\.user_id = \? ORDER BY pt\.created_at DESC LIMIT \?/i.test(normalized)) {
