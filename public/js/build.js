@@ -186,6 +186,11 @@
                 }
             }
         }
+
+        // Re-apply the per-race doctrine lock on top of the resource/slot state.
+        if (typeof window.refreshShipBuildAccess === 'function') {
+            window.refreshShipBuildAccess();
+        }
     }
     
     return {

@@ -134,9 +134,50 @@ async function startGame(hostPage, playerPages) {
 async function dismissFirstRunGuidance(page) {
     const tourDismiss = page.locator('#tour-skip');
     if (await tourDismiss.isVisible().catch(() => false)) {
+        await expect(tourDismiss).toHaveText(/Dismiss/i);
         await tourDismiss.click();
         await expect(tourDismiss).toBeHidden({ timeout: 5000 });
+        await expectTourDismissalSaved(page);
     }
+}
+
+async function completeFirstRunGuidance(page) {
+    const nextButton = page.locator('#tour-next');
+    if (!(await nextButton.isVisible().catch(() => false))) {
+        return;
+    }
+
+    for (let i = 0; i < 8; i++) {
+        const label = await nextButton.textContent();
+        if (/done/i.test(label || '')) {
+            await nextButton.click();
+            await expect(nextButton).toBeHidden({ timeout: 5000 });
+            await expectTourDismissalSaved(page);
+            return;
+        }
+        await nextButton.click();
+    }
+
+    throw new Error('Tutorial never reached the Done action');
+}
+
+async function expectTourDismissalSaved(page) {
+    await expect.poll(async () => page.evaluate(() => {
+        const key = 'gow-tour-dismissed-v1';
+        return localStorage.getItem(key) || sessionStorage.getItem(key);
+    }), {
+        timeout: 5000,
+        intervals: [100, 250, 500]
+    }).toBe('1');
+}
+
+async function verifyFirstRunGuidanceStaysDismissed(page) {
+    await page.evaluate(() => {
+        if (window.Tour && typeof window.Tour.start === 'function') {
+            window.Tour.start(false);
+        }
+    });
+    await expect(page.locator('#tour-bubble')).toHaveCount(0, { timeout: 1000 });
 }
 
 async function readFocusedSectorId(page) {
@@ -197,6 +238,17 @@ async function endTurnAll(pages, count = 1) {
         }).toBeGreaterThan(before);
         await Promise.all(pages.map(page => page.waitForTimeout(200)));
     }
+}
+
+async function requestEndTurnAll(pages) {
+    const battleVisible = await Promise.all(pages.map(page =>
+        page.locator('#battleGround, #battleTheater.on').isVisible().catch(() => false)
+    ));
+    if (battleVisible.some(Boolean)) {
+        return;
+    }
+    await Promise.all(pages.map(page => page.click('#nextTurnBtn')));
+    await Promise.all(pages.map(page => page.waitForTimeout(200)));
 }
 
 async function endTurnsUntilResources(pages, page, minimums, maxTurns = 25) {
@@ -302,7 +354,6 @@ async function openMoveDialog(page, targetSector) {
 }
 
 async function moveSelectedShipTypeToSector(page, targetSector, shipTypeText) {
-    const before = await readResources(page);
     await openMoveDialog(page, targetSector);
 
     const option = page.locator('#shipsFromNearBy option', { hasText: new RegExp(shipTypeText, 'i') }).first();
@@ -315,17 +366,39 @@ async function moveSelectedShipTypeToSector(page, targetSector, shipTypeText) {
     await page.selectOption('#shipsFromNearBy', value);
     await page.click('#moveSelectedShips');
     await expect(page.locator('#multiMove')).toBeHidden({ timeout: 8000 });
-    await expect.poll(async () => (await readResources(page)).crystal, {
-        message: `Expected moving ${shipTypeText} to sector ${targetSector} to spend crystal`,
-        timeout: 10000,
-        intervals: [300, 700, 1200]
-    }).toBeLessThan(before.crystal);
+    await expectFleetAtSector(page, targetSector, shipTypeText, 1);
 }
 
 async function marchShip(page, path, shipTypeText) {
     for (const sectorId of path) {
         await moveSelectedShipTypeToSector(page, sectorId, shipTypeText);
     }
+}
+
+async function expectFleetAtSector(page, sectorId, shipTypeText, minimum = 1) {
+    const fieldByName = {
+        'Scout': '#fleet-scouts',
+        'Frigate': '#fleet-frigates',
+        'Destroyer': '#fleet-destroyers',
+        'Cruiser': '#fleet-cruisers',
+        'Battleship': '#fleet-battleships',
+        'Colony Ship': '#fleet-colony'
+    };
+    const selector = fieldByName[shipTypeText];
+    if (!selector) {
+        throw new Error(`No fleet panel selector for ${shipTypeText}`);
+    }
+
+    await focusSector(page, sectorId);
+    await page.click('#fleettab');
+    await expect.poll(async () => {
+        const text = await page.locator(selector).textContent().catch(() => '0');
+        return parseNumber(text);
+    }, {
+        message: `Expected ${shipTypeText} fleet at sector ${sectorId}`,
+        timeout: 12000,
+        intervals: [300, 700, 1200]
+    }).toBeGreaterThanOrEqual(minimum);
 }
 
 async function colonizeSelectedSector(page, expectedWorlds = null) {
@@ -341,6 +414,22 @@ async function colonizeSelectedSector(page, expectedWorlds = null) {
         timeout: 15000,
         intervals: [500, 1000, 1500]
     }).toBeGreaterThanOrEqual(targetWorlds);
+}
+
+async function verifyShopPolicy(page) {
+    await expect(page.locator('#shop-container')).toHaveCount(1, { timeout: 15000 });
+    await page.getByRole('button', { name: /^Shop$/ }).click();
+    await expect(page.locator('#shop-container:not(.shop-hidden)')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.shop-tab', { hasText: 'Premium Races' })).toBeVisible();
+    await expect(page.locator('.shop-tab', { hasText: 'Cosmetics' })).toBeVisible();
+    await expect(page.locator('.shop-tab')).toHaveCount(2);
+    await expect(page.locator('#shop-races.active')).toContainText('Paid races do not receive paid stat advantages');
+    await expect(page.locator('#shop-races.active')).toContainText('Quantum Entities');
+    await page.locator('.shop-tab', { hasText: 'Cosmetics' }).click();
+    await expect(page.locator('#shop-cosmetics.active')).toContainText('Cosmetics');
+    await expect(page.locator('#shop-container')).not.toContainText(/VIP|Booster|Resource Surge|Research Focus|Emergency Fleet/i);
+    await page.locator('.shop-close').click();
+    await expect(page.locator('#shop-container')).toHaveClass(/shop-hidden/);
 }
 
 async function readTestTerrain(page, gameId) {
@@ -511,16 +600,20 @@ module.exports = {
     joinGameByName,
     startGame,
     dismissFirstRunGuidance,
+    completeFirstRunGuidance,
+    verifyFirstRunGuidanceStaysDismissed,
     readFocusedSectorId,
     focusHomeworld,
     readResources,
     waitForResources,
     readTurnNumber,
     endTurnAll,
+    requestEndTurnAll,
     endTurnsUntilResources,
     buildBuilding,
     buildShip,
     researchTech,
+    verifyShopPolicy,
     readEmpireSummary,
     selectSector,
     focusSector,

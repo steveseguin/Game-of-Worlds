@@ -2644,15 +2644,28 @@ function sendTechState(connection) {
     if (!gameId || typeof connection.sendUTF !== 'function') return;
 
     db.query(
-        `SELECT tech, research, homeworld FROM players${gameId} WHERE userid = ?`,
+        `SELECT tech, research, homeworld, race_id FROM players${gameId} WHERE userid = ?`,
         [playerId],
         (err, rows) => {
             if (err || !rows || rows.length === 0) return;
             const levels = techSystem.parseTechLevels(rows[0].tech);
+            const raceId = Number(rows[0].race_id) || 1;
+
+            // Per-race access so the client can grey out / lock capped techs and
+            // hide ship hulls this race can't build. Server stays the source of truth.
+            const techCaps = {};
+            Object.values(techSystem.TECHNOLOGIES).forEach(def => {
+                techCaps[def.id] = raceSystem.getTechLevelCap(raceId, def);
+            });
+
             connection.sendUTF(`techstate::${JSON.stringify({
                 levels,
                 research: Number(rows[0].research) || 0,
-                homeworld: Number(rows[0].homeworld) || 0
+                homeworld: Number(rows[0].homeworld) || 0,
+                raceId,
+                raceName: getRaceById(raceId).name,
+                techCaps,
+                shipAccess: raceSystem.getRaceShipAccess(raceId)
             })}`);
         }
     );
@@ -3219,6 +3232,15 @@ function checkWarpGateLink(gameId, playerId, fromSector, toSector, callback) {
     );
 }
 
+function calculateFleetMoveCost(shipTypes, shipCounts, techCsv) {
+    const techFx = techSystem.aggregateEffects(techSystem.parseTechLevels(techCsv));
+    let rawCost = 0;
+    shipTypes.forEach((type, index) => {
+        rawCost += (SHIP_MOVE_COST[type] || 1) * Math.max(0, shipCounts[index] || 0);
+    });
+    return Math.max(1, Math.ceil(rawCost * (1 - techFx.moveDiscount)));
+}
+
 function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shipCounts, connection, viaWarpGate) {
     const totalShips = shipCounts.reduce((a, b) => a + b, 0);
     if (!Number.isFinite(totalShips) || totalShips <= 0) {
@@ -3236,12 +3258,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
             }
 
             // Movement burns crystal by hull class; propulsion tech discounts it.
-            const techFx = techSystem.aggregateEffects(techSystem.parseTechLevels(results[0].tech));
-            let rawCost = 0;
-            shipTypes.forEach((type, index) => {
-                rawCost += (SHIP_MOVE_COST[type] || 1) * Math.max(0, shipCounts[index] || 0);
-            });
-            const moveCost = Math.max(1, Math.ceil(rawCost * (1 - techFx.moveDiscount)));
+            const moveCost = calculateFleetMoveCost(shipTypes, shipCounts, results[0].tech);
 
             if (results[0].crystal < moveCost) {
                 connection.sendUTF(`Error: Not enough crystal for movement (need ${moveCost})`);
@@ -3778,7 +3795,7 @@ function preMoveFleet(data, connection) {
     const totalShips = moveEntries.reduce((sum, entry) => sum + entry.count, 0);
 
     db.query(
-        `SELECT crystal FROM players${gameId} WHERE userid = ?`,
+        `SELECT crystal, tech FROM players${gameId} WHERE userid = ?`,
         [playerId],
         (resourceErr, resourceRows) => {
             if (resourceErr || !resourceRows || resourceRows.length === 0) {
@@ -3787,8 +3804,13 @@ function preMoveFleet(data, connection) {
             }
 
             const crystals = Number(resourceRows[0].crystal) || 0;
-            if (crystals < totalShips) {
-                connection.sendUTF("Error: Not enough crystal for movement");
+            const moveCost = calculateFleetMoveCost(
+                moveEntries.map(entry => entry.shipType),
+                moveEntries.map(entry => entry.count),
+                resourceRows[0].tech
+            );
+            if (crystals < moveCost) {
+                connection.sendUTF(`Error: Not enough crystal for movement (need ${moveCost})`);
                 return;
             }
 
@@ -3846,7 +3868,7 @@ function preMoveFleet(data, connection) {
 
                         db.query(
                             `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ?`,
-                            [selectedIds.length, playerId],
+                            [moveCost, playerId],
                             deductErr => {
                                 if (deductErr) {
                                     connection.sendUTF("Error: Failed to finalize movement");
@@ -3854,10 +3876,14 @@ function preMoveFleet(data, connection) {
                                 }
 
                                 markSectorExplored(gameId, playerId, targetSector);
+                                moveEntries.forEach(entry => {
+                                    broadcastFleetMove(gameId, playerId, entry.sourceSector, targetSector, entry.count, false);
+                                });
 
                                 // HAZARD HANDLING & AUTO-COLONIZATION
                                 applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
                                     updateResources(connection);
+                                    touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));
                                     updateSector2(gameId, targetSector);
                                     gameState.clients.forEach(client => {
                                         if (Number(client.gameid) === Number(gameId)) {
@@ -4778,12 +4804,32 @@ function handleGetUnlockedRaces(connection) {
             return;
         }
         
+        // Human-readable doctrine summary so the picker can show what a race
+        // gives up (locked/capped tech branches, ship hulls it can't build).
+        const branchName = key => (techSystem.BRANCHES[key] && techSystem.BRANCHES[key].name) || key;
+        const allShipIds = Object.values(combatSystem.SHIP_TYPES).map(s => s.id);
+        const shipName = id => {
+            const s = Object.values(combatSystem.SHIP_TYPES).find(t => t.id === id);
+            return s ? s.name : `Ship ${id}`;
+        };
+        const buildDoctrine = raceId => {
+            const summary = raceSystem.getRaceAccessSummary(raceId);
+            const caps = summary.branchCaps || {};
+            const allowed = new Set(summary.ships || allShipIds);
+            return {
+                lockedBranches: (summary.lockedBranches || []).map(branchName),
+                cappedBranches: (summary.limitedBranches || []).map(k => `${branchName(k)} ≤ Lv${caps[k]}`),
+                lockedShips: allShipIds.filter(id => !allowed.has(id)).map(shipName)
+            };
+        };
+
         // Mark which races are unlocked
         const raceData = Object.values(raceSystem.RACE_TYPES).map(race => ({
             ...race,
-            unlocked: races.some(r => r.id === race.id)
+            unlocked: races.some(r => r.id === race.id),
+            doctrine: buildDoctrine(race.id)
         }));
-        
+
         connection.sendUTF(`races::${JSON.stringify(raceData)}`);
     });
 }

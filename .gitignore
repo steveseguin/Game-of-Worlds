@@ -37,11 +37,14 @@ build/
 # Test coverage
 coverage/
 .nyc_output
+playwright-report/
+test-results/
 
 # Temporary files
 temp/
 tmp/
 *.tmp
+.codex-tmp/
 
 # Stripe CLI
 .stripe/

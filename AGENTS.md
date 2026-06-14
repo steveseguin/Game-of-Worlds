@@ -201,8 +201,9 @@ After making any code changes:
 
 Production server credentials are stored in:
 ```
-secrets/readme/Codex/agents/ssh
+secrets/readme/claude/agents/ssh
 ```
+This is the credential file used by `tools/deploy.js` for SSH deployment.
 
 ### Production Server
 

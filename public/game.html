@@ -261,6 +261,20 @@
             color:#ffb4a8;
             font-size:11px;
         }
+        /* Per-race doctrine: a branch this race can't research (or has capped out). */
+        .tech-card.tech-locked {
+            opacity:0.5;
+            background:repeating-linear-gradient(135deg, rgba(44,14,18,0.9) 0 8px, rgba(26,11,15,0.9) 8px 16px);
+            border-color:rgba(255,120,110,0.38);
+        }
+        .tech-card.tech-locked .tech-cost { color:#ff938a; }
+        /* Per-race doctrine: a ship hull outside this race's allow-list. */
+        .ship-button.ship-locked {
+            opacity:0.42 !important;
+            background:repeating-linear-gradient(135deg, #3a2326 0 8px, #2a1a1d 8px 16px) !important;
+            box-shadow:none !important;
+            cursor:not-allowed !important;
+        }
         #empireSummary {
             position:fixed;
             top:42px;
@@ -602,7 +616,7 @@
             }
         })();
     </script>
-    <script src="js/build.js?v=20260614a"></script>
+    <script src="js/build.js?v=20260614h"></script>
     <script src="js/battle.js?v=20260614d"></script>
     <script src="js/chat.js?v=20260430a"></script>
     <script src="js/controlpad.js?v=20260429a"></script>
@@ -621,7 +635,7 @@
     <script type="module" src="js/galaxy3d.js?v=20260614b"></script>
     <script type="module" src="js/battle3d.js?v=20260614e"></script>
     <script src="js/onboarding.js?v=20260613a"></script>
-    <script src="js/connect.js?v=20260614g"></script>
+    <script src="js/connect.js?v=20260614h"></script>
     <script src="js/tour.js?v=20260613a"></script>
     <script src="js/game.js?v=20260612b"></script>
     <script src="js/loader.js?v=20251105"></script>

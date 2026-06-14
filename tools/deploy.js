@@ -63,6 +63,7 @@ const FILES = [
     'public/js/tech.js',
     'public/js/GUI.js',
     'public/js/controlpad.js',
+    'public/js/build.js',
     'public/js/tour.js',
     'public/js/shop-enhanced.js',
     'public/js/combat-analytics.js',

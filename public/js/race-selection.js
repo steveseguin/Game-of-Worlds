@@ -164,6 +164,33 @@ const RaceSelection = (function() {
                 gap: 12px;
             }
 
+            .race-detail-doctrine {
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 10px;
+                padding: 14px 16px;
+                font-size: 12px;
+                line-height: 1.65;
+                color: rgba(237, 240, 255, 0.85);
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .race-detail-doctrine strong {
+                display: block;
+                margin-bottom: 4px;
+                color: #ffd56c;
+                letter-spacing: 0.4px;
+            }
+
+            .race-card .race-doctrine {
+                margin-top: 10px;
+                font-size: 10.5px;
+                line-height: 1.4;
+                color: rgba(255, 160, 150, 0.85);
+            }
+
             .race-detail-stat {
                 background: rgba(255, 255, 255, 0.05);
                 border-radius: 8px;
@@ -413,8 +440,21 @@ const RaceSelection = (function() {
                     <span>Attack: ${formatBonus(race.bonuses.shipAttack)}</span>
                     <span>Defense: ${formatBonus(race.bonuses.shipDefense)}</span>
                 </div>
+                <div class="race-doctrine">${compactDoctrine(race)}</div>
             </div>
         `;
+    }
+
+    // One-line trade-off hint for the race grid card.
+    function compactDoctrine(race) {
+        const d = race.doctrine || {};
+        const parts = [];
+        if (Array.isArray(d.lockedBranches) && d.lockedBranches.length) parts.push(`No ${d.lockedBranches.join('/')}`);
+        if (Array.isArray(d.lockedShips) && d.lockedShips.length) parts.push(`No ${d.lockedShips.join('/')}`);
+        if (!parts.length && Array.isArray(d.cappedBranches) && d.cappedBranches.length) {
+            parts.push(`Capped: ${d.cappedBranches.length} branch${d.cappedBranches.length > 1 ? 'es' : ''}`);
+        }
+        return parts.length ? parts.join(' · ') : 'Full tech &amp; all hulls';
     }
     
     function formatBonus(value) {
@@ -427,6 +467,25 @@ const RaceSelection = (function() {
         return `<span style="color:${color};font-weight:600;">${label}</span>`;
     }
     
+    // Tech-tree + ship-hull doctrine: what the race trades away for its strengths.
+    function renderDoctrine(race) {
+        const d = race.doctrine || {};
+        const rows = [];
+        if (Array.isArray(d.cappedBranches) && d.cappedBranches.length) {
+            rows.push(`<div><span style="color:#ffcf6c;">Limited tech:</span> ${d.cappedBranches.join(', ')}</div>`);
+        }
+        if (Array.isArray(d.lockedBranches) && d.lockedBranches.length) {
+            rows.push(`<div><span style="color:#ff8a80;">Locked tech:</span> ${d.lockedBranches.join(', ')}</div>`);
+        }
+        if (Array.isArray(d.lockedShips) && d.lockedShips.length) {
+            rows.push(`<div><span style="color:#ff8a80;">Can't build:</span> ${d.lockedShips.join(', ')}</div>`);
+        }
+        if (!rows.length) {
+            rows.push(`<div style="color:#5df5b4;">Full tech tree and every ship hull.</div>`);
+        }
+        return `<div class="race-detail-doctrine"><strong>Doctrine &amp; Restrictions</strong>${rows.join('')}</div>`;
+    }
+
     function getUnlockText(race) {
         switch (race.unlockType) {
             case 'achievement':
@@ -510,6 +569,7 @@ const RaceSelection = (function() {
                 <div class="race-detail-stat"><span>Fleet Attack</span><strong>${stripTags(formatBonus(race.bonuses.shipAttack))}</strong></div>
                 <div class="race-detail-stat"><span>Fleet Defense</span><strong>${stripTags(formatBonus(race.bonuses.shipDefense))}</strong></div>
             </div>
+            ${renderDoctrine(race)}
             ${locked ? `<div class="race-locked-note">${getUnlockText(race)}</div>` : ''}
         `;
 

@@ -1608,6 +1608,7 @@ function renderTechTree() {
 
     const levels = GAME_STATE.player.techLevels || {};
     const research = Number(GAME_STATE.player.resources.research) || 0;
+    const access = GAME_STATE.player.raceAccess || {};
     const researchEl = document.getElementById('techResearchAvailable');
     if (researchEl) {
         researchEl.textContent = String(Math.floor(research));
@@ -1634,6 +1635,15 @@ function renderTechTree() {
 
         byBranch[branchKey].forEach(tech => {
             const current = Number(levels[tech.id]) || 0;
+
+            // Per-race cap: absent map => full access; cap 0 => branch locked.
+            const cap = access.techCaps && tech.id in access.techCaps
+                ? Number(access.techCaps[tech.id])
+                : tech.maxLevel;
+            const displayMax = Math.min(tech.maxLevel, cap);
+            const locked = cap <= 0;
+            const cappedOut = !locked && current >= cap && cap < tech.maxLevel;
+
             const maxed = current >= tech.maxLevel;
             const cost = techSystem.nextLevelCost(tech.id, current);
             const check = techSystem.canResearch(tech.id, levels, research);
@@ -1643,16 +1653,24 @@ function renderTechTree() {
             button.className = 'tech-card';
             button.dataset.techId = String(tech.id);
             button.style.borderLeft = `5px solid ${branch.color}`;
-            button.disabled = maxed || !check.ok;
+            button.disabled = maxed || locked || cappedOut || !check.ok;
+            if (locked || cappedOut) button.classList.add('tech-locked');
 
-            const reason = maxed
-                ? 'Max level reached.'
-                : (missing.length ? `Requires ${missing.join(', ')}.` : (!check.ok ? check.reason : ''));
+            const raceLabel = access.raceName || 'your race';
+            const reason = locked
+                ? `Locked for ${raceLabel}.`
+                : cappedOut
+                    ? `${raceLabel} can't research past Lv${cap}.`
+                    : maxed
+                        ? 'Max level reached.'
+                        : (missing.length ? `Requires ${missing.join(', ')}.` : (!check.ok ? check.reason : ''));
+            const showReason = locked || cappedOut || (reason && !check.ok);
+            const costLabel = locked ? 'LOCKED' : (maxed || cappedOut) ? 'MAX' : `${cost}R`;
             button.innerHTML = `
-                <div class="tech-name">${escapeHtml(tech.name)} Lv${current}/${tech.maxLevel}</div>
-                <div class="tech-cost">${maxed ? 'MAX' : `${cost}R`}</div>
+                <div class="tech-name">${escapeHtml(tech.name)} Lv${current}/${displayMax}</div>
+                <div class="tech-cost">${costLabel}</div>
                 <div class="tech-summary">${escapeHtml(tech.summary || '')}</div>
-                ${reason && !check.ok ? `<div class="tech-req">${escapeHtml(reason)}</div>` : ''}
+                ${showReason ? `<div class="tech-req">${escapeHtml(reason)}</div>` : ''}
             `;
             button.addEventListener('click', () => buyTech(tech.id));
             grid.appendChild(button);
@@ -1668,6 +1686,13 @@ function updateTechState(message) {
     try {
         const data = JSON.parse(payload);
         GAME_STATE.player.techLevels = data.levels || {};
+        GAME_STATE.player.raceAccess = {
+            raceId: Number(data.raceId) || 1,
+            raceName: data.raceName || '',
+            techCaps: data.techCaps || null,
+            shipAccess: Array.isArray(data.shipAccess) ? data.shipAccess : null
+        };
+        if (typeof refreshShipBuildAccess === 'function') refreshShipBuildAccess();
         if (Number.isFinite(Number(data.research))) {
             GAME_STATE.player.resources.research = Number(data.research);
             const researchEl = document.getElementById('researchresource');
@@ -1687,6 +1712,28 @@ function updateTechState(message) {
         console.warn('Failed to parse tech state', err);
     }
 }
+
+// Grey out + lock ship hulls this race can't build. The resource/slot logic in
+// build.js owns enabling; this only ever *removes* options (and re-applies after
+// every sector refresh), so a locked hull can never be clicked into existence.
+function refreshShipBuildAccess() {
+    const access = (GAME_STATE.player && GAME_STATE.player.raceAccess) || {};
+    const allowed = Array.isArray(access.shipAccess) ? access.shipAccess : null;
+    if (!allowed) return; // no profile yet => leave the panel untouched
+    const raceLabel = access.raceName || 'your race';
+    document.querySelectorAll('.ship-button[data-ship-id]').forEach(button => {
+        const shipId = Number(button.getAttribute('data-ship-id'));
+        const locked = !allowed.includes(shipId);
+        button.classList.toggle('ship-locked', locked);
+        if (locked) {
+            button.disabled = true;
+            button.title = `${raceLabel} cannot build this hull`;
+        } else if ((button.title || '').indexOf('cannot build this hull') !== -1) {
+            button.removeAttribute('title');
+        }
+    });
+}
+window.refreshShipBuildAccess = refreshShipBuildAccess;
 
 function updateEmpireSummary(message) {
     const payload = message.replace('empire::', '');

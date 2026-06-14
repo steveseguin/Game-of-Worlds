@@ -7,11 +7,15 @@ const {
     joinGameByName,
     startGame,
     dismissFirstRunGuidance,
+    completeFirstRunGuidance,
+    verifyFirstRunGuidanceStaysDismissed,
     focusHomeworld,
     sendProbeForSector,
     buildBuilding,
     researchTech,
+    verifyShopPolicy,
     endTurnAll,
+    requestEndTurnAll,
     endTurnsUntilResources,
     buildShip,
     marchShip,
@@ -90,7 +94,10 @@ test.describe('Complete multiplayer UI harness', () => {
             await hostPage.waitForTimeout(1500);
             await guestPage.waitForTimeout(1500);
             await dismissFirstRunGuidance(hostPage);
-            await dismissFirstRunGuidance(guestPage);
+            await completeFirstRunGuidance(guestPage);
+            await verifyFirstRunGuidanceStaysDismissed(hostPage);
+            await verifyFirstRunGuidanceStaysDismissed(guestPage);
+            await verifyShopPolicy(hostPage);
 
             const hostHome = await focusHomeworld(hostPage);
             const guestHome = await focusHomeworld(guestPage);
@@ -159,7 +166,7 @@ test.describe('Complete multiplayer UI harness', () => {
                 waitForBattleOverlay(hostPage, 15000),
                 waitForBattleOverlay(guestPage, 15000)
             ]);
-            await endTurnAll([hostPage, guestPage], 1);
+            await requestEndTurnAll([hostPage, guestPage]);
             await battleOverlay;
             await hostPage.screenshot({ path: testInfo.outputPath('05-battle.png'), fullPage: true });
             await closeBattleOverlay(hostPage);
@@ -167,6 +174,9 @@ test.describe('Complete multiplayer UI harness', () => {
 
             if (!(await hostPage.locator('#gameOverModal').isVisible().catch(() => false))) {
                 for (let index = 2; index < colonizationTargets.length; index++) {
+                    if (await hostPage.locator('#gameOverModal').isVisible().catch(() => false)) {
+                        break;
+                    }
                     await endTurnsUntilResources([hostPage, guestPage], hostPage, { metal: 1000 }, 20);
                     await buildShip(hostPage, 6);
                     await marchShip(hostPage, colonizationTargets[index].path.slice(1), 'Colony Ship');
@@ -174,7 +184,9 @@ test.describe('Complete multiplayer UI harness', () => {
                     await colonizeSelectedSector(hostPage, index + 2);
                     await hostPage.screenshot({ path: testInfo.outputPath(`06-colony-${index + 1}.png`), fullPage: true });
                 }
-                await endTurnAll([hostPage, guestPage], 1);
+                if (!(await hostPage.locator('#gameOverModal').isVisible().catch(() => false))) {
+                    await endTurnAll([hostPage, guestPage], 1);
+                }
             }
 
             await expect(hostPage.locator('#gameOverModal')).toBeVisible({ timeout: 15000 });
