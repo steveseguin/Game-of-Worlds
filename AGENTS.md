@@ -29,7 +29,7 @@ npm run dev                   # Start with auto-reload (port 3000 by default)
 ### Running Tests
 ```bash
 npm test                      # Run all unit tests (tests/*.test.js)
-npm run test:integration      # Run integration/E2E tests (tests/e2e/*.spec.js)
+npm run test:integration      # Run mock HTTP/WebSocket integration smoke
 node --test tests/races.test.js  # Run a specific unit test file
 ```
 
@@ -101,6 +101,7 @@ The `env-validator.js` runs at startup and validates all required variables. In 
 - The `stable` branch is the friend-ready contribution baseline. When Steve asks for a stable branch, create or update `stable`, include existing dirty working-tree changes unless Steve explicitly excludes them, run `npm test` and `npm run test:integration`, then push `stable`.
 - Contributors should branch from `stable` and open pull requests back into `stable` unless Steve asks for a different target.
 - Keep contributor-facing setup current in `README.md`, `CONTRIBUTING.md`, `.env.example`, and `.github/pull_request_template.md`.
+- Keep `.github/workflows/ci.yml` green for contributor PRs. The `Server Deploy` workflow is owner-only and manual.
 - External contributors should not deploy production. Codex still deploys and smoke-tests production after code changes, per the deployment workflow below.
 
 ## Common Tasks

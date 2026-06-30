@@ -82,7 +82,7 @@ const SECURITY_HEADERS = {
     'X-Frame-Options': 'SAMEORIGIN'
 };
 
-const PORT = process.env.PORT || 1337;
+const PORT = process.env.PORT || 3000;
 const DB_CONFIG = {
     host: process.env.DB_HOST || '127.0.0.1',
     port: parseDbPort(process.env.DB_PORT),

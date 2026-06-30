@@ -130,6 +130,8 @@ npm run dev
 # Uses nodemon for auto-restart on changes
 ```
 
+For server work without MySQL, set `USE_MOCK_DB=true` in `.env` and start normally. This gives contributors a local in-memory server for lobby, game, and WebSocket testing.
+
 ### Testing
 ```bash
 npm test
@@ -152,6 +154,8 @@ This is an open project and all help is welcome. Start with the `stable` branch 
 5. Open a Pull Request
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, test, and pull request expectations.
+
+Server-side pull requests are fine, but production deployment is owner-controlled. CI runs unit tests and a mock server smoke test on PRs; a protected manual deploy workflow is available for maintainers after changes are accepted.
 
 ## License
 

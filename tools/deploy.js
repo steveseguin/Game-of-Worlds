@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 /**
- * tools/deploy.js — Deploy changed files to production over SSH (ssh2 lib).
+ * tools/deploy.js - Deploy app files to production over SSH (ssh2 lib).
  *
  * Usage:
- *   node tools/deploy.js                # upload file list + restart + smoke test
+ *   node tools/deploy.js                # upload server/public files + restart + smoke test
  *   node tools/deploy.js --no-restart   # upload only
+ *   node tools/deploy.js --list         # print deploy file list and exit
+ *   node tools/deploy.js --install      # upload package files and npm ci --omit=dev before restart
  *
- * Credentials come from secrets/readme/claude/agents/ssh (Host/User/Password lines).
+ * Credentials come from environment variables first:
+ *   DEPLOY_HOST / DEPLOY_USER / DEPLOY_PASSWORD
+ * Local fallback:
+ *   secrets/readme/claude/agents/ssh (Host/User/Password lines).
  */
 
 const fs = require('fs');
@@ -16,67 +21,51 @@ const { Client } = require('ssh2');
 const REPO = path.resolve(__dirname, '..');
 const REMOTE_ROOT = '/opt/game-of-worlds';
 
-// Files to ship. Keep this explicit so we never push junk to production.
-const FILES = [
-    'server/server.js',
-    'server/index.js',
-    'server/lib/tech.js',
-    'server/lib/map.js',
-    'server/lib/victory.js',
-    'server/lib/combat.js',
-    'server/lib/races.js',
-    'server/lib/payments.js',
-    'server/lib/payment-endpoints.js',
-    'server/lib/payment-validator.js',
-    'server/lib/mock-db.js',
-    'server/setup.js',
-    'server/setup-payments.sql',
-    'public/landing.html',
-    'public/css/landing.css',
-    'public/js/landing.js',
-    'public/login.html',
-    'public/css/auth.css',
-    'public/images/type8.gif',
-    'public/images/spacebak.jpg',
-    'public/images/title2.png',
-    'public/images/type1.gif',
-    'public/images/type2.gif',
-    'public/images/dreadnaught.png',
-    'public/images/metal.png',
-    'public/images/crystal.png',
-    'public/images/research.png',
-    'public/lobby.html',
-    'public/js/lobby.js',
-    'public/js/race-selection.js',
-    'public/purchase-race.html',
-    'public/game.html',
-    'public/css/style.css',
-    'public/js/galaxy3d.js',
-    'public/js/battle3d.js',
-    'public/js/vendor/three.module.min.js',
-    'public/js/vendor/three.core.min.js',
-    'public/js/ui.js',
-    'public/js/minimap.js',
-    'public/js/connect.js',
-    'public/js/game-screen.js',
-    'public/js/game.js',
-    'public/js/tech.js',
-    'public/js/GUI.js',
-    'public/js/controlpad.js',
-    'public/js/build.js',
-    'public/js/tour.js',
-    'public/js/shop-enhanced.js',
-    'public/js/combat-analytics.js',
-    'public/js/advisor.js',
-    'public/js/onboarding.js',
-    'public/js/battle.js'
-];
-
 const DELETE_FILES = [
     'public/index.html'
 ];
 
+function walkFiles(rootDir) {
+    const absRoot = path.join(REPO, rootDir);
+    if (!fs.existsSync(absRoot)) {
+        return [];
+    }
+
+    const out = [];
+    const stack = [absRoot];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        const entries = fs.readdirSync(current, { withFileTypes: true });
+        for (const entry of entries) {
+            const abs = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+                stack.push(abs);
+            } else if (entry.isFile()) {
+                out.push(path.relative(REPO, abs).replace(/\\/g, '/'));
+            }
+        }
+    }
+    return out.sort();
+}
+
+function collectDeployFiles() {
+    return [
+        'package.json',
+        'package-lock.json',
+        ...walkFiles('server'),
+        ...walkFiles('public')
+    ];
+}
+
 function loadCredentials() {
+    if (process.env.DEPLOY_HOST && process.env.DEPLOY_USER && process.env.DEPLOY_PASSWORD) {
+        return {
+            host: process.env.DEPLOY_HOST,
+            username: process.env.DEPLOY_USER,
+            password: process.env.DEPLOY_PASSWORD
+        };
+    }
+
     const raw = fs.readFileSync(path.join(REPO, 'secrets/readme/claude/agents/ssh'), 'utf8');
     const get = label => {
         const match = raw.match(new RegExp(`${label}:\\s*(.+)`));
@@ -121,6 +110,14 @@ function upload(sftp, local, remote) {
 
 async function main() {
     const noRestart = process.argv.includes('--no-restart');
+    const installDeps = process.argv.includes('--install');
+    const files = collectDeployFiles();
+    if (process.argv.includes('--list')) {
+        console.log(files.join('\n'));
+        console.log(`\n${files.length} files`);
+        return;
+    }
+
     const creds = loadCredentials();
     if (!creds.host || !creds.password) {
         console.error('Could not parse SSH credentials.');
@@ -132,7 +129,7 @@ async function main() {
     const sftp = await sftpSession(conn);
 
     // Ensure new directories exist before uploading into them.
-    const dirs = [...new Set(FILES.map(f => path.posix.dirname(`${REMOTE_ROOT}/${f}`)))];
+    const dirs = [...new Set(files.map(f => path.posix.dirname(`${REMOTE_ROOT}/${f}`)))];
     for (const dir of dirs) {
         await exec(conn, `mkdir -p '${dir}'`);
     }
@@ -140,7 +137,7 @@ async function main() {
     // Back up server files we overwrite (single rolling backup).
     await exec(conn, `mkdir -p ${REMOTE_ROOT}/.deploy-backup && cp -f ${REMOTE_ROOT}/server/server.js ${REMOTE_ROOT}/server/index.js ${REMOTE_ROOT}/.deploy-backup/ 2>/dev/null; true`);
 
-    for (const file of FILES) {
+    for (const file of files) {
         const local = path.join(REPO, file);
         if (!fs.existsSync(local)) {
             console.log(`  SKIP  ${file} (missing locally)`);
@@ -158,6 +155,15 @@ async function main() {
     }
 
     if (!noRestart) {
+        if (installDeps) {
+            console.log('Installing production dependencies ...');
+            const install = await exec(conn, `cd ${REMOTE_ROOT} && npm ci --omit=dev`);
+            if (install.code !== 0) {
+                throw new Error(`npm install failed: ${install.errOut || install.out}`);
+            }
+            console.log('  dependencies: installed');
+        }
+
         console.log('Restarting game-of-worlds service ...');
         const restart = await exec(conn, 'systemctl restart game-of-worlds && sleep 2 && systemctl is-active game-of-worlds');
         console.log(`  service: ${restart.out.trim() || restart.errOut.trim()}`);

@@ -33,7 +33,7 @@ mysql -u root game < setup-payments.sql
 stripe login
 
 # Forward webhooks to local server
-stripe listen --forward-to localhost:1337/api/payment/webhook
+stripe listen --forward-to localhost:3000/api/payment/webhook
 ```
 
 ## Test Scenarios
@@ -254,7 +254,7 @@ SELECT * FROM user_payment_summary WHERE user_id = USER_ID;
 ```bash
 # Using Apache Bench
 ab -n 100 -c 10 -T application/json -p payment_data.json \
-   http://localhost:1337/api/payment/create-intent
+   http://localhost:3000/api/payment/create-intent
 ```
 
 **Expected**:

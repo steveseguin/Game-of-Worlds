@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-27  
 **Project**: Code Reorganization & Game Personality Restoration  
-**Status**: ✅ PHASE 2 COMPLETE - READY FOR PRODUCTION
+**Status**: Stable contributor baseline available; production deploy is owner-controlled
 
 ---
 
@@ -10,7 +10,7 @@
 
 The Game of Worlds codebase has been successfully reorganized and the original game's compelling risk/reward mechanics have been fully restored. All core server-side features are implemented, tested, documented, and ready for production deployment.
 
-**Overall Progress**: 90% Complete (8 of 9 tasks completed)
+**Overall Progress**: Stable baseline complete; remaining work should be tracked as issues or focused PRs
 
 ---
 
@@ -110,19 +110,9 @@ The Game of Worlds codebase has been successfully reorganized and the original g
 
 ---
 
-### ⏳ Task #8: Client-Side Fog-of-War Visual
-**Status**: PENDING ⏳  
-**Priority**: Medium (visual enhancement, not core mechanic)  
-**Scope**: Frontend-only changes  
-**Estimated Effort**: 4-6 hours  
-**Dependencies**: Task #1 (complete)  
-
-**Required Changes**:
-- Update canvas rendering to hide unexplored sectors
-- Add visual fog/darkness effect for unseen areas
-- Update minimap display
-- Add exploration animation
-
+### ✅ Task #8: Client-Side Fog-of-War Visual
+**Status**: COMPLETE ✅
+**Scope**: Frontend visibility and rendering changes
 **Location**: `public/js/` files (rendering & visualization)
 
 ---

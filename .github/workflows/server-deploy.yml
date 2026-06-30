@@ -1,0 +1,50 @@
+name: Server Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or SHA to deploy
+        required: true
+        default: stable
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Test and deploy to production server
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.repository == 'steveseguin/Game-of-Worlds'
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Mock server smoke
+        run: npm run test:integration
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.PROD_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.PROD_SSH_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.PROD_SSH_PASSWORD }}
+        run: node tools/deploy.js --install

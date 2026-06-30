@@ -1,5 +1,7 @@
 # Game of Words Game Review & Improvement Analysis
 
+This is a design review and idea bank, not a required roadmap. For current contributor setup and branch workflow, use the root `README.md` and `CONTRIBUTING.md`.
+
 ## Game Overview
 
 Game of Words is a multiplayer real-time turn-based strategy game set in space. Players compete to control sectors on a galactic map, manage resources, research technologies, build fleets, and engage in warfare. The ultimate goal is to dominate the galaxy through conquest or technological superiority.
