@@ -30,6 +30,7 @@ npm run dev                   # Start with auto-reload (port 3000 by default)
 ```bash
 npm test                      # Run all unit tests (tests/*.test.js)
 npm run test:integration      # Run mock HTTP/WebSocket integration smoke
+npm run test:e2e              # Run Playwright against a local mock server on port 4173
 node --test tests/races.test.js  # Run a specific unit test file
 ```
 
@@ -94,6 +95,7 @@ The `env-validator.js` runs at startup and validates all required variables. In 
 - **Unit tests** (`tests/*.test.js`) - Test individual modules (races, security, AI logic)
 - **Integration smoke** (`npm run test:integration` or `npm run smoke`) - Starts `server/index.js` with `USE_MOCK_DB=1`; no local MySQL required
 - **E2E tests** (`tests/e2e/*.spec.js`) - Full game playthrough tests
+- **E2E runner** (`tools/run-e2e.js`) - Starts `server/index.js` with `USE_MOCK_DB=1`, runs Playwright serially, writes screenshots to ignored `test-results/`, then stops the local server
 - **Mock database** - Use `USE_MOCK_DB=true` for testing without MySQL
 
 ## Stable Branch & Contributor Prep

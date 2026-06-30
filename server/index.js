@@ -784,3 +784,49 @@ function authUser(message, connection) {
         console.log(`Player ${playerId} authenticated in lobby mode`);
     });
 }
+
+let shuttingDown = false;
+
+function shutdown(signal) {
+    if (shuttingDown) {
+        return;
+    }
+    shuttingDown = true;
+    console.log(`${new Date()} Received ${signal}; shutting down server`);
+
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+
+    Object.keys(gameTimer).forEach(gameId => {
+        clearInterval(gameTimer[gameId]);
+        delete gameTimer[gameId];
+    });
+
+    clients.slice().forEach(connection => {
+        try {
+            connection.close();
+        } catch {
+            // Ignore close failures during process shutdown.
+        }
+    });
+
+    const forceExit = setTimeout(() => {
+        console.error('Graceful shutdown timed out; exiting');
+        process.exit(1);
+    }, 5000);
+    if (typeof forceExit.unref === 'function') {
+        forceExit.unref();
+    }
+
+    httpServer.close(() => {
+        teardownPool(activePool, () => {
+            clearTimeout(forceExit);
+            process.exit(0);
+        });
+    });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

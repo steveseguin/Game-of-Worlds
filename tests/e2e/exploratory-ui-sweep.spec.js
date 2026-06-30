@@ -116,10 +116,23 @@ async function waitForMatchLobby(page, issues, actor, timeout = 15000) {
 }
 
 function attachDiagnostics(page, label, issues) {
+    const isOptionalExternalResource = url => {
+        try {
+            const host = new URL(url).hostname;
+            return host === 'fonts.googleapis.com' ||
+                host === 'fonts.gstatic.com' ||
+                host === 'js.stripe.com';
+        } catch {
+            return false;
+        }
+    };
+    const isBlockedByHarness = text => String(text || '').includes('ERR_NETWORK_ACCESS_DENIED') ||
+        String(text || '').includes('ERR_BLOCKED_BY_CLIENT');
+
     page.on('console', msg => {
         if (msg.type() === 'error') {
             const text = msg.text();
-            if (!text.includes('stripe.com') && !text.includes('ERR_BLOCKED_BY_CLIENT')) {
+            if (!(text.includes('Failed to load resource') && isBlockedByHarness(text))) {
                 issues.push(`${label}: console error: ${text}`);
             }
         }
@@ -128,9 +141,18 @@ function attachDiagnostics(page, label, issues) {
     page.on('response', response => {
         const status = response.status();
         const url = response.url();
-        if (status >= 400 && !url.includes('/ws') && !url.includes('stripe.com')) {
+        if (status >= 400 && !url.includes('/ws') && !isOptionalExternalResource(url)) {
             issues.push(`${label}: network ${status} ${url}`);
         }
+    });
+
+    page.on('requestfailed', request => {
+        const url = request.url();
+        const errorText = request.failure()?.errorText || 'request failed';
+        if (isOptionalExternalResource(url) && isBlockedByHarness(errorText)) {
+            return;
+        }
+        issues.push(`${label}: request failed: ${errorText} ${url}`);
     });
 
     page.on('pageerror', error => {

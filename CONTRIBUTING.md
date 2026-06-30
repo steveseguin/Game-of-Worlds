@@ -50,6 +50,16 @@ Use browser tests when changing lobby, game UI, movement, combat, or multiplayer
 npm run test:e2e
 ```
 
+The E2E script starts `server/index.js` in mock database mode, waits for `http://127.0.0.1:4173/login.html`, runs Playwright serially, and then stops the local server. You do not need MySQL for these tests. Set `E2E_PORT=####` if port `4173` is already busy.
+
+For the broad visible gameplay path and screenshot artifacts:
+
+```bash
+npm run test:e2e:harness
+```
+
+Screenshots are written under `test-results/`, which is ignored by git.
+
 For a quick manual local game:
 
 1. Set `USE_MOCK_DB=true` in `.env`.

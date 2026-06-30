@@ -3,10 +3,13 @@ const { defineConfig } = require('@playwright/test');
 const PORT = process.env.E2E_PORT || '4173';
 const HOST = process.env.E2E_HOST || '127.0.0.1';
 const BASE_URL = `http://${HOST}:${PORT}`;
+const SKIP_WEBSERVER = /^(true|1|yes)$/i.test((process.env.E2E_SKIP_WEBSERVER || '').trim());
 
 module.exports = defineConfig({
     testDir: './tests/e2e',
     timeout: 120000,
+    fullyParallel: false,
+    workers: 1,
     expect: {
         timeout: 10000
     },
@@ -17,7 +20,7 @@ module.exports = defineConfig({
         ignoreHTTPSErrors: true,
         video: 'off'
     },
-    webServer: {
+    webServer: SKIP_WEBSERVER ? undefined : {
         command: 'node server/index.js',
         url: `${BASE_URL}/login.html`,
         reuseExistingServer: !process.env.CI,

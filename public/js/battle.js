@@ -88,12 +88,12 @@ const BattleSystem = (function() {
         // Add skip button
         const skipButton = document.createElement('button');
         skipButton.id = 'stopBattle';
-        skipButton.style.position = 'absolute';
-        skipButton.style.right = '15%';
-        skipButton.style.width = '5%';
-        skipButton.style.height = '3%';
-        skipButton.style.top = '10%';
-        skipButton.innerHTML = 'SKIP';
+        skipButton.type = 'button';
+        skipButton.style.cssText = 'position:absolute;right:18px;top:18px;z-index:20;'
+            + 'min-width:72px;height:34px;padding:0 14px;border:1px solid rgba(255,255,255,0.22);'
+            + 'border-radius:8px;background:rgba(9,14,28,0.88);color:#f4f7ff;'
+            + 'font-weight:800;letter-spacing:1.5px;cursor:pointer;';
+        skipButton.textContent = 'SKIP';
         skipButton.onclick = completeBattle;
         battleDiv.appendChild(skipButton);
         
@@ -194,9 +194,9 @@ const BattleSystem = (function() {
     function createSideHud(container, side, title, color) {
         const hud = document.createElement('div');
         hud.id = side === 'left' ? 'battleHudDef' : 'battleHudAtt';
-        hud.style.cssText = `position:absolute;top:7%;${side}:3%;min-width:130px;padding:8px 12px;`
+        hud.style.cssText = `position:absolute;top:64px;${side}:3%;min-width:130px;padding:8px 12px;`
             + 'background:rgba(8,12,24,0.78);border:1px solid rgba(255,255,255,0.14);border-radius:10px;'
-            + `color:#e8ecff;font-size:13px;z-index:5;text-align:${side};`;
+            + `color:#e8ecff;font-size:13px;z-index:5;text-align:${side};pointer-events:none;`;
         hud.innerHTML = `<div style="font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:${color};">${title}</div>`
             + '<div class="hud-count" style="font-size:18px;font-weight:800;"></div>'
             + '<div class="hud-bar" style="height:6px;margin-top:5px;border-radius:3px;background:rgba(255,255,255,0.15);overflow:hidden;">'

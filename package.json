@@ -10,9 +10,9 @@
     "test": "node --test",
     "smoke": "node server/test-server.js",
     "test:integration": "node server/test-server.js",
-    "test:e2e": "npx playwright test --reporter=list",
-    "test:e2e:harness": "npx playwright test tests/e2e/complete-multiplayer-ui-harness.spec.js --reporter=list",
-    "test:e2e:hostile": "npx playwright test tests/e2e/hostile-workflows.spec.js --reporter=list"
+    "test:e2e": "node tools/run-e2e.js",
+    "test:e2e:harness": "node tools/run-e2e.js tests/e2e/complete-multiplayer-ui-harness.spec.js",
+    "test:e2e:hostile": "node tools/run-e2e.js tests/e2e/hostile-workflows.spec.js"
   },
   "engines": {
     "node": ">=18"

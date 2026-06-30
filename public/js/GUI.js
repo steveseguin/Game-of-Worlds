@@ -120,7 +120,7 @@ const GameUI = (function() {
 
         // Update basic sector info
         document.getElementById('sectorid').textContent = `Sector ${sectorData.id || 'N/A'}`;
-        document.getElementById('planetowner').textContent = `Owner: ${sectorData.owner || 'N/A'}`;
+        document.getElementById('planetowner').textContent = sectorData.owner || 'N/A';
 
         // Set sector type
         let planetType = 'Unknown';
@@ -136,7 +136,7 @@ const GameUI = (function() {
             case 9: planetType = 'Large Planet (5 slots)'; break;
             case 10: planetType = 'Homeworld (6 slots)'; break;
         }
-        document.getElementById('planettype').textContent = `Type: ${planetType}`;
+        document.getElementById('planettype').textContent = planetType;
 
         // Update resource bonuses
         if (sectorData.type > 5) {
@@ -148,7 +148,7 @@ const GameUI = (function() {
             } else if (sectorData.metalBonus >= 200) {
                 metalColor = 'green';
             }
-            metalBonus.innerHTML = `Metal Production: <font color="${metalColor}">${sectorData.metalBonus}%</font>`;
+            metalBonus.innerHTML = `<span style="color:${metalColor}">${sectorData.metalBonus}%</span>`;
 
             // Set crystal bonus
             const crystalBonus = document.getElementById('crystalbonus');
@@ -158,14 +158,14 @@ const GameUI = (function() {
             } else if (sectorData.crystalBonus >= 200) {
                 crystalColor = 'green';
             }
-            crystalBonus.innerHTML = `Crystal Production: <font color="${crystalColor}">${sectorData.crystalBonus}%</font>`;
+            crystalBonus.innerHTML = `<span style="color:${crystalColor}">${sectorData.crystalBonus}%</span>`;
 
             // Set terraform requirement
-            document.getElementById('terraformlvl').textContent = `Terraform Req: ${sectorData.terraformLevel || 0}`;
+            document.getElementById('terraformlvl').textContent = sectorData.terraformLevel || 0;
         } else {
             // Non-colonizable sector
-            document.getElementById('metalbonus').textContent = 'Metal Production: N/A';
-            document.getElementById('crystalbonus').textContent = 'Crystal Production: N/A';
+            document.getElementById('metalbonus').textContent = 'N/A';
+            document.getElementById('crystalbonus').textContent = 'N/A';
             document.getElementById('terraformlvl').textContent = 'Cannot be colonized';
         }
 
@@ -175,7 +175,7 @@ const GameUI = (function() {
         if (slotsEl) {
             const maxSlots = slotsByType[sectorData.type] || 0;
             const used = Array.isArray(sectorData.buildings) ? sectorData.buildings.length : 0;
-            slotsEl.textContent = maxSlots > 0 ? `Slots: ${used}/${maxSlots}` : 'Slots: none';
+            slotsEl.textContent = maxSlots > 0 ? `${used}/${maxSlots}` : 'none';
         }
 
         // Update sector image (legacy backdrop; only type1-9.jpg exist, homeworld uses planet art)

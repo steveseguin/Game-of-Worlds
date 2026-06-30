@@ -99,6 +99,15 @@
             transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
         #nextTurnBtn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(76,124,255,0.4); }
+        #nextTurnBtn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            filter: saturate(0.65);
+        }
+        #nextTurnBtn:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
         #turnRedFlashWhenLow { color: #ffd3a8; }
 
         /* Connection info */
@@ -658,7 +667,6 @@
     <script src="js/combat-analytics.js?v=20260612a"></script>
     <script src="/config.js?v=20260614b"></script>
     <script src="js/shop-enhanced.js?v=20260614b"></script>
-    <script src="https://js.stripe.com/v3/"></script>
     <script src="js/game-screen.js?v=20260429a"></script>
     <script type="module" src="js/galaxy3d.js?v=20260614c"></script>
     <script type="module" src="js/battle3d.js?v=20260614e"></script>

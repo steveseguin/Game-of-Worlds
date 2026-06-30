@@ -104,6 +104,22 @@ async function chooseFirstAvailableRace(page) {
     throw new Error('Timed out selecting race or reaching lobby wait state');
 }
 
+function isOptionalExternalResource(url) {
+    try {
+        const host = new URL(url).hostname;
+        return host === 'fonts.googleapis.com' ||
+            host === 'fonts.gstatic.com' ||
+            host === 'js.stripe.com';
+    } catch {
+        return false;
+    }
+}
+
+function isBlockedByHarness(text) {
+    return String(text || '').includes('ERR_NETWORK_ACCESS_DENIED') ||
+        String(text || '').includes('ERR_BLOCKED_BY_CLIENT');
+}
+
 test.describe('Game Health Checks', () => {
     test.beforeEach(async ({ page }) => {
         page.on('dialog', dialog => dialog.accept());
@@ -117,8 +133,7 @@ test.describe('Game Health Checks', () => {
         page.on('console', msg => {
             if (msg.type() === 'error') {
                 const text = msg.text();
-                // Ignore Stripe blocked by client (ad blockers)
-                if (!text.includes('stripe.com') && !text.includes('ERR_BLOCKED_BY_CLIENT')) {
+                if (!(text.includes('Failed to load resource') && isBlockedByHarness(text))) {
                     consoleErrors.push(text);
                 }
             }
@@ -128,10 +143,18 @@ test.describe('Game Health Checks', () => {
         page.on('response', response => {
             const status = response.status();
             const url = response.url();
-            // Ignore Stripe blocked requests and WebSocket upgrade responses
-            if (status >= 400 && !url.includes('stripe.com') && !url.includes('/ws')) {
+            if (status >= 400 && !isOptionalExternalResource(url) && !url.includes('/ws')) {
                 networkErrors.push(`${status} ${url}`);
             }
+        });
+
+        page.on('requestfailed', request => {
+            const url = request.url();
+            const errorText = request.failure()?.errorText || 'request failed';
+            if (isOptionalExternalResource(url) && isBlockedByHarness(errorText)) {
+                return;
+            }
+            networkErrors.push(`${errorText} ${url}`);
         });
 
         const username = uniqueId('health_');
@@ -173,21 +196,17 @@ test.describe('Game Health Checks', () => {
             !e.includes('favicon')
         );
 
-        const criticalNetworkErrors = networkErrors.filter(e =>
-            e.includes(' 500 ') || e.includes(' 404 ')
-        );
-
         // Report any errors found
         if (criticalConsoleErrors.length > 0) {
             console.log('Console errors found:', criticalConsoleErrors);
         }
-        if (criticalNetworkErrors.length > 0) {
-            console.log('Network errors found:', criticalNetworkErrors);
+        if (networkErrors.length > 0) {
+            console.log('Network errors found:', networkErrors);
         }
 
         // Fail if there are critical errors
         expect(criticalConsoleErrors, 'No critical console errors').toHaveLength(0);
-        expect(criticalNetworkErrors, 'No 404/500 network errors').toHaveLength(0);
+        expect(networkErrors, 'No failed local network requests').toHaveLength(0);
     });
 
     test('API endpoints return valid responses', async ({ page }) => {

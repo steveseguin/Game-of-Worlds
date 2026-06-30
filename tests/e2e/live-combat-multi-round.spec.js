@@ -144,6 +144,13 @@ async function installBattleCounter(page) {
                 return original(...args);
             };
         }
+        if (window.Battle3D && typeof window.Battle3D.createBattleVisualization === 'function') {
+            const original3d = window.Battle3D.createBattleVisualization.bind(window.Battle3D);
+            window.Battle3D.createBattleVisualization = function wrapped3dBattleVisualization(...args) {
+                window.__battleCount += 1;
+                return original3d(...args);
+            };
+        }
         window.__battleCounterInstalled = true;
     });
 }
@@ -264,10 +271,47 @@ async function clearBattleOverlay(page) {
     if (await battleGround.count() > 0 && await battleGround.first().isVisible()) {
         await page.locator('#stopBattle').click();
         await expect(page.locator('#battleGround')).toHaveCount(0, { timeout: 6000 });
+        return;
+    }
+
+    const battle3dSkip = page.locator('#battleTheater.on #b3dSkip');
+    if (await battle3dSkip.count() > 0 && await battle3dSkip.first().isVisible()) {
+        await battle3dSkip.click();
+        await expect.poll(async () => page.evaluate(() => !document.querySelector('#battleTheater.on')), {
+            timeout: 6000
+        }).toBe(true);
     }
 }
 
+async function expectBattleTheaterVisible(page) {
+    await expect.poll(async () => page.evaluate(() => {
+        const fallback = document.getElementById('battleGround');
+        const fallbackVisible = !!fallback &&
+            fallback.offsetWidth > 0 &&
+            fallback.offsetHeight > 0 &&
+            getComputedStyle(fallback).display !== 'none' &&
+            getComputedStyle(fallback).visibility !== 'hidden';
+        const theaterVisible = !!document.querySelector('#battleTheater.on #b3dSkip');
+        return fallbackVisible || theaterVisible;
+    }), {
+        timeout: 15000
+    }).toBe(true);
+}
+
+async function waitForBattlePauseClear(page) {
+    await expect.poll(async () => page.evaluate(() => {
+        const frozen = Boolean(window.__battleFreezeUntil && window.__battleFreezeUntil > Date.now());
+        const theaterActive = Boolean(document.querySelector('#battleTheater.on'));
+        const fallbackActive = Boolean(document.getElementById('battleGround'));
+        return !frozen && !theaterActive && !fallbackActive;
+    }), {
+        timeout: 30000
+    }).toBe(true);
+}
+
 async function advanceTurnBoth(hostPage, joinerPage) {
+    await expect(hostPage.locator('#nextTurnBtn')).toBeEnabled({ timeout: 30000 });
+    await expect(joinerPage.locator('#nextTurnBtn')).toBeEnabled({ timeout: 30000 });
     await hostPage.click('#nextTurnBtn');
     await joinerPage.click('#nextTurnBtn');
 }
@@ -379,18 +423,22 @@ test.describe('Live two-client combat with multiple rounds', () => {
         await marchShip(joinerPage, joinerPathToMid, 'Scout');
         await advanceTurnBoth(hostPage, joinerPage);
 
-        await expect(hostPage.locator('#battleGround')).toBeVisible({ timeout: 10000 });
-        await expect(joinerPage.locator('#battleGround')).toBeVisible({ timeout: 10000 });
+        await expectBattleTheaterVisible(hostPage);
+        await expectBattleTheaterVisible(joinerPage);
         await clearBattleOverlay(hostPage);
         await clearBattleOverlay(joinerPage);
+        await Promise.all([
+            waitForBattlePauseClear(hostPage),
+            waitForBattlePauseClear(joinerPage)
+        ]);
 
         // Round 2: the other starter ship is the colony ship.
         await marchShip(hostPage, hostPathToMid, 'Colony Ship');
         await marchShip(joinerPage, joinerPathToMid, 'Colony Ship');
         await advanceTurnBoth(hostPage, joinerPage);
 
-        await expect(hostPage.locator('#battleGround')).toBeVisible({ timeout: 10000 });
-        await expect(joinerPage.locator('#battleGround')).toBeVisible({ timeout: 10000 });
+        await expectBattleTheaterVisible(hostPage);
+        await expectBattleTheaterVisible(joinerPage);
         await clearBattleOverlay(hostPage);
         await clearBattleOverlay(joinerPage);
 

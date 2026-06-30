@@ -142,6 +142,8 @@ const MESSAGE_HANDLERS = {
         const base = (window.__battleFreezeUntil && window.__battleFreezeUntil > now) ? window.__battleFreezeUntil : now;
         window.__battleFreezeUntil = Math.min(base + freezeMs, now + 26000);
         turnFrozen = true;
+        setNextTurnButtonDisabled(true);
+        setNextTurnButtonLabel('Battle');
         const el = document.getElementById('turnRedFlashWhenLow');
         if (el) { el.textContent = 'BATTLE'; el.style.color = '#ff8a6a'; }
         clearTimeout(battleFreezeTimer);
@@ -149,6 +151,8 @@ const MESSAGE_HANDLERS = {
             turnFrozen = false;
             window.__battlePauseMs = 0;
             window.__battleFreezeUntil = 0;
+            setNextTurnButtonDisabled(false);
+            setNextTurnButtonLabel('End Turn');
             renderTurnTimer();
         }, Math.max(1, window.__battleFreezeUntil - now));
     },
@@ -512,6 +516,15 @@ function setNextTurnButtonLabel(label) {
     }
 }
 
+function setNextTurnButtonDisabled(disabled) {
+    const nextTurnButton = document.getElementById("nextTurnBtn");
+    if (!nextTurnButton) {
+        return;
+    }
+    nextTurnButton.disabled = Boolean(disabled);
+    nextTurnButton.setAttribute('aria-busy', disabled ? 'true' : 'false');
+}
+
 function renderTurnHeader() {
     const modeLabel = document.getElementById('gameModeLabel');
     if (!modeLabel) {
@@ -558,6 +571,7 @@ function beginTurnCountdown(turnNumber, seconds = 180) {
     currentTurnNumber = Number.parseInt(turnNumber, 10) || currentTurnNumber || 1;
     turnTimer = Number.isFinite(Number(seconds)) && Number(seconds) > 0 ? Number(seconds) : 180;
     setNextTurnButtonLabel('End Turn');
+    setNextTurnButtonDisabled(turnFrozen);
     clearInterval(turnInterval);
     renderTurnHeader();
     renderTurnTimer();
@@ -566,6 +580,12 @@ function beginTurnCountdown(turnNumber, seconds = 180) {
 
 // Game action functions
 function nextTurn() {
+    if (turnFrozen) {
+        if (window.NotificationSystem?.notify) {
+            window.NotificationSystem.notify('Battle in progress', 'Orders resume when combat playback finishes.', 'info', 3000);
+        }
+        return;
+    }
     websocket.send("//start");
 }
 

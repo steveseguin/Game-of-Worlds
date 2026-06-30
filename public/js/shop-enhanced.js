@@ -16,12 +16,14 @@ const Shop = (function() {
     let processingPayment = false;
 
     const PLACEHOLDER_STRIPE_KEY = 'pk_test_YOUR_KEY_HERE';
+    const STRIPE_SCRIPT_URL = 'https://js.stripe.com/v3/';
     const configState = {
         stripeKey: null,
         paymentsEnabled: false,
         ready: false,
         loadingPromise: null
     };
+    let stripeScriptPromise = null;
 
     function hydrateConfigFromWindow() {
         if (typeof window === 'undefined') {
@@ -106,6 +108,43 @@ const Shop = (function() {
     }
 
     hydrateConfigFromWindow();
+
+    function loadStripeLibrary() {
+        if (typeof window !== 'undefined' && typeof window.Stripe === 'function') {
+            return Promise.resolve(window.Stripe);
+        }
+        if (stripeScriptPromise) {
+            return stripeScriptPromise;
+        }
+        if (typeof document === 'undefined') {
+            return Promise.reject(new Error('Stripe.js can only load in a browser'));
+        }
+
+        stripeScriptPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = STRIPE_SCRIPT_URL;
+            script.async = true;
+            script.dataset.stripeJs = 'true';
+
+            script.addEventListener('load', () => {
+                if (typeof window.Stripe === 'function') {
+                    resolve(window.Stripe);
+                    return;
+                }
+                stripeScriptPromise = null;
+                reject(new Error('Stripe.js loaded without exposing Stripe'));
+            }, { once: true });
+
+            script.addEventListener('error', () => {
+                stripeScriptPromise = null;
+                reject(new Error('Stripe.js failed to load'));
+            }, { once: true });
+
+            document.head.appendChild(script);
+        });
+
+        return stripeScriptPromise;
+    }
     
     // Notification helpers to keep the module resilient if the enhanced notification
     // system has not been loaded yet.
@@ -195,9 +234,10 @@ const Shop = (function() {
             window.gameUserId = null;
         }
         
-        if (paymentsEnabled && typeof Stripe !== 'undefined') {
+        if (paymentsEnabled) {
             try {
-                stripe = Stripe(resolvedStripeKey);
+                const stripeFactory = await loadStripeLibrary();
+                stripe = stripeFactory(resolvedStripeKey);
                 elements = stripe.elements({
                     fonts: [{ cssSrc: 'https://fonts.googleapis.com/css?family=Roboto' }]
                 });
@@ -205,9 +245,6 @@ const Shop = (function() {
                 console.error('Failed to initialize Stripe:', error);
                 notify('Payment system unavailable', 'error');
             }
-        } else if (paymentsEnabled && typeof Stripe === 'undefined') {
-            console.error('Stripe library failed to load while payments are enabled.');
-            notify('Payment processing is temporarily unavailable. Please refresh and try again.', 'error', 6000);
         } else {
             console.info('Payments disabled. Purchases can be browsed but not completed.');
         }
