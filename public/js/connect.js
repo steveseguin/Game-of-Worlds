@@ -20,14 +20,15 @@ function getWebSocketUrl() {
     const isSecure = window.location.protocol === 'https:';
     const protocol = isSecure ? 'wss' : 'ws';
     const hostname = window.location.hostname;
+    const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
 
     let port = window.location.port;
     if (port) {
         if ((isSecure && port === '443') || (!isSecure && port === '80')) {
             port = '';
         }
-    } else if (!isSecure) {
-        port = '1337';
+    } else if (!isSecure && isLocalHost) {
+        port = '3000';
     }
 
     const portSegment = port ? `:${port}` : '';

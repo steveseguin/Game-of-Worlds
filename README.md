@@ -30,37 +30,37 @@ Originally built in 2012 as a PHP-based web game, Game of Worlds has been comple
 
 ```
 Game-of-Worlds/
-├── server/              # Server-side code
-│   ├── index.js        # Main server entry point
-│   ├── server.js       # Game logic implementation
-│   ├── setup.js        # Database setup script
-│   └── lib/            # Server modules
-│       ├── ai.js       # AI opponent system
-│       ├── combat.js   # Combat mechanics
-│       ├── diplomacy.js # Alliance system
-│       ├── map.js      # Map generation
-│       ├── payments.js # Payment processing
-│       ├── races.js    # Race definitions
-│       ├── security.js # Input validation
-│       ├── tech.js     # Technology tree
-│       └── victory.js  # Victory conditions
-├── public/             # Client-side files
-│   ├── landing.html   # Landing page
-│   ├── game.html      # Main game interface
-│   ├── js/            # Client JavaScript
-│   ├── css/           # Stylesheets
-│   └── images/        # Game assets
-├── mysql_data/        # MySQL database files
-├── docs/              # Documentation
-├── package.json       # Node dependencies
-└── .env.example       # Environment config template
+|-- server/              # Server-side code
+|   |-- index.js         # Main server entry point
+|   |-- server.js        # Game logic implementation
+|   |-- setup.js         # Database setup script
+|   `-- lib/             # Server modules
+|       |-- ai.js        # AI opponent system
+|       |-- combat.js    # Combat mechanics
+|       |-- diplomacy.js # Alliance system
+|       |-- map.js       # Map generation
+|       |-- payments.js  # Payment processing
+|       |-- races.js     # Race definitions
+|       |-- security.js  # Input validation
+|       |-- tech.js      # Technology tree
+|       `-- victory.js   # Victory conditions
+|-- public/              # Client-side files
+|   |-- landing.html     # Landing page
+|   |-- game.html        # Main game interface
+|   |-- js/              # Client JavaScript
+|   |-- css/             # Stylesheets
+|   `-- images/          # Game assets
+|-- docs/                # Documentation
+|-- tests/               # Unit and integration tests
+|-- package.json         # Node dependencies
+`-- .env.example         # Environment config template
 ```
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js (v14 or higher)
-- MySQL (v5.7 or higher)
+- Node.js (v18 or higher)
+- MySQL (v5.7 or higher), unless you use `USE_MOCK_DB=true`
 - npm or yarn
 
 ### Installation
@@ -79,7 +79,8 @@ Game-of-Worlds/
 3. Configure environment:
    ```bash
    cp .env.example .env
-   # Edit .env with your database and Stripe credentials
+   # For local development without MySQL, set USE_MOCK_DB=true
+   # Edit .env with database and Stripe credentials when needed
    ```
 
 4. Setup database:
@@ -94,7 +95,7 @@ Game-of-Worlds/
 5. Start the server:
    ```bash
    npm start
-   # Server runs on http://localhost:1337
+   # Server runs on http://localhost:3000 by default
    ```
 
 ## Gameplay
@@ -132,20 +133,25 @@ npm run dev
 ### Testing
 ```bash
 npm test
+npm run test:integration
 ```
+
+`npm run test:integration` starts the app with `USE_MOCK_DB=1`, so it does not require MySQL. Browser E2E tests are available with `npm run test:e2e` after Playwright browsers are installed.
 
 ### Payment Testing
 See `docs/TESTING_PAYMENTS.md` for comprehensive payment testing guide.
 
 ## Contributing
 
-This is an open project and all help is welcome! 
+This is an open project and all help is welcome. Start with the `stable` branch for contribution work.
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+2. Create your feature branch from `stable` (`git checkout stable && git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, test, and pull request expectations.
 
 ## License
 

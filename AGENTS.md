@@ -23,7 +23,7 @@ This **risk/reward personality** made the game compelling. Recent rewrites strip
 ```bash
 npm install                    # Install dependencies
 cp .env.example .env          # Copy environment template
-npm run dev                   # Start with auto-reload (port 1337)
+npm run dev                   # Start with auto-reload (port 3000 by default)
 ```
 
 ### Running Tests
@@ -81,8 +81,8 @@ The game uses WebSocket for real-time updates between client and server. The ser
 
 ### Environment Configuration
 Copy `.env.example` to `.env` and configure:
-- **Database**: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_POOL_SIZE
-- **Server**: PORT (default 1337), NODE_ENV
+- **Database**: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, DB_POOL_SIZE
+- **Server**: PORT (default 3000), NODE_ENV
 - **Security**: SESSION_SECRET, CSRF_SECRET (auto-generated in development)
 - **Payments**: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (optional)
 - **Features**: ENABLE_ANALYTICS, ENABLE_DEBUG_LOGS, USE_MOCK_DB
@@ -92,9 +92,16 @@ The `env-validator.js` runs at startup and validates all required variables. In 
 
 ### Testing
 - **Unit tests** (`tests/*.test.js`) - Test individual modules (races, security, AI logic)
-- **Integration tests** (`tests/integration-*.test.js`) - Test multi-component flows
+- **Integration smoke** (`npm run test:integration` or `npm run smoke`) - Starts `server/index.js` with `USE_MOCK_DB=1`; no local MySQL required
 - **E2E tests** (`tests/e2e/*.spec.js`) - Full game playthrough tests
 - **Mock database** - Use `USE_MOCK_DB=true` for testing without MySQL
+
+## Stable Branch & Contributor Prep
+
+- The `stable` branch is the friend-ready contribution baseline. When Steve asks for a stable branch, create or update `stable`, include existing dirty working-tree changes unless Steve explicitly excludes them, run `npm test` and `npm run test:integration`, then push `stable`.
+- Contributors should branch from `stable` and open pull requests back into `stable` unless Steve asks for a different target.
+- Keep contributor-facing setup current in `README.md`, `CONTRIBUTING.md`, `.env.example`, and `.github/pull_request_template.md`.
+- External contributors should not deploy production. Codex still deploys and smoke-tests production after code changes, per the deployment workflow below.
 
 ## Common Tasks
 

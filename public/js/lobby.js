@@ -12,14 +12,15 @@ function getWebSocketUrl() {
     const isSecure = window.location.protocol === 'https:';
     const protocol = isSecure ? 'wss' : 'ws';
     const hostname = window.location.hostname;
+    const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
 
     let port = window.location.port;
     if (port) {
         if ((isSecure && port === '443') || (!isSecure && port === '80')) {
             port = '';
         }
-    } else if (!isSecure) {
-        port = '1337';
+    } else if (!isSecure && isLocalHost) {
+        port = '3000';
     }
 
     const portSegment = port ? `:${port}` : '';
@@ -411,6 +412,7 @@ function createGame() {
 }
 
 function refreshGames() {
+    updateCreateGamePanelVisibility();
     if (currentGameId && currentGameStarted) {
         renderWaitingView();
         requestCurrentGameSnapshot();
@@ -569,7 +571,17 @@ function renderGameTable(rows, renderedRows) {
     gameList.innerHTML = html;
 }
 
+// You can only be in one game at a time, so hide the "Create a New Game" panel
+// (and collapse its grid column) whenever you're in a game lobby or match.
+function updateCreateGamePanelVisibility() {
+    const grid = document.getElementById('lobbyPanelGrid');
+    if (grid) {
+        grid.classList.toggle('in-game', Boolean(currentGameId));
+    }
+}
+
 function renderWaitingView() {
+    updateCreateGamePanelVisibility();
     const gameList = document.getElementById('gameList');
     if (!gameList) {
         return;
@@ -853,6 +865,7 @@ function clearCurrentGameTracking() {
     currentGameStatus = 'waiting';
     currentGameStarted = false;
     countdownSeconds = null;
+    updateCreateGamePanelVisibility();
 }
 
 function decodeURIComponentSafe(value) {

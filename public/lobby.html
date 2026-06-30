@@ -189,6 +189,10 @@
 
     /* ---------- panel grid + cards ---------- */
     .panel-grid { display: grid; grid-template-columns: 380px 1fr; gap: 16px; margin-top: 20px; }
+    /* While in a game's lobby/match, you can't create another game — hide the
+       create panel and let the tactical display fill the row. */
+    .panel-grid.in-game { grid-template-columns: 1fr; }
+    .panel-grid.in-game #createGameCard { display: none; }
     .card { position: relative; padding: 18px; border-radius: 5px; }
     .card h3 {
         margin: -18px -18px 16px; padding: 11px 16px;
@@ -557,8 +561,8 @@
             </div>
         </section>
 
-        <div class="panel-grid">
-            <div class="card" data-code="PNL-01">
+        <div class="panel-grid" id="lobbyPanelGrid">
+            <div class="card" id="createGameCard" data-code="PNL-01">
                 <h3>Create a New Game</h3>
                 <div class="form-row" style="margin-bottom:12px;">
                     <input type="text" id="gameName" placeholder="Game name">
@@ -659,6 +663,6 @@
         })();
     </script>
     <script src="/config.js?v=20260614b"></script>
-    <script src="js/lobby.js?v=20260614h"></script>
+    <script src="js/lobby.js?v=20260630a"></script>
 </body>
 </html>

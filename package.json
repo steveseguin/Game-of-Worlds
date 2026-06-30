@@ -8,9 +8,14 @@
     "setup": "node server/setup.js",
     "dev": "nodemon server/index.js",
     "test": "node --test",
+    "smoke": "node server/test-server.js",
     "test:integration": "node server/test-server.js",
+    "test:e2e": "npx playwright test --reporter=list",
     "test:e2e:harness": "npx playwright test tests/e2e/complete-multiplayer-ui-harness.spec.js --reporter=list",
     "test:e2e:hostile": "npx playwright test tests/e2e/hostile-workflows.spec.js --reporter=list"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "dotenv": "^16.0.0",
