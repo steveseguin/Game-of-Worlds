@@ -7,6 +7,8 @@
     "start": "node server/index.js",
     "setup": "node server/setup.js",
     "dev": "nodemon server/index.js",
+    "dev:mock": "node tools/run-dev.js",
+    "dev:mysql": "node tools/run-dev.js --mysql",
     "test": "node --test",
     "smoke": "node server/test-server.js",
     "test:integration": "node server/test-server.js",

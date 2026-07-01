@@ -3,7 +3,8 @@
  * Run Playwright against a local mock server and always clean it up.
  *
  * Playwright's built-in webServer management can leave node server processes
- * hanging on Windows. This wrapper keeps local contributor runs predictable.
+ * hanging on some local setups. This wrapper keeps contributor runs predictable
+ * on Windows, macOS, and Linux.
  */
 
 const http = require('http');
@@ -117,6 +118,7 @@ async function main() {
         ...process.env,
         TEMP: TEMP_DIR,
         TMP: TEMP_DIR,
+        TMPDIR: TEMP_DIR,
         PORT,
         HOST,
         USE_MOCK_DB: '1',
@@ -154,6 +156,7 @@ async function main() {
                 ...process.env,
                 TEMP: TEMP_DIR,
                 TMP: TEMP_DIR,
+                TMPDIR: TEMP_DIR,
                 E2E_SKIP_WEBSERVER: '1',
                 E2E_HOST: HOST,
                 E2E_PORT: PORT

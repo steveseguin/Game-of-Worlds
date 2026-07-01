@@ -23,7 +23,7 @@ This **risk/reward personality** made the game compelling. Recent rewrites strip
 ```bash
 npm install                    # Install dependencies
 cp .env.example .env          # Copy environment template
-npm run dev                   # Start with auto-reload (port 3000 by default)
+npm run dev:mock              # Start with auto-reload + mock DB (port 3000 by default)
 ```
 
 ### Running Tests
@@ -96,6 +96,7 @@ The `env-validator.js` runs at startup and validates all required variables. In 
 - **Integration smoke** (`npm run test:integration` or `npm run smoke`) - Starts `server/index.js` with `USE_MOCK_DB=1`; no local MySQL required
 - **E2E tests** (`tests/e2e/*.spec.js`) - Full game playthrough tests
 - **E2E runner** (`tools/run-e2e.js`) - Starts `server/index.js` with `USE_MOCK_DB=1`, runs Playwright serially, writes screenshots to ignored `test-results/`, then stops the local server
+- **Local mock dev** (`npm run dev:mock`) - Cross-platform launcher for macOS, Windows, and Linux contributors; no shell-specific env syntax or local MySQL required
 - **Mock database** - Use `USE_MOCK_DB=true` for testing without MySQL
 
 ## Stable Branch & Contributor Prep

@@ -63,6 +63,12 @@ Game-of-Worlds/
 - MySQL (v5.7 or higher), unless you use `USE_MOCK_DB=true`
 - npm or yarn
 
+On macOS, install Node from `nodejs.org` or with Homebrew:
+
+```bash
+brew install node
+```
+
 ### Installation
 
 1. Clone the repository:
@@ -85,8 +91,9 @@ Game-of-Worlds/
 
 4. Setup database:
    ```bash
+   # Optional when using npm run dev:mock
    npm run setup
-   # Follow prompts to create database tables
+   # Follow prompts to create MySQL database tables
    
    # For payment features (optional):
    mysql -u root game < server/setup-payments.sql
@@ -94,8 +101,8 @@ Game-of-Worlds/
 
 5. Start the server:
    ```bash
-   npm start
-   # Server runs on http://localhost:3000 by default
+   npm run dev:mock
+   # Server runs on http://localhost:3000 by default with an in-memory DB
    ```
 
 ## Gameplay
@@ -126,11 +133,11 @@ Win by achieving any of these conditions:
 
 ### Running in Development Mode
 ```bash
-npm run dev
-# Uses nodemon for auto-restart on changes
+npm run dev:mock
+# Uses nodemon with USE_MOCK_DB=1 for local gameplay without MySQL
 ```
 
-For server work without MySQL, set `USE_MOCK_DB=true` in `.env` and start normally. This gives contributors a local in-memory server for lobby, game, and WebSocket testing.
+For real MySQL-backed development, configure `.env`, run `npm run setup`, then use `npm run dev:mysql`.
 
 ### Testing
 ```bash
@@ -139,6 +146,8 @@ npm run test:integration
 ```
 
 `npm run test:integration` starts the app with `USE_MOCK_DB=1`, so it does not require MySQL. Browser E2E tests are available with `npm run test:e2e` after Playwright browsers are installed.
+
+The E2E runner starts and stops a local mock server itself and works on macOS, Windows, and Linux.
 
 ### Payment Testing
 See `docs/TESTING_PAYMENTS.md` for comprehensive payment testing guide.

@@ -4,25 +4,32 @@ Use `stable` as the starting branch for contribution work unless Steve says othe
 
 ## Local Setup
 
+Requirements: Node.js 18+ and npm. macOS contributors can install Node from `nodejs.org` or with Homebrew (`brew install node`).
+
 ```bash
 git checkout stable
 npm install
 cp .env.example .env
-npm run dev
+npm run dev:mock
 ```
 
-The server runs on `http://localhost:3000` by default.
+The server runs on `http://localhost:3000` by default. `npm run dev:mock` uses an in-memory mock database, so Mac and Windows contributors do not need MySQL for normal UI/gameplay work.
 
-For quick local work without MySQL, set this in `.env` before starting the server:
+On macOS/Linux, this is the equivalent manual environment setup:
 
 ```bash
 USE_MOCK_DB=true
 ENABLE_TEST_GAME_MODE=true
+npm run dev
 ```
 
 Mock database mode is in-memory only. Restarting the server resets local data.
 
-If you want to test against MySQL instead, fill in `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`, then run `npm run setup`.
+If you want to test against MySQL instead, fill in `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`, run `npm run setup`, then use:
+
+```bash
+npm run dev:mysql
+```
 
 ## Project Map
 
@@ -62,11 +69,10 @@ Screenshots are written under `test-results/`, which is ignored by git.
 
 For a quick manual local game:
 
-1. Set `USE_MOCK_DB=true` in `.env`.
-2. Run `npm run dev`.
-3. Open `http://localhost:3000/login.html`.
-4. Use guest login or create a test account.
-5. Create a test game, add AI if needed, and start.
+1. Run `npm run dev:mock`.
+2. Open `http://localhost:3000/login.html`.
+3. Use guest login or create a test account.
+4. Create a test game, add AI if needed, and start.
 
 ## Pull Requests
 
