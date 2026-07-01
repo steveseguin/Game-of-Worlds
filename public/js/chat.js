@@ -36,7 +36,11 @@ const ChatSystem = (function() {
         event.preventDefault();
         const chatInput = document.getElementById("chat");
         if (chatInput && chatInput.value.trim() !== "") {
-            const text = chatInput.value.trim();
+            const text = normalizeChatInput(chatInput.value);
+            if (!text) {
+                chatInput.value = "";
+                return;
+            }
             pendingOwnMessages.push({ text, time: Date.now() });
             displayMessage(`You: ${text}`, { own: true });
             if (typeof websocket !== 'undefined' && websocket && websocket.readyState === WebSocket.OPEN) {
@@ -54,19 +58,15 @@ const ChatSystem = (function() {
             return;
         }
         
-        // Sanitize message to prevent XSS
-        const sanitizedMessage = escapeHtml(message);
+        const displayText = normalizeDisplayMessage(message);
         if (logElement) {
-            logElement.innerHTML = sanitizedMessage + "<br>";
+            logElement.textContent = displayText;
         }
-        appendChatMessage(sanitizedMessage, options.own);
-        
+        appendChatMessage(displayText, options.own);
+
         // Trim log if it gets too long
-        if (logElement && logElement.innerHTML.length > 1500) {
-            logElement.innerHTML = "..." + logElement.innerHTML.substring(
-                logElement.innerHTML.length - 1500,
-                logElement.innerHTML.length
-            );
+        if (logElement && logElement.textContent.length > 1500) {
+            logElement.textContent = "..." + logElement.textContent.slice(-1500);
         }
         
         // Save to history
@@ -88,7 +88,7 @@ const ChatSystem = (function() {
         
         chatHistoryTime.push(d.getTime());
         const logElement = document.getElementById("log");
-        chatHistory.push(logElement ? logElement.innerHTML : '');
+        chatHistory.push(logElement ? logElement.textContent : '');
         
         clearInterval(timeSinceCounter);
         timeSinceCounter = setInterval(updateTimeLog, 1000);
@@ -104,15 +104,15 @@ const ChatSystem = (function() {
         const d = new Date();
         const logElement = document.getElementById("log");
         const timeSince = document.getElementById('timeSince');
-        
+
         if (logElement && chatHistory.length >= chatID) {
-            logElement.innerHTML = chatHistory[chatHistory.length - chatID];
+            logElement.textContent = chatHistory[chatHistory.length - chatID];
         }
         
         if (timeSince && chatHistoryTime.length >= chatID) {
             timeSince.textContent = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
         }
-        
+
         startChatFade();
     }
     
@@ -172,13 +172,13 @@ const ChatSystem = (function() {
         chatContainer.parentNode.insertBefore(feed, chatContainer);
     }
 
-    function appendChatMessage(sanitizedMessage, own) {
+    function appendChatMessage(message, own) {
         const messages = document.getElementById('chatMessages');
         if (!messages) return;
 
         const row = document.createElement('div');
         row.className = `chat-message${own ? ' chat-message-own' : ''}`;
-        row.innerHTML = sanitizedMessage;
+        row.textContent = message;
         messages.appendChild(row);
 
         while (messages.children.length > 8) {
@@ -196,14 +196,19 @@ const ChatSystem = (function() {
         pendingOwnMessages.splice(index, 1);
         return true;
     }
-    
-    function escapeHtml(unsafe) {
-        return unsafe
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
+
+    function normalizeChatInput(value) {
+        return String(value || '')
+            .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 500);
+    }
+
+    function normalizeDisplayMessage(value) {
+        return String(value || '')
+            .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u2028\u2029]/g, ' ')
+            .slice(0, 800);
     }
     
     return {

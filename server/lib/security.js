@@ -18,6 +18,11 @@ const PATTERNS = {
     techList: /^[\d,]*$/
 };
 
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
+const EMAIL_MAX_LENGTH = 254;
+const CHAT_MAX_LENGTH = 500;
+
 // Validate username
 function validateUsername(username) {
     if (!username || typeof username !== 'string') {
@@ -36,11 +41,16 @@ function validateEmail(email) {
     if (!email || typeof email !== 'string') {
         return { valid: false, error: 'Email is required' };
     }
-    
-    if (!PATTERNS.email.test(email)) {
+
+    const normalized = email.trim();
+    if (normalized.length > EMAIL_MAX_LENGTH) {
+        return { valid: false, error: `Email must be ${EMAIL_MAX_LENGTH} characters or fewer` };
+    }
+
+    if (!PATTERNS.email.test(normalized)) {
         return { valid: false, error: 'Invalid email format' };
     }
-    
+
     return { valid: true };
 }
 
@@ -50,10 +60,32 @@ function validatePassword(password) {
         return { valid: false, error: 'Password is required' };
     }
     
-    if (password.length < 6) {
-        return { valid: false, error: 'Password must be at least 6 characters' };
+    if (password.length < PASSWORD_MIN_LENGTH) {
+        return { valid: false, error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters` };
+    }
+
+    if (password.length > PASSWORD_MAX_LENGTH) {
+        return { valid: false, error: `Password must be ${PASSWORD_MAX_LENGTH} characters or fewer` };
+    }
+
+    if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+        return { valid: false, error: 'Password must include at least one letter and one number' };
     }
     
+    return { valid: true };
+}
+
+// Validate login password shape without blocking older accounts created under a
+// previous password policy.
+function validatePasswordInput(password) {
+    if (!password || typeof password !== 'string') {
+        return { valid: false, error: 'Password is required' };
+    }
+
+    if (password.length > PASSWORD_MAX_LENGTH) {
+        return { valid: false, error: `Password must be ${PASSWORD_MAX_LENGTH} characters or fewer` };
+    }
+
     return { valid: true };
 }
 
@@ -135,6 +167,22 @@ function sanitizeHTML(value) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#x27;')
         .replace(/\//g, '&#x2F;');
+}
+
+function normalizeChatMessage(value, maxLength = CHAT_MAX_LENGTH) {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    const limit = Number.isSafeInteger(maxLength) && maxLength > 0
+        ? Math.min(maxLength, CHAT_MAX_LENGTH)
+        : CHAT_MAX_LENGTH;
+
+    return value
+        .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, limit);
 }
 
 // Generate secure random token
@@ -312,12 +360,14 @@ module.exports = {
     validateUsername,
     validateEmail,
     validatePassword,
+    validatePasswordInput,
     validateGameName,
     validateInteger,
     validateCoordinate,
     validateSectorId,
     sanitizeSQL,
     sanitizeHTML,
+    normalizeChatMessage,
     generateToken,
     generateSessionToken,
     verifySessionToken,
@@ -327,5 +377,9 @@ module.exports = {
     isValidIP,
     generateCSRFToken,
     verifyCSRFToken,
-    PATTERNS
+    PATTERNS,
+    PASSWORD_MIN_LENGTH,
+    PASSWORD_MAX_LENGTH,
+    EMAIL_MAX_LENGTH,
+    CHAT_MAX_LENGTH
 };

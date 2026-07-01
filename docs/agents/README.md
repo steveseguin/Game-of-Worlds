@@ -32,6 +32,7 @@ Primary live runtime files:
 - [Turn Engine](gameplay/turn-engine.md)
 - [CI/CD And Deploy](operations/ci-cd.md)
 - [Risk Register](reviews/risk-register.md)
+- [Security Review Notes](reviews/security-review.md)
 
 ## Maintenance Rules
 

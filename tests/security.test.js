@@ -15,13 +15,27 @@ test('validateUsername accepts and rejects expected handles', () => {
     assert.match(invalid.error, /letters/i);
 });
 
-test('validatePassword enforces minimum length', () => {
-    const weak = security.validatePassword('12345');
+test('validatePassword enforces length and complexity', () => {
+    const weak = security.validatePassword('1234567');
     assert.equal(weak.valid, false);
-    assert.match(weak.error, /at least 6/i);
+    assert.match(weak.error, /at least 8/i);
 
-    const acceptable = security.validatePassword('fleet12');
+    const noNumber = security.validatePassword('fleetfleet');
+    assert.equal(noNumber.valid, false);
+    assert.match(noNumber.error, /letter and one number/i);
+
+    const tooLong = security.validatePassword(`Fleet${'1'.repeat(124)}`);
+    assert.equal(tooLong.valid, false);
+    assert.match(tooLong.error, /128/i);
+
+    const acceptable = security.validatePassword('fleet123');
     assert.deepEqual(acceptable, { valid: true });
+});
+
+test('validatePasswordInput accepts legacy login shapes but caps size', () => {
+    assert.deepEqual(security.validatePasswordInput('legacy'), { valid: true });
+    assert.equal(security.validatePasswordInput('').valid, false);
+    assert.equal(security.validatePasswordInput('x'.repeat(129)).valid, false);
 });
 
 test('validateEmail reports missing or malformed addresses', () => {
@@ -33,7 +47,17 @@ test('validateEmail reports missing or malformed addresses', () => {
     assert.equal(malformed.valid, false);
     assert.match(malformed.error, /invalid/i);
 
+    const tooLong = security.validateEmail(`${'a'.repeat(245)}@example.com`);
+    assert.equal(tooLong.valid, false);
+    assert.match(tooLong.error, /254/i);
+
     assert.deepEqual(security.validateEmail('commander@example.com'), { valid: true });
+});
+
+test('normalizeChatMessage strips controls, collapses whitespace, and caps length', () => {
+    assert.equal(security.normalizeChatMessage('  hello\n\tfleet\u0000<script>  '), 'hello fleet <script>');
+    assert.equal(security.normalizeChatMessage('x'.repeat(600)).length, security.CHAT_MAX_LENGTH);
+    assert.equal(security.normalizeChatMessage(null), '');
 });
 
 test('session tokens are signed and verified correctly', () => {

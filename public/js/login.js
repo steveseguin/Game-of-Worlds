@@ -122,9 +122,10 @@ const LoginSystem = (function() {
     function persistAuth(data) {
         const isGuest = data.isGuest === true || data.isGuest === 1 || data.isGuest === '1';
         const maxAge = isGuest ? 60 * 60 * 24 * 30 : 60 * 60 * 24;
+        const cookieAttributes = `path=/; max-age=${maxAge}; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
 
-        document.cookie = `userId=${data.userId}; path=/; max-age=${maxAge}`;
-        document.cookie = `tempKey=${data.tempKey}; path=/; max-age=${maxAge}`;
+        document.cookie = `userId=${encodeURIComponent(data.userId)}; ${cookieAttributes}`;
+        document.cookie = `tempKey=${encodeURIComponent(data.tempKey)}; ${cookieAttributes}`;
 
         localStorage.setItem('userId', data.userId);
         localStorage.setItem('username', data.username || '');
@@ -247,6 +248,11 @@ const LoginSystem = (function() {
             errorEl.textContent = 'Passwords do not match';
             return;
         }
+
+        if (!isStrongEnoughPassword(password)) {
+            errorEl.textContent = 'Password must be 8-128 characters and include at least one letter and one number';
+            return;
+        }
         
         // Send registration request to server
         fetch('/register', {
@@ -278,6 +284,14 @@ const LoginSystem = (function() {
         .catch(error => {
             console.error('Registration error:', error);
         });
+    }
+
+    function isStrongEnoughPassword(password) {
+        return typeof password === 'string' &&
+            password.length >= 8 &&
+            password.length <= 128 &&
+            /[A-Za-z]/.test(password) &&
+            /\d/.test(password);
     }
     
     return {

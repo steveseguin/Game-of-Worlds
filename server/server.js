@@ -896,6 +896,13 @@ async function handleLogin(request, response) {
             return;
         }
 
+        const passwordInputValidation = securitySystem.validatePasswordInput(password);
+        if (!passwordInputValidation.valid) {
+            response.writeHead(400, {'Content-Type': 'application/json'});
+            response.end(JSON.stringify({error: 'Invalid username or password'}));
+            return;
+        }
+
         db.query('SELECT * FROM users WHERE username = ?', [username], (err, results) => {
             if (err) {
                 response.writeHead(500, {'Content-Type': 'application/json'});
@@ -1028,7 +1035,10 @@ async function handleRegister(request, response) {
             return;
         }
 
-        const { username, password, email, guestToken } = payload;
+        const username = payload.username;
+        const password = payload.password;
+        const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : payload.email;
+        const guestToken = payload.guestToken;
 
         // Validate input
         const usernameValidation = securitySystem.validateUsername(username);

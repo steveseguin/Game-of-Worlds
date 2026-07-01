@@ -6,6 +6,172 @@
  */
 
 const PaymentValidator = require('./payment-validator');
+const security = require('./security');
+
+const JSON_BODY_LIMIT_BYTES = 16 * 1024;
+const WEBHOOK_BODY_LIMIT_BYTES = 1024 * 1024;
+
+function sendJson(response, statusCode, payload, headers = {}) {
+    response.writeHead(statusCode, {
+        'Content-Type': 'application/json',
+        ...headers
+    });
+    response.end(JSON.stringify(payload));
+}
+
+function parseCookies(cookieHeader) {
+    if (!cookieHeader || typeof cookieHeader !== 'string') {
+        return {};
+    }
+
+    return cookieHeader.split(';').reduce((acc, cookie) => {
+        const separator = cookie.indexOf('=');
+        if (separator === -1) {
+            return acc;
+        }
+        const key = cookie.slice(0, separator).trim();
+        const value = cookie.slice(separator + 1).trim();
+        if (key) {
+            acc[key] = value;
+        }
+        return acc;
+    }, {});
+}
+
+function readJsonBody(request, limitBytes = JSON_BODY_LIMIT_BYTES) {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        let size = 0;
+        let done = false;
+
+        const finish = (err, payload) => {
+            if (done) return;
+            done = true;
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(payload);
+        };
+
+        request.on('data', chunk => {
+            if (done) return;
+            const text = chunk.toString();
+            size += Buffer.byteLength(text, 'utf8');
+            if (size > limitBytes) {
+                const err = new Error(`JSON body exceeds ${limitBytes} bytes`);
+                err.code = 'PAYLOAD_TOO_LARGE';
+                finish(err);
+                return;
+            }
+            body += text;
+        });
+
+        request.on('end', () => {
+            if (done) return;
+            try {
+                finish(null, body ? JSON.parse(body) : {});
+            } catch (err) {
+                err.code = 'INVALID_JSON';
+                finish(err);
+            }
+        });
+
+        request.on('error', finish);
+    });
+}
+
+function readRawBody(request, limitBytes = WEBHOOK_BODY_LIMIT_BYTES) {
+    return new Promise((resolve, reject) => {
+        let body = '';
+        let size = 0;
+        let done = false;
+
+        const finish = (err, payload) => {
+            if (done) return;
+            done = true;
+            if (err) {
+                reject(err);
+                return;
+            }
+            resolve(payload);
+        };
+
+        request.on('data', chunk => {
+            if (done) return;
+            size += Buffer.byteLength(chunk);
+            if (size > limitBytes) {
+                const err = new Error(`Raw body exceeds ${limitBytes} bytes`);
+                err.code = 'PAYLOAD_TOO_LARGE';
+                finish(err);
+                return;
+            }
+            body += chunk.toString('utf8');
+        });
+
+        request.on('end', () => finish(null, body));
+        request.on('error', finish);
+    });
+}
+
+function sendJsonParseError(response, error) {
+    if (error && error.code === 'PAYLOAD_TOO_LARGE') {
+        sendJson(response, 413, { error: 'Request body too large', code: 'PAYLOAD_TOO_LARGE' });
+        return true;
+    }
+
+    if (error && error.code === 'INVALID_JSON') {
+        sendJson(response, 400, { error: 'Invalid request', code: 'INVALID_JSON' });
+        return true;
+    }
+
+    return false;
+}
+
+function authorizeRequestUser(db, request, expectedUserId) {
+    return new Promise(resolve => {
+        const expected = String(expectedUserId || '').trim();
+        if (!/^\d+$/.test(expected)) {
+            resolve({ ok: false, status: 400, error: 'Invalid user ID', code: 'INVALID_USER' });
+            return;
+        }
+
+        const cookies = parseCookies(request.headers && request.headers.cookie);
+        const cookieUserId = String(cookies.userId || '').trim();
+        const tempKey = String(cookies.tempKey || '').trim();
+        if (!/^\d+$/.test(cookieUserId) || !tempKey) {
+            resolve({ ok: false, status: 401, error: 'Authentication required', code: 'AUTH_REQUIRED' });
+            return;
+        }
+
+        if (cookieUserId !== expected) {
+            resolve({ ok: false, status: 403, error: 'Forbidden', code: 'FORBIDDEN' });
+            return;
+        }
+
+        db.query('SELECT tempkey FROM users WHERE id = ? LIMIT 1', [cookieUserId], (err, rows) => {
+            if (err) {
+                resolve({
+                    ok: false,
+                    status: err.code === 'DB_OFFLINE' ? 503 : 500,
+                    error: 'Authentication unavailable',
+                    code: 'AUTH_UNAVAILABLE'
+                });
+                return;
+            }
+
+            const user = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+            if (!user ||
+                !user.tempkey ||
+                !security.timingSafeEqualStrings(String(user.tempkey), tempKey)) {
+                resolve({ ok: false, status: 401, error: 'Authentication required', code: 'AUTH_REQUIRED' });
+                return;
+            }
+
+            resolve({ ok: true, userId: Number(cookieUserId) });
+        });
+    });
+}
 
 class PaymentEndpoints {
     constructor(paymentManager, db) {
@@ -16,225 +182,212 @@ class PaymentEndpoints {
 
     // Create payment intent endpoint
     async handleCreateIntent(request, response) {
-        let body = '';
-        request.on('data', chunk => {
-            body += chunk.toString();
-        });
+        try {
+            const data = await readJsonBody(request);
+            const { userId, productId, metadata } = data;
 
-        request.on('end', async () => {
-            try {
-                const data = JSON.parse(body);
-                const { userId, productId, metadata } = data;
+            const auth = await authorizeRequestUser(this.db, request, userId);
+            if (!auth.ok) {
+                sendJson(response, auth.status, { error: auth.error, code: auth.code });
+                return;
+            }
 
-                // Get IP and user agent for security
-                const ipAddress = request.headers['x-forwarded-for'] || request.connection.remoteAddress;
-                const userAgent = request.headers['user-agent'];
+            // Get IP and user agent for security
+            const ipAddress = request.headers['x-forwarded-for'] || request.connection.remoteAddress;
+            const userAgent = request.headers['user-agent'];
 
-                // Validate request
-                const validation = await this.validator.validatePaymentRequest(userId, productId, metadata);
-                if (!validation.valid) {
-                    response.writeHead(400, {'Content-Type': 'application/json'});
-                    response.end(JSON.stringify({
-                        error: validation.errors.join('. '),
-                        code: 'VALIDATION_ERROR'
-                    }));
-                    return;
-                }
+            // Validate request
+            const validation = await this.validator.validatePaymentRequest(userId, productId, metadata);
+            if (!validation.valid) {
+                sendJson(response, 400, {
+                    error: validation.errors.join('. '),
+                    code: 'VALIDATION_ERROR'
+                });
+                return;
+            }
 
-                // Log payment attempt
-                await this.validator.logPaymentAttempt(userId, productId, 'initiated', {
+            // Log payment attempt
+            await this.validator.logPaymentAttempt(userId, productId, 'initiated', {
+                ipAddress,
+                userAgent,
+                metadata
+            });
+
+            // Create idempotency key
+            const idempotencyKey = this.validator.generateIdempotencyKey(
+                userId,
+                productId,
+                Date.now()
+            );
+
+            // Create payment intent with idempotency
+            const result = await this.paymentManager.createPaymentIntent(
+                userId,
+                productId,
+                {
+                    ...metadata,
                     ipAddress,
                     userAgent,
-                    metadata
-                });
-
-                // Create idempotency key
-                const idempotencyKey = this.validator.generateIdempotencyKey(
-                    userId,
-                    productId,
-                    Date.now()
-                );
-
-                // Create payment intent with idempotency
-                const result = await this.paymentManager.createPaymentIntent(
-                    userId,
-                    productId,
-                    {
-                        ...metadata,
-                        ipAddress,
-                        userAgent,
-                        idempotencyKey
-                    }
-                );
-
-                response.writeHead(200, {
-                    'Content-Type': 'application/json',
-                    'X-Idempotency-Key': idempotencyKey
-                });
-                response.end(JSON.stringify(result));
-
-            } catch (error) {
-                console.error('Payment intent error:', error);
-
-                // Determine error type and response
-                let statusCode = 500;
-                let errorResponse = {
-                    error: 'Payment processing failed',
-                    code: 'INTERNAL_ERROR'
-                };
-
-                if (error.message.includes('rate limit')) {
-                    statusCode = 429;
-                    errorResponse = {
-                        error: 'Too many requests. Please try again later.',
-                        code: 'RATE_LIMIT',
-                        retryAfter: 300
-                    };
-                } else if (error.message.includes('Invalid')) {
-                    statusCode = 400;
-                    errorResponse = {
-                        error: error.message,
-                        code: 'INVALID_REQUEST'
-                    };
+                    idempotencyKey
                 }
+            );
 
-                response.writeHead(statusCode, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify(errorResponse));
+            sendJson(response, 200, result, {
+                'X-Idempotency-Key': idempotencyKey
+            });
+        } catch (error) {
+            if (sendJsonParseError(response, error)) {
+                return;
             }
-        });
+            console.error('Payment intent error:', error);
+
+            // Determine error type and response
+            let statusCode = 500;
+            let errorResponse = {
+                error: 'Payment processing failed',
+                code: 'INTERNAL_ERROR'
+            };
+
+            if (error.message.includes('rate limit')) {
+                statusCode = 429;
+                errorResponse = {
+                    error: 'Too many requests. Please try again later.',
+                    code: 'RATE_LIMIT',
+                    retryAfter: 300
+                };
+            } else if (error.message.includes('Invalid')) {
+                statusCode = 400;
+                errorResponse = {
+                    error: error.message,
+                    code: 'INVALID_REQUEST'
+                };
+            }
+
+            sendJson(response, statusCode, errorResponse);
+        }
     }
 
     // Handle subscription creation
     async handleCreateSubscription(request, response) {
-        let body = '';
-        request.on('data', chunk => {
-            body += chunk.toString();
-        });
+        try {
+            const data = await readJsonBody(request);
+            const { userId, productId, paymentMethodId } = data;
 
-        request.on('end', async () => {
-            try {
-                const data = JSON.parse(body);
-                const { userId, productId, paymentMethodId } = data;
-
-                // Additional validation for subscriptions
-                const existingSubscription = await this.checkExistingSubscription(userId, productId);
-                if (existingSubscription) {
-                    response.writeHead(400, {'Content-Type': 'application/json'});
-                    response.end(JSON.stringify({
-                        error: 'You already have an active subscription of this type',
-                        code: 'DUPLICATE_SUBSCRIPTION'
-                    }));
-                    return;
-                }
-
-                // Create subscription
-                const result = await this.paymentManager.createSubscription(
-                    userId,
-                    productId,
-                    paymentMethodId
-                );
-
-                response.writeHead(200, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify(result));
-
-            } catch (error) {
-                console.error('Subscription error:', error);
-                response.writeHead(500, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify({
-                    error: error.message,
-                    code: 'SUBSCRIPTION_ERROR'
-                }));
+            const auth = await authorizeRequestUser(this.db, request, userId);
+            if (!auth.ok) {
+                sendJson(response, auth.status, { error: auth.error, code: auth.code });
+                return;
             }
-        });
+
+            // Additional validation for subscriptions
+            const existingSubscription = await this.checkExistingSubscription(userId, productId);
+            if (existingSubscription) {
+                sendJson(response, 400, {
+                    error: 'You already have an active subscription of this type',
+                    code: 'DUPLICATE_SUBSCRIPTION'
+                });
+                return;
+            }
+
+            // Create subscription
+            const result = await this.paymentManager.createSubscription(
+                userId,
+                productId,
+                paymentMethodId
+            );
+
+            sendJson(response, 200, result);
+        } catch (error) {
+            if (sendJsonParseError(response, error)) {
+                return;
+            }
+            console.error('Subscription error:', error);
+            sendJson(response, 500, {
+                error: error.message,
+                code: 'SUBSCRIPTION_ERROR'
+            });
+        }
     }
 
     // Handle Stripe webhooks with enhanced security
     async handleWebhook(request, response) {
-        let rawBody = '';
+        try {
+            const rawBody = await readRawBody(request);
+            const signature = request.headers['stripe-signature'];
 
-        // Collect raw body for signature verification
-        request.on('data', chunk => {
-            rawBody += chunk.toString('utf8');
-        });
-
-        request.on('end', async () => {
-            try {
-                const signature = request.headers['stripe-signature'];
-
-                if (!signature) {
-                    response.writeHead(400, {'Content-Type': 'application/json'});
-                    response.end(JSON.stringify({error: 'Missing stripe signature'}));
-                    return;
-                }
-
-                // Process webhook
-                await this.paymentManager.handleWebhook(rawBody, signature);
-
-                // Always return 200 to acknowledge receipt
-                response.writeHead(200, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify({received: true}));
-
-            } catch (error) {
-                console.error('Webhook error:', error);
-
-                // Still return 200 to prevent retries for signature failures
-                response.writeHead(200, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify({
-                    received: false,
-                    error: error.message
-                }));
+            if (!signature) {
+                sendJson(response, 400, { error: 'Missing stripe signature' });
+                return;
             }
-        });
+
+            // Process webhook
+            await this.paymentManager.handleWebhook(rawBody, signature);
+
+            // Always return 200 to acknowledge receipt
+            sendJson(response, 200, { received: true });
+
+        } catch (error) {
+            if (sendJsonParseError(response, error)) {
+                return;
+            }
+            console.error('Webhook error:', error);
+
+            // Still return 200 to prevent retries for signature failures
+            sendJson(response, 200, {
+                received: false,
+                error: error.message
+            });
+        }
     }
 
     async handleConfirmTestPayment(request, response) {
-        let body = '';
-        request.on('data', chunk => {
-            body += chunk.toString();
-        });
+        try {
+            const data = await readJsonBody(request);
+            const { userId, paymentIntentId } = data;
 
-        request.on('end', async () => {
-            try {
-                const data = JSON.parse(body || '{}');
-                const { userId, paymentIntentId } = data;
-
-                if (!userId || !paymentIntentId) {
-                    response.writeHead(400, {'Content-Type': 'application/json'});
-                    response.end(JSON.stringify({
-                        error: 'Missing userId or paymentIntentId',
-                        code: 'INVALID_REQUEST'
-                    }));
-                    return;
-                }
-
-                const result = await this.paymentManager.confirmTestPayment(userId, paymentIntentId);
-                response.writeHead(200, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify(result));
-            } catch (error) {
-                console.error('Test payment confirmation error:', error);
-                response.writeHead(400, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify({
-                    error: error.message || 'Payment confirmation failed',
-                    code: 'CONFIRMATION_ERROR'
-                }));
+            if (!userId || !paymentIntentId) {
+                sendJson(response, 400, {
+                    error: 'Missing userId or paymentIntentId',
+                    code: 'INVALID_REQUEST'
+                });
+                return;
             }
-        });
+
+            const auth = await authorizeRequestUser(this.db, request, userId);
+            if (!auth.ok) {
+                sendJson(response, auth.status, { error: auth.error, code: auth.code });
+                return;
+            }
+
+            const result = await this.paymentManager.confirmTestPayment(userId, paymentIntentId);
+            sendJson(response, 200, result);
+        } catch (error) {
+            if (sendJsonParseError(response, error)) {
+                return;
+            }
+            console.error('Test payment confirmation error:', error);
+            sendJson(response, 400, {
+                error: error.message || 'Payment confirmation failed',
+                code: 'CONFIRMATION_ERROR'
+            });
+        }
     }
 
     // Handle crystal spending with transaction safety
     async handleSpendCrystals(request, response) {
-        let body = '';
-        request.on('data', chunk => {
-            body += chunk.toString();
-        });
+        try {
+            const data = await readJsonBody(request);
+            const { userId, itemId } = data;
 
-        request.on('end', async () => {
+            const auth = await authorizeRequestUser(this.db, request, userId);
+            if (!auth.ok) {
+                sendJson(response, auth.status, { error: auth.error, code: auth.code });
+                return;
+            }
+
             const connection = await this.getDbConnection();
 
             try {
-                const data = JSON.parse(body);
-                const { userId, itemId } = data;
-
                 // Start transaction
                 await this.beginTransaction(connection);
 
@@ -248,8 +401,7 @@ class PaymentEndpoints {
                 // Commit transaction
                 await this.commitTransaction(connection);
 
-                response.writeHead(200, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify(result));
+                sendJson(response, 200, result);
 
             } catch (error) {
                 // Rollback on error
@@ -267,13 +419,21 @@ class PaymentEndpoints {
                     errorResponse.code = 'INSUFFICIENT_BALANCE';
                 }
 
-                response.writeHead(statusCode, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify(errorResponse));
+                sendJson(response, statusCode, errorResponse);
 
             } finally {
                 connection.release();
             }
-        });
+        } catch (error) {
+            if (sendJsonParseError(response, error)) {
+                return;
+            }
+            console.error('Crystal spending request error:', error);
+            sendJson(response, 400, {
+                error: error.message || 'Spending request failed',
+                code: 'SPENDING_ERROR'
+            });
+        }
     }
 
     // Get user balance

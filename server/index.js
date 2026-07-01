@@ -96,6 +96,9 @@ const DB_CONFIG = {
 const DB_POOL_SIZE = parsePoolSize(process.env.DB_POOL_SIZE);
 const USE_MOCK_DB = /^(true|1|yes)$/i.test((process.env.USE_MOCK_DB || '').trim());
 const TEST_GAME_MODE_ENABLED = /^(true|1|yes)$/i.test((process.env.ENABLE_TEST_GAME_MODE || '').trim()) || process.env.NODE_ENV === 'test';
+const MAX_WEBSOCKET_MESSAGE_BYTES = 4096;
+const CHAT_RATE_LIMIT_MAX = 20;
+const CHAT_RATE_LIMIT_WINDOW_MS = 10000;
 
 function readDeployInfo() {
     try {
@@ -169,6 +172,118 @@ function sendMethodNotAllowed(response, allowedMethods, method = 'GET') {
         return;
     }
     response.end(body);
+}
+
+function parseCookies(cookieHeader) {
+    if (!cookieHeader || typeof cookieHeader !== 'string') {
+        return {};
+    }
+
+    return cookieHeader.split(';').reduce((acc, cookie) => {
+        const separator = cookie.indexOf('=');
+        if (separator === -1) {
+            return acc;
+        }
+        const key = cookie.slice(0, separator).trim();
+        const value = cookie.slice(separator + 1).trim();
+        if (key) {
+            acc[key] = value;
+        }
+        return acc;
+    }, {});
+}
+
+function sendAuthError(response, statusCode, message) {
+    sendJson(response, statusCode, { error: message });
+}
+
+function authorizeHttpUser(request, response, expectedUserId, callback) {
+    const cookies = parseCookies(request.headers.cookie);
+    const cookieUserId = String(cookies.userId || '').trim();
+    const tempKey = String(cookies.tempKey || '').trim();
+    const expected = expectedUserId === null || expectedUserId === undefined
+        ? null
+        : String(expectedUserId).trim();
+
+    if (!/^\d+$/.test(cookieUserId) || !tempKey) {
+        sendAuthError(response, 401, 'Authentication required');
+        return;
+    }
+
+    if (expected && cookieUserId !== expected) {
+        sendAuthError(response, 403, 'Forbidden');
+        return;
+    }
+
+    db.query('SELECT tempkey FROM users WHERE id = ? LIMIT 1', [cookieUserId], (err, results) => {
+        if (err) {
+            sendAuthError(response, err.code === 'DB_OFFLINE' ? 503 : 500, 'Authentication unavailable');
+            return;
+        }
+
+        const user = Array.isArray(results) && results.length > 0 ? results[0] : null;
+        if (!user ||
+            !user.tempkey ||
+            !security.timingSafeEqualStrings(String(user.tempkey), tempKey)) {
+            sendAuthError(response, 401, 'Authentication required');
+            return;
+        }
+
+        callback({ userId: Number(cookieUserId) });
+    });
+}
+
+function authorizeGameMember(request, response, gameId, callback) {
+    const parsedGameId = Number.parseInt(gameId, 10);
+    if (!Number.isSafeInteger(parsedGameId) || parsedGameId <= 0) {
+        sendJson(response, 400, { error: 'Invalid game ID' });
+        return;
+    }
+
+    authorizeHttpUser(request, response, null, auth => {
+        db.query(`SELECT userid FROM players${parsedGameId} WHERE userid = ? LIMIT 1`, [auth.userId], (err, rows) => {
+            if (err) {
+                if (err.code === 'ER_NO_SUCH_TABLE') {
+                    sendJson(response, 404, { error: 'Game not found' });
+                    return;
+                }
+                sendJson(response, err.code === 'DB_OFFLINE' ? 503 : 500, { error: 'Authorization unavailable' });
+                return;
+            }
+
+            if (!Array.isArray(rows) || rows.length === 0) {
+                sendAuthError(response, 403, 'Forbidden');
+                return;
+            }
+
+            callback(auth);
+        });
+    });
+}
+
+function handleChatMessage(connection, rawMessage) {
+    if (!connection.gameid) {
+        return;
+    }
+
+    const chatText = security.normalizeChatMessage(rawMessage);
+    if (!chatText) {
+        return;
+    }
+
+    const rateLimit = security.checkRateLimit(
+        String(connection.name || connection.remoteAddress || 'unknown'),
+        'chat',
+        CHAT_RATE_LIMIT_MAX,
+        CHAT_RATE_LIMIT_WINDOW_MS
+    );
+
+    if (!rateLimit.allowed) {
+        connection.sendUTF(`Error: Chat rate limit exceeded. Try again in ${rateLimit.resetIn}s.`);
+        return;
+    }
+
+    broadcastToGame(connection, `Player ${connection.name} says: ${chatText}`);
 }
 
 function buildPoolConfig() {
@@ -423,41 +538,53 @@ const httpServer = http.createServer((request, response) => {
     // Handle balance query
     const balanceMatch = pathname.match(/^\/api\/user\/(\d+)\/balance$/);
     if (balanceMatch && request.method === 'GET') {
-        serverLogic.handleGetBalance(request, response, balanceMatch[1]);
+        authorizeHttpUser(request, response, balanceMatch[1], () => {
+            serverLogic.handleGetBalance(request, response, balanceMatch[1]);
+        });
         return;
     }
     
     // Handle owned items query
     const ownedMatch = pathname.match(/^\/api\/user\/(\d+)\/owned-items$/);
     if (ownedMatch && request.method === 'GET') {
-        serverLogic.handleGetOwnedItems(request, response, ownedMatch[1]);
+        authorizeHttpUser(request, response, ownedMatch[1], () => {
+            serverLogic.handleGetOwnedItems(request, response, ownedMatch[1]);
+        });
         return;
     }
     
     // Handle purchase history query
     const historyMatch = pathname.match(/^\/api\/user\/(\d+)\/purchase-history$/);
     if (historyMatch && request.method === 'GET') {
-        serverLogic.handleGetPurchaseHistory(request, response, historyMatch[1]);
+        authorizeHttpUser(request, response, historyMatch[1], () => {
+            serverLogic.handleGetPurchaseHistory(request, response, historyMatch[1]);
+        });
         return;
     }
 
     // Handle active game query
     const currentGameMatch = pathname.match(/^\/api\/user\/(\d+)\/current-game$/);
     if (currentGameMatch && request.method === 'GET') {
-        serverLogic.handleGetCurrentGame(request, response, currentGameMatch[1]);
+        authorizeHttpUser(request, response, currentGameMatch[1], () => {
+            serverLogic.handleGetCurrentGame(request, response, currentGameMatch[1]);
+        });
         return;
     }
 
     // Handle live combat telemetry query
     const combatTelemetryMatch = pathname.match(/^\/api\/game\/(\d+)\/combat-telemetry$/);
     if (combatTelemetryMatch && request.method === 'GET') {
-        serverLogic.handleGetCombatTelemetry(request, response, combatTelemetryMatch[1]);
+        authorizeGameMember(request, response, combatTelemetryMatch[1], () => {
+            serverLogic.handleGetCombatTelemetry(request, response, combatTelemetryMatch[1]);
+        });
         return;
     }
 
     const testMapTerrainMatch = pathname.match(/^\/api\/game\/(\d+)\/test-map-terrain$/);
     if (testMapTerrainMatch && request.method === 'GET') {
-        serverLogic.handleGetTestMapTerrain(request, response, testMapTerrainMatch[1]);
+        authorizeGameMember(request, response, testMapTerrainMatch[1], () => {
+            serverLogic.handleGetTestMapTerrain(request, response, testMapTerrainMatch[1]);
+        });
         return;
     }
     
@@ -659,7 +786,13 @@ wsServer.on('request', request => {
             return;
         }
         
-        const data = message.utf8Data;
+        const data = String(message.utf8Data || '');
+        if (Buffer.byteLength(data, 'utf8') > MAX_WEBSOCKET_MESSAGE_BYTES) {
+            console.log(`Rejected oversized WebSocket message from ${connection.remoteAddress}`);
+            connection.sendUTF('Error: Message too large');
+            return;
+        }
+
         console.log(`Incoming message: ${data}`);
         
         // Handle authentication
@@ -678,7 +811,7 @@ wsServer.on('request', request => {
             handleCommand(data, connection);
         } else {
             // Regular chat message
-            broadcastToGame(connection, `Player ${connection.name} says: ${data}`);
+            handleChatMessage(connection, data);
         }
     });
     

@@ -9,7 +9,17 @@ const NotificationSystem = (function() {
     let container = null;
     let activeNotifications = [];
     let notificationId = 0;
-    
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+    }
+
     // Initialize notification system
     function initialize() {
         // Create notification container
@@ -271,8 +281,8 @@ const NotificationSystem = (function() {
         notification.innerHTML = `
             <div class="notification-icon">${icons[type]}</div>
             <div class="notification-content">
-                ${title ? `<div class="notification-title">${title}</div>` : ''}
-                <div class="notification-message">${message}</div>
+                ${title ? `<div class="notification-title">${escapeHtml(title)}</div>` : ''}
+                <div class="notification-message">${escapeHtml(message)}</div>
             </div>
             <button class="notification-close" onclick="NotificationSystem.remove(${id})">×</button>
             ${duration > 0 ? '<div class="notification-progress"><div class="notification-progress-bar"></div></div>' : ''}
@@ -321,8 +331,8 @@ const NotificationSystem = (function() {
         loader.className = 'loading-indicator';
         loader.innerHTML = `
             <div class="loading-spinner"></div>
-            <div class="loading-text">${text}</div>
-            ${subtext ? `<div class="loading-subtext">${subtext}</div>` : ''}
+            <div class="loading-text">${escapeHtml(text)}</div>
+            ${subtext ? `<div class="loading-subtext">${escapeHtml(subtext)}</div>` : ''}
         `;
         
         document.body.appendChild(loader);
@@ -344,8 +354,8 @@ const NotificationSystem = (function() {
         const modal = document.createElement('div');
         modal.className = 'confirm-modal';
         modal.innerHTML = `
-            <h3>${title}</h3>
-            <div class="confirm-modal-content">${message}</div>
+            <h3>${escapeHtml(title)}</h3>
+            <div class="confirm-modal-content">${escapeHtml(message)}</div>
             <div class="confirm-modal-buttons">
                 <button class="btn-cancel">Cancel</button>
                 <button class="btn-confirm">Confirm</button>
@@ -409,7 +419,7 @@ const NotificationSystem = (function() {
         const modalEl = document.createElement('div');
         modalEl.className = 'confirm-modal';
         modalEl.innerHTML = `
-            <h3>${title}</h3>
+            <h3>${escapeHtml(title)}</h3>
             <div class="confirm-modal-content">${bodyHtml}</div>
         `;
         const buttons = document.createElement('div');

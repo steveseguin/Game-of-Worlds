@@ -57,17 +57,21 @@ All auth endpoints accept JSON request bodies capped at 16 KB.
 | --- | --- | --- | --- | --- |
 | `POST` | `/login` | `handleLogin` | `{ "username": "...", "password": "..." }` | `{ success, userId, username, tempKey, isGuest }` |
 | `POST` | `/guest-login` | `handleGuestLogin` | `{ "guestToken"?: "...", "username"?: "..." }` | `{ success, userId, username, tempKey, guestToken, isGuest: true }` |
-| `POST` | `/register` | `handleRegister` | `{ "username": "...", "password": "...", "email": "...", "guestToken"?: "..." }` | Creates or upgrades a guest user. |
+| `POST` | `/register` | `handleRegister` | `{ "username": "...", "password": "...", "email": "...", "guestToken"?: "..." }` | Creates or upgrades a guest user. Passwords must be 8-128 chars with at least one letter and one number. |
 
 `tempKey` is the short-lived credential the browser uses in the first WebSocket message: `//auth:<userId>:<tempKey>`.
 
 ## User And Game Query Endpoints
+
+These endpoints require `userId` and `tempKey` cookies matching `users.tempkey`.
 
 | Method | Path | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/api/user/:id/current-game` | `handleGetCurrentGame` | Returns `{ userId, currentGame }`; this is the HTTP reconnect pointer, not the WebSocket `currentgame::` snapshot. |
 | `GET` | `/api/game/:id/combat-telemetry` | `handleGetCombatTelemetry` | Recent battle/ship telemetry for the game. |
 | `GET` | `/api/game/:id/test-map-terrain` | `handleGetTestMapTerrain` | Test-only terrain output. Returns `404` unless `NODE_ENV=test`. |
+
+User-scoped routes require the cookie `userId` to match the `:id` path segment. Game-scoped routes additionally require the authenticated user to be seated in the game's `playersN` table.
 
 `/api/game/:id/combat-telemetry` is in-memory runtime telemetry, not persisted battle history. Empty games return `{ gameId, battles: 0, updatedAt: null, recentBattles: [], players: [] }`.
 
@@ -76,6 +80,7 @@ All auth endpoints accept JSON request bodies capped at 16 KB.
 ## Payment Endpoints
 
 Payment handlers are routed through `server/lib/payment-endpoints.js` and return `503` when payment manager setup is unavailable.
+All payment endpoints except `/api/payment/webhook` require the caller's `userId`/`tempKey` cookies to match the requested body or path `userId`. JSON payment bodies are capped at 16 KB. The webhook is authenticated by Stripe signature and caps raw body size at 1 MB.
 
 | Method | Path |
 | --- | --- |

@@ -1602,19 +1602,19 @@ function showCombatReportModal(report) {
     const survivors = report.survivors || {};
 
     const body = `
-        <div style="margin-bottom:8px;font-weight:600;">Sector ${report.sector || '?'}</div>
-        <div style="margin-bottom:6px;">Winner: <strong>${winnerLabel}</strong></div>
+        <div style="margin-bottom:8px;font-weight:600;">Sector ${escapeHtml(report.sector || '?')}</div>
+        <div style="margin-bottom:6px;">Winner: <strong>${escapeHtml(winnerLabel)}</strong></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:10px;">
             <div style="background:rgba(255,255,255,0.04);padding:8px;border-radius:8px;">
-                <div style="font-weight:600;margin-bottom:4px;">${attackerLabel}</div>
+                <div style="font-weight:600;margin-bottom:4px;">${escapeHtml(attackerLabel)}</div>
                 <div>Remaining: ${formatShipSummary(survivors.attacker)}</div>
             </div>
             <div style="background:rgba(255,255,255,0.04);padding:8px;border-radius:8px;">
-                <div style="font-weight:600;margin-bottom:4px;">${defenderLabel}</div>
+                <div style="font-weight:600;margin-bottom:4px;">${escapeHtml(defenderLabel)}</div>
                 <div>Remaining: ${formatShipSummary(survivors.defender)}</div>
             </div>
         </div>
-        ${summary.length ? `<ul style="margin:0 0 6px 18px; padding:0;">${summary.map(s => `<li>${s}</li>`).join('')}</ul>` : '<div style="opacity:0.7;">No additional details.</div>'}
+        ${summary.length ? `<ul style="margin:0 0 6px 18px; padding:0;">${summary.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul>` : '<div style="opacity:0.7;">No additional details.</div>'}
     `;
 
     const actions = [

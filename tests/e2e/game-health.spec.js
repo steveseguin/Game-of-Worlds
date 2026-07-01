@@ -211,7 +211,7 @@ test.describe('Game Health Checks', () => {
 
     test('API endpoints return valid responses', async ({ page }) => {
         const username = uniqueId('api_');
-        const password = 'Api123!';
+        const password = 'Api12345!';
         const email = `${username}@example.com`;
 
         // Register to get a user ID

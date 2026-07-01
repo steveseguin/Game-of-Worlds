@@ -23,9 +23,22 @@ function isTruthy(value) {
     return /^(true|1|yes)$/i.test(String(value || '').trim());
 }
 
-function request(pathname, method = 'GET') {
+function request(pathname, method = 'GET', options = {}) {
     return new Promise((resolve, reject) => {
-        const req = http.request(`${BASE_URL}${pathname}`, { method }, response => {
+        const body = options.body === undefined
+            ? null
+            : (typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+        const headers = {
+            ...(options.headers || {})
+        };
+        if (body !== null && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
+        if (body !== null && !headers['Content-Length']) {
+            headers['Content-Length'] = Buffer.byteLength(body, 'utf8');
+        }
+
+        const req = http.request(`${BASE_URL}${pathname}`, { method, headers }, response => {
             let body = '';
             response.setEncoding('utf8');
             response.on('data', chunk => {
@@ -43,6 +56,9 @@ function request(pathname, method = 'GET') {
         req.setTimeout(2500, () => {
             req.destroy(new Error(`Timed out requesting ${method} ${pathname}`));
         });
+        if (body !== null) {
+            req.write(body);
+        }
         req.end();
     });
 }
@@ -184,6 +200,54 @@ async function runMockServerSmoke() {
         const staticPost = await request('/landing.html', 'POST');
         assert.equal(staticPost.statusCode, 405);
         assert.equal(staticPost.headers.allow, 'GET, HEAD');
+
+        const username = `sec${PORT}`;
+        const registration = await request('/register', 'POST', {
+            body: {
+                username,
+                email: `${username}@example.com`,
+                password: 'Secure123'
+            }
+        });
+        assert.equal(registration.statusCode, 200);
+        const registered = JSON.parse(registration.body);
+        assert.equal(registered.success, true);
+        assert.ok(registered.userId);
+        assert.match(registered.tempKey, /^[a-f0-9]{64}$/);
+
+        const currentGameUnauth = await request(`/api/user/${registered.userId}/current-game`);
+        assert.equal(currentGameUnauth.statusCode, 401);
+
+        const currentGameMismatch = await request(`/api/user/${registered.userId}/current-game`, 'GET', {
+            headers: {
+                Cookie: `userId=${Number(registered.userId) + 1}; tempKey=${registered.tempKey}`
+            }
+        });
+        assert.equal(currentGameMismatch.statusCode, 403);
+
+        const authCookie = `userId=${registered.userId}; tempKey=${registered.tempKey}`;
+        const currentGameAuth = await request(`/api/user/${registered.userId}/current-game`, 'GET', {
+            headers: { Cookie: authCookie }
+        });
+        assert.equal(currentGameAuth.statusCode, 200);
+        assert.deepEqual(JSON.parse(currentGameAuth.body), {
+            userId: registered.userId,
+            currentGame: null
+        });
+
+        const balanceUnauth = await request(`/api/user/${registered.userId}/balance`);
+        assert.equal(balanceUnauth.statusCode, 401);
+
+        const paymentSpendUnauth = await request('/api/payment/spend-crystals', 'POST', {
+            body: {
+                userId: registered.userId,
+                itemId: 'small-resource-pack'
+            }
+        });
+        assert.equal(paymentSpendUnauth.statusCode, 401);
+
+        const telemetryUnauth = await request('/api/game/1/combat-telemetry');
+        assert.equal(telemetryUnauth.statusCode, 401);
 
         console.log(`Mock integration smoke passed at ${BASE_URL}`);
     } catch (error) {
