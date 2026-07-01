@@ -731,11 +731,22 @@ function ensurePlayerTableColumns(gameId, callback) {
     ensureNext();
 }
 
+function clearBattlePauseRuntime(gameId) {
+    const pause = gameState.battlePause && gameState.battlePause[gameId];
+    if (pause && pause.timer) {
+        clearTimeout(pause.timer);
+    }
+    if (gameState.battlePause) {
+        delete gameState.battlePause[gameId];
+    }
+}
+
 function stopGameRuntime(gameId) {
     if (gameState.gameTimer[gameId]) {
         clearInterval(gameState.gameTimer[gameId]);
         delete gameState.gameTimer[gameId];
     }
+    clearBattlePauseRuntime(gameId);
     delete gameState.turns[gameId];
     delete gameState.activeGames[gameId];
 }

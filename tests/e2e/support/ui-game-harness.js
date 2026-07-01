@@ -293,7 +293,14 @@ async function clickEndTurnIfAvailable(page) {
     if (await isGameOverVisible(page)) {
         return;
     }
-    await button.click({ timeout: 5000 });
+    try {
+        await button.click({ timeout: 5000 });
+    } catch (error) {
+        if (await isGameOverVisible(page)) {
+            return;
+        }
+        throw error;
+    }
 }
 
 async function endTurnAll(pages, count = 1) {

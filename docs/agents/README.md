@@ -26,6 +26,7 @@ Primary live runtime files:
 - [Gameplay Mechanics](gameplay/mechanics.md)
 - [Movement Flow](gameplay/movement-flow.md)
 - [State Model](gameplay/state-model.md)
+- [Turn Resolution Flow](gameplay/turn-resolution-flow.md)
 - [User Journey](gameplay/user-journey.md)
 - [Turn Engine](gameplay/turn-engine.md)
 - [CI/CD And Deploy](operations/ci-cd.md)

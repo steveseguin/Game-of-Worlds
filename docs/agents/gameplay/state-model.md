@@ -24,7 +24,7 @@ const gameState = {
 | `gameTimer` | Turn engine | Game id -> interval handle. |
 | `turns` | Turn engine | Game id -> current turn number. |
 | `activeGames` | Lobby/turn engine | Runtime metadata: mode, status, creator, AI profiles, standing orders, readiness, map size. |
-| `battlePause` | Combat/turn engine | Game id -> pause timer while battle playback is shown. |
+| `battlePause` | Combat/turn engine | Game id -> pause timer while battle playback is shown. Must be cleared on completed or abandoned games. |
 
 Runtime state is reconstructed on process start by `resumeActiveGamesFromDatabase()`, which loads started games and restarts turn timers when human players remain.
 
@@ -80,7 +80,7 @@ stateDiagram-v2
 - Dynamic table names must only use server-validated numeric game ids.
 - `users.currentgame` and `connection.gameid` should agree after join/reconnect and be cleared on leave/abandon where possible.
 - A game timer should exist for each active started game, except during shutdown or immediate abandonment.
-- Battle playback pauses the turn clock by using `battlePause`; do not advance turns while `isBattlePauseActive(gameId)` is true.
+- Battle playback pauses the turn clock by using `battlePause`; do not advance turns while `isBattlePauseActive(gameId)` is true, and terminal cleanup must clear both the pause timeout and the map entry.
 - Fog-of-war writes to `explored_sectors<gameId>` and should prevent hidden sectors from leaking through `sector::` or `mapstate::`.
 - Production `/status.deploy.dirty` should be `false`; a dirty deploy indicates generated/tracked files or wrong checkout state in CI.
 - `activeGames[gameId].turnReady` must be cleared after each processed turn.

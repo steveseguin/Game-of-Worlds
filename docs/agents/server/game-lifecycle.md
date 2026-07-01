@@ -94,11 +94,11 @@ Completed games use `victorySystem.endGame()`:
 5. Update `user_stats`.
 6. Run `cleanupGame()`.
 
-`cleanupGame()` stops the timer, deletes `activeGames[gameId]` and `turns[gameId]`, clears `users.currentgame` for the game, and detaches connected clients from the game. The caller sends `gameover::` before cleanup.
+`cleanupGame()` stops the timer, clears any `battlePause` timeout/entry, deletes `activeGames[gameId]` and `turns[gameId]`, clears `users.currentgame` for the game, and detaches connected clients from the game. The caller sends `gameover::` before cleanup.
 
 Abandoned games use `abandonGame()`:
 
-1. Stop runtime with `stopGameRuntime()`.
+1. Stop runtime with `stopGameRuntime()`; this clears turn timers, battle-pause timers, turns, and active runtime state.
 2. Set `games.status = "abandoned"` and `winner = NULL`.
 3. Clear `users.currentgame`.
 4. Send `gameover::::<reason>` to connected clients in that game.
@@ -108,6 +108,6 @@ Abandoned games use `abandonGame()`:
 
 - Every path that removes a player from an active game should clear `users.currentgame`, `connection.gameid`, and `connection.raceid`.
 - Every path that removes an active player's empire should call `removePlayerEmpire()` or an equivalent cleanup.
-- Terminal game paths must stop timers and delete `activeGames[gameId]`.
+- Terminal game paths must stop timers, clear `battlePause[gameId]`, and delete `activeGames[gameId]`.
 - Reconnect changes must preserve the `clientMap[userId] === connection` close-guard invariant.
 - Any new game-over path should state whether it is completed, abandoned, or a player-only exit.

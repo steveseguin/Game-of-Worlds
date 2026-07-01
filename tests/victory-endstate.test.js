@@ -9,12 +9,18 @@ const techSystem = require('../server/lib/tech');
 const { createMockDatabase } = require('../server/lib/mock-db');
 
 function resetGameState() {
-    const { clients, clientMap, gameTimer, turns, activeGames } = server.gameState;
+    const { clients, clientMap, gameTimer, turns, activeGames, battlePause } = server.gameState;
     clients.length = 0;
     Object.keys(clientMap).forEach(key => delete clientMap[key]);
     Object.keys(gameTimer).forEach(key => {
         clearInterval(gameTimer[key]);
         delete gameTimer[key];
+    });
+    Object.keys(battlePause).forEach(key => {
+        if (battlePause[key] && battlePause[key].timer) {
+            clearTimeout(battlePause[key].timer);
+        }
+        delete battlePause[key];
     });
     Object.keys(turns).forEach(key => delete turns[key]);
     Object.keys(activeGames).forEach(key => delete activeGames[key]);
@@ -248,6 +254,9 @@ test('surrender records a completed game with winner and clears player sessions'
         await joinGame(joiner, gameId);
         await startGame(host);
 
+        server.pauseTurnTimerForBattle(gameId, 5000);
+        assert.ok(server.gameState.battlePause[gameId], 'battle pause exists before completed-game cleanup');
+
         server.handleSurrender(joiner);
         await waitFor(host, message => message.startsWith(`gameover::${hostId}::`));
         await waitFor(joiner, message => message.startsWith(`gameover::${hostId}::`));
@@ -262,6 +271,7 @@ test('surrender records a completed game with winner and clears player sessions'
         assert.equal(db.users.find(row => row.id === hostId).currentgame, null);
         assert.equal(db.users.find(row => row.id === joinerId).currentgame, null);
         assert.equal(server.gameState.gameTimer[gameId], undefined);
+        assert.equal(server.gameState.battlePause[gameId], undefined);
         assert.equal(server.gameState.activeGames[gameId], undefined);
     } finally {
         resetGameState();

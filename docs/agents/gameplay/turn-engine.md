@@ -2,6 +2,8 @@
 
 Primary source: `server/server.js`.
 
+For the detailed code-order map, including async boundaries and terminal cleanup requirements, see `turn-resolution-flow.md`.
+
 ## Start Path
 
 ```mermaid
@@ -39,7 +41,7 @@ High-level turn flow:
 9. Check victory.
 10. Broadcast `newturn::<turn>`.
 
-Important implementation detail: resource generation is currently scheduled through per-player async callbacks, while battle/victory checks continue after the scheduling call. In most gameplay this is acceptable because ownership/combat state changes happen before turn end, but economic-victory/resource timing should be reviewed carefully if changed.
+Important implementation detail: AI, standing orders, income writes, battle resolution, and victory checks are callback/promise-driven and are not one awaited transaction. `newturn::` can be sent before some side effects finish. In most gameplay this is acceptable because clients receive follow-up resource/map/battle messages, but economic-victory/resource/combat timing should be tested carefully if changed.
 
 ## Manual End Turn
 
@@ -70,6 +72,8 @@ Battles are resolved server-side, but playback needs time on clients. The server
 3. Stores `gameState.battlePause[gameId]`.
 4. Suspends turn progression while `isBattlePauseActive(gameId)` is true.
 5. Restarts normal cadence after the pause.
+
+Completed and abandoned games must clear `gameState.battlePause[gameId]` immediately, not wait for the pause timeout to expire.
 
 ## Movement And Arrival
 

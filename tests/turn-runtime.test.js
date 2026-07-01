@@ -7,12 +7,18 @@ const server = require('../server/server');
 const { createMockDatabase } = require('../server/lib/mock-db');
 
 function resetGameState() {
-    const { clients, clientMap, gameTimer, turns, activeGames } = server.gameState;
+    const { clients, clientMap, gameTimer, turns, activeGames, battlePause } = server.gameState;
     clients.length = 0;
     Object.keys(clientMap).forEach(key => delete clientMap[key]);
     Object.keys(gameTimer).forEach(key => {
         clearInterval(gameTimer[key]);
         delete gameTimer[key];
+    });
+    Object.keys(battlePause).forEach(key => {
+        if (battlePause[key] && battlePause[key].timer) {
+            clearTimeout(battlePause[key].timer);
+        }
+        delete battlePause[key];
     });
     Object.keys(turns).forEach(key => delete turns[key]);
     Object.keys(activeGames).forEach(key => delete activeGames[key]);
@@ -225,6 +231,8 @@ test('last human leaving an active solo game abandons it and stops the timer', a
 
         await startGame(host);
         assert.ok(server.gameState.gameTimer[gameId]);
+        server.pauseTurnTimerForBattle(gameId, 5000);
+        assert.ok(server.gameState.battlePause[gameId], 'battle pause exists before abandon cleanup');
 
         server.handleLeaveGame(host);
         await waitFor(host, message => message === 'lobby::');
@@ -237,6 +245,7 @@ test('last human leaving an active solo game abandons it and stops the timer', a
         assert.equal(game.winner, null);
         assert.equal(user.currentgame, null);
         assert.equal(server.gameState.gameTimer[gameId], undefined);
+        assert.equal(server.gameState.battlePause[gameId], undefined);
         assert.equal(server.gameState.activeGames[gameId], undefined);
     } finally {
         resetGameState();

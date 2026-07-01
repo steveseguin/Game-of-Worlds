@@ -472,6 +472,14 @@ function cleanupGame(gameId, gameState, db) {
         delete gameState.gameTimer[gameId];
     }
 
+    const pause = gameState.battlePause && gameState.battlePause[gameId];
+    if (pause && pause.timer) {
+        clearTimeout(pause.timer);
+    }
+    if (gameState.battlePause) {
+        delete gameState.battlePause[gameId];
+    }
+
     // Remove from active games
     delete gameState.activeGames[gameId];
     delete gameState.turns[gameId];
