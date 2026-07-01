@@ -58,8 +58,9 @@ For started games, `sendCurrentGameSnapshot()` calls `restoreStartedGameRuntime(
 flowchart TD
   Create[//creategame] --> GameRow[games row]
   GameRow --> Tables[createGameTables]
-  Tables --> Creator[creator inserted into playersN]
-  Creator --> Join[players/AI join]
+  Tables --> Created[creategame::success::gameId]
+  Created --> HostJoin[creator sends //joingame]
+  HostJoin --> Join[players/AI join]
   Join --> Leave[//leavegame before start]
   Leave --> Empty{no players left?}
   Empty -->|yes| Delete[deleteWaitingGame]
@@ -68,7 +69,9 @@ flowchart TD
   Join --> Start[creator //start]
 ```
 
-Waiting games are disposable. If the last player leaves before start, the server drops per-game tables and deletes the `games` row.
+`//creategame` creates the room row and per-game tables but does not seat the creator. The creator joins through the same `//joingame:<gameId>:<raceId>` path as everyone else; this keeps race unlock and seat-count logic centralized.
+
+Waiting games are disposable. If the last seated player leaves before start, the server drops per-game tables and deletes the `games` row.
 
 ## Active Leave And Surrender
 

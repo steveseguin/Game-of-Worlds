@@ -22,9 +22,11 @@ sequenceDiagram
   Player->>Lobby: Create game
   Lobby->>Server: //creategame:name:max:mode:registeredOnly:minLevel
   Server-->>Lobby: creategame::success::gameId
-  Player->>Lobby: Join/select race/add AI
+  Player->>Lobby: Join/select race
   Lobby->>Server: //joingame:gameId:raceId
   Server-->>Lobby: joingame::success::{...}
+  Player->>Lobby: Add AI if wanted
+  Lobby->>Server: //addai:difficulty:strategy
   Lobby->>Server: //start
   Server->>Server: initializeGame()
   Server-->>Lobby: startgame::
@@ -32,6 +34,7 @@ sequenceDiagram
 
 Lobby guardrails:
 
+- Creating a room does not seat the creator; the host must still join via `//joingame`.
 - Guests cannot create registered-only rooms.
 - Non-creators cannot bypass registered-only or minimum-level gates.
 - AI seats can only be added by the creator before game start.

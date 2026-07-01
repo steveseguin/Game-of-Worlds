@@ -19,6 +19,7 @@ Primary live runtime files:
 
 - [Code Map](maps/code-map.md)
 - [HTTP API](server/http-api.md)
+- [HTTP Request Flow](server/http-request-flow.md)
 - [WebSocket Protocol](server/websocket-protocol.md)
 - [Signaling And Errors](server/signaling-and-errors.md)
 - [Game Lifecycle And Cleanup](server/game-lifecycle.md)

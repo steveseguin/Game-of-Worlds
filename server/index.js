@@ -154,6 +154,23 @@ function sendJson(response, statusCode, payload, method = 'GET') {
     response.end(body);
 }
 
+function sendMethodNotAllowed(response, allowedMethods, method = 'GET') {
+    const allow = allowedMethods.join(', ');
+    const body = `Method not allowed. Allowed: ${allow}`;
+    response.writeHead(405, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        ...SECURITY_HEADERS,
+        'Allow': allow,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Content-Length': Buffer.byteLength(body, 'utf8')
+    });
+    if (method === 'HEAD') {
+        response.end();
+        return;
+    }
+    response.end(body);
+}
+
 function buildPoolConfig() {
     return {
         ...DB_CONFIG,
@@ -357,6 +374,10 @@ const httpServer = http.createServer((request, response) => {
         return;
     }
     if (pathname === '/config.js') {
+        if (!['GET', 'HEAD'].includes(request.method)) {
+            sendMethodNotAllowed(response, ['GET', 'HEAD'], request.method);
+            return;
+        }
         const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
         const paymentsEnabled = Boolean(process.env.STRIPE_SECRET_KEY && publishableKey);
         const payload = [
@@ -377,7 +398,7 @@ const httpServer = http.createServer((request, response) => {
         return;
     }
 
-    if (pathname === '/api/config' && request.method === 'GET') {
+    if (pathname === '/api/config' && ['GET', 'HEAD'].includes(request.method)) {
         const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || '';
         const paymentsEnabled = Boolean(process.env.STRIPE_SECRET_KEY && publishableKey);
         const body = JSON.stringify({
@@ -391,6 +412,10 @@ const httpServer = http.createServer((request, response) => {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Content-Length': Buffer.byteLength(body, 'utf8')
         });
+        if (request.method === 'HEAD') {
+            response.end();
+            return;
+        }
         response.end(body);
         return;
     }
@@ -452,34 +477,36 @@ const httpServer = http.createServer((request, response) => {
     }
 
     if (pathname === '/js/shop.js') {
+        if (!['GET', 'HEAD'].includes(request.method)) {
+            sendMethodNotAllowed(response, ['GET', 'HEAD'], request.method);
+            return;
+        }
+        const body = 'Legacy shop script disabled. Use shop-enhanced.js.';
         response.writeHead(410, {
             'Content-Type': 'text/plain; charset=utf-8',
             ...SECURITY_HEADERS,
-            'Cache-Control': 'no-cache, no-store, must-revalidate'
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Content-Length': Buffer.byteLength(body, 'utf8')
         });
-        response.end('Legacy shop script disabled. Use shop-enhanced.js.');
+        if (request.method === 'HEAD') {
+            response.end();
+            return;
+        }
+        response.end(body);
         return;
     }
 
     if (pathname === '/race-selection.js') {
-        const legacyPath = path.resolve(PUBLIC_ROOT, 'js', 'race-selection.js');
-        fs.readFile(legacyPath, (readErr, data) => {
-            if (readErr) {
-                response.writeHead(404, {
-                    'Content-Type': 'text/plain; charset=utf-8',
-                    ...SECURITY_HEADERS,
-                    'Cache-Control': 'no-cache, no-store, must-revalidate'
-                });
-                response.end('File not found');
-                return;
-            }
-            response.writeHead(200, {
-                'Content-Type': 'application/javascript',
-                ...SECURITY_HEADERS,
-                'Cache-Control': 'no-cache, no-store, must-revalidate'
-            });
-            response.end(data);
-        });
+        if (!['GET', 'HEAD'].includes(request.method)) {
+            sendMethodNotAllowed(response, ['GET', 'HEAD'], request.method);
+            return;
+        }
+        serveFile('/js/race-selection.js', response, request.method);
+        return;
+    }
+
+    if (!['GET', 'HEAD'].includes(request.method)) {
+        sendMethodNotAllowed(response, ['GET', 'HEAD'], request.method);
         return;
     }
     

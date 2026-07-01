@@ -23,9 +23,9 @@ function isTruthy(value) {
     return /^(true|1|yes)$/i.test(String(value || '').trim());
 }
 
-function request(pathname) {
+function request(pathname, method = 'GET') {
     return new Promise((resolve, reject) => {
-        const req = http.get(`${BASE_URL}${pathname}`, response => {
+        const req = http.request(`${BASE_URL}${pathname}`, { method }, response => {
             let body = '';
             response.setEncoding('utf8');
             response.on('data', chunk => {
@@ -41,8 +41,9 @@ function request(pathname) {
         });
         req.on('error', reject);
         req.setTimeout(2500, () => {
-            req.destroy(new Error(`Timed out requesting ${pathname}`));
+            req.destroy(new Error(`Timed out requesting ${method} ${pathname}`));
         });
+        req.end();
     });
 }
 
@@ -151,6 +152,38 @@ async function runMockServerSmoke() {
         const protectedLobby = await request('/lobby.html');
         assert.equal(protectedLobby.statusCode, 302);
         assert.equal(protectedLobby.headers.location, '/login.html');
+
+        const config = await request('/config.js');
+        assert.equal(config.statusCode, 200);
+        assert.match(config.body, /window\.GAME_FEATURES/);
+
+        const configHead = await request('/config.js', 'HEAD');
+        assert.equal(configHead.statusCode, 200);
+        assert.equal(configHead.body, '');
+
+        const configPost = await request('/config.js', 'POST');
+        assert.equal(configPost.statusCode, 405);
+        assert.equal(configPost.headers.allow, 'GET, HEAD');
+
+        const apiConfigHead = await request('/api/config', 'HEAD');
+        assert.equal(apiConfigHead.statusCode, 200);
+        assert.equal(apiConfigHead.body, '');
+
+        const apiConfigPost = await request('/api/config', 'POST');
+        assert.equal(apiConfigPost.statusCode, 405);
+        assert.equal(apiConfigPost.headers.allow, 'GET, HEAD');
+
+        const legacyRace = await request('/race-selection.js');
+        assert.equal(legacyRace.statusCode, 200);
+        assert.match(legacyRace.body, /race/i);
+
+        const legacyShop = await request('/js/shop.js', 'HEAD');
+        assert.equal(legacyShop.statusCode, 410);
+        assert.equal(legacyShop.body, '');
+
+        const staticPost = await request('/landing.html', 'POST');
+        assert.equal(staticPost.statusCode, 405);
+        assert.equal(staticPost.headers.allow, 'GET, HEAD');
 
         console.log(`Mock integration smoke passed at ${BASE_URL}`);
     } catch (error) {

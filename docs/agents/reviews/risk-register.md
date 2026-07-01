@@ -17,6 +17,7 @@ This file records review findings that matter for future work. Keep entries conc
 | Reconnect client map | Closing an older socket after reconnect could delete `clientMap[userId]` for the newer socket. | WebSocket close cleanup now removes the map entry only when it still points at the closing connection. |
 | Movement command validation | Partial hex sector tokens, sector `0`, missing move fields, and over-requested ship counts could enter movement/probe paths inconsistently. | Movement/probe validation now rejects malformed sectors before resource writes, documents the CSV/triplet protocols, and verifies the whole requested fleet before moving ships. |
 | Terminal battle pause cleanup | Completed or abandoned games could leave a `battlePause` timeout/entry alive until the pause expired. | Terminal cleanup now clears battle-pause timers immediately for both completed and abandoned games. |
+| HTTP static method handling | Generated/static browser routes could answer non-GET methods like normal file requests. | Static/generated browser routes now allow only `GET`/`HEAD`; other methods return `405` with `Allow: GET, HEAD`, and smoke tests cover the contract. |
 
 ## Active Risks To Revisit
 
