@@ -31,3 +31,16 @@ jobs:
 
       - name: Mock server smoke
         run: npm run test:integration
+
+      - name: CI summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## CI result"
+            echo
+            echo "- Status: \`${{ job.status }}\`"
+            echo "- Ref: \`${{ github.ref_name }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } >> "$GITHUB_STEP_SUMMARY"

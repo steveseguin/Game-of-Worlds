@@ -102,6 +102,7 @@ const TEST_STARTING_RESOURCES = Object.freeze({
     crystal: Number(process.env.TEST_STARTING_CRYSTAL) || 3000,
     research: Number(process.env.TEST_STARTING_RESEARCH) || 1200
 });
+const JSON_BODY_LIMIT_BYTES = 16 * 1024;
 // Building slots scale with the body being built on.
 const BUILDING_SLOTS_BY_TYPE = Object.freeze({
     1: 1,  // secured asteroid belt: one mining rig
@@ -274,6 +275,51 @@ function normalizeGuestUsername(username) {
 function sendJson(response, statusCode, payload) {
     response.writeHead(statusCode, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify(payload));
+}
+
+function readJsonBody(request, callback, limitBytes = JSON_BODY_LIMIT_BYTES) {
+    let body = '';
+    let size = 0;
+    let done = false;
+
+    const finish = (err, payload) => {
+        if (done) return;
+        done = true;
+        callback(err, payload);
+    };
+
+    request.on('data', chunk => {
+        if (done) return;
+        const text = chunk.toString();
+        size += Buffer.byteLength(text, 'utf8');
+        if (size > limitBytes) {
+            const err = new Error(`JSON body exceeds ${limitBytes} bytes`);
+            err.code = 'PAYLOAD_TOO_LARGE';
+            finish(err);
+            return;
+        }
+        body += text;
+    });
+
+    request.on('end', () => {
+        if (done) return;
+        try {
+            finish(null, body ? JSON.parse(body) : {});
+        } catch (err) {
+            err.code = 'INVALID_JSON';
+            finish(err);
+        }
+    });
+
+    request.on('error', err => finish(err));
+}
+
+function sendJsonBodyError(response, err) {
+    if (err && err.code === 'PAYLOAD_TOO_LARGE') {
+        sendJson(response, 413, { error: 'Request body too large' });
+        return;
+    }
+    sendJson(response, 400, { error: 'Invalid request' });
 }
 
 function findAvailableUsername(preferredUsername, callback, attempt = 0) {
@@ -776,88 +822,72 @@ function shouldProcessTurn(gameId, callback) {
 
 // Handle login endpoint
 async function handleLogin(request, response) {
-    let body = '';
-    request.on('data', chunk => {
-        body += chunk.toString();
-    });
-    
-    request.on('end', () => {
-        try {
-            const { username, password } = JSON.parse(body);
-            
-            // Validate input
-            const usernameValidation = securitySystem.validateUsername(username);
-            if (!usernameValidation.valid) {
-                response.writeHead(400, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify({error: usernameValidation.error}));
+    readJsonBody(request, (bodyErr, payload) => {
+        if (bodyErr) {
+            sendJsonBodyError(response, bodyErr);
+            return;
+        }
+
+        const { username, password } = payload;
+
+        // Validate input
+        const usernameValidation = securitySystem.validateUsername(username);
+        if (!usernameValidation.valid) {
+            response.writeHead(400, {'Content-Type': 'application/json'});
+            response.end(JSON.stringify({error: usernameValidation.error}));
+            return;
+        }
+
+        db.query('SELECT * FROM users WHERE username = ?', [username], (err, results) => {
+            if (err) {
+                response.writeHead(500, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({error: 'Database error'}));
                 return;
             }
-            
-            db.query('SELECT * FROM users WHERE username = ?', [username], (err, results) => {
+
+            if (results.length === 0) {
+                response.writeHead(401, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({error: 'Invalid username or password'}));
+                return;
+            }
+
+            const user = results[0];
+            const hashedPassword = hashPassword(password, user.salt);
+
+            if (hashedPassword !== user.password) {
+                response.writeHead(401, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({error: 'Invalid username or password'}));
+                return;
+            }
+
+            // Generate temporary key for WebSocket authentication
+            const tempKey = generateTempKey();
+
+            db.query('UPDATE users SET tempkey = ? WHERE id = ?', [tempKey, user.id], (err) => {
                 if (err) {
                     response.writeHead(500, {'Content-Type': 'application/json'});
                     response.end(JSON.stringify({error: 'Database error'}));
                     return;
                 }
-                
-                if (results.length === 0) {
-                    response.writeHead(401, {'Content-Type': 'application/json'});
-                    response.end(JSON.stringify({error: 'Invalid username or password'}));
-                    return;
-                }
-                
-                const user = results[0];
-                const hashedPassword = hashPassword(password, user.salt);
-                
-                if (hashedPassword !== user.password) {
-                    response.writeHead(401, {'Content-Type': 'application/json'});
-                    response.end(JSON.stringify({error: 'Invalid username or password'}));
-                    return;
-                }
-                
-                // Generate temporary key for WebSocket authentication
-                const tempKey = generateTempKey();
-                
-                db.query('UPDATE users SET tempkey = ? WHERE id = ?', [tempKey, user.id], (err) => {
-                    if (err) {
-                        response.writeHead(500, {'Content-Type': 'application/json'});
-                        response.end(JSON.stringify({error: 'Database error'}));
-                        return;
-                    }
-                    
-                    response.writeHead(200, {'Content-Type': 'application/json'});
-                    response.end(JSON.stringify({
-                        success: true,
-                        userId: user.id,
-                        username: user.username,
-                        tempKey: tempKey,
-                        isGuest: isGuestRow(user)
-                    }));
-                });
+
+                response.writeHead(200, {'Content-Type': 'application/json'});
+                response.end(JSON.stringify({
+                    success: true,
+                    userId: user.id,
+                    username: user.username,
+                    tempKey: tempKey,
+                    isGuest: isGuestRow(user)
+                }));
             });
-        } catch (e) {
-            response.writeHead(400, {'Content-Type': 'application/json'});
-            response.end(JSON.stringify({error: 'Invalid request'}));
-        }
+        });
     });
 }
 
 // Handle guest access endpoint. A durable local token identifies the guest row.
 async function handleGuestLogin(request, response) {
-    let body = '';
-    request.on('data', chunk => {
-        body += chunk.toString();
-        if (body.length > 16 * 1024) {
-            request.destroy();
-        }
-    });
-
-    request.on('end', () => {
-        let payload;
-        try {
-            payload = body ? JSON.parse(body) : {};
-        } catch (e) {
-            sendJson(response, 400, { error: 'Invalid request' });
+    readJsonBody(request, (bodyErr, payload) => {
+        if (bodyErr) {
+            sendJsonBodyError(response, bodyErr);
             return;
         }
 
@@ -934,160 +964,155 @@ async function handleGuestLogin(request, response) {
 
 // Handle registration endpoint
 async function handleRegister(request, response) {
-    let body = '';
-    request.on('data', chunk => {
-        body += chunk.toString();
-    });
-    
-    request.on('end', () => {
-        try {
-            const { username, password, email, guestToken } = JSON.parse(body);
-            
-            // Validate input
-            const usernameValidation = securitySystem.validateUsername(username);
-            const passwordValidation = securitySystem.validatePassword(password);
-            const emailValidation = securitySystem.validateEmail(email);
-            
-            if (!usernameValidation.valid) {
-                response.writeHead(400, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify({error: usernameValidation.error}));
-                return;
-            }
-            
-            if (!passwordValidation.valid) {
-                response.writeHead(400, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify({error: passwordValidation.error}));
-                return;
-            }
-            
-            if (!emailValidation.valid) {
-                response.writeHead(400, {'Content-Type': 'application/json'});
-                response.end(JSON.stringify({error: emailValidation.error}));
-                return;
-            }
-
-            const createRegisteredUser = () => {
-                // Check if username already exists
-                db.query('SELECT id FROM users WHERE username = ?', [username], (err, results) => {
-                    if (err) {
-                        response.writeHead(500, {'Content-Type': 'application/json'});
-                        response.end(JSON.stringify({error: 'Database error'}));
-                        return;
-                    }
-                    
-                    if (results.length > 0) {
-                        response.writeHead(400, {'Content-Type': 'application/json'});
-                        response.end(JSON.stringify({error: 'Username already exists'}));
-                        return;
-                    }
-                    
-                    // Create new user
-                    const salt = generateSalt();
-                    const hashedPassword = hashPassword(password, salt);
-                    const tempKey = generateTempKey();
-                    
-                    db.query(
-                        'INSERT INTO users (username, password, salt, email, tempkey) VALUES (?, ?, ?, ?, ?)',
-                        [username, hashedPassword, salt, email, tempKey],
-                        (err, result) => {
-                            if (err) {
-                                response.writeHead(500, {'Content-Type': 'application/json'});
-                                response.end(JSON.stringify({error: 'Database error'}));
-                                return;
-                            }
-
-                            const userId = result.insertId;
-                            db.query('INSERT INTO user_stats (user_id) VALUES (?)', [userId], () => {
-                                response.writeHead(200, {'Content-Type': 'application/json'});
-                                response.end(JSON.stringify({
-                                    success: true,
-                                    userId,
-                                    username: username,
-                                    tempKey: tempKey,
-                                    isGuest: false
-                                }));
-                            });
-                        }
-                    );
-                });
-            };
-
-            const upgradeGuestUser = guestUser => {
-                db.query('SELECT id FROM users WHERE username = ?', [username], (err, results) => {
-                    if (err) {
-                        response.writeHead(500, {'Content-Type': 'application/json'});
-                        response.end(JSON.stringify({error: 'Database error'}));
-                        return;
-                    }
-
-                    const existing = Array.isArray(results) && results.length > 0 ? results[0] : null;
-                    if (existing && Number(existing.id) !== Number(guestUser.id)) {
-                        response.writeHead(400, {'Content-Type': 'application/json'});
-                        response.end(JSON.stringify({error: 'Username already exists'}));
-                        return;
-                    }
-
-                    const salt = generateSalt();
-                    const hashedPassword = hashPassword(password, salt);
-                    const tempKey = generateTempKey();
-
-                    db.query(
-                        'UPDATE users SET username = ?, password = ?, salt = ?, email = ?, tempkey = ?, is_guest = 0, guest_token_hash = NULL WHERE id = ?',
-                        [username, hashedPassword, salt, email, tempKey, guestUser.id],
-                        (updateErr) => {
-                            if (updateErr) {
-                                response.writeHead(500, {'Content-Type': 'application/json'});
-                                response.end(JSON.stringify({error: 'Database error'}));
-                                return;
-                            }
-
-                            db.query('INSERT INTO user_stats (user_id) VALUES (?)', [guestUser.id], () => {
-                                response.writeHead(200, {'Content-Type': 'application/json'});
-                                response.end(JSON.stringify({
-                                    success: true,
-                                    userId: guestUser.id,
-                                    username: username,
-                                    tempKey: tempKey,
-                                    isGuest: false,
-                                    upgraded: true
-                                }));
-                            });
-                        }
-                    );
-                });
-            };
-
-            const normalizedGuestToken = typeof guestToken === 'string' && GUEST_TOKEN_PATTERN.test(guestToken.trim())
-                ? guestToken.trim().toLowerCase()
-                : '';
-            if (!normalizedGuestToken) {
-                createRegisteredUser();
-                return;
-            }
-
-            db.query(
-                'SELECT * FROM users WHERE guest_token_hash = ? AND is_guest = 1 LIMIT 1',
-                [hashGuestToken(normalizedGuestToken)],
-                (guestErr, guests) => {
-                    if (guestErr) {
-                        response.writeHead(500, {'Content-Type': 'application/json'});
-                        response.end(JSON.stringify({error: 'Database error'}));
-                        return;
-                    }
-
-                    const guestUser = Array.isArray(guests) && guests.length > 0 ? guests[0] : null;
-                    if (!guestUser) {
-                        createRegisteredUser();
-                        return;
-                    }
-
-                    upgradeGuestUser(guestUser);
-                }
-            );
-        } catch (e) {
-            response.writeHead(400, {'Content-Type': 'application/json'});
-            response.end(JSON.stringify({error: 'Invalid request'}));
+    readJsonBody(request, (bodyErr, payload) => {
+        if (bodyErr) {
+            sendJsonBodyError(response, bodyErr);
+            return;
         }
+
+        const { username, password, email, guestToken } = payload;
+
+        // Validate input
+        const usernameValidation = securitySystem.validateUsername(username);
+        const passwordValidation = securitySystem.validatePassword(password);
+        const emailValidation = securitySystem.validateEmail(email);
+
+        if (!usernameValidation.valid) {
+            response.writeHead(400, {'Content-Type': 'application/json'});
+            response.end(JSON.stringify({error: usernameValidation.error}));
+            return;
+        }
+
+        if (!passwordValidation.valid) {
+            response.writeHead(400, {'Content-Type': 'application/json'});
+            response.end(JSON.stringify({error: passwordValidation.error}));
+            return;
+        }
+
+        if (!emailValidation.valid) {
+            response.writeHead(400, {'Content-Type': 'application/json'});
+            response.end(JSON.stringify({error: emailValidation.error}));
+            return;
+        }
+
+        const createRegisteredUser = () => {
+            // Check if username already exists
+            db.query('SELECT id FROM users WHERE username = ?', [username], (err, results) => {
+                if (err) {
+                    response.writeHead(500, {'Content-Type': 'application/json'});
+                    response.end(JSON.stringify({error: 'Database error'}));
+                    return;
+                }
+
+                if (results.length > 0) {
+                    response.writeHead(400, {'Content-Type': 'application/json'});
+                    response.end(JSON.stringify({error: 'Username already exists'}));
+                    return;
+                }
+
+                // Create new user
+                const salt = generateSalt();
+                const hashedPassword = hashPassword(password, salt);
+                const tempKey = generateTempKey();
+
+                db.query(
+                    'INSERT INTO users (username, password, salt, email, tempkey) VALUES (?, ?, ?, ?, ?)',
+                    [username, hashedPassword, salt, email, tempKey],
+                    (err, result) => {
+                        if (err) {
+                            response.writeHead(500, {'Content-Type': 'application/json'});
+                            response.end(JSON.stringify({error: 'Database error'}));
+                            return;
+                        }
+
+                        const userId = result.insertId;
+                        db.query('INSERT INTO user_stats (user_id) VALUES (?)', [userId], () => {
+                            response.writeHead(200, {'Content-Type': 'application/json'});
+                            response.end(JSON.stringify({
+                                success: true,
+                                userId,
+                                username: username,
+                                tempKey: tempKey,
+                                isGuest: false
+                            }));
+                        });
+                    }
+                );
+            });
+        };
+
+        const upgradeGuestUser = guestUser => {
+            db.query('SELECT id FROM users WHERE username = ?', [username], (err, results) => {
+                if (err) {
+                    response.writeHead(500, {'Content-Type': 'application/json'});
+                    response.end(JSON.stringify({error: 'Database error'}));
+                    return;
+                }
+
+                const existing = Array.isArray(results) && results.length > 0 ? results[0] : null;
+                if (existing && Number(existing.id) !== Number(guestUser.id)) {
+                    response.writeHead(400, {'Content-Type': 'application/json'});
+                    response.end(JSON.stringify({error: 'Username already exists'}));
+                    return;
+                }
+
+                const salt = generateSalt();
+                const hashedPassword = hashPassword(password, salt);
+                const tempKey = generateTempKey();
+
+                db.query(
+                    'UPDATE users SET username = ?, password = ?, salt = ?, email = ?, tempkey = ?, is_guest = 0, guest_token_hash = NULL WHERE id = ?',
+                    [username, hashedPassword, salt, email, tempKey, guestUser.id],
+                    (updateErr) => {
+                        if (updateErr) {
+                            response.writeHead(500, {'Content-Type': 'application/json'});
+                            response.end(JSON.stringify({error: 'Database error'}));
+                            return;
+                        }
+
+                        db.query('INSERT INTO user_stats (user_id) VALUES (?)', [guestUser.id], () => {
+                            response.writeHead(200, {'Content-Type': 'application/json'});
+                            response.end(JSON.stringify({
+                                success: true,
+                                userId: guestUser.id,
+                                username: username,
+                                tempKey: tempKey,
+                                isGuest: false,
+                                upgraded: true
+                            }));
+                        });
+                    }
+                );
+            });
+        };
+
+        const normalizedGuestToken = typeof guestToken === 'string' && GUEST_TOKEN_PATTERN.test(guestToken.trim())
+            ? guestToken.trim().toLowerCase()
+            : '';
+        if (!normalizedGuestToken) {
+            createRegisteredUser();
+            return;
+        }
+
+        db.query(
+            'SELECT * FROM users WHERE guest_token_hash = ? AND is_guest = 1 LIMIT 1',
+            [hashGuestToken(normalizedGuestToken)],
+            (guestErr, guests) => {
+                if (guestErr) {
+                    response.writeHead(500, {'Content-Type': 'application/json'});
+                    response.end(JSON.stringify({error: 'Database error'}));
+                    return;
+                }
+
+                const guestUser = Array.isArray(guests) && guests.length > 0 ? guests[0] : null;
+                if (!guestUser) {
+                    createRegisteredUser();
+                    return;
+                }
+
+                upgradeGuestUser(guestUser);
+            }
+        );
     });
 }
 

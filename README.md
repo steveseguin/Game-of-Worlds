@@ -51,11 +51,14 @@ Game-of-Worlds/
 |   |-- css/             # Stylesheets
 |   `-- images/          # Game assets
 |-- docs/                # Documentation
+|   |-- agents/          # AI-readable server, gameplay, state, and deployment flow maps
 |   `-- art-direction/   # Visual direction references and concept bitmaps
 |-- tests/               # Unit and integration tests
 |-- package.json         # Node dependencies
 `-- .env.example         # Environment config template
 ```
+
+For fast orientation on server APIs, WebSocket messages, gameplay state, turn flow, deployment, and known risks, start with [`docs/agents/README.md`](docs/agents/README.md).
 
 ## Quick Start
 

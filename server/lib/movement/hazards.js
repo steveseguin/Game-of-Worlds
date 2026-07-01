@@ -216,17 +216,24 @@ function sendAsteroidBeltMessage(connection, sectorId, outcome, lost, total) {
 // Probes are destroyed if sent to hazardous sectors
 // ============================================================================
 
-function checkProbeHazard(gameId, sectorType, connection, callback) {
+function checkProbeHazard(gameId, sectorType, sectorIdOrConnection, connectionOrCallback, maybeCallback) {
+    const hasSectorId = Number.isFinite(Number(sectorIdOrConnection));
+    const sectorId = hasSectorId ? Number(sectorIdOrConnection) : null;
+    const connection = hasSectorId ? connectionOrCallback : sectorIdOrConnection;
+    const callback = hasSectorId ? maybeCallback : connectionOrCallback;
+
     // Check if sector is hazardous
     if (!isHazardousSector(sectorType)) {
         // Safe sector - probe succeeds
-        callback({ destroyed: false });
+        if (typeof callback === 'function') {
+            callback({ destroyed: false });
+        }
         return;
     }
 
     // Probe destroyed
     const hazardType = getHazardType(sectorType);
-    const sectorToken = utils.formatSectorToken(sectorType);
+    const sectorToken = utils.formatSectorToken(sectorId || sectorType);
 
     let msg = '';
     if (hazardType === 'black_hole') {
@@ -241,7 +248,9 @@ function checkProbeHazard(gameId, sectorType, connection, callback) {
         connection.sendUTF(`systemalert::${msg}`);
     }
 
-    callback({ destroyed: true, hazardType });
+    if (typeof callback === 'function') {
+        callback({ destroyed: true, hazardType });
+    }
 }
 
 // ============================================================================

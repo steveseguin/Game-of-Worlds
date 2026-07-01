@@ -46,6 +46,34 @@ function executeJsonHandler(handler, payload) {
     });
 }
 
+function executeRawHandler(handler, rawBody) {
+    return new Promise((resolve, reject) => {
+        const req = new EventEmitter();
+        const res = {
+            statusCode: 200,
+            headers: {},
+            writeHead(status, headers = {}) {
+                res.statusCode = status;
+                res.headers = headers;
+            },
+            end(body) {
+                try {
+                    resolve({
+                        statusCode: res.statusCode,
+                        body: body ? JSON.parse(body) : undefined
+                    });
+                } catch (err) {
+                    reject(err);
+                }
+            }
+        };
+
+        handler(req, res);
+        req.emit('data', Buffer.from(rawBody));
+        req.emit('end');
+    });
+}
+
 function createMockConnection(userId) {
     const messages = [];
     return {
@@ -107,6 +135,17 @@ test.describe('guest authentication and lobby access', () => {
         assert.equal(second.body.userId, first.body.userId);
         assert.equal(second.body.username, first.body.username);
         assert.equal(second.body.isGuest, true);
+    });
+
+    test('auth JSON endpoints reject oversized request bodies', async () => {
+        const oversized = JSON.stringify({ username: 'A'.repeat(20 * 1024) });
+        const login = await executeRawHandler(serverLogic.handleLogin, oversized);
+        const register = await executeRawHandler(serverLogic.handleRegister, oversized);
+        const guest = await executeRawHandler(serverLogic.handleGuestLogin, oversized);
+
+        assert.equal(login.statusCode, 413);
+        assert.equal(register.statusCode, 413);
+        assert.equal(guest.statusCode, 413);
     });
 
     test('registration upgrades a guest account instead of creating a second user', async t => {

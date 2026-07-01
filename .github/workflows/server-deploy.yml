@@ -7,6 +7,7 @@ on:
       - "server/**"
       - "public/**"
       - "tools/deploy.js"
+      - "tools/verify-production-status.js"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/server-deploy.yml"
@@ -43,6 +44,26 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      - name: Capture deployment target
+        shell: bash
+        env:
+          DEPLOY_REF_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+          DEPLOY_REF_FULL: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+        run: |
+          commit="$(git rev-parse HEAD)"
+          {
+            echo "DEPLOY_COMMIT=$commit"
+            echo "DEPLOY_REF_NAME=$DEPLOY_REF_INPUT"
+            echo "DEPLOY_REF=$DEPLOY_REF_FULL"
+          } >> "$GITHUB_ENV"
+          {
+            echo "## Deployment target"
+            echo
+            echo "- Ref: \`$DEPLOY_REF_INPUT\`"
+            echo "- Commit: \`$commit\`"
+            echo "- Event: \`${{ github.event_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Setup Node
         uses: actions/setup-node@v6.4.0
         with:
@@ -58,6 +79,30 @@ jobs:
       - name: Mock server smoke
         run: npm run test:integration
 
+      - name: Validate deploy configuration
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.PROD_SSH_HOST }}
+          DEPLOY_USER: ${{ secrets.PROD_SSH_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.PROD_SSH_PASSWORD }}
+        run: |
+          missing=0
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is missing. Configure PROD_SSH_HOST, PROD_SSH_USER, and PROD_SSH_PASSWORD repository secrets."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            {
+              echo "## Deployment configuration failed"
+              echo
+              echo "One or more SSH deploy secrets are missing."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Deploy SSH secrets are configured." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Deploy over SSH
         env:
           DEPLOY_HOST: ${{ secrets.PROD_SSH_HOST }}
@@ -66,6 +111,19 @@ jobs:
         run: node tools/deploy.js --install
 
       - name: Verify public deployment status
+        shell: bash
+        run: EXPECTED_COMMIT="$DEPLOY_COMMIT" node tools/verify-production-status.js
+
+      - name: Deployment failure summary
+        if: failure()
+        shell: bash
         run: |
-          curl --fail --silent --show-error https://gameofworlds.com/health
-          curl --fail --silent --show-error https://gameofworlds.com/status
+          {
+            echo "## Deployment failed"
+            echo
+            echo "- Ref: \`${DEPLOY_REF_NAME:-unknown}\`"
+            echo "- Commit: \`${DEPLOY_COMMIT:-unknown}\`"
+            echo "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "Check the first failed step above; deploy and status scripts emit specific error annotations when possible."
+          } >> "$GITHUB_STEP_SUMMARY"

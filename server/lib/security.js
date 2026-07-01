@@ -72,9 +72,14 @@ function validateGameName(name) {
 
 // Validate integer input
 function validateInteger(value, min = 0, max = Number.MAX_SAFE_INTEGER) {
-    const num = parseInt(value);
-    
-    if (isNaN(num)) {
+    const raw = typeof value === 'number' ? String(value) : String(value || '').trim();
+    const integerPattern = min < 0 ? /^-?\d+$/ : /^\d+$/;
+    if (!integerPattern.test(raw)) {
+        return { valid: false, error: 'Invalid number' };
+    }
+
+    const num = Number(raw);
+    if (!Number.isSafeInteger(num)) {
         return { valid: false, error: 'Invalid number' };
     }
     
@@ -163,22 +168,37 @@ function verifySessionToken(fullToken, userId) {
     if (!process.env.SESSION_SECRET) {
         throw new Error('SESSION_SECRET environment variable is not set');
     }
-    
+    if (typeof fullToken !== 'string') return false;
+
     const parts = fullToken.split(':');
     if (parts.length !== 3) return false;
-    
+
     const [token, expiry, signature] = parts;
-    
+    if (!token || !expiry || !signature) return false;
+
     // Check expiry
-    if (Date.now() > parseInt(expiry)) return false;
-    
+    const expiryMs = Number(expiry);
+    if (!Number.isFinite(expiryMs) || Date.now() > expiryMs) return false;
+
     // Verify signature
     const expectedSignature = crypto
         .createHmac('sha256', process.env.SESSION_SECRET)
         .update(`${token}:${userId}:${expiry}`)
         .digest('hex');
-    
-    return signature === expectedSignature;
+
+    return timingSafeEqualStrings(signature, expectedSignature);
+}
+
+function timingSafeEqualStrings(actual, expected) {
+    if (typeof actual !== 'string' || typeof expected !== 'string') {
+        return false;
+    }
+    const actualBuffer = Buffer.from(actual);
+    const expectedBuffer = Buffer.from(expected);
+    if (actualBuffer.length !== expectedBuffer.length) {
+        return false;
+    }
+    return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
 // Rate limiting helper
@@ -281,8 +301,11 @@ function generateCSRFToken(sessionId) {
 
 // Verify CSRF token
 function verifyCSRFToken(token, sessionId) {
+    if (typeof token !== 'string' || typeof sessionId !== 'string') {
+        return false;
+    }
     const expected = generateCSRFToken(sessionId);
-    return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+    return timingSafeEqualStrings(token, expected);
 }
 
 module.exports = {

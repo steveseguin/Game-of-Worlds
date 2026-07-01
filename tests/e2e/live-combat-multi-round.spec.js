@@ -137,6 +137,12 @@ async function installBattleCounter(page) {
             return;
         }
         window.__battleCount = 0;
+        // Keep this protocol/gameplay E2E deterministic in headless browsers.
+        // The 3D battle theater uses WebGL and can crash Chromium's GPU process
+        // on CI or local machines without stable graphics acceleration.
+        if (window.Battle3D && typeof window.Battle3D.isAvailable === 'function') {
+            window.Battle3D.isAvailable = () => false;
+        }
         if (window.BattleSystem && typeof window.BattleSystem.createBattleVisualization === 'function') {
             const original = window.BattleSystem.createBattleVisualization.bind(window.BattleSystem);
             window.BattleSystem.createBattleVisualization = function wrappedBattleVisualization(...args) {
@@ -298,15 +304,24 @@ async function expectBattleTheaterVisible(page) {
     }).toBe(true);
 }
 
-async function waitForBattlePauseClear(page) {
-    await expect.poll(async () => page.evaluate(() => {
-        const frozen = Boolean(window.__battleFreezeUntil && window.__battleFreezeUntil > Date.now());
-        const theaterActive = Boolean(document.querySelector('#battleTheater.on'));
-        const fallbackActive = Boolean(document.getElementById('battleGround'));
-        return !frozen && !theaterActive && !fallbackActive;
-    }), {
-        timeout: 30000
-    }).toBe(true);
+async function waitForBattlePauseClear(page, label) {
+    await expect.poll(async () => {
+        if (page.isClosed()) {
+            return `${label}: page closed`;
+        }
+        return page.evaluate(waitLabel => {
+            const remainingMs = Math.max(0, Number(window.__battleFreezeUntil || 0) - Date.now());
+            const theaterActive = Boolean(document.querySelector('#battleTheater.on'));
+            const fallbackActive = Boolean(document.getElementById('battleGround'));
+            if (remainingMs <= 0 && !theaterActive && !fallbackActive) {
+                return 'clear';
+            }
+            return `${waitLabel}: freeze=${Math.ceil(remainingMs)}ms theater=${theaterActive} fallback=${fallbackActive} ws=${window.websocket?.readyState ?? 'none'} url=${location.pathname}`;
+        }, label).catch(error => `${label}: evaluate failed: ${String(error.message || error).split('\n')[0]}`);
+    }, {
+        timeout: 45000,
+        intervals: [250, 500, 1000]
+    }).toBe('clear');
 }
 
 async function advanceTurnBoth(hostPage, joinerPage) {
@@ -427,10 +442,8 @@ test.describe('Live two-client combat with multiple rounds', () => {
         await expectBattleTheaterVisible(joinerPage);
         await clearBattleOverlay(hostPage);
         await clearBattleOverlay(joinerPage);
-        await Promise.all([
-            waitForBattlePauseClear(hostPage),
-            waitForBattlePauseClear(joinerPage)
-        ]);
+        await waitForBattlePauseClear(hostPage, 'host');
+        await waitForBattlePauseClear(joinerPage, 'joiner');
 
         // Round 2: the other starter ship is the colony ship.
         await marchShip(hostPage, hostPathToMid, 'Colony Ship');

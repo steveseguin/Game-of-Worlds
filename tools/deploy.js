@@ -75,15 +75,16 @@ function gitValue(command, fallback = null) {
 function buildDeployInfo() {
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
     const gitStatus = gitValue('git status --porcelain', '');
+    const gitCommit = gitValue('git rev-parse HEAD');
 
     return {
         deployedAt: new Date().toISOString(),
         source: process.env.GITHUB_ACTIONS === 'true' ? 'github-actions' : 'local',
         repository: process.env.GITHUB_REPOSITORY || gitValue('git config --get remote.origin.url'),
-        branch: process.env.GITHUB_REF_NAME || gitValue('git branch --show-current'),
-        ref: process.env.GITHUB_REF || null,
-        commit: process.env.GITHUB_SHA || gitValue('git rev-parse HEAD'),
-        shortCommit: (process.env.GITHUB_SHA || gitValue('git rev-parse HEAD') || '').slice(0, 12) || null,
+        branch: process.env.DEPLOY_REF_NAME || process.env.GITHUB_REF_NAME || gitValue('git branch --show-current'),
+        ref: process.env.DEPLOY_REF || process.env.GITHUB_REF || null,
+        commit: process.env.DEPLOY_COMMIT || gitCommit || process.env.GITHUB_SHA || null,
+        shortCommit: (process.env.DEPLOY_COMMIT || gitCommit || process.env.GITHUB_SHA || '').slice(0, 12) || null,
         runId: process.env.GITHUB_RUN_ID || null,
         runAttempt: process.env.GITHUB_RUN_ATTEMPT || null,
         actor: process.env.GITHUB_ACTOR || os.userInfo().username,
@@ -94,11 +95,53 @@ function buildDeployInfo() {
     };
 }
 
-function writeDeployInfo() {
+function writeDeployInfo(deployInfo) {
     fs.mkdirSync(DEPLOY_TMP, { recursive: true });
     const localPath = path.join(DEPLOY_TMP, 'deploy-info.json');
-    fs.writeFileSync(localPath, `${JSON.stringify(buildDeployInfo(), null, 2)}\n`);
+    fs.writeFileSync(localPath, `${JSON.stringify(deployInfo, null, 2)}\n`);
     return localPath;
+}
+
+function shQuote(value) {
+    return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function actionEscape(value) {
+    return String(value)
+        .replace(/%/g, '%25')
+        .replace(/\r/g, '%0D')
+        .replace(/\n/g, '%0A');
+}
+
+function emitActionError(message) {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+        console.error(`::error::${actionEscape(message)}`);
+    }
+}
+
+function appendActionSummary(markdown) {
+    if (!process.env.GITHUB_STEP_SUMMARY) {
+        return;
+    }
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown.trimEnd()}\n\n`);
+}
+
+function remoteFailureMessage(label, result) {
+    const stdout = result.out.trim();
+    const stderr = result.errOut.trim();
+    return [
+        `${label} failed with exit code ${result.code}.`,
+        stdout ? `stdout:\n${stdout}` : null,
+        stderr ? `stderr:\n${stderr}` : null
+    ].filter(Boolean).join('\n\n');
+}
+
+async function execChecked(conn, label, command) {
+    const result = await exec(conn, command);
+    if (result.code !== 0) {
+        throw new Error(remoteFailureMessage(label, result));
+    }
+    return result;
 }
 
 function loadCredentials() {
@@ -161,77 +204,93 @@ async function main() {
         console.log(`\n${files.length} files`);
         return;
     }
-    const deployInfoPath = writeDeployInfo();
+    const deployInfo = buildDeployInfo();
+    const deployInfoPath = writeDeployInfo(deployInfo);
 
     const creds = loadCredentials();
-    if (!creds.host || !creds.password) {
-        console.error('Could not parse SSH credentials.');
-        process.exit(1);
+    const missing = [];
+    if (!creds.host) missing.push('DEPLOY_HOST');
+    if (!creds.username) missing.push('DEPLOY_USER');
+    if (!creds.password) missing.push('DEPLOY_PASSWORD');
+    if (missing.length > 0) {
+        throw new Error(`Missing SSH deployment credentials: ${missing.join(', ')}`);
     }
 
-    console.log(`Connecting to ${creds.username}@${creds.host} ...`);
-    const conn = await connect(creds);
-    const sftp = await sftpSession(conn);
+    let conn = null;
+    try {
+        console.log(`Deploying ${deployInfo.shortCommit || 'unknown commit'} from ${deployInfo.branch || 'unknown ref'}`);
+        console.log(`Connecting to ${creds.username}@${creds.host} ...`);
+        conn = await connect(creds);
+        const sftp = await sftpSession(conn);
 
-    // Ensure new directories exist before uploading into them.
-    const dirs = [...new Set(files.map(f => path.posix.dirname(`${REMOTE_ROOT}/${f}`)))];
-    for (const dir of dirs) {
-        await exec(conn, `mkdir -p '${dir}'`);
-    }
-
-    // Back up server files we overwrite (single rolling backup).
-    await exec(conn, `mkdir -p ${REMOTE_ROOT}/.deploy-backup && cp -f ${REMOTE_ROOT}/server/server.js ${REMOTE_ROOT}/server/index.js ${REMOTE_ROOT}/.deploy-backup/ 2>/dev/null; true`);
-
-    for (const file of files) {
-        const local = path.join(REPO, file);
-        if (!fs.existsSync(local)) {
-            console.log(`  SKIP  ${file} (missing locally)`);
-            continue;
+        // Ensure new directories exist before uploading into them.
+        const dirs = [...new Set(files.map(f => path.posix.dirname(`${REMOTE_ROOT}/${f}`)))];
+        for (const dir of dirs) {
+            await execChecked(conn, `mkdir ${dir}`, `mkdir -p ${shQuote(dir)}`);
         }
-        const remote = `${REMOTE_ROOT}/${file.replace(/\\/g, '/')}`;
-        await upload(sftp, local, remote);
-        console.log(`  PUT   ${file}`);
-    }
 
-    await upload(sftp, deployInfoPath, `${REMOTE_ROOT}/server/deploy-info.json`);
-    console.log('  PUT   server/deploy-info.json');
+        // Back up server files we overwrite (single rolling backup).
+        const backupDir = `${REMOTE_ROOT}/.deploy-backup`;
+        await execChecked(
+            conn,
+            'prepare rolling backup',
+            `mkdir -p ${shQuote(backupDir)} && cp -f ${shQuote(`${REMOTE_ROOT}/server/server.js`)} ${shQuote(`${REMOTE_ROOT}/server/index.js`)} ${shQuote(backupDir)} 2>/dev/null || true`
+        );
 
-    for (const file of DELETE_FILES) {
-        const remote = `${REMOTE_ROOT}/${file.replace(/\\/g, '/')}`;
-        await exec(conn, `rm -f '${remote}'`);
-        console.log(`  RM    ${file}`);
-    }
-
-    if (!noRestart) {
-        if (installDeps) {
-            console.log('Installing production dependencies ...');
-            const install = await exec(conn, `cd ${REMOTE_ROOT} && npm ci --omit=dev`);
-            if (install.code !== 0) {
-                throw new Error(`npm install failed: ${install.errOut || install.out}`);
+        for (const file of files) {
+            const local = path.join(REPO, file);
+            if (!fs.existsSync(local)) {
+                console.log(`  SKIP  ${file} (missing locally)`);
+                continue;
             }
-            console.log('  dependencies: installed');
+            const remote = `${REMOTE_ROOT}/${file.replace(/\\/g, '/')}`;
+            await upload(sftp, local, remote);
+            console.log(`  PUT   ${file}`);
         }
 
-        console.log('Restarting game-of-worlds service ...');
-        const restart = await exec(conn, 'systemctl restart game-of-worlds && sleep 2 && systemctl is-active game-of-worlds');
-        console.log(`  service: ${restart.out.trim() || restart.errOut.trim()}`);
+        await upload(sftp, deployInfoPath, `${REMOTE_ROOT}/server/deploy-info.json`);
+        console.log('  PUT   server/deploy-info.json');
 
-        const smoke = await exec(conn, "curl -s -o /dev/null -w '%{http_code} /\\n' http://localhost:3000/; curl -s -o /dev/null -w '%{http_code} /lobby.html\\n' http://localhost:3000/lobby.html; curl -s -o /dev/null -w '%{http_code} /health\\n' http://localhost:3000/health");
-        console.log(`  smoke: ${smoke.out.trim().replace(/\n/g, ' | ')}`);
-        if (!/^200 \/$/m.test(smoke.out) || !/^302 \/lobby\.html$/m.test(smoke.out) || !/^200 \/health$/m.test(smoke.out)) {
-            throw new Error(`Smoke test failed: ${smoke.out.trim() || smoke.errOut.trim()}`);
+        for (const file of DELETE_FILES) {
+            const remote = `${REMOTE_ROOT}/${file.replace(/\\/g, '/')}`;
+            await execChecked(conn, `remove ${file}`, `rm -f ${shQuote(remote)}`);
+            console.log(`  RM    ${file}`);
         }
 
-        const logs = await exec(conn, 'journalctl -u game-of-worlds -n 12 --no-pager | tail -12');
-        console.log('--- recent logs ---');
-        console.log(logs.out.trim());
+        if (!noRestart) {
+            if (installDeps) {
+                console.log('Installing production dependencies ...');
+                await execChecked(conn, 'npm ci --omit=dev', `cd ${shQuote(REMOTE_ROOT)} && npm ci --omit=dev`);
+                console.log('  dependencies: installed');
+            }
+
+            console.log('Restarting game-of-worlds service ...');
+            const restart = await execChecked(conn, 'restart game-of-worlds', 'systemctl restart game-of-worlds && sleep 2 && systemctl is-active game-of-worlds');
+            console.log(`  service: ${restart.out.trim() || restart.errOut.trim()}`);
+
+            const smoke = await execChecked(conn, 'local HTTP smoke', "curl -s -o /dev/null -w '%{http_code} /\\n' http://localhost:3000/; curl -s -o /dev/null -w '%{http_code} /lobby.html\\n' http://localhost:3000/lobby.html; curl -s -o /dev/null -w '%{http_code} /health\\n' http://localhost:3000/health");
+            console.log(`  smoke: ${smoke.out.trim().replace(/\n/g, ' | ')}`);
+            if (!/^200 \/$/m.test(smoke.out) || !/^302 \/lobby\.html$/m.test(smoke.out) || !/^200 \/health$/m.test(smoke.out)) {
+                throw new Error(`Smoke test failed: ${smoke.out.trim() || smoke.errOut.trim()}`);
+            }
+
+            const logs = await exec(conn, 'journalctl -u game-of-worlds -n 12 --no-pager | tail -12');
+            console.log('--- recent logs ---');
+            console.log(logs.out.trim());
+        }
+
+        appendActionSummary(`## Deploy\n\n- Commit: \`${deployInfo.shortCommit || 'unknown'}\`\n- Branch/ref: \`${deployInfo.branch || 'unknown'}\`\n- Files uploaded: ${files.length}\n- Install dependencies: ${installDeps ? 'yes' : 'no'}\n- Restarted service: ${noRestart ? 'no' : 'yes'}`);
+    } finally {
+        if (conn) {
+            conn.end();
+        }
     }
-
-    conn.end();
     console.log('Done.');
 }
 
 main().catch(err => {
+    emitActionError(err.message);
+    appendActionSummary(`## Deploy failed\n\n\`\`\`text\n${err.message}\n\`\`\``);
     console.error('Deploy failed:', err.message);
     process.exit(1);
 });

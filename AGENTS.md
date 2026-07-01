@@ -53,6 +53,8 @@ mysql -u root game < server/setup-payments.sql  # Optional: payment features
 
 ## Architecture
 
+For an AI-readable flow map, start with `docs/agents/README.md`. That folder documents the live HTTP API, WebSocket signaling, runtime/persistent state, user journey, turn engine, CI/CD, and current risk register. Keep those docs updated when changing gameplay flow, server endpoints, wire messages, or deployment behavior.
+
 ### Backend (Node.js + WebSocket)
 - **server/index.js** - HTTP server entry point, sets up file serving and database pooling
 - **server/server.js** - WebSocket server with main game loop, turn management, and game state

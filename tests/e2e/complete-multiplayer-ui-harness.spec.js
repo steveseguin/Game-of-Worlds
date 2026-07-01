@@ -18,6 +18,7 @@ const {
     endTurnAll,
     requestEndTurnAll,
     endTurnsUntilResources,
+    isGameOverVisible,
     buildShip,
     marchShip,
     focusSector,
@@ -182,19 +183,22 @@ test.describe('Complete multiplayer UI harness', () => {
             await closeBattleOverlay(hostPage);
             await closeBattleOverlay(guestPage);
 
-            if (!(await hostPage.locator('#gameOverModal').isVisible().catch(() => false))) {
+            if (!(await isGameOverVisible(hostPage))) {
                 for (let index = 2; index < colonizationTargets.length; index++) {
-                    if (await hostPage.locator('#gameOverModal').isVisible().catch(() => false)) {
+                    if (await isGameOverVisible(hostPage)) {
                         break;
                     }
                     await endTurnsUntilResources([hostPage, guestPage], hostPage, { metal: 1000 }, 20);
+                    if (await isGameOverVisible(hostPage)) {
+                        break;
+                    }
                     await buildShip(hostPage, 6);
                     await marchShip(hostPage, colonizationTargets[index].path.slice(1), 'Colony Ship');
                     await focusSector(hostPage, colonizationTargets[index].id);
                     await colonizeSelectedSector(hostPage, index + 2);
                     await hostPage.screenshot({ path: testInfo.outputPath(`06-colony-${index + 1}.png`), fullPage: true });
                 }
-                if (!(await hostPage.locator('#gameOverModal').isVisible().catch(() => false))) {
+                if (!(await isGameOverVisible(hostPage))) {
                     await endTurnAll([hostPage, guestPage], 1);
                 }
             }
