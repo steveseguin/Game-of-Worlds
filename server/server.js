@@ -418,12 +418,59 @@ function parseSectorToken(value) {
     }
 
     // Client map labels and selection protocol use hexadecimal sector IDs.
+    if (!/^[0-9a-f]+$/i.test(raw)) {
+        return NaN;
+    }
     const parsedHex = Number.parseInt(raw, 16);
-    return Number.isFinite(parsedHex) ? parsedHex : NaN;
+    return Number.isSafeInteger(parsedHex) ? parsedHex : NaN;
 }
 
 function formatSectorToken(sectorId) {
     return Number(sectorId).toString(16).toUpperCase();
+}
+
+function isPositiveSafeInteger(value) {
+    return Number.isSafeInteger(value) && value > 0;
+}
+
+function parsePositiveDecimalToken(value) {
+    if (value === undefined || value === null) {
+        return NaN;
+    }
+    const raw = String(value).trim();
+    if (!/^\d+$/.test(raw)) {
+        return NaN;
+    }
+    const parsed = Number.parseInt(raw, 10);
+    return isPositiveSafeInteger(parsed) ? parsed : NaN;
+}
+
+function parseMoveSelection(typeToken, countToken) {
+    if (typeof typeToken !== 'string' || typeof countToken !== 'string') {
+        return null;
+    }
+
+    const rawTypes = typeToken.split(',');
+    const rawCounts = countToken.split(',');
+    if (rawTypes.length === 0 || rawTypes.length !== rawCounts.length) {
+        return null;
+    }
+
+    const countsByType = new Map();
+    for (let i = 0; i < rawTypes.length; i++) {
+        const type = parsePositiveDecimalToken(rawTypes[i]);
+        const count = parsePositiveDecimalToken(rawCounts[i]);
+        if (!SHIP_TYPE_IDS.includes(type) || !isPositiveSafeInteger(count)) {
+            return null;
+        }
+
+        countsByType.set(type, (countsByType.get(type) || 0) + count);
+    }
+
+    return {
+        shipTypes: Array.from(countsByType.keys()),
+        shipCounts: Array.from(countsByType.values())
+    };
 }
 
 function calculateMapSize(maxPlayers, mode = DEFAULT_GAME_MODE) {
@@ -2839,7 +2886,7 @@ function probeSector(data, connection) {
     const playerId = connection.name;
     const gameId = connection.gameid;
 
-    if (!Number.isFinite(targetSector)) {
+    if (!isPositiveSafeInteger(targetSector)) {
         connection.sendUTF("Error: Invalid sector");
         return;
     }
@@ -3211,16 +3258,26 @@ function buyBuilding(data, connection) {
 }
 
 function moveFleet(data, connection) {
-    const parts = data.split(":");
+    const parts = typeof data === 'string' ? data.split(":") : [];
     const fromSector = parseSectorToken(parts[1]);
     const toSector = parseSectorToken(parts[2]);
-    const shipTypes = parts[3].split(",").map(Number);
-    const shipCounts = parts[4].split(",").map(Number);
-    const playerId = connection.name;
-    const gameId = connection.gameid;
+    const selection = parseMoveSelection(parts[3], parts[4]);
+    const playerId = Number(connection.name);
+    const gameId = Number(connection.gameid);
+
+    if (
+        !isPositiveSafeInteger(playerId) ||
+        !isPositiveSafeInteger(gameId) ||
+        !isPositiveSafeInteger(fromSector) ||
+        !isPositiveSafeInteger(toSector) ||
+        !selection
+    ) {
+        connection.sendUTF("Error: Invalid fleet order");
+        return;
+    }
 
     if (areAdjacentSectors(fromSector, toSector, gameId)) {
-        moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shipCounts, connection, false);
+        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, false);
         return;
     }
 
@@ -3230,7 +3287,7 @@ function moveFleet(data, connection) {
             connection.sendUTF("Error: Sectors are not adjacent (warp gates at both ends allow long jumps)");
             return;
         }
-        moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shipCounts, connection, true);
+        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, true);
     });
 }
 
@@ -3268,7 +3325,7 @@ function calculateFleetMoveCost(shipTypes, shipCounts, techCsv) {
 
 function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shipCounts, connection, viaWarpGate) {
     const totalShips = shipCounts.reduce((a, b) => a + b, 0);
-    if (!Number.isFinite(totalShips) || totalShips <= 0) {
+    if (!isPositiveSafeInteger(totalShips)) {
         connection.sendUTF("Error: No ships selected");
         return;
     }
@@ -3290,56 +3347,82 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                 return;
             }
 
-            // Move ships
-            let moved = 0;
-            shipTypes.forEach((type, index) => {
-                const count = shipCounts[index];
-                if (count > 0) {
-                    // Get ships to move
+            db.query(
+                `SELECT id, type FROM ships${gameId} WHERE owner = ? AND sectorid = ?`,
+                [playerId, fromSector],
+                (shipErr, ships) => {
+                    if (shipErr || !Array.isArray(ships)) {
+                        connection.sendUTF("Error: Could not verify fleet");
+                        return;
+                    }
+
+                    const available = new Map();
+                    ships.forEach(ship => {
+                        const id = Number(ship.id);
+                        const type = Number(ship.type);
+                        if (!Number.isSafeInteger(id) || !SHIP_TYPE_IDS.includes(type)) return;
+                        if (!available.has(type)) {
+                            available.set(type, []);
+                        }
+                        available.get(type).push(id);
+                    });
+
+                    const selectedIds = [];
+                    for (let i = 0; i < shipTypes.length; i++) {
+                        const type = shipTypes[i];
+                        const count = shipCounts[i];
+                        const candidates = available.get(type) || [];
+                        if (candidates.length < count) {
+                            connection.sendUTF(`Error: Not enough ships in sector ${Number(fromSector)}`);
+                            return;
+                        }
+                        candidates.slice(0, count).forEach(id => selectedIds.push(id));
+                    }
+
+                    if (selectedIds.length !== totalShips) {
+                        connection.sendUTF("Error: Could not verify fleet");
+                        return;
+                    }
+
+                    const placeholders = selectedIds.map(() => '?').join(',');
                     db.query(
-                        `SELECT id FROM ships${gameId}
-                         WHERE owner = ? AND sectorid = ? AND type = ?
-                         LIMIT ?`,
-                        [playerId, fromSector, type, count],
-                        (err, ships) => {
-                            if (!err && ships.length > 0) {
-                                const shipIds = ships.map(s => s.id).join(',');
-                                db.query(
-                                    `UPDATE ships${gameId} SET sectorid = ? WHERE id IN (${shipIds})`,
-                                    [toSector],
-                                    (err) => {
-                                        if (!err) {
-                                            moved += ships.length;
-
-                                            // If all ships moved, deduct crystal and mark sectors explored
-                                            if (moved === totalShips) {
-                                                db.query(
-                                                    `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ?`,
-                                                    [moveCost, playerId]
-                                                );
-
-                                                // Mark destination sector as explored
-                                                markSectorExplored(gameId, playerId, toSector);
-
-                                                // Everyone with eyes on either sector watches the fleet fly.
-                                                broadcastFleetMove(gameId, playerId, fromSector, toSector, totalShips, viaWarpGate);
-
-                                                // HAZARD HANDLING & TERRITORY CONTROL
-                                                applyArrivalEffects(gameId, playerId, toSector, connection, () => {
-                                                    updateResources(connection);
-                                                    updateSector2(gameId, fromSector);
-                                                    updateSector2(gameId, toSector);
-                                                    sendVisibleMapState(gameId, connection);
-                                                });
-                                            }
-                                        }
-                                    }
-                                );
+                        `UPDATE ships${gameId} SET sectorid = ? WHERE id IN (${placeholders})`,
+                        [toSector, ...selectedIds],
+                        (moveErr, moveResult) => {
+                            const affected = moveResult && Number(moveResult.affectedRows);
+                            if (moveErr || (Number.isFinite(affected) && affected !== selectedIds.length)) {
+                                connection.sendUTF("Error: Failed moving fleet");
+                                return;
                             }
+
+                            db.query(
+                                `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ?`,
+                                [moveCost, playerId],
+                                deductErr => {
+                                    if (deductErr) {
+                                        connection.sendUTF("Error: Failed to finalize movement");
+                                        return;
+                                    }
+
+                                    // Mark destination sector as explored
+                                    markSectorExplored(gameId, playerId, toSector);
+
+                                    // Everyone with eyes on either sector watches the fleet fly.
+                                    broadcastFleetMove(gameId, playerId, fromSector, toSector, totalShips, viaWarpGate);
+
+                                    // HAZARD HANDLING & TERRITORY CONTROL
+                                    applyArrivalEffects(gameId, playerId, toSector, connection, () => {
+                                        updateResources(connection);
+                                        updateSector2(gameId, fromSector);
+                                        updateSector2(gameId, toSector);
+                                        sendVisibleMapState(gameId, connection);
+                                    });
+                                }
+                            );
                         }
                     );
                 }
-            });
+            );
         }
     );
 }
@@ -3527,7 +3610,7 @@ function updateSector(data, connection) {
     const gameId = connection.gameid;
     const playerId = Number(connection.name);
 
-    if (!Number.isFinite(sectorId)) {
+    if (!isPositiveSafeInteger(sectorId)) {
         connection.sendUTF("Error: Invalid sector");
         return;
     }
@@ -3778,12 +3861,12 @@ function sendMultiMoveOptions(connection, gameId, targetSector) {
 }
 
 function preMoveFleet(data, connection) {
-    const parts = data.split(":");
+    const parts = typeof data === 'string' ? data.split(":") : [];
     const playerId = Number(connection.name);
-    const gameId = connection.gameid;
+    const gameId = Number(connection.gameid);
     const targetSector = parseSectorToken(parts[1]);
 
-    if (!Number.isFinite(playerId) || !gameId || !Number.isFinite(targetSector)) {
+    if (!isPositiveSafeInteger(playerId) || !isPositiveSafeInteger(gameId) || !isPositiveSafeInteger(targetSector)) {
         connection.sendUTF("Error: Invalid fleet order");
         return;
     }
@@ -3791,8 +3874,9 @@ function preMoveFleet(data, connection) {
     const requestedMoves = new Map();
     for (let i = 2; i + 2 < parts.length; i += 3) {
         const sourceSector = parseSectorToken(parts[i]);
-        const shipType = Number.parseInt(parts[i + 1], 10);
-        if (!Number.isFinite(sourceSector) || !Number.isFinite(shipType) || shipType < 1 || shipType > 9) {
+        const shipType = parsePositiveDecimalToken(parts[i + 1]);
+        const ordinal = parsePositiveDecimalToken(parts[i + 2]);
+        if (!isPositiveSafeInteger(sourceSector) || !SHIP_TYPE_IDS.includes(shipType) || !isPositiveSafeInteger(ordinal)) {
             continue;
         }
 

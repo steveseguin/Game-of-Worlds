@@ -30,16 +30,18 @@ Fog-of-war is server-enforced through `canPlayerSeeSector()`, `markSectorExplore
 
 Movement commands:
 
-- `//move:<fromHex>:<toHex>:<shipType>:<count>`
-- `//sendmmf:<target>:<source>:<ship counts...>` through multi-move UI
+- `//move:<fromHex>:<toHex>:<shipTypeCsv>:<countCsv>` for single-source movement; type/count CSVs are positive decimal integers and must line up one-to-one.
+- `//sendmmf:<targetHex>:<sourceHex>:<shipType>:<ordinal>...` through the multi-move UI; every selected ship option adds a source/type/positive-ordinal triplet.
 - `//mmove:<sectorHex>` to ask for source options
 
 Rules:
 
+- Sector tokens are whole hexadecimal, one-based ids. Malformed tokens and sector `0` are rejected before DB/resource writes.
 - Normal movement requires adjacency.
 - Warp movement is allowed when both endpoints have warp gates.
-- Movement costs crystal based on moved ship count and warp usage.
-- Ships are moved in DB first, then `applyArrivalEffects()` resolves hazards/ownership prompts.
+- Movement costs crystal based on moved ship hull classes and propulsion tech discounts.
+- The server verifies resource balance and the full requested fleet before moving ships.
+- Ships are moved in DB, crystal is deducted, then `applyArrivalEffects()` resolves hazards/ownership prompts.
 - `fleetmove::` broadcasts visible movement animation/event.
 
 Arrival effects:

@@ -15,6 +15,7 @@ This file records review findings that matter for future work. Keep entries conc
 | TempKey compare | Protected-page and WebSocket auth compared bearer tempKey strings with direct equality. | Exported and reused timing-safe string comparison. |
 | Elimination victory | Elimination treated any owned sector as a surviving planet and did not prove the candidate still owned a world. | Victory checks now require the candidate to own a world type `6-10` and opponents to own none; route markers and secured asteroids do not keep players alive. |
 | Reconnect client map | Closing an older socket after reconnect could delete `clientMap[userId]` for the newer socket. | WebSocket close cleanup now removes the map entry only when it still points at the closing connection. |
+| Movement command validation | Partial hex sector tokens, sector `0`, missing move fields, and over-requested ship counts could enter movement/probe paths inconsistently. | Movement/probe validation now rejects malformed sectors before resource writes, documents the CSV/triplet protocols, and verifies the whole requested fleet before moving ships. |
 
 ## Active Risks To Revisit
 

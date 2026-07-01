@@ -24,6 +24,7 @@ Primary live runtime files:
 - [Game Lifecycle And Cleanup](server/game-lifecycle.md)
 - [Persistence Model](server/persistence.md)
 - [Gameplay Mechanics](gameplay/mechanics.md)
+- [Movement Flow](gameplay/movement-flow.md)
 - [State Model](gameplay/state-model.md)
 - [User Journey](gameplay/user-journey.md)
 - [Turn Engine](gameplay/turn-engine.md)

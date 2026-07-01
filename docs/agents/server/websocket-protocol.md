@@ -71,8 +71,8 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//buytech:<techId>` | `buyTech` | Checks cost, prerequisites, and race branch caps. |
 | `//techstate` | `handleTechStateRequest` | Returns `techstate::` JSON. |
 | `//victoryprogress` | `handleVictoryProgressRequest` | Returns `victoryprogress::` JSON. |
-| `//move:<fromHex>:<toHex>:<shipType>:<count>` | `moveFleet` | Adjacent or warp-gate movement, charges crystal, then arrival effects. |
-| `//sendmmf:<payload>` | `preMoveFleet` | Multi-move fleet order. |
+| `//move:<fromHex>:<toHex>:<shipTypeCsv>:<countCsv>` | `moveFleet` | Single-source movement. The ship type/count CSVs must be the same length, positive decimal integers, and use ship ids `1-9`. Movement is adjacent or warp-gate, charges crystal, then resolves arrival effects. |
+| `//sendmmf:<targetHex>:<sourceHex>:<shipType>:<ordinal>...` | `preMoveFleet` | Multi-source movement. Each selected ship option contributes a source/type/positive-ordinal triplet; the server counts valid triplets per source/type and verifies available ships. |
 | `//mmove:<sectorHex>` | `surroundShips` | Multi-source movement helper. |
 | `//standingorders:get` | `handleStandingOrders` | Reads automation settings. |
 | `//standingorders:<json>` | `handleStandingOrders` | Updates automation settings. |
@@ -120,5 +120,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 ## Protocol Risks
 
 - The protocol is string-prefix based. Add tests whenever introducing a new prefix or changing delimiters.
-- Some arguments are hex sector tokens. Server parsing should use `parseSectorToken()` or equivalent and never trust raw table suffixes.
+- Sector arguments are whole hexadecimal tokens without a `0x` prefix. Server parsing should use `parseSectorToken()` or equivalent, reject partial tokens such as `1zz`, and never trust raw table suffixes.
+- Sector ids are one-based. `0` is invalid and must be rejected before resource writes such as probe cost deduction.
+- Movement commands should fail closed with `Error: Invalid fleet order`, `Error: No ships selected`, or a specific resource/fleet error before moving ships. Single-source movement must verify the full requested fleet exists before any ship update.
 - Client parsing is split between lobby and game scripts, so new server messages may need two client handlers.
