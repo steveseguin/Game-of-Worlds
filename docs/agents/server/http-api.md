@@ -12,6 +12,8 @@ Primary source: `server/index.js` routes to handlers in `server/server.js`.
 | `GET`/`HEAD` | `/debug/deploy` | `server/index.js` | Alias for status payload with deploy metadata included. |
 | `GET` | `/config.js` | `server/index.js` | Browser JS globals for Stripe publishable key and feature flags. |
 | `GET` | `/api/config` | `server/index.js` | JSON version of public config flags. |
+| `GET` | `/js/shop.js` | `server/index.js` | Disabled legacy route. Returns `410`; use `shop-enhanced.js`. |
+| `GET` | `/race-selection.js` | `server/index.js` | Legacy compatibility shim for `public/js/race-selection.js`. |
 
 Status payload shape:
 
@@ -87,4 +89,6 @@ Payment handlers are routed through `server/lib/payment-endpoints.js` and return
 - `/` serves `public/landing.html`.
 - `/index.html` redirects to `/landing.html`.
 - `/game.html`, `/lobby.html`, and `/purchase-race.html` require `userId` and `tempKey` cookies that match `users.tempkey`.
+- Protected-page and WebSocket tempKey checks use timing-safe comparison.
 - All static serving is rooted under `public/` and checks for path traversal before reading files.
+- `GET` and `HEAD` static requests share the same file-serving path; `HEAD` returns headers only.

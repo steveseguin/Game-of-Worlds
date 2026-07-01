@@ -28,6 +28,7 @@ const url = require('url');
 // Import server logic
 const serverLogic = require('./server');
 const { createMockDatabase } = require('./lib/mock-db');
+const security = require('./lib/security');
 
 // Use shared game state from server.js
 const { gameState } = serverLogic;
@@ -507,7 +508,10 @@ const httpServer = http.createServer((request, response) => {
         
         // Verify credentials against database
         db.query('SELECT tempkey FROM users WHERE id = ?', [userId], (err, results) => {
-            if (err || results.length === 0 || results[0].tempkey !== tempKey) {
+            if (err ||
+                results.length === 0 ||
+                !results[0].tempkey ||
+                !security.timingSafeEqualStrings(String(results[0].tempkey), String(tempKey || ''))) {
                 // Invalid credentials, redirect to login
                 response.writeHead(302, {'Location': '/login.html'});
                 response.end();
@@ -813,7 +817,9 @@ function authUser(message, connection) {
         
         const user = results[0];
         
-        if (user.tempkey !== tempKey) {
+        if (!user.tempkey ||
+            !tempKey ||
+            !security.timingSafeEqualStrings(String(user.tempkey), String(tempKey))) {
             connection.sendUTF("Invalid credentials");
             console.log("Wrong credentials. Authentication failed.");
             connection.close();

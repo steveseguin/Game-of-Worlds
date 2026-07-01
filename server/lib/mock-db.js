@@ -975,8 +975,14 @@ class MockDatabase {
 
                 if (/^SELECT DISTINCT owner FROM `?map\d+`? WHERE owner IS NOT NULL AND owner != \?/i.test(normalized)) {
                     const exclude = Number(params[0]);
+                    const betweenMatch = normalized.match(/type BETWEEN (\d+) AND (\d+)/i);
                     const owners = [...new Set(
                         Array.from(map.values())
+                            .filter(r => {
+                                if (!betweenMatch) return true;
+                                const type = Number(r.type);
+                                return type >= Number(betweenMatch[1]) && type <= Number(betweenMatch[2]);
+                            })
                             .map(r => r.owner)
                             .filter(o => o !== null && o !== undefined && Number(o) !== exclude)
                             .map(Number)

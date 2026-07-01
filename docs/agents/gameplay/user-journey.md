@@ -50,7 +50,7 @@ Lobby guardrails:
    - `empire::...`
    - `victoryprogress::...`
 3. Player explores, probes, buys tech/buildings/ships, moves fleets, colonizes, and fights.
-4. Each turn, `processTurn()` applies income, AI, standing orders, battle checks, victory checks, and broadcasts `newturn::`.
+4. Each turn, `processTurn()` validates the game should continue, increments the turn, clears early-ready flags, triggers AI and standing orders, schedules income writes, processes battles, checks victory, and broadcasts `newturn::`.
 
 ## Exploration Decisions
 
@@ -71,3 +71,14 @@ Games can end by:
 - Solo sandbox or stale-human limits.
 
 End-state cleanup should stop timers, update `games.status`, notify clients, and clear current-game pointers where appropriate.
+
+## Contributor Journey
+
+For local development on Windows, macOS, or Linux:
+
+1. Run `npm install`.
+2. Copy `.env.example` to `.env`.
+3. Use `USE_MOCK_DB=true` for local development without MySQL.
+4. Run `npm run dev:mock`.
+5. Open `http://localhost:3000/login.html`.
+6. Run `npm test`, `npm run test:integration`, and targeted `npm run test:e2e -- <spec>` before changing shared gameplay flow.

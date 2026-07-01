@@ -31,12 +31,35 @@ High-level turn flow:
 1. Skip/return if a battle pause is active.
 2. Confirm the game should continue with `shouldProcessTurn()`.
 3. Increment and persist the turn.
-4. Compute and write income for each player.
-5. Apply standing orders.
-6. Trigger AI actions.
-7. Process battles.
-8. Check victory.
-9. Broadcast `newturn::<turn>` and refreshed player state.
+4. Clear manual "done early" readiness flags.
+5. Trigger AI actions.
+6. Apply standing orders.
+7. Start async income calculations and resource writes for each player.
+8. Process battles.
+9. Check victory.
+10. Broadcast `newturn::<turn>`.
+
+Important implementation detail: resource generation is currently scheduled through per-player async callbacks, while battle/victory checks continue after the scheduling call. In most gameplay this is acceptable because ownership/combat state changes happen before turn end, but economic-victory/resource timing should be reviewed carefully if changed.
+
+## Manual End Turn
+
+Players can end a turn early with the `//start` command while already in an active game. The server records readiness in `activeGames[gameId].turnReady` and broadcasts:
+
+```text
+turnready::<readyHumanCount>::<humanCount>
+```
+
+When all human players are ready, `processTurn(gameId)` runs immediately instead of waiting for the interval.
+
+## Continue/Abandon Checks
+
+`shouldProcessTurn(gameId)` prevents runaway games:
+
+- Abandons games with no player rows.
+- Abandons games with no human players.
+- Abandons stale active games after the configured no-human-activity turn count.
+- Abandons solo sandbox/test games at the configured max turn.
+- Skips active games whose battle pause is still running.
 
 ## Battle Pause
 
@@ -85,3 +108,4 @@ Important arrival rules:
 - Dynamic SQL table suffixes built from unvalidated game ids.
 - Client parser missing a new server message prefix.
 - Battle pause failing to resume the timer.
+- Economic/resource victory timing changing because income writes are asynchronous.

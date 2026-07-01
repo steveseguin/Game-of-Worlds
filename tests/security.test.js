@@ -78,3 +78,10 @@ test('csrf verification is length-safe', () => {
     assert.equal(security.verifyCSRFToken(token, 'other-session'), false);
     assert.equal(security.verifyCSRFToken(null, 'session-1'), false);
 });
+
+test('timingSafeEqualStrings rejects mismatched lengths and non-strings', () => {
+    assert.equal(security.timingSafeEqualStrings('same-token', 'same-token'), true);
+    assert.equal(security.timingSafeEqualStrings('same-token', 'same-tokex'), false);
+    assert.equal(security.timingSafeEqualStrings('short', 'longer'), false);
+    assert.equal(security.timingSafeEqualStrings(null, 'same-token'), false);
+});

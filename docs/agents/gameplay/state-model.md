@@ -28,6 +28,8 @@ const gameState = {
 
 Runtime state is reconstructed on process start by `resumeActiveGamesFromDatabase()`, which loads started games and restarts turn timers when human players remain.
 
+See `docs/agents/server/persistence.md` for table schema and lifecycle details.
+
 ## Persistent State
 
 Core global tables:
@@ -52,7 +54,7 @@ Per-game tables are suffixed with the numeric game id:
 
 ## Client State
 
-The client stores local rendering and selection state in `public/js/connect.js`, `GUI.js`, and related game UI modules. Server remains authoritative for resources, sector ownership, ships, buildings, tech, victory, and turns.
+The client stores local rendering and selection state in `public/js/connect.js`, `GUI.js`, and related game UI modules. Server remains authoritative for resources, sector ownership, ships, buildings, tech, victory, and turns. Sector ownership is broader than world ownership: empty routes and secured asteroids can have `map<gameId>.owner`, but elimination requires the candidate to own at least one sector type `6-10` and every opponent to own none.
 
 ## State Transitions
 
@@ -80,3 +82,5 @@ stateDiagram-v2
 - Battle playback pauses the turn clock by using `battlePause`; do not advance turns while `isBattlePauseActive(gameId)` is true.
 - Fog-of-war writes to `explored_sectors<gameId>` and should prevent hidden sectors from leaking through `sector::` or `mapstate::`.
 - Production `/status.deploy.dirty` should be `false`; a dirty deploy indicates generated/tracked files or wrong checkout state in CI.
+- `activeGames[gameId].turnReady` must be cleared after each processed turn.
+- `activeGames[gameId].lastHumanActivityTurn` should advance when humans send authenticated game commands, otherwise stale-game abandonment can fire too aggressively.

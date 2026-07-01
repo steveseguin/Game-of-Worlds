@@ -12,6 +12,8 @@ This file records review findings that matter for future work. Keep entries conc
 | Legacy hazard module | `checkProbeHazard()` formatted `sectorType` as the sector id in messages. | Added optional target sector id and regression tests. |
 | Deploy metadata | Manual deploys could report the workflow ref SHA instead of the checked-out deploy ref. | Workflow now captures `git rev-parse HEAD`; deploy metadata uses `DEPLOY_COMMIT`. |
 | Action feedback | Server Deploy used bare `curl` checks and minimal failure context. | Added deploy target summary, secret preflight, structured production verifier, and failure summaries. |
+| TempKey compare | Protected-page and WebSocket auth compared bearer tempKey strings with direct equality. | Exported and reused timing-safe string comparison. |
+| Elimination victory | Elimination treated any owned sector as a surviving planet and did not prove the candidate still owned a world. | Victory checks now require the candidate to own a world type `6-10` and opponents to own none; route markers and secured asteroids do not keep players alive. |
 
 ## Active Risks To Revisit
 
@@ -24,6 +26,7 @@ This file records review findings that matter for future work. Keep entries conc
 | Legacy docs | Several root deployment docs predate current CI/CD. | Contributors and agents may follow stale deployment instructions. | Gradually archive or rewrite old deployment docs to point at `docs/agents/operations/ci-cd.md`. |
 | Tech definitions | Tech tree is duplicated in `server/lib/tech.js` and `public/js/tech.js`. | Divergence can create client/server disagreement. | Add a sync check or generate the client copy from server definitions. |
 | Payment surface | Payment endpoints are present but optional. | Stripe config gaps should not break non-payment gameplay. | Keep payment tests isolated and ensure `503` behavior remains explicit when disabled. |
+| Turn sequencing | Income writes, standing orders, AI, battle, and victory are mixed callback/async flows in `processTurnUnchecked()`. | Economic-victory and combat-victory timing can be hard to reason about, and broad refactors risk regressions. | Add focused turn sequencing tests before changing this order; eventually make turn processing explicitly awaited. |
 
 ## Review Checklist For Gameplay Changes
 

@@ -32,6 +32,8 @@ sequenceDiagram
 
 Unauthenticated sockets are closed unless their first UTF-8 message starts with `//auth:`.
 
+See `server/signaling-and-errors.md` for the full bootstrap, error, and message-prefix inventory.
+
 ## Client Command Format
 
 Client commands use a legacy text protocol:
@@ -53,7 +55,7 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//leavegame` | lobby/game | `handleLeaveGame` | Leave waiting room or active game. |
 | `//changerace:<raceId>` | lobby | `handleChangeRace` | Change selected race before start. |
 | `//addai:<difficulty>:<strategy>` | lobby | `handleAddAi` | Creator adds AI seat. |
-| `//start` | lobby/game | `handleGameStart` | Creator starts game. |
+| `//start` | lobby/game | `handleGameStart` | Creator starts a waiting game; active-game players use the same command to mark turn ready. |
 | `//getunlockedraces` | lobby | `handleGetUnlockedRaces` | Race picker data. |
 
 ## Game Commands
@@ -77,11 +79,14 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//applyorders` | `handleApplyStandingOrders` | Runs standing orders immediately. |
 | `//surrender` | `handleSurrender` | Ends/removes player and may end game. |
 
+Messages that do not begin with `//` are treated as chat text and broadcast to the sender's current game.
+
 ## Server Message Prefixes
 
 | Prefix | Consumer | Meaning |
 | --- | --- | --- |
 | `$^$<count>` | lobby/game | Connected socket count. |
+| `countdown::<seconds|cancel>` | lobby/game | Start-game countdown or cancellation. |
 | `lobby::` | lobby/game | Enter lobby mode. |
 | `gamelist::...` | lobby | Waiting-game list. |
 | `currentgame::<json|null>` | lobby/game | Current game snapshot. |
@@ -89,8 +94,11 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `joingame::success::<json>` / `joingame::error::<msg>` | lobby | Join result. |
 | `changerace::success::<json>` / `changerace::error::<msg>` | lobby | Race result. |
 | `addai::success::<name>` / `addai::error::<msg>` | lobby | AI-seat result. |
-| `playerlist::<json>` | lobby/game | Current players in game. |
+| `races::<json>` | lobby/game | Race unlock/selection data. |
+| `playerlist::<json>` | lobby/game | Current players in game fallback/legacy shape. |
+| `pl:<payload>` | lobby/game | Current player-list payload used by current clients. |
 | `startgame::` | game | Switch to active game UI. |
+| `turnready::<ready>::<humans>` | game | Manual end-turn readiness count. |
 | `newturn::<turn>` | game | Turn advanced. |
 | `resources::<metal>::<crystal>::<research>` | game | Player resources. |
 | `techstate::<json>` | game | Tech tree state. |
@@ -100,12 +108,14 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `mapstate::<csv>` | game | Visible map snapshot. |
 | `sector::<sectorId>::<json>` | game | Sector detail. |
 | `probeonly:<sectorHex>` | game | Sector is not visible; probing is possible. |
+| `mmoptions:<target>:...` | game | Multi-source move options. |
 | `fleetmove::<from>::<to>::<player>::<count>::<warpFlag>` | game | Fleet movement animation/event. |
 | `battlepause::<freezeMs>::<playbackMs>` | game | Turn timer is paused during battle playback. |
 | `battle::...`, `battlereport::...`, `battle_summary::...` | game | Battle playback and telemetry. |
 | `gameover::...` | game/lobby | Game end. |
-| `standingorders::state::<json>` / `standingorders::error::<msg>` | game | Standing order state/errors. |
+| `standingorders::state::<json>` / `standingorders::applied::<json>` / `standingorders::error::<msg>` / `standingorders::noop` | game | Standing order state/results/errors. |
 | `systemalert::<msg>` | game | Important narrative/system update. |
+| `maxbuild::`, `ownsector:`, `fleet:`, `tech:`, `ub:`, `info:` | game | Legacy/current compatibility messages still parsed by `public/js/connect.js`. |
 
 ## Protocol Risks
 

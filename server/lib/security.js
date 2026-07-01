@@ -321,6 +321,7 @@ module.exports = {
     generateToken,
     generateSessionToken,
     verifySessionToken,
+    timingSafeEqualStrings,
     checkRateLimit,
     validateCommand,
     isValidIP,

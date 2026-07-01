@@ -133,8 +133,8 @@ test('scientific victory follows the canonical tech tree and excludes placeholde
     await dbQuery(db, 'INSERT INTO games (name, creator, maxplayers, status, mode) VALUES (?, ?, ?, ?, ?)', ['Victory', 1, 2, 'in-progress', 'quick']);
     await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [1, 1, 300, 300, 100]);
     await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [2, 1, 300, 300, 100]);
-    await dbQuery(db, 'UPDATE map1 SET owner = ? WHERE sectorid = ?', [1, 1]);
-    await dbQuery(db, 'UPDATE map1 SET owner = ? WHERE sectorid = ?', [2, 2]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [10, 1, 1]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [10, 2, 2]);
 
     const levels = {};
     Object.values(techSystem.TECHNOLOGIES).forEach(tech => {
@@ -162,8 +162,8 @@ test('time victory is achievable at the turn cap and resolves ties deterministic
     await dbQuery(db, 'INSERT INTO games (name, creator, maxplayers, status, mode) VALUES (?, ?, ?, ?, ?)', ['Time', 1, 2, 'in-progress', 'quick']);
     await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [1, 1, 300, 300, 100]);
     await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [2, 1, 300, 300, 100]);
-    await dbQuery(db, 'UPDATE map1 SET owner = ? WHERE sectorid = ?', [1, 1]);
-    await dbQuery(db, 'UPDATE map1 SET owner = ? WHERE sectorid = ?', [2, 2]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [10, 1, 1]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [10, 2, 2]);
 
     const winner = await new Promise((resolve, reject) => {
         victory.checkAllPlayersForVictory(1, gameState, db, (err, result) => {
@@ -178,6 +178,57 @@ test('time victory is achievable at the turn cap and resolves ties deterministic
         priority: 4,
         playerOrder: 0
     });
+});
+
+test('elimination ignores non-world route ownership when checking surviving opponents', async () => {
+    const db = createMockDatabase();
+    const gameState = { turns: { 1: 12 }, activeGames: {}, gameTimer: {}, clients: [] };
+
+    await dbQuery(db, 'INSERT INTO users (username, password, salt, email, tempkey) VALUES (?, ?, ?, ?, ?)', ['p1', '', '', '', '']);
+    await dbQuery(db, 'INSERT INTO users (username, password, salt, email, tempkey) VALUES (?, ?, ?, ?, ?)', ['p2', '', '', '', '']);
+    await dbQuery(db, 'INSERT INTO games (name, creator, maxplayers, status, mode) VALUES (?, ?, ?, ?, ?)', ['Elimination', 1, 2, 'in-progress', 'quick']);
+    await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [1, 1, 300, 300, 100]);
+    await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [2, 1, 300, 300, 100]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [10, 1, 1]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [0, 2, 2]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [1, 2, 3]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = NULL WHERE sectorid = ?', [10, 4]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = NULL WHERE sectorid = ?', [10, 5]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = NULL WHERE sectorid = ?', [10, 6]);
+
+    const { victoryResult, progress } = await new Promise(resolve => {
+        victory.checkVictoryConditions(1, 1, gameState, db, (result, allProgress) => {
+            resolve({ victoryResult: result, progress: allProgress });
+        });
+    });
+
+    assert.equal(victoryResult.condition, 'Elimination Victory');
+    const elimination = progress.find(row => row.condition === 'Elimination Victory');
+    assert.equal(elimination.achieved, true);
+});
+
+test('elimination requires the candidate to own a world', async () => {
+    const db = createMockDatabase();
+    const gameState = { turns: { 1: 12 }, activeGames: {}, gameTimer: {}, clients: [] };
+
+    await dbQuery(db, 'INSERT INTO users (username, password, salt, email, tempkey) VALUES (?, ?, ?, ?, ?)', ['p1', '', '', '', '']);
+    await dbQuery(db, 'INSERT INTO users (username, password, salt, email, tempkey) VALUES (?, ?, ?, ?, ?)', ['p2', '', '', '', '']);
+    await dbQuery(db, 'INSERT INTO games (name, creator, maxplayers, status, mode) VALUES (?, ?, ?, ?, ?)', ['NoWorldWinner', 1, 2, 'in-progress', 'quick']);
+    await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [1, 1, 300, 300, 100]);
+    await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [2, 1, 300, 300, 100]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [0, 1, 1]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [1, 2, 2]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = NULL WHERE sectorid = ?', [10, 3]);
+
+    const { victoryResult, progress } = await new Promise(resolve => {
+        victory.checkVictoryConditions(1, 1, gameState, db, (result, allProgress) => {
+            resolve({ victoryResult: result, progress: allProgress });
+        });
+    });
+
+    assert.equal(victoryResult, null);
+    const elimination = progress.find(row => row.condition === 'Elimination Victory');
+    assert.equal(elimination.achieved, false);
 });
 
 test('surrender records a completed game with winner and clears player sessions', async () => {

@@ -28,6 +28,9 @@ flowchart LR
 | `server/lib/security.js` | Input and token utilities | Username/email/password validation, signed session tokens, CSRF helpers, rate limit helper. |
 | `tools/deploy.js` | SSH deploy | Uploads `server/`, `public/`, package files, writes deploy metadata, restarts service, smokes server. |
 | `tools/verify-production-status.js` | Public deploy verifier | Checks `/health` and `/status`; can require expected deployed commit. |
+| `docs/agents/server/signaling-and-errors.md` | Protocol/error reference | Message prefixes, command dispatch, and user-facing error shapes. |
+| `docs/agents/server/persistence.md` | Persistence reference | Global and per-game table contracts. |
+| `docs/agents/gameplay/mechanics.md` | Gameplay reference | Exploration, hazards, economy, buildings, ships, combat, victory. |
 
 ## Gameplay Modules
 

@@ -3381,7 +3381,7 @@ function areAdjacentSectors(sector1, sector2, gameId) {
 // ============================================================================
 // HAZARD MECHANICS - Restored from original 2012 game
 // Black holes annihilate fleets, asteroids damage them (if not owned),
-// and unowned planets are auto-colonized on arrival.
+// empty space can be held, and unowned planets require explicit colonization.
 // ============================================================================
 function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
     const finish = () => { try { done && done(); } catch (e) { console.error('arrival cb error:', e); } };
@@ -3905,7 +3905,7 @@ function preMoveFleet(data, connection) {
                                     broadcastFleetMove(gameId, playerId, entry.sourceSector, targetSector, entry.count, false);
                                 });
 
-                                // HAZARD HANDLING & AUTO-COLONIZATION
+                                // HAZARD HANDLING & TERRITORY CONTROL
                                 applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
                                     updateResources(connection);
                                     touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));

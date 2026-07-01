@@ -68,20 +68,42 @@ const VICTORY_CONDITIONS = {
         name: 'Elimination Victory',
         description: 'Be the last player with planets',
         check: function(gameId, playerId, gameState, db, callback) {
-            // Check if other players have any planets
+            // Check that this player still owns a world before checking opponents.
             db.query(
-                `SELECT DISTINCT owner 
-                 FROM map${gameId} 
-                 WHERE owner IS NOT NULL AND owner != ?`,
+                `SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN owner = ? THEN 1 ELSE 0 END) as owned
+                 FROM map${gameId}
+                 WHERE type BETWEEN 6 AND 10`,
                 [playerId],
                 (err, results) => {
                     if (err) {
                         callback(false, 0);
                         return;
                     }
-                    
-                    // Victory if no other players have planets
-                    callback(results.length === 0, results.length === 0 ? 100 : 0);
+
+                    const ownedWorlds = Number(results && results[0] && results[0].owned) || 0;
+                    if (ownedWorlds <= 0) {
+                        callback(false, 0);
+                        return;
+                    }
+
+                    // Victory if no other players have planets.
+                    db.query(
+                        `SELECT DISTINCT owner
+                         FROM map${gameId}
+                         WHERE owner IS NOT NULL AND owner != ?
+                           AND type BETWEEN 6 AND 10`,
+                        [playerId],
+                        (opponentErr, opponentRows) => {
+                            if (opponentErr) {
+                                callback(false, 0);
+                                return;
+                            }
+
+                            callback(opponentRows.length === 0, opponentRows.length === 0 ? 100 : 0);
+                        }
+                    );
                 }
             );
         }
