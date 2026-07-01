@@ -115,6 +115,8 @@ Research technologies to:
 - WebSocket connection is established automatically after login.
 - Game state persists in MySQL when configured, or in memory when `USE_MOCK_DB=true`.
 - Run `npm test` and `npm run test:integration` before opening a pull request.
+- Pull requests run CI only. Accepted pushes to `master`, `main`, or `stable` automatically run the production Server Deploy workflow when app files change.
+- The live server exposes deployment and runtime metadata at `/health`, `/status`, and `/debug/deploy`.
 
 ## Troubleshooting
 

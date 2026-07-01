@@ -131,6 +131,19 @@ async function runMockServerSmoke() {
         assert.equal(root.statusCode, 200);
         assert.match(root.body, /Game of Worlds|Game of Words/i);
 
+        const health = await request('/health');
+        assert.equal(health.statusCode, 200);
+        const healthBody = JSON.parse(health.body);
+        assert.equal(healthBody.service, 'game-of-worlds');
+        assert.equal(healthBody.status, 'ok');
+        assert.equal(healthBody.database.status, 'mock');
+        assert.ok(Number.isInteger(healthBody.uptimeSeconds));
+
+        const status = await request('/status');
+        assert.equal(status.statusCode, 200);
+        const statusBody = JSON.parse(status.body);
+        assert.equal(statusBody.service, 'game-of-worlds');
+
         const index = await request('/index.html');
         assert.equal(index.statusCode, 302);
         assert.equal(index.headers.location, '/landing.html');

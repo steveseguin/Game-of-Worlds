@@ -16,10 +16,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { execSync } = require('child_process');
 const { Client } = require('ssh2');
 
 const REPO = path.resolve(__dirname, '..');
 const REMOTE_ROOT = '/opt/game-of-worlds';
+const DEPLOY_TMP = path.join(REPO, '.deploy-tmp');
 
 const DELETE_FILES = [
     'public/index.html'
@@ -55,6 +58,47 @@ function collectDeployFiles() {
         ...walkFiles('server'),
         ...walkFiles('public')
     ];
+}
+
+function gitValue(command, fallback = null) {
+    try {
+        return execSync(command, {
+            cwd: REPO,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore']
+        }).trim() || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function buildDeployInfo() {
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
+    const gitStatus = gitValue('git status --porcelain', '');
+
+    return {
+        deployedAt: new Date().toISOString(),
+        source: process.env.GITHUB_ACTIONS === 'true' ? 'github-actions' : 'local',
+        repository: process.env.GITHUB_REPOSITORY || gitValue('git config --get remote.origin.url'),
+        branch: process.env.GITHUB_REF_NAME || gitValue('git branch --show-current'),
+        ref: process.env.GITHUB_REF || null,
+        commit: process.env.GITHUB_SHA || gitValue('git rev-parse HEAD'),
+        shortCommit: (process.env.GITHUB_SHA || gitValue('git rev-parse HEAD') || '').slice(0, 12) || null,
+        runId: process.env.GITHUB_RUN_ID || null,
+        runAttempt: process.env.GITHUB_RUN_ATTEMPT || null,
+        actor: process.env.GITHUB_ACTOR || os.userInfo().username,
+        workflow: process.env.GITHUB_WORKFLOW || null,
+        packageName: pkg.name,
+        packageVersion: pkg.version,
+        dirty: Boolean(gitStatus)
+    };
+}
+
+function writeDeployInfo() {
+    fs.mkdirSync(DEPLOY_TMP, { recursive: true });
+    const localPath = path.join(DEPLOY_TMP, 'deploy-info.json');
+    fs.writeFileSync(localPath, `${JSON.stringify(buildDeployInfo(), null, 2)}\n`);
+    return localPath;
 }
 
 function loadCredentials() {
@@ -117,6 +161,7 @@ async function main() {
         console.log(`\n${files.length} files`);
         return;
     }
+    const deployInfoPath = writeDeployInfo();
 
     const creds = loadCredentials();
     if (!creds.host || !creds.password) {
@@ -148,6 +193,9 @@ async function main() {
         console.log(`  PUT   ${file}`);
     }
 
+    await upload(sftp, deployInfoPath, `${REMOTE_ROOT}/server/deploy-info.json`);
+    console.log('  PUT   server/deploy-info.json');
+
     for (const file of DELETE_FILES) {
         const remote = `${REMOTE_ROOT}/${file.replace(/\\/g, '/')}`;
         await exec(conn, `rm -f '${remote}'`);
@@ -168,8 +216,11 @@ async function main() {
         const restart = await exec(conn, 'systemctl restart game-of-worlds && sleep 2 && systemctl is-active game-of-worlds');
         console.log(`  service: ${restart.out.trim() || restart.errOut.trim()}`);
 
-        const smoke = await exec(conn, "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ ; echo ' /'; curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/lobby.html; echo ' /lobby.html'");
+        const smoke = await exec(conn, "curl -s -o /dev/null -w '%{http_code} /\\n' http://localhost:3000/; curl -s -o /dev/null -w '%{http_code} /lobby.html\\n' http://localhost:3000/lobby.html; curl -s -o /dev/null -w '%{http_code} /health\\n' http://localhost:3000/health");
         console.log(`  smoke: ${smoke.out.trim().replace(/\n/g, ' | ')}`);
+        if (!/^200 \/$/m.test(smoke.out) || !/^302 \/lobby\.html$/m.test(smoke.out) || !/^200 \/health$/m.test(smoke.out)) {
+            throw new Error(`Smoke test failed: ${smoke.out.trim() || smoke.errOut.trim()}`);
+        }
 
         const logs = await exec(conn, 'journalctl -u game-of-worlds -n 12 --no-pager | tail -12');
         console.log('--- recent logs ---');

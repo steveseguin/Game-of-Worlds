@@ -168,7 +168,9 @@ This is an open project and all help is welcome. Start with the `stable` branch 
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, test, and pull request expectations.
 
-Server-side pull requests are fine, but production deployment is owner-controlled. CI runs unit tests and a mock server smoke test on PRs; a protected manual deploy workflow is available for maintainers after changes are accepted.
+Server-side pull requests are fine. Pull requests run CI only; accepted pushes to `master`, `main`, or `stable` run the production Server Deploy workflow automatically when app files change. That workflow installs dependencies, runs `npm test`, runs `npm run test:integration`, deploys over SSH, restarts the service, and verifies `/health` and `/status`.
+
+Maintainers can also run `Actions -> Server Deploy -> Run workflow` to redeploy a specific branch, tag, or SHA. The live server exposes deployment metadata at `/status` and `/debug/deploy`.
 
 ## License
 

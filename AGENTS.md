@@ -115,8 +115,8 @@ The `env-validator.js` runs at startup and validates all required variables. In 
 - The `stable` branch is the friend-ready contribution baseline. When Steve asks for a stable branch, create or update `stable`, include existing dirty working-tree changes unless Steve explicitly excludes them, run `npm test` and `npm run test:integration`, then push `stable`.
 - Contributors should branch from `stable` and open pull requests back into `stable` unless Steve asks for a different target.
 - Keep contributor-facing setup current in `README.md`, `CONTRIBUTING.md`, `.env.example`, and `.github/pull_request_template.md`.
-- Keep `.github/workflows/ci.yml` green for contributor PRs. The `Server Deploy` workflow is owner-only and manual.
-- External contributors should not deploy production. Codex still deploys and smoke-tests production after code changes, per the deployment workflow below.
+- Keep `.github/workflows/ci.yml` green for contributor PRs. Pull requests test only; accepted pushes to `master`, `main`, or `stable` run the `Server Deploy` workflow automatically when app files change.
+- External fork PRs should not deploy production. Trusted maintainers with push access can deploy by merging/pushing to the deploy branches or by manually running `Actions -> Server Deploy -> Run workflow`.
 
 ## Common Tasks
 
@@ -214,10 +214,10 @@ Run `npm run setup` to create tables. Key tables:
 **ALWAYS deploy and test on production after code changes. The user does NOT test locally.**
 
 After making any code changes:
-1. Copy changed files to production via SCP
-2. Restart the service: `systemctl restart game-of-worlds`
-3. Verify server is running: `systemctl status game-of-worlds`
-4. Run smoke test to confirm server responds
+1. Run relevant local validation (`npm test`, `npm run test:integration`, plus E2E/screenshots for UI changes).
+2. Push accepted changes to `stable`, `master`, or `main` so GitHub Actions can run CI/CD automatically.
+3. For immediate Codex-owned deploys, run `node tools/deploy.js` locally after validation.
+4. Verify server is running and smoke test production, including `/health` or `/status`.
 
 ### Secrets & Deployment
 
@@ -226,6 +226,12 @@ Production server credentials are stored in:
 secrets/readme/claude/agents/ssh
 ```
 This is the credential file used by `tools/deploy.js` for SSH deployment.
+
+GitHub Actions deployment uses repository secrets:
+
+- `PROD_SSH_HOST`
+- `PROD_SSH_USER`
+- `PROD_SSH_PASSWORD`
 
 ### Production Server
 
@@ -248,4 +254,7 @@ sshpass -p 'PASSWORD' ssh -o StrictHostKeyChecking=no root@140.82.4.209 "systemc
 
 # Smoke test
 sshpass -p 'PASSWORD' ssh -o StrictHostKeyChecking=no root@140.82.4.209 "curl -s localhost:3000/ | head -c 100"
+
+# Deployment metadata
+curl -s https://gameofworlds.com/status
 ```

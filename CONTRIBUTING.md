@@ -87,6 +87,20 @@ For a quick manual local game:
 
 ## Production
 
-External contributors should not deploy production. Steve or Codex will handle deployment and smoke testing after changes are accepted.
+Pull requests from forks do not deploy production. They run CI only.
 
-The repo includes an owner-only manual `Server Deploy` GitHub Action. It requires the repository secrets `PROD_SSH_HOST`, `PROD_SSH_USER`, and `PROD_SSH_PASSWORD`, and should be protected by the `production` environment. It runs tests first, then uses `tools/deploy.js` to upload `server/` and `public/`, restart the service, and smoke test the live server.
+Accepted pushes to `master`, `main`, or `stable` automatically run the `Server Deploy` GitHub Action when app files change. The workflow installs dependencies, runs `npm test`, runs `npm run test:integration`, deploys over SSH with `tools/deploy.js --install`, restarts `game-of-worlds`, and verifies the public `/health` and `/status` endpoints.
+
+Maintainers can also run `Actions -> Server Deploy -> Run workflow` to redeploy a specific branch, tag, or SHA. The default manual ref is `stable`.
+
+Required GitHub secrets:
+
+- `PROD_SSH_HOST`
+- `PROD_SSH_USER`
+- `PROD_SSH_PASSWORD`
+
+The live server reports deployment metadata at:
+
+- `https://gameofworlds.com/health`
+- `https://gameofworlds.com/status`
+- `https://gameofworlds.com/debug/deploy`

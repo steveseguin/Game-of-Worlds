@@ -81,6 +81,8 @@ const SECURITY_HEADERS = {
     'Referrer-Policy': 'same-origin',
     'X-Frame-Options': 'SAMEORIGIN'
 };
+const STARTED_AT = new Date().toISOString();
+const DEPLOY_INFO_PATH = path.resolve(__dirname, 'deploy-info.json');
 
 const PORT = process.env.PORT || 3000;
 const DB_CONFIG = {
@@ -93,6 +95,63 @@ const DB_CONFIG = {
 const DB_POOL_SIZE = parsePoolSize(process.env.DB_POOL_SIZE);
 const USE_MOCK_DB = /^(true|1|yes)$/i.test((process.env.USE_MOCK_DB || '').trim());
 const TEST_GAME_MODE_ENABLED = /^(true|1|yes)$/i.test((process.env.ENABLE_TEST_GAME_MODE || '').trim()) || process.env.NODE_ENV === 'test';
+
+function readDeployInfo() {
+    try {
+        const raw = fs.readFileSync(DEPLOY_INFO_PATH, 'utf8');
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function countKeys(value) {
+    return value && typeof value === 'object' ? Object.keys(value).length : 0;
+}
+
+function buildStatusPayload() {
+    const databaseStatus = db && db.isOffline
+        ? 'offline'
+        : USE_MOCK_DB
+            ? 'mock'
+            : 'connected';
+
+    return {
+        ok: databaseStatus !== 'offline',
+        status: databaseStatus === 'offline' ? 'degraded' : 'ok',
+        service: 'game-of-worlds',
+        startedAt: STARTED_AT,
+        uptimeSeconds: Math.round(process.uptime()),
+        environment: process.env.NODE_ENV || 'development',
+        port: Number(PORT),
+        database: {
+            status: databaseStatus,
+            reconnectScheduled: Boolean(reconnectTimer)
+        },
+        game: {
+            clients: clients.length,
+            activeGames: countKeys(activeGames),
+            timers: countKeys(gameTimer),
+            trackedTurns: countKeys(turns)
+        },
+        deploy: readDeployInfo()
+    };
+}
+
+function sendJson(response, statusCode, payload, method = 'GET') {
+    const body = JSON.stringify(payload, null, 2);
+    response.writeHead(statusCode, {
+        'Content-Type': 'application/json; charset=utf-8',
+        ...SECURITY_HEADERS,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Content-Length': Buffer.byteLength(body, 'utf8')
+    });
+    if (method === 'HEAD') {
+        response.end();
+        return;
+    }
+    response.end(body);
+}
 
 function buildPoolConfig() {
     return {
@@ -250,6 +309,11 @@ const httpServer = http.createServer((request, response) => {
     // Parse URL
     const parsedUrl = url.parse(request.url);
     let pathname = parsedUrl.pathname;
+
+    if (['/health', '/status', '/api/status', '/debug/deploy'].includes(pathname) && ['GET', 'HEAD'].includes(request.method)) {
+        sendJson(response, 200, buildStatusPayload(), request.method);
+        return;
+    }
     
     // Handle API endpoints
     if (pathname === '/login' && request.method === 'POST') {

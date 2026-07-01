@@ -45,6 +45,7 @@ temp/
 tmp/
 *.tmp
 .codex-tmp/
+.deploy-tmp/
 
 # Stripe CLI
 .stripe/
