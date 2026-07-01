@@ -65,9 +65,13 @@ All auth endpoints accept JSON request bodies capped at 16 KB.
 
 | Method | Path | Handler | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/api/user/:id/current-game` | `handleGetCurrentGame` | Returns current game snapshot for a user id. |
+| `GET` | `/api/user/:id/current-game` | `handleGetCurrentGame` | Returns `{ userId, currentGame }`; this is the HTTP reconnect pointer, not the WebSocket `currentgame::` snapshot. |
 | `GET` | `/api/game/:id/combat-telemetry` | `handleGetCombatTelemetry` | Recent battle/ship telemetry for the game. |
-| `GET` | `/api/game/:id/test-map-terrain` | `handleGetTestMapTerrain` | Test/debug terrain output. |
+| `GET` | `/api/game/:id/test-map-terrain` | `handleGetTestMapTerrain` | Test-only terrain output. Returns `404` unless `NODE_ENV=test`. |
+
+`/api/game/:id/combat-telemetry` is in-memory runtime telemetry, not persisted battle history. Empty games return `{ gameId, battles: 0, updatedAt: null, recentBattles: [], players: [] }`.
+
+`/api/game/:id/test-map-terrain` returns `{ gameId, sectors }`, where each sector includes `sectorid`, `type`, `x`, `y`, `owner`, and `terraformlvl`. E2E tests use it for deterministic path planning.
 
 ## Payment Endpoints
 

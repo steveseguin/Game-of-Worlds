@@ -71,6 +71,8 @@ mapconfig::<width>::<height>
 mapstate::<csv>
 ```
 
+If the reconnect pointer is stale, the server sends `currentgame::null`, clears `users.currentgame`, and returns the player to lobby/game-list flow.
+
 After game start:
 
 ```text

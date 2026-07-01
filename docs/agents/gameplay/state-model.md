@@ -76,6 +76,7 @@ stateDiagram-v2
 ## Invariants To Preserve
 
 - A WebSocket connection must authenticate before any command handler can mutate game state.
+- `clientMap[userId]` should point to the latest authenticated socket for that user; socket close handlers must not delete the map entry for a newer reconnect.
 - Dynamic table names must only use server-validated numeric game ids.
 - `users.currentgame` and `connection.gameid` should agree after join/reconnect and be cleared on leave/abandon where possible.
 - A game timer should exist for each active started game, except during shutdown or immediate abandonment.

@@ -21,6 +21,7 @@ Primary live runtime files:
 - [HTTP API](server/http-api.md)
 - [WebSocket Protocol](server/websocket-protocol.md)
 - [Signaling And Errors](server/signaling-and-errors.md)
+- [Game Lifecycle And Cleanup](server/game-lifecycle.md)
 - [Persistence Model](server/persistence.md)
 - [Gameplay Mechanics](gameplay/mechanics.md)
 - [State Model](gameplay/state-model.md)

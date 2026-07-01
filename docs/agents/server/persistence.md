@@ -42,7 +42,7 @@ flowchart TD
   Delete --> Drop[Drop per-game tables]
 ```
 
-Completed and abandoned games keep or clear different persistence depending on path. Waiting games with no players are deleted and their per-game tables are dropped. Active games that end are marked with `status` and should stop timers and clear reconnect pointers.
+Completed and abandoned games keep or clear different persistence depending on path. Waiting games with no players are deleted and their per-game tables are dropped. Active games that end are marked with `status` and should stop timers and clear reconnect pointers. See `docs/agents/server/game-lifecycle.md` for the precise leave, surrender, completed, and abandoned cleanup flows.
 
 ## Runtime Reconstruction
 
@@ -57,6 +57,7 @@ On process start:
 
 - `users.currentgame` should agree with rows in `players<gameId>`.
 - Connected sockets should have `connection.gameid` set only for the active/waiting game they are in.
+- `clientMap[userId]` is a latest-socket pointer; an old socket closing must not clear a newer reconnect's entry.
 - A game with `started=1` and non-terminal `status` should have runtime state after server resume.
 - A game with no human players should not keep running forever.
 - `explored_sectors<gameId>` controls what `mapstate::` and `sector::` may reveal.

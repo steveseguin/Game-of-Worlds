@@ -662,9 +662,7 @@ wsServer.on('request', request => {
             clients.splice(index, 1);
         }
         
-        if (clientMap[connection.name]) {
-            delete clientMap[connection.name];
-        }
+        serverLogic.handlePlayerDisconnect(connection);
         
         console.log(`${new Date()} Peer ${connection.remoteAddress} disconnected`);
         broadcastConnectedUsers();

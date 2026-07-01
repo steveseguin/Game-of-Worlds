@@ -14,6 +14,7 @@ This file records review findings that matter for future work. Keep entries conc
 | Action feedback | Server Deploy used bare `curl` checks and minimal failure context. | Added deploy target summary, secret preflight, structured production verifier, and failure summaries. |
 | TempKey compare | Protected-page and WebSocket auth compared bearer tempKey strings with direct equality. | Exported and reused timing-safe string comparison. |
 | Elimination victory | Elimination treated any owned sector as a surviving planet and did not prove the candidate still owned a world. | Victory checks now require the candidate to own a world type `6-10` and opponents to own none; route markers and secured asteroids do not keep players alive. |
+| Reconnect client map | Closing an older socket after reconnect could delete `clientMap[userId]` for the newer socket. | WebSocket close cleanup now removes the map entry only when it still points at the closing connection. |
 
 ## Active Risks To Revisit
 
