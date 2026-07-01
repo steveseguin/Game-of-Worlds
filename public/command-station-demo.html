@@ -19,6 +19,7 @@
       <div class="station__scanlines" aria-hidden="true"></div>
       <div class="station__noise" aria-hidden="true"></div>
       <div class="station__vignette" aria-hidden="true"></div>
+      <canvas id="paintWash" class="paint-wash" aria-hidden="true"></canvas>
       <div class="spark-layer" id="sparkLayer" aria-hidden="true"></div>
 
       <header class="top-rail panel panel--top">
@@ -31,11 +32,16 @@
         </div>
         <div class="status-strip">
           <span class="status-light status-light--green"></span>
-          <span>LINK STABLE</span>
+          <span>Game of Words</span>
           <span class="status-divider"></span>
-          <span>TURN 12</span>
+          <span>Turn 12</span>
           <span class="status-divider"></span>
-          <span>FLEET NET 87%</span>
+          <span>Next turn 02:14</span>
+        </div>
+        <div class="resource-ribbon" aria-label="Resource preview">
+          <span><b>Metal</b> 1420</span>
+          <span><b>Crystal</b> 880</span>
+          <span><b>Research</b> 310</span>
         </div>
       </header>
 
@@ -131,14 +137,24 @@
       </aside>
 
       <section class="bottom-console panel">
-        <div class="action-bank">
-          <button type="button" data-event="probeLost">Probe Lost</button>
-          <button type="button" data-event="blackHole">Black Hole</button>
-          <button type="button" data-event="asteroid">Asteroids</button>
-          <button type="button" data-event="colony">Colony</button>
-          <button type="button" data-event="battle">Battle</button>
-          <button type="button" data-event="research">Research</button>
-          <button type="button" id="autoCycle" aria-pressed="true">Auto</button>
+        <div class="control-surface">
+          <div class="command-tabs" aria-label="Primary command sections">
+            <button type="button" aria-pressed="true">Build</button>
+            <button type="button">Fleet</button>
+            <button type="button">Research</button>
+            <button type="button">Colonize</button>
+          </div>
+          <div class="action-bank">
+            <button type="button" data-event="colony">Metal Extractor</button>
+            <button type="button" data-event="research">Research Lab</button>
+            <button type="button" data-event="probeLost">Send Probe</button>
+            <button type="button" data-event="asteroid">Move Fleet</button>
+            <button type="button" data-event="battle">Build Frigate</button>
+            <button type="button" data-event="blackHole">End Turn</button>
+            <button type="button" id="autoCycle" aria-pressed="true">
+              Auto Alerts
+            </button>
+          </div>
         </div>
         <div class="event-log" id="eventLog">
           <div class="event-log__row">Sensor feed initialized.</div>

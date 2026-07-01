@@ -901,6 +901,397 @@ button[aria-pressed="true"] {
   border-color: rgba(131, 255, 172, 0.48);
 }
 
+/* Painted command-room revision: keep the game layout, remove the hard web-box feel. */
+.station {
+  background:
+    radial-gradient(
+      ellipse at 48% 38%,
+      rgba(62, 134, 99, 0.16),
+      transparent 34%
+    ),
+    radial-gradient(
+      ellipse at 70% 70%,
+      rgba(97, 52, 39, 0.18),
+      transparent 30%
+    ),
+    linear-gradient(135deg, #08100e, #101713 42%, #080909 100%);
+  border: 0;
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.82),
+    inset 0 0 0 9px rgba(2, 5, 4, 0.92),
+    inset 0 0 120px rgba(0, 0, 0, 0.72);
+}
+
+.station::before,
+.station::after {
+  border: 0;
+  background:
+    radial-gradient(
+      ellipse at 50% 0%,
+      rgba(228, 199, 111, 0.08),
+      transparent 46%
+    ),
+    radial-gradient(
+      ellipse at 0% 65%,
+      rgba(65, 180, 131, 0.09),
+      transparent 40%
+    );
+  opacity: 0.8;
+}
+
+.station__backplate {
+  background:
+    radial-gradient(
+      ellipse at 30% 50%,
+      rgba(52, 93, 75, 0.18),
+      transparent 42%
+    ),
+    radial-gradient(
+      ellipse at 84% 36%,
+      rgba(165, 83, 52, 0.12),
+      transparent 38%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0 21%,
+      rgba(0, 0, 0, 0.16) 21% 22%,
+      transparent 22% 77%,
+      rgba(0, 0, 0, 0.16) 77% 78%,
+      transparent 78%
+    );
+}
+
+.paint-wash {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.95;
+  mix-blend-mode: screen;
+}
+
+.panel {
+  background:
+    radial-gradient(
+      ellipse at 28% 18%,
+      rgba(255, 242, 179, 0.07),
+      transparent 36%
+    ),
+    radial-gradient(
+      ellipse at 78% 78%,
+      rgba(79, 255, 164, 0.08),
+      transparent 40%
+    ),
+    linear-gradient(145deg, rgba(28, 38, 34, 0.86), rgba(8, 13, 11, 0.82));
+  border: 0;
+  border-radius: 34px 58px 42px 50px / 31px 44px 54px 38px;
+  box-shadow:
+    inset 0 0 0 1px rgba(236, 221, 153, 0.14),
+    inset 0 0 44px rgba(0, 0, 0, 0.42),
+    0 20px 46px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(113, 180, 127, 0.04);
+  backdrop-filter: blur(2px);
+}
+
+.panel::before,
+.panel::after {
+  border: 0;
+  width: auto;
+  height: auto;
+  inset: -7px;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      ellipse at 18% 22%,
+      rgba(255, 221, 126, 0.16),
+      transparent 36%
+    ),
+    radial-gradient(
+      ellipse at 82% 80%,
+      rgba(93, 255, 180, 0.12),
+      transparent 42%
+    );
+  opacity: 0.58;
+  z-index: -1;
+}
+
+.panel::after {
+  inset: 5px;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.024) 0 1px,
+      transparent 1px 6px
+    );
+  opacity: 0.72;
+  z-index: 0;
+}
+
+.panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.panel-heading {
+  height: auto;
+  min-height: 30px;
+  padding: 10px 18px 3px;
+  border-bottom: 0;
+  color: rgba(238, 231, 179, 0.88);
+}
+
+.top-rail {
+  left: 2.7%;
+  right: 2.7%;
+  top: 3.4%;
+  height: 10.8%;
+  padding: 0 28px;
+  border-radius: 42px 78px 42px 66px / 28px 54px 36px 48px;
+}
+
+.brand-mark {
+  border: 0;
+  border-radius: 44% 56% 47% 53% / 41% 48% 52% 59%;
+  background:
+    radial-gradient(
+      circle at 35% 25%,
+      rgba(255, 255, 220, 0.58),
+      transparent 34%
+    ),
+    linear-gradient(145deg, #d8e28f, #6a9a6e 62%, #39533d);
+  box-shadow:
+    0 0 18px rgba(131, 255, 172, 0.2),
+    inset 0 0 14px rgba(0, 0, 0, 0.28);
+}
+
+.status-strip {
+  text-transform: uppercase;
+}
+
+.resource-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(235, 249, 218, 0.82);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.resource-ribbon span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background:
+    radial-gradient(
+      circle at 20% 20%,
+      rgba(255, 255, 255, 0.11),
+      transparent 40%
+    ),
+    rgba(14, 31, 25, 0.58);
+  box-shadow:
+    inset 0 0 0 1px rgba(190, 218, 145, 0.13),
+    0 0 18px rgba(0, 0, 0, 0.18);
+}
+
+.resource-ribbon b {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.sensor-frame {
+  left: 25.1%;
+  top: 17.6%;
+  width: 50.2%;
+  height: 50.6%;
+  border: 0;
+  border-radius: 46px 70px 50px 82px / 38px 62px 52px 56px;
+  background: transparent;
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.48),
+    0 0 0 8px rgba(7, 11, 9, 0.66),
+    0 0 54px rgba(72, 214, 144, 0.1);
+}
+
+.sensor-frame__bezel {
+  inset: -26px;
+  border: 0;
+  border-radius: 70px 90px 66px 102px / 48px 78px 74px 68px;
+  background:
+    radial-gradient(
+      ellipse at 16% 18%,
+      rgba(255, 219, 126, 0.15),
+      transparent 36%
+    ),
+    radial-gradient(
+      ellipse at 82% 82%,
+      rgba(80, 255, 177, 0.11),
+      transparent 42%
+    ),
+    rgba(12, 20, 16, 0.8);
+  box-shadow:
+    inset 0 0 0 1px rgba(236, 221, 153, 0.12),
+    inset 0 0 64px rgba(0, 0, 0, 0.55);
+}
+
+#spaceSensor,
+.sensor-frame__grid {
+  border-radius: 33px 56px 38px 64px / 28px 48px 42px 46px;
+}
+
+.sensor-frame__grid {
+  opacity: 0.28;
+  background:
+    radial-gradient(
+      ellipse at 45% 55%,
+      transparent 0 42%,
+      rgba(0, 0, 0, 0.1) 70%
+    ),
+    linear-gradient(rgba(96, 236, 177, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96, 236, 177, 0.08) 1px, transparent 1px);
+  background-size:
+    auto,
+    64px 64px,
+    64px 64px;
+}
+
+.sensor-readout {
+  border-radius: 26px 37px 22px 34px / 24px 32px 24px 30px;
+  background: rgba(7, 23, 17, 0.72);
+}
+
+.left-console {
+  left: 3.1%;
+  top: 18.3%;
+  width: 18.6%;
+  height: 50.6%;
+  border-radius: 48px 38px 66px 44px / 40px 30px 52px 46px;
+}
+
+.commander {
+  right: 3.1%;
+  top: 18.3%;
+  width: 18.4%;
+  height: 50.6%;
+  border-radius: 38px 58px 44px 70px / 34px 50px 38px 60px;
+}
+
+.right-stack {
+  right: 3.1%;
+  bottom: 4.8%;
+  width: 18.4%;
+  height: 19.6%;
+  border-radius: 52px 40px 58px 44px / 44px 34px 46px 38px;
+}
+
+.bottom-console {
+  left: 3.1%;
+  bottom: 4.8%;
+  width: 72.1%;
+  height: 19.6%;
+  grid-template-columns: minmax(720px, 1fr) 310px;
+  border-radius: 50px 82px 46px 58px / 42px 60px 38px 52px;
+}
+
+.control-surface {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 11px;
+  align-content: start;
+}
+
+.command-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.command-tabs button {
+  min-height: 29px;
+  padding: 4px 13px;
+  color: rgba(229, 243, 223, 0.74);
+  font-size: 12px;
+}
+
+.command-tabs button[aria-pressed="true"] {
+  color: #07100b;
+}
+
+.action-bank {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(92px, 1fr));
+  gap: 9px;
+}
+
+button {
+  border: 0;
+  border-radius: 18px 23px 16px 24px / 14px 19px 17px 21px;
+  background:
+    radial-gradient(
+      circle at 28% 18%,
+      rgba(255, 255, 220, 0.13),
+      transparent 32%
+    ),
+    linear-gradient(160deg, rgba(62, 82, 65, 0.9), rgba(19, 28, 23, 0.92));
+  box-shadow:
+    inset 0 0 0 1px rgba(224, 211, 151, 0.14),
+    inset 0 -10px 20px rgba(0, 0, 0, 0.16),
+    0 8px 18px rgba(0, 0, 0, 0.24);
+}
+
+button[aria-pressed="true"] {
+  background:
+    radial-gradient(
+      circle at 30% 20%,
+      rgba(255, 255, 214, 0.48),
+      transparent 36%
+    ),
+    linear-gradient(160deg, #d5e88f, #5eaa72);
+}
+
+.readout-list div,
+.transmission,
+.event-log,
+.waveform,
+.mini-bars,
+.meter,
+.lamp-grid span {
+  border: 0;
+  border-radius: 18px 24px 15px 23px / 14px 20px 15px 22px;
+  background:
+    radial-gradient(
+      circle at 20% 15%,
+      rgba(255, 255, 255, 0.055),
+      transparent 34%
+    ),
+    rgba(2, 12, 9, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(136, 191, 133, 0.08);
+}
+
+.portrait-screen {
+  border: 0;
+  border-radius: 34px 48px 30px 46px / 27px 42px 34px 40px;
+  background:
+    radial-gradient(
+      circle at 48% 33%,
+      rgba(115, 185, 111, 0.32),
+      transparent 39%
+    ),
+    radial-gradient(ellipse at 60% 88%, rgba(13, 29, 17, 0.8), transparent 52%),
+    linear-gradient(180deg, rgba(12, 47, 34, 0.94), rgba(3, 10, 9, 0.98));
+}
+
+.scope {
+  border: 0;
+  box-shadow:
+    inset 0 0 0 1px rgba(131, 255, 172, 0.18),
+    inset 0 0 24px rgba(83, 255, 146, 0.13);
+}
+
 @keyframes scanDrift {
   to {
     transform: translateY(8px);

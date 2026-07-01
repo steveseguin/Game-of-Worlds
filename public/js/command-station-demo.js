@@ -1,5 +1,7 @@
 (function () {
   const station = document.querySelector(".station");
+  const paintCanvas = document.getElementById("paintWash");
+  const paintCtx = paintCanvas.getContext("2d");
   const canvas = document.getElementById("spaceSensor");
   const ctx = canvas.getContext("2d");
   const reticle = document.getElementById("sensorReticle");
@@ -77,6 +79,15 @@
     { x: 0.81, y: 0.36, r: 10, color: "#ffbf47" },
   ];
 
+  const paintZones = [
+    { x: 800, y: 92, rx: 738, ry: 54, color: "rgba(226, 202, 118, 0.08)" },
+    { x: 808, y: 387, rx: 450, ry: 252, color: "rgba(70, 219, 151, 0.11)" },
+    { x: 196, y: 392, rx: 170, ry: 245, color: "rgba(114, 255, 177, 0.1)" },
+    { x: 1388, y: 390, rx: 165, ry: 246, color: "rgba(255, 194, 93, 0.09)" },
+    { x: 633, y: 790, rx: 585, ry: 96, color: "rgba(230, 205, 126, 0.08)" },
+    { x: 1390, y: 790, rx: 170, ry: 100, color: "rgba(255, 90, 66, 0.08)" },
+  ];
+
   function resizeStation() {
     const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
     document.documentElement.style.setProperty(
@@ -87,11 +98,82 @@
 
   function resizeCanvas() {
     const ratio = dpr();
+    paintCanvas.width = Math.floor(paintCanvas.clientWidth * ratio);
+    paintCanvas.height = Math.floor(paintCanvas.clientHeight * ratio);
+    paintCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    drawPaintWash();
+
     width = Math.max(1, Math.floor(canvas.clientWidth * ratio));
     height = Math.max(1, Math.floor(canvas.clientHeight * ratio));
     canvas.width = width;
     canvas.height = height;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+
+  function drawOrganicBlob(context, zone, seedOffset = 0) {
+    const points = 28;
+    context.beginPath();
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      const wobble =
+        1 +
+        Math.sin(a * 3 + seedOffset) * 0.08 +
+        Math.cos(a * 5 - seedOffset * 0.7) * 0.045;
+      const x = zone.x + Math.cos(a) * zone.rx * wobble;
+      const y = zone.y + Math.sin(a) * zone.ry * wobble;
+      if (i === 0) {
+        context.moveTo(x, y);
+      } else {
+        const prevA = ((i - 0.5) / points) * Math.PI * 2;
+        const cx = zone.x + Math.cos(prevA) * zone.rx * 1.03;
+        const cy = zone.y + Math.sin(prevA) * zone.ry * 1.03;
+        context.quadraticCurveTo(cx, cy, x, y);
+      }
+    }
+    context.closePath();
+  }
+
+  function drawPaintWash() {
+    const w = paintCanvas.clientWidth;
+    const h = paintCanvas.clientHeight;
+    paintCtx.clearRect(0, 0, w, h);
+
+    paintZones.forEach((zone, index) => {
+      for (let layer = 0; layer < 5; layer++) {
+        const scale = 1 + layer * 0.035;
+        const shifted = {
+          ...zone,
+          x: zone.x + Math.sin(index * 2.1 + layer) * 7,
+          y: zone.y + Math.cos(index * 1.7 + layer) * 5,
+          rx: zone.rx * scale,
+          ry: zone.ry * (1 + layer * 0.025),
+        };
+        drawOrganicBlob(paintCtx, shifted, index + layer * 0.7);
+        paintCtx.fillStyle = zone.color.replace(
+          /0\.\d+\)/,
+          `${0.045 + layer * 0.018})`,
+        );
+        paintCtx.fill();
+      }
+
+      drawOrganicBlob(paintCtx, zone, index + 3.7);
+      paintCtx.strokeStyle = "rgba(236, 220, 151, 0.08)";
+      paintCtx.lineWidth = 2;
+      paintCtx.stroke();
+    });
+
+    for (let i = 0; i < 900; i++) {
+      const x = Math.random() * w;
+      const y = Math.random() * h;
+      const alpha = 0.015 + Math.random() * 0.035;
+      paintCtx.fillStyle =
+        Math.random() > 0.55
+          ? `rgba(226, 245, 190, ${alpha})`
+          : `rgba(128, 218, 168, ${alpha})`;
+      paintCtx.beginPath();
+      paintCtx.arc(x, y, 0.8 + Math.random() * 2.8, 0, Math.PI * 2);
+      paintCtx.fill();
+    }
   }
 
   function px(x) {
@@ -130,10 +212,10 @@
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     ctx.save();
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.12;
     ctx.strokeStyle = "#83ffac";
     ctx.lineWidth = 1;
-    const gap = 56;
+    const gap = 70;
     const drift = (t * 0.004) % gap;
     for (let x = -gap + drift; x < w + gap; x += gap) {
       ctx.beginPath();
