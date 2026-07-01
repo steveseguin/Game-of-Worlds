@@ -30,6 +30,10 @@ The desired influence is the mech bay and commander briefing feeling: pre-render
 - [decision-questions.md](decision-questions.md) lists useful questions before locking production UI decisions.
 - [bitmaps/](bitmaps/) contains original generated concept bitmaps for inspiration.
 
+## Prototype
+
+Open `public/command-station-demo.html` for a standalone command-station prototype. It is intentionally isolated from the live game and demonstrates the fixed frame, animated 2D sensor map, commander uplink, scanlines, status lights, waveform, sparks, and event-driven alert states.
+
 ## Contributor Rule
 
 Before making a major visual change to `public/game.html`, `public/css/`, `public/js/main.js`, or the canvas rendering path, check this folder and preserve the command-station direction unless Steve explicitly chooses another direction.
