@@ -34,6 +34,10 @@ The desired influence is the mech bay and commander briefing feeling: pre-render
 
 Open `public/command-station-demo.html` for a standalone command-station prototype. It is intentionally isolated from the live game and demonstrates the fixed frame, animated 2D sensor map, commander uplink, scanlines, status lights, waveform, sparks, and event-driven alert states.
 
+Current prototype direction: use an authored bitmap shell first, then place live canvas/text/interaction into screen apertures. Avoid building the scene from visible web panels, cards, rounded dashboard blocks, or generic responsive layout primitives. The goal is a fixed machine surface with living displays embedded inside it.
+
+Runtime prototype art lives in `public/images/command-station/` because the standalone page consumes it directly.
+
 ## Contributor Rule
 
 Before making a major visual change to `public/game.html`, `public/css/`, `public/js/main.js`, or the canvas rendering path, check this folder and preserve the command-station direction unless Steve explicitly chooses another direction.

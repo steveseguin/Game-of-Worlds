@@ -7,175 +7,112 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Share+Tech+Mono&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap"
       rel="stylesheet"
     />
     <link rel="icon" type="image/png" href="images/minilogo.png" />
     <link rel="stylesheet" href="css/command-station-demo.css" />
   </head>
   <body>
-    <main class="station" data-alert="info">
-      <div class="station__backplate" aria-hidden="true"></div>
-      <div class="station__scanlines" aria-hidden="true"></div>
-      <div class="station__noise" aria-hidden="true"></div>
-      <div class="station__vignette" aria-hidden="true"></div>
-      <canvas id="paintWash" class="paint-wash" aria-hidden="true"></canvas>
-      <div class="spark-layer" id="sparkLayer" aria-hidden="true"></div>
+    <main class="station" data-alert="warning">
+      <img
+        class="station__shell"
+        src="images/command-station/console-shell-v2.png"
+        alt=""
+        aria-hidden="true"
+      />
 
-      <header class="top-rail panel panel--top">
-        <div class="brand-block">
-          <span class="brand-mark">GOW</span>
-          <div>
-            <strong>Command Station</strong>
-            <span>Strategic Sensor Deck</span>
-          </div>
-        </div>
-        <div class="status-strip">
-          <span class="status-light status-light--green"></span>
-          <span>Game of Words</span>
-          <span class="status-divider"></span>
-          <span>Turn 12</span>
-          <span class="status-divider"></span>
-          <span>Next turn 02:14</span>
-        </div>
-        <div class="resource-ribbon" aria-label="Resource preview">
-          <span><b>Metal</b> 1420</span>
-          <span><b>Crystal</b> 880</span>
-          <span><b>Research</b> 310</span>
-        </div>
-      </header>
-
-      <section class="sensor-frame">
-        <div class="sensor-frame__bezel"></div>
-        <canvas
-          id="spaceSensor"
-          aria-label="Animated tactical space sensor display"
-        ></canvas>
-        <div class="sensor-frame__grid" aria-hidden="true"></div>
+      <section class="sensor-screen" aria-label="Animated tactical sensor">
+        <canvas id="spaceSensor"></canvas>
+        <div class="sensor-screen__glass" aria-hidden="true"></div>
         <div
-          class="sensor-frame__reticle"
+          class="sensor-screen__reticle"
           id="sensorReticle"
           aria-hidden="true"
         ></div>
-        <div class="sensor-readout panel">
+        <div class="sensor-caption">
           <span>SECTOR 42</span>
-          <strong>BLACK-HOLE CONTACT</strong>
-          <small>Signal bend: 91% | Fleet risk: terminal</small>
+          <strong id="sensorTitle">BLACK-HOLE CONTACT</strong>
+          <small id="sensorSubline"
+            >Signal bend 91% | Fleet risk terminal</small
+          >
         </div>
       </section>
 
-      <aside class="left-console panel">
-        <div class="panel-heading">
-          <span class="tiny-led"></span>
-          <span>Sector Intel</span>
+      <aside class="left-readouts" aria-label="Sector details">
+        <div class="readout">
+          <span>OWNER</span>
+          <strong>UNCLAIMED</strong>
         </div>
-        <dl class="readout-list">
-          <div>
-            <dt>Owner</dt>
-            <dd>Unclaimed</dd>
-          </div>
-          <div>
-            <dt>Type</dt>
-            <dd>Hazard Field</dd>
-          </div>
-          <div>
-            <dt>Metal</dt>
-            <dd>+18</dd>
-          </div>
-          <div>
-            <dt>Crystal</dt>
-            <dd>+31</dd>
-          </div>
-          <div>
-            <dt>Terraform</dt>
-            <dd>Level 2</dd>
-          </div>
-        </dl>
-        <div class="scope">
-          <div class="scope__sweep"></div>
-          <div class="scope__dot scope__dot--a"></div>
-          <div class="scope__dot scope__dot--b"></div>
-          <div class="scope__dot scope__dot--c"></div>
+        <div class="readout">
+          <span>HAZARD</span>
+          <strong id="hazardReadout">GRAVITY WELL</strong>
         </div>
-        <div class="mini-bars" aria-hidden="true">
-          <span style="--h: 31%"></span>
-          <span style="--h: 78%"></span>
-          <span style="--h: 46%"></span>
-          <span style="--h: 62%"></span>
-          <span style="--h: 86%"></span>
-          <span style="--h: 41%"></span>
-          <span style="--h: 67%"></span>
-          <span style="--h: 54%"></span>
+        <div class="readout">
+          <span>OUTPUT</span>
+          <strong>METAL +18 | CRYSTAL +31</strong>
         </div>
       </aside>
 
-      <aside class="commander panel" aria-live="polite">
-        <div class="panel-heading">
-          <span class="tiny-led tiny-led--amber"></span>
-          <span>Commander Uplink</span>
+      <aside class="commander-screen" aria-live="polite">
+        <div class="commander-video">
+          <img
+            src="images/command-station/commander-portrait-v2.png"
+            alt=""
+            aria-hidden="true"
+          />
+          <span class="commander-video__mouth" aria-hidden="true"></span>
+          <span class="commander-video__ghost" aria-hidden="true"></span>
         </div>
-        <div class="portrait-screen" id="portraitScreen">
-          <div class="portrait-static"></div>
-          <div class="portrait-face">
-            <span class="face-plane face-plane--left"></span>
-            <span class="face-plane face-plane--right"></span>
-            <span class="face-eye face-eye--left"></span>
-            <span class="face-eye face-eye--right"></span>
-            <span class="face-mouth"></span>
-            <span class="face-collar"></span>
-          </div>
-          <div class="portrait-scan"></div>
-        </div>
-        <div class="transmission">
-          <div class="transmission__meta">
+        <div class="commander-copy">
+          <div class="commander-copy__meta">
             <span id="messageType">STATUS</span>
             <span id="messageQueue">QUEUE 01</span>
           </div>
           <p id="messageText">Awaiting fleet telemetry.</p>
-        </div>
-        <div class="waveform" id="waveform" aria-hidden="true"></div>
-      </aside>
-
-      <section class="bottom-console panel">
-        <div class="control-surface">
-          <div class="command-tabs" aria-label="Primary command sections">
-            <button type="button" aria-pressed="true">Build</button>
-            <button type="button">Fleet</button>
-            <button type="button">Research</button>
-            <button type="button">Colonize</button>
-          </div>
-          <div class="action-bank">
-            <button type="button" data-event="colony">Metal Extractor</button>
-            <button type="button" data-event="research">Research Lab</button>
-            <button type="button" data-event="probeLost">Send Probe</button>
-            <button type="button" data-event="asteroid">Move Fleet</button>
-            <button type="button" data-event="battle">Build Frigate</button>
-            <button type="button" data-event="blackHole">End Turn</button>
-            <button type="button" id="autoCycle" aria-pressed="true">
-              Auto Alerts
-            </button>
-          </div>
-        </div>
-        <div class="event-log" id="eventLog">
-          <div class="event-log__row">Sensor feed initialized.</div>
-          <div class="event-log__row">Commander uplink carrier locked.</div>
-        </div>
-      </section>
-
-      <aside class="right-stack panel">
-        <div class="panel-heading">
-          <span class="tiny-led tiny-led--red"></span>
-          <span>Fleet Telemetry</span>
-        </div>
-        <div class="meter"><span style="--w: 76%"></span><b>HULL</b></div>
-        <div class="meter"><span style="--w: 58%"></span><b>CRYSTAL</b></div>
-        <div class="meter"><span style="--w: 88%"></span><b>JUMP</b></div>
-        <div class="lamp-grid" aria-hidden="true">
-          <span></span><span></span><span></span><span></span> <span></span
-          ><span></span><span></span><span></span> <span></span><span></span
-          ><span></span><span></span>
+          <div class="waveform" id="waveform" aria-hidden="true"></div>
         </div>
       </aside>
+
+      <div class="turn-strip" aria-label="Command status">
+        <span>GOW COMMAND</span>
+        <b>TURN 12</b>
+        <span>NEXT 02:14</span>
+      </div>
+
+      <div class="event-tape" id="eventLog" aria-label="Event log">
+        <div class="event-tape__row">Sensor feed initialized.</div>
+        <div class="event-tape__row">Commander uplink carrier locked.</div>
+      </div>
+
+      <nav class="hotspot-bank" aria-label="Demo alert controls">
+        <button type="button" data-event="probeLost">
+          <span>Probe</span>
+        </button>
+        <button type="button" data-event="blackHole">
+          <span>Hole</span>
+        </button>
+        <button type="button" data-event="asteroid">
+          <span>Field</span>
+        </button>
+        <button type="button" data-event="colony">
+          <span>Colony</span>
+        </button>
+        <button type="button" data-event="battle">
+          <span>Battle</span>
+        </button>
+        <button type="button" data-event="research">
+          <span>Lab</span>
+        </button>
+        <button type="button" id="autoCycle" aria-pressed="true">
+          <span>Auto</span>
+        </button>
+      </nav>
+
+      <div class="spark-layer" id="sparkLayer" aria-hidden="true"></div>
+      <div class="station__crt" aria-hidden="true"></div>
+      <div class="station__noise" aria-hidden="true"></div>
+      <div class="station__vignette" aria-hidden="true"></div>
     </main>
 
     <script src="js/command-station-demo.js"></script>

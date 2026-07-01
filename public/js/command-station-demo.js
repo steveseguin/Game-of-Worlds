@@ -1,7 +1,8 @@
 (function () {
+  const STATION_WIDTH = 1575;
+  const STATION_HEIGHT = 900;
+
   const station = document.querySelector(".station");
-  const paintCanvas = document.getElementById("paintWash");
-  const paintCtx = paintCanvas.getContext("2d");
   const canvas = document.getElementById("spaceSensor");
   const ctx = canvas.getContext("2d");
   const reticle = document.getElementById("sensorReticle");
@@ -12,44 +13,68 @@
   const waveform = document.getElementById("waveform");
   const sparkLayer = document.getElementById("sparkLayer");
   const autoBtn = document.getElementById("autoCycle");
+  const sensorTitle = document.getElementById("sensorTitle");
+  const sensorSubline = document.getElementById("sensorSubline");
+  const hazardReadout = document.getElementById("hazardReadout");
+
+  const sensorTexture = new Image();
+  sensorTexture.src = "images/command-station/sensor-map-v2.png";
 
   const dpr = () => Math.min(window.devicePixelRatio || 1, 2);
-  let width = 1;
-  let height = 1;
-  let pointer = { x: 0.52, y: 0.48 };
+  let pointer = { x: 0.58, y: 0.52 };
   let autoCycle = true;
   let eventIndex = 0;
   let typeToken = 0;
+  let canvasWidth = 1;
+  let canvasHeight = 1;
 
   const events = {
     probeLost: {
       type: "PROBE LOSS",
       tone: "warning",
+      title: "PROBE SIGNAL LOST",
+      hazard: "UNKNOWN FIELD",
+      subline: "Telemetry ended | Return path absent",
       line: "Probe telemetry ended in sector 19. We have signal fragments, no return path, and a widening debris signature.",
     },
     blackHole: {
       type: "GRAVITY ALERT",
       tone: "error",
+      title: "BLACK-HOLE CONTACT",
+      hazard: "GRAVITY WELL",
+      subline: "Signal bend 91% | Fleet risk terminal",
       line: "Fleet contact lost. The sector contains a black hole. No survivors, no salvage, no second pass.",
     },
     asteroid: {
       type: "HULL DAMAGE",
       tone: "warning",
+      title: "ASTEROID FIELD",
+      hazard: "IMPACT BELT",
+      subline: "Hull damage likely | Safe after control",
       line: "Asteroid belt traversal complete. Multiple hulls breached. Secure the field and the route becomes usable.",
     },
     colony: {
       type: "COLONY ONLINE",
       tone: "success",
+      title: "COLONY BEACON",
+      hazard: "CLEAR",
+      subline: "Signal locked | Construction crews ready",
       line: "Colony beacon is stable. Extractors can begin work as soon as the first construction crew lands.",
     },
     battle: {
       type: "BATTLE REPORT",
       tone: "error",
+      title: "WEAPONS CONTACT",
+      hazard: "HOSTILE FLEET",
+      subline: "Command latency unstable | Fire exchanged",
       line: "Enemy fleet engaged near the inner marker. Tactical display shows weapons fire and unstable command latency.",
     },
     research: {
       type: "RESEARCH",
       tone: "success",
+      title: "LAB BREAKTHROUGH",
+      hazard: "NONE",
+      subline: "Scanner routines updated | Fleet package ready",
       line: "Research lab reports a breakthrough. New scanner routines are ready for fleet deployment.",
     },
   };
@@ -63,33 +88,26 @@
     "research",
   ];
 
-  const stars = Array.from({ length: 720 }, () => ({
+  const stars = Array.from({ length: 130 }, () => ({
     x: Math.random(),
     y: Math.random(),
-    r: 0.4 + Math.random() * 1.5,
+    r: 0.4 + Math.random() * 1.2,
     p: Math.random() * Math.PI * 2,
-    a: 0.35 + Math.random() * 0.65,
-    hue: Math.random() > 0.78 ? "cyan" : "green",
+    a: 0.22 + Math.random() * 0.42,
+    c: Math.random() > 0.74 ? "255, 198, 78" : "107, 255, 199",
   }));
 
-  const planets = [
-    { x: 0.18, y: 0.64, r: 13, color: "#92d77e", ring: true },
-    { x: 0.32, y: 0.24, r: 9, color: "#45e1ff" },
-    { x: 0.61, y: 0.68, r: 7, color: "#d08844" },
-    { x: 0.81, y: 0.36, r: 10, color: "#ffbf47" },
-  ];
-
-  const paintZones = [
-    { x: 800, y: 92, rx: 738, ry: 54, color: "rgba(226, 202, 118, 0.08)" },
-    { x: 808, y: 387, rx: 450, ry: 252, color: "rgba(70, 219, 151, 0.11)" },
-    { x: 196, y: 392, rx: 170, ry: 245, color: "rgba(114, 255, 177, 0.1)" },
-    { x: 1388, y: 390, rx: 165, ry: 246, color: "rgba(255, 194, 93, 0.09)" },
-    { x: 633, y: 790, rx: 585, ry: 96, color: "rgba(230, 205, 126, 0.08)" },
-    { x: 1390, y: 790, rx: 170, ry: 100, color: "rgba(255, 90, 66, 0.08)" },
+  const signalPings = [
+    { x: 0.66, y: 0.52, tone: "255, 78, 46" },
+    { x: 0.31, y: 0.28, tone: "81, 222, 255" },
+    { x: 0.24, y: 0.68, tone: "117, 255, 144" },
   ];
 
   function resizeStation() {
-    const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
+    const scale = Math.min(
+      window.innerWidth / STATION_WIDTH,
+      window.innerHeight / STATION_HEIGHT,
+    );
     document.documentElement.style.setProperty(
       "--station-scale",
       Math.max(0.1, scale).toFixed(4),
@@ -98,337 +116,202 @@
 
   function resizeCanvas() {
     const ratio = dpr();
-    paintCanvas.width = Math.floor(paintCanvas.clientWidth * ratio);
-    paintCanvas.height = Math.floor(paintCanvas.clientHeight * ratio);
-    paintCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    drawPaintWash();
-
-    width = Math.max(1, Math.floor(canvas.clientWidth * ratio));
-    height = Math.max(1, Math.floor(canvas.clientHeight * ratio));
-    canvas.width = width;
-    canvas.height = height;
+    canvasWidth = Math.max(1, Math.floor(canvas.clientWidth));
+    canvasHeight = Math.max(1, Math.floor(canvas.clientHeight));
+    canvas.width = Math.floor(canvasWidth * ratio);
+    canvas.height = Math.floor(canvasHeight * ratio);
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
 
-  function drawOrganicBlob(context, zone, seedOffset = 0) {
-    const points = 28;
-    context.beginPath();
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
-      const wobble =
-        1 +
-        Math.sin(a * 3 + seedOffset) * 0.08 +
-        Math.cos(a * 5 - seedOffset * 0.7) * 0.045;
-      const x = zone.x + Math.cos(a) * zone.rx * wobble;
-      const y = zone.y + Math.sin(a) * zone.ry * wobble;
-      if (i === 0) {
-        context.moveTo(x, y);
-      } else {
-        const prevA = ((i - 0.5) / points) * Math.PI * 2;
-        const cx = zone.x + Math.cos(prevA) * zone.rx * 1.03;
-        const cy = zone.y + Math.sin(prevA) * zone.ry * 1.03;
-        context.quadraticCurveTo(cx, cy, x, y);
-      }
+  function drawImageCover(context, image, x, y, width, height) {
+    const imageRatio = image.naturalWidth / image.naturalHeight;
+    const targetRatio = width / height;
+    let sourceWidth = image.naturalWidth;
+    let sourceHeight = image.naturalHeight;
+    let sourceX = 0;
+    let sourceY = 0;
+
+    if (imageRatio > targetRatio) {
+      sourceWidth = image.naturalHeight * targetRatio;
+      sourceX = (image.naturalWidth - sourceWidth) / 2;
+    } else {
+      sourceHeight = image.naturalWidth / targetRatio;
+      sourceY = (image.naturalHeight - sourceHeight) / 2;
     }
-    context.closePath();
+
+    context.drawImage(
+      image,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      x,
+      y,
+      width,
+      height,
+    );
   }
 
-  function drawPaintWash() {
-    const w = paintCanvas.clientWidth;
-    const h = paintCanvas.clientHeight;
-    paintCtx.clearRect(0, 0, w, h);
-
-    paintZones.forEach((zone, index) => {
-      for (let layer = 0; layer < 5; layer++) {
-        const scale = 1 + layer * 0.035;
-        const shifted = {
-          ...zone,
-          x: zone.x + Math.sin(index * 2.1 + layer) * 7,
-          y: zone.y + Math.cos(index * 1.7 + layer) * 5,
-          rx: zone.rx * scale,
-          ry: zone.ry * (1 + layer * 0.025),
-        };
-        drawOrganicBlob(paintCtx, shifted, index + layer * 0.7);
-        paintCtx.fillStyle = zone.color.replace(
-          /0\.\d+\)/,
-          `${0.045 + layer * 0.018})`,
-        );
-        paintCtx.fill();
-      }
-
-      drawOrganicBlob(paintCtx, zone, index + 3.7);
-      paintCtx.strokeStyle = "rgba(236, 220, 151, 0.08)";
-      paintCtx.lineWidth = 2;
-      paintCtx.stroke();
-    });
-
-    for (let i = 0; i < 900; i++) {
-      const x = Math.random() * w;
-      const y = Math.random() * h;
-      const alpha = 0.015 + Math.random() * 0.035;
-      paintCtx.fillStyle =
-        Math.random() > 0.55
-          ? `rgba(226, 245, 190, ${alpha})`
-          : `rgba(128, 218, 168, ${alpha})`;
-      paintCtx.beginPath();
-      paintCtx.arc(x, y, 0.8 + Math.random() * 2.8, 0, Math.PI * 2);
-      paintCtx.fill();
-    }
+  function drawFallbackBackground() {
+    const gradient = ctx.createLinearGradient(0, 0, canvasWidth, canvasHeight);
+    gradient.addColorStop(0, "#03110f");
+    gradient.addColorStop(0.52, "#061b14");
+    gradient.addColorStop(1, "#130806");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
   }
 
-  function px(x) {
-    return x * canvas.clientWidth;
+  function drawGlassBloom(t) {
+    const radius = Math.max(canvasWidth, canvasHeight);
+    const pulse = 0.5 + Math.sin(t * 0.0009) * 0.08;
+    const glow = ctx.createRadialGradient(
+      canvasWidth * 0.58,
+      canvasHeight * 0.5,
+      0,
+      canvasWidth * 0.58,
+      canvasHeight * 0.5,
+      radius * 0.72,
+    );
+    glow.addColorStop(0, `rgba(86, 255, 190, ${0.09 + pulse * 0.03})`);
+    glow.addColorStop(0.46, "rgba(255, 190, 68, 0.035)");
+    glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
   }
 
-  function py(y) {
-    return y * canvas.clientHeight;
-  }
-
-  function drawNebula(t) {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    const blobs = [
-      [0.16, 0.28, 0.42, "rgba(39, 164, 111, 0.22)"],
-      [0.46, 0.48, 0.52, "rgba(40, 107, 91, 0.26)"],
-      [0.78, 0.55, 0.42, "rgba(159, 55, 35, 0.22)"],
-      [0.66, 0.18, 0.28, "rgba(255, 191, 71, 0.14)"],
-    ];
-
-    blobs.forEach((blob, index) => {
-      const drift = Math.sin(t * 0.00018 + index) * 0.022;
-      const x = (blob[0] + drift) * w;
-      const y = (blob[1] + Math.cos(t * 0.00016 + index) * 0.018) * h;
-      const radius = blob[2] * Math.max(w, h);
-      const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      grad.addColorStop(0, blob[3]);
-      grad.addColorStop(0.52, blob[3].replace(/0\.\d+\)/, "0.08)"));
-      grad.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-    });
-  }
-
-  function drawGrid(t) {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx.save();
-    ctx.globalAlpha = 0.12;
-    ctx.strokeStyle = "#83ffac";
-    ctx.lineWidth = 1;
-    const gap = 70;
-    const drift = (t * 0.004) % gap;
-    for (let x = -gap + drift; x < w + gap; x += gap) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x + 22, h);
-      ctx.stroke();
-    }
-    for (let y = -gap + drift * 0.5; y < h + gap; y += gap) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y - 14);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawStars(t) {
+  function drawAnimatedStars(t) {
     stars.forEach((star) => {
-      const flicker = 0.55 + Math.sin(t * 0.002 + star.p) * 0.45;
-      ctx.fillStyle =
-        star.hue === "cyan"
-          ? `rgba(120, 234, 255, ${star.a * flicker})`
-          : `rgba(218, 255, 172, ${star.a * flicker})`;
+      const flicker = 0.5 + Math.sin(t * 0.0022 + star.p) * 0.5;
+      ctx.fillStyle = `rgba(${star.c}, ${star.a * flicker})`;
       ctx.beginPath();
-      ctx.arc(px(star.x), py(star.y), star.r, 0, Math.PI * 2);
+      ctx.arc(
+        star.x * canvasWidth,
+        star.y * canvasHeight,
+        star.r,
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
     });
   }
 
-  function drawSun(x, y, r, t, color) {
-    const cx = px(x);
-    const cy = py(y);
-    const pulse = 1 + Math.sin(t * 0.003) * 0.08;
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 5 * pulse);
-    grad.addColorStop(0, color);
-    grad.addColorStop(0.16, "rgba(255, 191, 71, 0.72)");
-    grad.addColorStop(1, "rgba(255, 191, 71, 0)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 5 * pulse, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255, 191, 71, 0.6)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 3; i++) {
+  function drawPings(t) {
+    signalPings.forEach((ping, index) => {
+      const cycle = (t * 0.00035 + index * 0.31) % 1 || 0.001;
+      const x = ping.x * canvasWidth;
+      const y = ping.y * canvasHeight;
+      const radius = 18 + cycle * 120;
+      ctx.strokeStyle = `rgba(${ping.tone}, ${0.45 * (1 - cycle)})`;
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.arc(
-        cx,
-        cy,
-        r * (2.2 + i * 1.3 + Math.sin(t * 0.0015 + i) * 0.08),
-        0,
-        Math.PI * 2,
-      );
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.stroke();
-    }
-  }
-
-  function drawPlanets(t) {
-    planets.forEach((planet, index) => {
-      const x = px(planet.x);
-      const y = py(planet.y);
-      ctx.save();
-      ctx.translate(x, y);
-      if (planet.ring) {
-        ctx.rotate(-0.35);
-        ctx.strokeStyle = "rgba(218,255,172,0.42)";
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, planet.r * 2.2, planet.r * 0.72, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.rotate(0.35);
-      }
-      const grad = ctx.createRadialGradient(
-        -planet.r * 0.35,
-        -planet.r * 0.45,
-        0,
-        0,
-        0,
-        planet.r * 1.5,
-      );
-      grad.addColorStop(0, "#f0ffd8");
-      grad.addColorStop(0.28, planet.color);
-      grad.addColorStop(1, "#07100c");
-      ctx.fillStyle = grad;
+      ctx.fillStyle = `rgba(${ping.tone}, ${0.55 + Math.sin(t * 0.004 + index) * 0.2})`;
       ctx.beginPath();
-      ctx.arc(0, 0, planet.r, 0, Math.PI * 2);
+      ctx.arc(x, y, 2.3, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = 0.32;
-      ctx.strokeStyle = index % 2 ? "#45e1ff" : "#83ffac";
-      ctx.beginPath();
-      ctx.arc(
-        0,
-        0,
-        planet.r + 12 + Math.sin(t * 0.001 + index) * 2,
-        0,
-        Math.PI * 2,
-      );
-      ctx.stroke();
-      ctx.restore();
     });
   }
 
-  function drawBlackHole(t) {
-    const cx = px(0.7);
-    const cy = py(0.55);
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(t * 0.00025);
-    for (let i = 0; i < 9; i++) {
-      const radius = 28 + i * 13 + Math.sin(t * 0.002 + i) * 2;
-      ctx.strokeStyle = `rgba(255, ${90 + i * 10}, 55, ${0.42 - i * 0.032})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, radius * 1.48, radius * 0.55, i * 0.12, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 44);
-    grad.addColorStop(0, "#000000");
-    grad.addColorStop(0.42, "#000000");
-    grad.addColorStop(0.58, "rgba(255, 85, 61, 0.8)");
-    grad.addColorStop(1, "rgba(255, 85, 61, 0)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(0, 0, 44, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawAsteroids(t) {
-    const cx = px(0.5);
-    const cy = py(0.38);
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(-0.22 + Math.sin(t * 0.0004) * 0.05);
-    for (let i = 0; i < 34; i++) {
-      const angle = i * 0.54;
-      const dist = 42 + (i % 7) * 7;
-      const x = Math.cos(angle) * dist * 1.7;
-      const y = Math.sin(angle) * dist * 0.42;
-      ctx.fillStyle =
-        i % 3 === 0 ? "rgba(255,191,71,0.78)" : "rgba(166,139,92,0.7)";
-      ctx.beginPath();
-      ctx.arc(x, y, 1.5 + (i % 5), 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  function drawFleetPaths(t) {
-    const paths = [
-      [
-        [0.16, 0.64],
-        [0.32, 0.24],
-        [0.5, 0.38],
-        [0.7, 0.55],
-      ],
-      [
-        [0.22, 0.2],
-        [0.48, 0.31],
-        [0.81, 0.36],
-      ],
-      [
-        [0.3, 0.82],
-        [0.48, 0.64],
-        [0.61, 0.68],
-      ],
+  function drawFleetTrace(t) {
+    const points = [
+      [0.18, 0.67],
+      [0.31, 0.58],
+      [0.44, 0.41],
+      [0.61, 0.47],
+      [0.72, 0.56],
     ];
-    paths.forEach((path, pIndex) => {
-      ctx.save();
-      ctx.strokeStyle =
-        pIndex === 0 ? "rgba(255,191,71,0.72)" : "rgba(69,225,255,0.56)";
-      ctx.setLineDash([4, 8]);
-      ctx.lineDashOffset = -t * 0.02;
-      ctx.lineWidth = pIndex === 0 ? 1.8 : 1.2;
-      ctx.beginPath();
-      path.forEach((point, index) => {
-        const x = px(point[0]);
-        const y = py(point[1]);
-        if (index === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-      ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 198, 78, 0.68)";
+    ctx.lineWidth = 1.3;
+    ctx.setLineDash([4, 10]);
+    ctx.lineDashOffset = -t * 0.024;
+    ctx.beginPath();
+    points.forEach(([x, y], index) => {
+      const px = x * canvasWidth;
+      const py = y * canvasHeight;
+      if (index === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
     });
+    ctx.stroke();
+    ctx.restore();
+
+    const cycle = (t * 0.00012) % 1;
+    const segment = Math.min(
+      points.length - 2,
+      Math.floor(cycle * (points.length - 1)),
+    );
+    const local = cycle * (points.length - 1) - segment;
+    const start = points[segment];
+    const end = points[segment + 1];
+    const shipX = (start[0] + (end[0] - start[0]) * local) * canvasWidth;
+    const shipY = (start[1] + (end[1] - start[1]) * local) * canvasHeight;
+
+    ctx.save();
+    ctx.translate(shipX, shipY);
+    ctx.rotate(Math.atan2(end[1] - start[1], end[0] - start[0]));
+    ctx.fillStyle = "rgba(114, 255, 190, 0.82)";
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.lineTo(-6, -4);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-6, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBlackHolePulse(t) {
+    const cx = canvasWidth * 0.68;
+    const cy = canvasHeight * 0.55;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 0.00018);
+    for (let i = 0; i < 5; i += 1) {
+      ctx.strokeStyle = `rgba(255, ${86 + i * 18}, 58, ${0.3 - i * 0.036})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(
+        0,
+        0,
+        36 + i * 23 + Math.sin(t * 0.002 + i) * 2,
+        13 + i * 8,
+        i * 0.1,
+        0,
+        Math.PI * 2,
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawSensor(t) {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx.clearRect(0, 0, w, h);
-    const bg = ctx.createLinearGradient(0, 0, w, h);
-    bg.addColorStop(0, "#020707");
-    bg.addColorStop(0.52, "#061611");
-    bg.addColorStop(1, "#150908");
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, w, h);
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    if (sensorTexture.complete && sensorTexture.naturalWidth > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.88;
+      drawImageCover(ctx, sensorTexture, 0, 0, canvasWidth, canvasHeight);
+      ctx.restore();
+    } else {
+      drawFallbackBackground();
+    }
 
-    drawNebula(t);
-    drawGrid(t);
-    drawStars(t);
-    drawSun(0.18, 0.85, 11, t, "#ffd44d");
-    drawSun(0.84, 0.2, 8, t + 500, "#7cf8ff");
-    drawFleetPaths(t);
-    drawAsteroids(t);
-    drawPlanets(t);
-    drawBlackHole(t);
+    ctx.globalCompositeOperation = "screen";
+    drawGlassBloom(t);
+    drawAnimatedStars(t);
+    drawFleetTrace(t);
+    drawPings(t);
+    drawBlackHolePulse(t);
+    ctx.globalCompositeOperation = "source-over";
 
     ctx.save();
-    ctx.strokeStyle = "rgba(131,255,172,0.28)";
+    ctx.strokeStyle = "rgba(121, 255, 192, 0.25)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(
-      px(pointer.x),
-      py(pointer.y),
+      pointer.x * canvasWidth,
+      pointer.y * canvasHeight,
       38 + Math.sin(t * 0.003) * 4,
       0,
       Math.PI * 2,
@@ -441,10 +324,10 @@
 
   function buildWaveform() {
     waveform.innerHTML = "";
-    for (let i = 0; i < 22; i++) {
+    for (let i = 0; i < 18; i += 1) {
       const bar = document.createElement("span");
       bar.style.setProperty("--i", i);
-      bar.style.height = `${18 + Math.random() * 62}%`;
+      bar.style.height = `${18 + Math.random() * 66}%`;
       waveform.appendChild(bar);
     }
   }
@@ -456,6 +339,9 @@
     station.classList.add("is-talking");
     messageType.textContent = event.type;
     messageQueue.textContent = `QUEUE ${String((eventIndex % 9) + 1).padStart(2, "0")}`;
+    sensorTitle.textContent = event.title;
+    sensorSubline.textContent = event.subline;
+    hazardReadout.textContent = event.hazard;
     messageText.textContent = "";
     addLog(`${event.type}: ${event.line}`);
 
@@ -465,47 +351,51 @@
       messageText.textContent = event.line.slice(0, index);
       index += 1;
       if (index <= event.line.length) {
-        setTimeout(write, 10 + Math.random() * 8);
+        setTimeout(write, 12 + Math.random() * 9);
       } else {
         setTimeout(() => {
           if (token === typeToken) {
             station.classList.remove("is-talking");
           }
-        }, 900);
+        }, 850);
       }
     };
     write();
 
     if (event.tone === "error" || event.tone === "warning") {
-      burstSparks(event.tone === "error" ? 10 : 5);
+      burstSparks(event.tone === "error" ? 12 : 6);
     }
   }
 
   function addLog(text) {
     const row = document.createElement("div");
-    row.className = "event-log__row";
+    row.className = "event-tape__row";
     row.textContent = text;
     eventLog.prepend(row);
-    while (eventLog.children.length > 5) {
+    while (eventLog.children.length > 2) {
       eventLog.removeChild(eventLog.lastElementChild);
     }
   }
 
   function burstSparks(count) {
-    for (let i = 0; i < count; i++) {
-      setTimeout(() => spawnSpark(), i * 55);
+    for (let i = 0; i < count; i += 1) {
+      setTimeout(() => spawnSpark(), i * 48);
     }
   }
 
   function spawnSpark() {
+    const anchors = [
+      { left: 23, top: 12, dx: 70, dy: 92 },
+      { left: 78, top: 13, dx: -52, dy: 105 },
+      { left: 11, top: 71, dx: 44, dy: 82 },
+    ];
+    const anchor = anchors[Math.floor(Math.random() * anchors.length)];
     const spark = document.createElement("span");
     spark.className = "spark";
-    const left = 4 + Math.random() * 12;
-    const top = 18 + Math.random() * 46;
-    spark.style.left = `${left}%`;
-    spark.style.top = `${top}%`;
-    spark.style.setProperty("--dx", `${20 + Math.random() * 80}px`);
-    spark.style.setProperty("--dy", `${60 + Math.random() * 120}px`);
+    spark.style.left = `${anchor.left + Math.random() * 3}%`;
+    spark.style.top = `${anchor.top + Math.random() * 4}%`;
+    spark.style.setProperty("--dx", `${anchor.dx + Math.random() * 50}px`);
+    spark.style.setProperty("--dy", `${anchor.dy + Math.random() * 65}px`);
     sparkLayer.appendChild(spark);
     setTimeout(() => spark.remove(), 900);
   }
@@ -548,13 +438,14 @@
     resizeStation();
     resizeCanvas();
   });
+
   resizeStation();
   resizeCanvas();
   buildWaveform();
-  setMessage("probeLost");
+  setMessage("blackHole");
   setInterval(tickAuto, 7600);
   setInterval(() => {
-    if (Math.random() > 0.55) spawnSpark();
-  }, 2100);
+    if (Math.random() > 0.58) spawnSpark();
+  }, 2200);
   requestAnimationFrame(drawSensor);
 })();
