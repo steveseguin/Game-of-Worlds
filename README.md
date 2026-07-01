@@ -51,6 +51,7 @@ Game-of-Worlds/
 |   |-- css/             # Stylesheets
 |   `-- images/          # Game assets
 |-- docs/                # Documentation
+|   `-- art-direction/   # Visual direction references and concept bitmaps
 |-- tests/               # Unit and integration tests
 |-- package.json         # Node dependencies
 `-- .env.example         # Environment config template
@@ -151,6 +152,9 @@ The E2E runner starts and stops a local mock server itself and works on macOS, W
 
 ### Payment Testing
 See `docs/TESTING_PAYMENTS.md` for comprehensive payment testing guide.
+
+### Art Direction
+See `docs/art-direction/` for the command-station visual direction: fixed bitmap-inspired UI, living tactical space map, and commander/status-feed concepts.
 
 ## Contributing
 

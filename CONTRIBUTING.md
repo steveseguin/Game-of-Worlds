@@ -39,6 +39,7 @@ npm run dev:mysql
 - `public/` contains the browser UI. The main surfaces are `landing.html`, `login.html`, `lobby.html`, and `game.html`.
 - `tests/` contains Node unit/integration tests. `tests/e2e/` contains Playwright browser flows.
 - `docs/` contains deeper notes. Treat `README.md` and this file as the current contributor entry points.
+- `docs/art-direction/` contains the command-station visual direction and concept bitmaps for major UI work.
 
 ## Tests
 
@@ -79,6 +80,7 @@ For a quick manual local game:
 - Branch from `stable`.
 - Keep changes focused on one bug, feature, or cleanup.
 - Include screenshots or short screen recordings for visible UI changes.
+- Check `docs/art-direction/` before major UI changes and preserve the fixed command-station direction unless Steve says otherwise.
 - Do not commit `.env`, secrets, `node_modules`, `mysql_data`, `test-results`, or generated logs.
 - Preserve the original risk/reward exploration personality documented in `AGENTS.md`.
 - Server-side changes are welcome in PRs, but they need tests or a clear manual verification note because production deployment is owner-controlled.

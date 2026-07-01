@@ -17,6 +17,17 @@ A turn-based multiplayer space strategy game with 12 unique races, real-time Web
 
 This **risk/reward personality** made the game compelling. Recent rewrites stripped these mechanics away, making exploration consequence-free and removing the tension that made exploration meaningful. **Goal: Restore these core mechanics while keeping the modern architecture.**
 
+## Visual Art Direction
+
+Future major UI work should check `docs/art-direction/` first. The desired direction is a fixed, intentional 2D command-station interface: bitmap-inspired, shader-assisted, and alive through subtle animation. Use the mech bay and commander briefing mood as inspiration, but do not copy source artwork or the low-poly battle aesthetic from that era.
+
+Key visual targets:
+- A permanent command console composition, not generic responsive web cards
+- A central tactical space/sensor viewport with stars, galaxies, suns, planets, black holes, fog, and fleet paths
+- Embedded commander/status-feed panels for important game updates
+- Localized animation such as sparks, cable sway, scanlines, monitor glow, waveform bars, and warning lamps
+- 2D painterly or pre-rendered feel with modern polish, not a 3D battle viewer
+
 ## Quick Start
 
 ### Development Setup
