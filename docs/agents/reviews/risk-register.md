@@ -24,6 +24,8 @@ This file records review findings that matter for future work. Keep entries conc
 | Notification DOM injection hardening | Notification and combat-report templates interpolated dynamic strings into `innerHTML`. | Notification text slots now HTML-escape values; combat report labels, sector, and summary lines are escaped before rich modal rendering. |
 | Password policy | New accounts could be created with very short passwords. | Registration now requires 8-128 chars with at least one letter and one number; login keeps legacy password compatibility while capping input size. |
 | Login brute-force hardening | Login failures could be repeated without endpoint-level throttling, and password hashes used normal string equality. | Login is now rate-limited by client address plus username target, and stored password hashes are verified with timing-safe comparison. |
+| Shop purchase-history rendering | Purchase history rendered server-provided product/status fields through `innerHTML`. | History rows now escape product names, dates, and statuses; status CSS class tokens are sanitized. |
+| Shop checkout/balance rendering | Checkout and balance UI expected local catalog and numeric server values before inserting rich markup. | Checkout fields now escape names/descriptions, constrain image paths to local assets, sanitize currency codes, and numeric-format balance/amount values. |
 
 ## Active Risks To Revisit
 

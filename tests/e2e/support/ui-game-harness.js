@@ -279,6 +279,10 @@ async function isGameOverVisible(page) {
     return page.locator('#gameOverModal').isVisible().catch(() => false);
 }
 
+async function isBattleOverlayVisible(page) {
+    return page.locator('#battleGround, #battleTheater.on').isVisible().catch(() => false);
+}
+
 async function anyGameOverVisible(pages) {
     const states = await Promise.all(pages.map(page => isGameOverVisible(page)));
     return states.some(Boolean);
@@ -288,15 +292,18 @@ async function clickEndTurnIfAvailable(page) {
     if (await isGameOverVisible(page)) {
         return;
     }
+    if (await isBattleOverlayVisible(page)) {
+        return;
+    }
     const button = page.locator('#nextTurnBtn');
     await expect(button).toBeEnabled({ timeout: 10000 });
-    if (await isGameOverVisible(page)) {
+    if (await isGameOverVisible(page) || await isBattleOverlayVisible(page)) {
         return;
     }
     try {
         await button.click({ timeout: 5000 });
     } catch (error) {
-        if (await isGameOverVisible(page)) {
+        if (await isGameOverVisible(page) || await isBattleOverlayVisible(page)) {
             return;
         }
         throw error;
@@ -330,9 +337,7 @@ async function requestEndTurnAll(pages) {
     if (await anyGameOverVisible(pages)) {
         return;
     }
-    const battleVisible = await Promise.all(pages.map(page =>
-        page.locator('#battleGround, #battleTheater.on').isVisible().catch(() => false)
-    ));
+    const battleVisible = await Promise.all(pages.map(page => isBattleOverlayVisible(page)));
     if (battleVisible.some(Boolean)) {
         return;
     }

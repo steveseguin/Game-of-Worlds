@@ -17,7 +17,8 @@ const HOST = process.env.E2E_HOST || '127.0.0.1';
 const PORT = process.env.E2E_PORT || '4173';
 const READY_URL = `http://${HOST}:${PORT}/login.html`;
 const SERVER_LOG_LINES = 160;
-const TEMP_DIR = path.join(REPO, '.codex-tmp', 'playwright');
+const TEMP_ROOT = path.join(REPO, '.codex-tmp', 'playwright');
+const TEMP_DIR = path.join(TEMP_ROOT, `run-${process.pid}-${Date.now()}`);
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -107,6 +108,18 @@ function stopServer(child) {
     });
 }
 
+function cleanupTempDir() {
+    if (process.env.E2E_KEEP_TEMP) {
+        return;
+    }
+
+    try {
+        fs.rmSync(TEMP_DIR, { recursive: true, force: true });
+    } catch (error) {
+        console.warn(`Unable to clean E2E temp dir ${TEMP_DIR}: ${error.message || error}`);
+    }
+}
+
 function hasReporterArg(args) {
     return args.some(arg => arg === '--reporter' || arg.startsWith('--reporter='));
 }
@@ -173,6 +186,11 @@ async function main() {
         });
 
         await stopServer(server);
+        if (code === 0) {
+            cleanupTempDir();
+        } else {
+            console.error(`E2E temp artifacts kept at ${TEMP_DIR}`);
+        }
         process.exit(code);
     } catch (error) {
         console.error(error.message || error);
@@ -180,6 +198,7 @@ async function main() {
             console.error('\nLast E2E server log lines:');
             console.error(serverLogs.join('\n'));
         }
+        console.error(`E2E temp artifacts kept at ${TEMP_DIR}`);
         await stopServer(server);
         process.exit(1);
     }

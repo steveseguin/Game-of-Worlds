@@ -1,6 +1,6 @@
 # Security Review Notes
 
-Primary sources: `server/index.js`, `server/server.js`, `server/lib/security.js`, `server/lib/payment-endpoints.js`, `public/js/chat.js`, `public/js/lobby.js`, `public/js/connect.js`, and `public/js/notification-system.js`.
+Primary sources: `server/index.js`, `server/server.js`, `server/lib/security.js`, `server/lib/payment-endpoints.js`, `public/js/chat.js`, `public/js/lobby.js`, `public/js/connect.js`, `public/js/notification-system.js`, and `public/js/shop-enhanced.js`.
 
 ## User Input Sources
 
@@ -16,6 +16,7 @@ Primary sources: `server/index.js`, `server/server.js`, `server/lib/security.js`
 | Notifications/combat reports | Plain notification slots are HTML-escaped; combat report labels and summary lines are escaped before rich modal rendering. |
 | WebSocket commands | Oversized frames are rejected; command-specific handlers parse numeric ids before using dynamic table names. |
 | Payment body `userId` | Non-webhook payment endpoints require body/path `userId` to match authenticated cookies. |
+| Shop balance/payment/history | Balance values are numeric-formatted; checkout product fields are escaped and image paths are constrained to local assets; purchase-history product names, dates, and statuses are escaped before rich history-row rendering; status CSS tokens are class-safe. |
 
 ## HTTP API Authorization
 
@@ -38,6 +39,7 @@ Unauthenticated calls return `401`; authenticated calls for another user or game
 - Lobby player and game names are escaped before template insertion.
 - Chat no longer stores or restores HTML in history.
 - Notification titles/messages are escaped before insertion; rich modal bodies must escape every dynamic value before calling `NotificationSystem.modal()`.
+- Shop balance, checkout modal, and purchase-history rows sanitize or escape server/catalog data before using `innerHTML`.
 
 ## Residual Risks
 

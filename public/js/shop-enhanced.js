@@ -426,6 +426,55 @@ const Shop = (function() {
         const trimmed = String(value).trim();
         return /^\d+$/.test(trimmed) ? trimmed : null;
     }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+    }
+
+    function sanitizeCssToken(value, fallback = 'unknown') {
+        const token = String(value || fallback)
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 40);
+        return token || fallback;
+    }
+
+    function formatCurrencyCents(value) {
+        const cents = Number(value);
+        if (!Number.isFinite(cents)) {
+            return '$0.00';
+        }
+        return `$${(Math.max(0, cents) / 100).toFixed(2)}`;
+    }
+
+    function formatCrystalAmount(value) {
+        const amount = Number(value);
+        if (!Number.isFinite(amount)) {
+            return '0';
+        }
+        return Math.max(0, Math.floor(amount)).toLocaleString();
+    }
+
+    function sanitizeCurrency(value) {
+        const currency = String(value || 'USD').toUpperCase();
+        return /^[A-Z]{3}$/.test(currency) ? currency : 'USD';
+    }
+
+    function sanitizeImageSrc(value) {
+        const src = String(value || '');
+        if (!src.includes('..') && /^(?:\.\/|\/)?images\/[a-z0-9_./-]+\.(?:png|jpe?g|gif|svg)$/i.test(src)) {
+            return src;
+        }
+        return './images/resources.png';
+    }
     
     function generateVIPItems() {
         const tiers = [
@@ -682,7 +731,7 @@ const Shop = (function() {
         if (error) {
             balanceElement.innerHTML = '<span class="balance-error">Error</span>';
         } else {
-            balanceElement.innerHTML = `<span class="balance-amount">${amount.toLocaleString()}</span>`;
+            balanceElement.innerHTML = `<span class="balance-amount">${formatCrystalAmount(amount)}</span>`;
         }
     }
     
@@ -830,23 +879,28 @@ const Shop = (function() {
         const details = document.getElementById('payment-details');
         
         const product = getProductDetails(productId);
+        const productImage = escapeHtml(sanitizeImageSrc(product.image));
+        const productName = escapeHtml(product.name);
+        const productDescription = escapeHtml(product.description);
+        const amountLabel = formatCurrencyCents(paymentData.amount);
+        const currency = escapeHtml(sanitizeCurrency(paymentData.currency));
         
         details.innerHTML = `
             <div class="payment-product">
-                <img src="${product.image}" alt="${product.name}" class="payment-product-image">
+                <img src="${productImage}" alt="${productName}" class="payment-product-image">
                 <div class="payment-product-info">
-                    <h4>${product.name}</h4>
-                    <p>${product.description}</p>
+                    <h4>${productName}</h4>
+                    <p>${productDescription}</p>
                 </div>
                 <div class="payment-amount">
-                    $${(paymentData.amount / 100).toFixed(2)}
+                    ${amountLabel}
                 </div>
             </div>
             
             <div class="payment-summary">
                 <div class="summary-row">
                     <span>Subtotal:</span>
-                    <span>$${(paymentData.amount / 100).toFixed(2)}</span>
+                    <span>${amountLabel}</span>
                 </div>
                 <div class="summary-row">
                     <span>Tax:</span>
@@ -854,7 +908,7 @@ const Shop = (function() {
                 </div>
                 <div class="summary-row total">
                     <span>Total:</span>
-                    <span>$${(paymentData.amount / 100).toFixed(2)} ${paymentData.currency.toUpperCase()}</span>
+                    <span>${amountLabel} ${currency}</span>
                 </div>
             </div>
         `;
@@ -1022,14 +1076,20 @@ const Shop = (function() {
         if (purchaseHistory.length === 0) {
             list.innerHTML = '<div class="history-empty">No purchases yet</div>';
         } else {
-            list.innerHTML = purchaseHistory.map(purchase => `
-                <div class="history-item">
-                    <div class="history-date">${formatDate(purchase.date)}</div>
-                    <div class="history-product">${purchase.productName}</div>
-                    <div class="history-amount">$${(purchase.amount / 100).toFixed(2)}</div>
-                    <div class="history-status status-${purchase.status}">${purchase.status}</div>
-                </div>
-            `).join('');
+            list.innerHTML = purchaseHistory.map(purchase => {
+                const productName = purchase.productName || purchase.product_id || 'Unknown product';
+                const status = purchase.status || 'unknown';
+                const statusClass = sanitizeCssToken(status);
+
+                return `
+                    <div class="history-item">
+                        <div class="history-date">${escapeHtml(formatDate(purchase.date))}</div>
+                        <div class="history-product">${escapeHtml(productName)}</div>
+                        <div class="history-amount">${formatCurrencyCents(purchase.amount)}</div>
+                        <div class="history-status status-${statusClass}">${escapeHtml(status)}</div>
+                    </div>
+                `;
+            }).join('');
         }
         
         modal.classList.remove('hidden');
