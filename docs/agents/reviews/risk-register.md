@@ -23,6 +23,7 @@ This file records review findings that matter for future work. Keep entries conc
 | Chat DOM injection hardening | Chat rendered pre-escaped strings with `innerHTML`, making safety depend on caller discipline. | Chat input is bounded/normalized server-side, rate-limited, and rendered with text nodes client-side. |
 | Notification DOM injection hardening | Notification and combat-report templates interpolated dynamic strings into `innerHTML`. | Notification text slots now HTML-escape values; combat report labels, sector, and summary lines are escaped before rich modal rendering. |
 | Password policy | New accounts could be created with very short passwords. | Registration now requires 8-128 chars with at least one letter and one number; login keeps legacy password compatibility while capping input size. |
+| Login brute-force hardening | Login failures could be repeated without endpoint-level throttling, and password hashes used normal string equality. | Login is now rate-limited by client address plus username target, and stored password hashes are verified with timing-safe comparison. |
 
 ## Active Risks To Revisit
 

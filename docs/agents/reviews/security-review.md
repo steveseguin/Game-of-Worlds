@@ -7,7 +7,7 @@ Primary sources: `server/index.js`, `server/server.js`, `server/lib/security.js`
 | Source | Current handling |
 | --- | --- |
 | Login username | `validateUsername()` restricts to 3-20 letters, numbers, `_`, `-`; SQL uses placeholders. |
-| Login password | Accepted for legacy accounts if non-empty and <= 128 chars; SQL uses placeholders. |
+| Login password | Accepted for legacy accounts if non-empty and <= 128 chars; SQL uses placeholders; hash comparison is timing-safe; repeated failures are rate-limited by client/username target. |
 | Registration password | Requires 8-128 chars, at least one letter and one number. |
 | Email | Trimmed/lowercased on registration, max 254 chars, format checked before storage. |
 | Guest username | Normalized to username-safe characters or replaced with generated `Guest_xxxxxx`. |

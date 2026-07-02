@@ -67,6 +67,8 @@ const TEST_MAP_HEIGHT = parsePositiveInt(process.env.TEST_MAP_HEIGHT, 5);
 const MAX_ROOM_MIN_LEVEL = 100;
 const GUEST_TOKEN_BYTES = 32;
 const GUEST_TOKEN_PATTERN = /^[a-f0-9]{64}$/i;
+const LOGIN_RATE_LIMIT_MAX = 10;
+const LOGIN_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const EPIC_RESOURCE_MULTIPLIER = Number(process.env.EPIC_RESOURCE_MULTIPLIER) || 12;
 const TEST_RESOURCE_MULTIPLIER = Number(process.env.TEST_RESOURCE_MULTIPLIER) || 20;
 const EPIC_AUTO_BUILD_ENABLED = String(process.env.EPIC_AUTO_BUILD || 'true').toLowerCase() !== 'false';
@@ -320,6 +322,38 @@ function sendJsonBodyError(response, err) {
         return;
     }
     sendJson(response, 400, { error: 'Invalid request' });
+}
+
+function getRequestIp(request) {
+    const headers = request && request.headers ? request.headers : {};
+    const forwardedFor = typeof headers['x-forwarded-for'] === 'string'
+        ? headers['x-forwarded-for'].split(',')[0].trim()
+        : '';
+    const directAddress = request?.socket?.remoteAddress ||
+        request?.connection?.remoteAddress ||
+        request?.remoteAddress ||
+        '';
+
+    return String(forwardedFor || directAddress || 'unknown')
+        .replace(/[^\w:.\-]/g, '')
+        .slice(0, 80) || 'unknown';
+}
+
+function getAuthRateLimitSubject(value) {
+    return String(value || 'unknown')
+        .trim()
+        .toLowerCase()
+        .replace(/[^\w@.\-]/g, '')
+        .slice(0, 80) || 'unknown';
+}
+
+function checkAuthRateLimit(request, action, subject, maxAttempts, windowMs) {
+    return securitySystem.checkRateLimit(
+        `${getRequestIp(request)}:${getAuthRateLimitSubject(subject)}`,
+        action,
+        maxAttempts,
+        windowMs
+    );
 }
 
 function findAvailableUsername(preferredUsername, callback, attempt = 0) {
@@ -888,6 +922,22 @@ async function handleLogin(request, response) {
 
         const { username, password } = payload;
 
+        const loginLimit = checkAuthRateLimit(
+            request,
+            'login',
+            username,
+            LOGIN_RATE_LIMIT_MAX,
+            LOGIN_RATE_LIMIT_WINDOW_MS
+        );
+        if (!loginLimit.allowed) {
+            response.writeHead(429, {'Content-Type': 'application/json'});
+            response.end(JSON.stringify({
+                error: 'Too many login attempts. Please try again later.',
+                retryAfter: loginLimit.resetIn
+            }));
+            return;
+        }
+
         // Validate input
         const usernameValidation = securitySystem.validateUsername(username);
         if (!usernameValidation.valid) {
@@ -919,7 +969,7 @@ async function handleLogin(request, response) {
             const user = results[0];
             const hashedPassword = hashPassword(password, user.salt);
 
-            if (hashedPassword !== user.password) {
+            if (!securitySystem.timingSafeEqualStrings(hashedPassword, String(user.password || ''))) {
                 response.writeHead(401, {'Content-Type': 'application/json'});
                 response.end(JSON.stringify({error: 'Invalid username or password'}));
                 return;

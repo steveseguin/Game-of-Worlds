@@ -148,6 +148,32 @@ test.describe('guest authentication and lobby access', () => {
         assert.equal(guest.statusCode, 413);
     });
 
+    test('login throttles repeated password failures for the same account target', async () => {
+        const registered = await executeJsonHandler(serverLogic.handleRegister, {
+            username: 'ThrottleUser',
+            password: 'Secure123',
+            email: 'throttle@example.com'
+        });
+        assert.equal(registered.statusCode, 200);
+
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const failed = await executeJsonHandler(serverLogic.handleLogin, {
+                username: 'ThrottleUser',
+                password: 'Wrong123'
+            });
+            assert.equal(failed.statusCode, 401);
+        }
+
+        const throttled = await executeJsonHandler(serverLogic.handleLogin, {
+            username: 'ThrottleUser',
+            password: 'Wrong123'
+        });
+
+        assert.equal(throttled.statusCode, 429);
+        assert.match(throttled.body.error, /too many login attempts/i);
+        assert.equal(typeof throttled.body.retryAfter, 'number');
+    });
+
     test('registration upgrades a guest account instead of creating a second user', async t => {
         const guest = await executeJsonHandler(serverLogic.handleGuestLogin, {
             username: 'GuestPilot'
