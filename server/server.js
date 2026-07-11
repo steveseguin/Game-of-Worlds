@@ -45,6 +45,10 @@ let paymentEndpoints = null;
 let hasEnsuredGameModeColumn = false;
 let hasEnsuredUserGuestColumns = false;
 let hasEnsuredGameAccessColumns = false;
+// Pending human/AI joins are not visible in playersN yet. Track them in-process
+// so concurrent callbacks cannot all claim the final lobby seat or race game start.
+const lobbySeatReservations = new Map();
+const lobbyMutationCounts = new Map();
 
 // Expose game state for other modules that rely on it
 global.gameState = gameState;
@@ -1442,6 +1446,14 @@ function handleGameStart(connection) {
             return;
         }
 
+        if (
+            (lobbySeatReservations.get(Number(gameId)) || 0) > 0 ||
+            (lobbyMutationCounts.get(Number(gameId)) || 0) > 0
+        ) {
+            connection.sendUTF("Error: A player is still joining; try starting again in a moment");
+            return;
+        }
+
         initializeGame(gameId, connection, game);
     });
 }
@@ -2740,11 +2752,13 @@ function colonizePlanet(connection, data) {
 
                             // Colonize the planet
                             db.query(
-                                `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
+                                `UPDATE map${gameId} SET owner = ? WHERE sectorid = ? AND owner IS NULL`,
                                 [playerId, sectorId],
-                                (err) => {
-                                    if (err) {
-                                        connection.sendUTF("Error: Failed to colonize");
+                                (err, claimResult) => {
+                                    if (err || !claimResult || Number(claimResult.affectedRows) !== 1) {
+                                        connection.sendUTF(err
+                                            ? "Error: Failed to colonize"
+                                            : "Error: Sector was colonized by another player");
                                         return;
                                     }
 
@@ -2763,9 +2777,13 @@ function colonizePlanet(connection, data) {
                                     db.query(
                                         `DELETE FROM ships${gameId} WHERE id = ?`,
                                         [ships[0].id],
-                                        deleteErr => {
-                                            if (deleteErr) {
-                                                connection.sendUTF("Error: Failed to settle colony ship");
+                                        (deleteErr, deleteResult) => {
+                                            if (deleteErr || !deleteResult || Number(deleteResult.affectedRows) !== 1) {
+                                                db.query(
+                                                    `UPDATE map${gameId} SET owner = NULL WHERE sectorid = ? AND owner = ?`,
+                                                    [sectorId, playerId],
+                                                    () => connection.sendUTF("Error: Failed to settle colony ship; colonization rolled back")
+                                                );
                                                 return;
                                             }
                                             finishColonization();
@@ -2932,11 +2950,15 @@ function buyTech(data, connection) {
 
             levels[tech.id] = check.nextLevel;
             db.query(
-                `UPDATE players${gameId} SET research = research - ?, tech = ? WHERE userid = ?`,
-                [check.cost, techSystem.serializeTechLevels(levels), playerId],
-                (updateErr) => {
-                    if (updateErr) {
-                        connection.sendUTF("Error: Failed to buy technology");
+                `UPDATE players${gameId}
+                 SET research = research - ?, tech = ?
+                 WHERE userid = ? AND research >= ? AND tech = ?`,
+                [check.cost, techSystem.serializeTechLevels(levels), playerId, check.cost, player.tech || ''],
+                (updateErr, updateResult) => {
+                    if (updateErr || !updateResult || Number(updateResult.affectedRows) !== 1) {
+                        connection.sendUTF(updateErr
+                            ? "Error: Failed to buy technology"
+                            : "Error: Resources or technology changed; refresh and try again");
                         return;
                     }
 
@@ -2962,32 +2984,36 @@ function probeSector(data, connection) {
         return;
     }
 
-    // Probes cost crystal and may be destroyed before revealing hazardous sectors.
-    db.query(
-        `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ? AND crystal >= ?`,
-        [PROBE_COST_CRYSTAL, playerId, PROBE_COST_CRYSTAL],
-        (costErr, costResult) => {
-            if (costErr || !costResult || costResult.affectedRows === 0) {
-                connection.sendUTF(`Error: Probes cost ${PROBE_COST_CRYSTAL} crystal`);
-                return;
-            }
-
-            revealProbedSector(gameId, playerId, targetSector, connection);
-        }
-    );
-}
-
-function revealProbedSector(gameId, playerId, targetSector, connection) {
+    // Validate the destination before charging. A mistyped/out-of-range sector
+    // must not consume a probe.
     db.query(
         `SELECT * FROM map${gameId} WHERE sectorid = ?`,
         [targetSector],
-        (err, sector) => {
-            if (err || sector.length === 0) {
-                updateResources(connection);
+        (sectorErr, sectorRows) => {
+            if (sectorErr || !Array.isArray(sectorRows) || sectorRows.length === 0) {
                 connection.sendUTF("Error: Invalid sector");
                 return;
             }
 
+            // Probes cost crystal and may be destroyed before revealing hazards.
+            db.query(
+                `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ? AND crystal >= ?`,
+                [PROBE_COST_CRYSTAL, playerId, PROBE_COST_CRYSTAL],
+                (costErr, costResult) => {
+                    if (costErr || !costResult || Number(costResult.affectedRows) !== 1) {
+                        connection.sendUTF(`Error: Probes cost ${PROBE_COST_CRYSTAL} crystal`);
+                        return;
+                    }
+
+                    revealProbedSector(gameId, playerId, targetSector, connection, sectorRows);
+                }
+            );
+        }
+    );
+}
+
+function revealProbedSector(gameId, playerId, targetSector, connection, knownSectorRows = null) {
+    const processSector = sector => {
             const sectorType = Number(sector[0].type);
             const sectorOwner = sector[0].owner;
 
@@ -3037,6 +3063,23 @@ function revealProbedSector(gameId, playerId, targetSector, connection) {
             }).catch(() => {
                 finishProbeReveal(gameId, playerId, targetSector, sector[0], connection, { advantage: 0 });
             });
+    };
+
+    if (Array.isArray(knownSectorRows) && knownSectorRows.length > 0) {
+        processSector(knownSectorRows);
+        return;
+    }
+
+    db.query(
+        `SELECT * FROM map${gameId} WHERE sectorid = ?`,
+        [targetSector],
+        (err, sector) => {
+            if (err || sector.length === 0) {
+                updateResources(connection);
+                connection.sendUTF("Error: Invalid sector");
+                return;
+            }
+            processSector(sector);
         }
     );
 }
@@ -3187,11 +3230,16 @@ function buyShip(data, connection) {
                     
                     // Buy the ship with race-modified costs
                     db.query(
-                        `UPDATE players${gameId} SET metal = metal - ?, crystal = crystal - ? WHERE userid = ?`,
-                        [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId],
-                        (err) => {
-                            if (err) {
-                                connection.sendUTF("Error: Failed to deduct resources");
+                        `UPDATE players${gameId}
+                         SET metal = metal - ?, crystal = crystal - ?
+                         WHERE userid = ? AND metal >= ? AND crystal >= ?`,
+                        [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId,
+                            modifiedShip.cost.metal, modifiedShip.cost.crystal],
+                        (err, spendResult) => {
+                            if (err || !spendResult || Number(spendResult.affectedRows) !== 1) {
+                                connection.sendUTF(err
+                                    ? "Error: Failed to deduct resources"
+                                    : "Error: Resources changed; refresh and try again");
                                 return;
                             }
                             
@@ -3201,7 +3249,14 @@ function buyShip(data, connection) {
                                 [playerId, shipType, player.currentsector],
                                 (err) => {
                                     if (err) {
-                                        connection.sendUTF("Error: Failed to create ship");
+                                        db.query(
+                                            `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
+                                            [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId],
+                                            () => {
+                                                connection.sendUTF("Error: Failed to create ship; resources refunded");
+                                                updateResources(connection);
+                                            }
+                                        );
                                         return;
                                     }
                                     
@@ -3295,11 +3350,15 @@ function buyBuilding(data, connection) {
                             
                             // Buy the building
                             db.query(
-                                `UPDATE players${gameId} SET metal = metal - ?, crystal = crystal - ? WHERE userid = ?`,
-                                [building.metal, building.crystal, playerId],
-                                (err) => {
-                                    if (err) {
-                                        connection.sendUTF("Error: Failed to deduct resources");
+                                `UPDATE players${gameId}
+                                 SET metal = metal - ?, crystal = crystal - ?
+                                 WHERE userid = ? AND metal >= ? AND crystal >= ?`,
+                                [building.metal, building.crystal, playerId, building.metal, building.crystal],
+                                (err, spendResult) => {
+                                    if (err || !spendResult || Number(spendResult.affectedRows) !== 1) {
+                                        connection.sendUTF(err
+                                            ? "Error: Failed to deduct resources"
+                                            : "Error: Resources changed; refresh and try again");
                                         return;
                                     }
                                     
@@ -3309,7 +3368,14 @@ function buyBuilding(data, connection) {
                                         [player.currentsector, buildingType, playerId],
                                         (err) => {
                                             if (err) {
-                                                connection.sendUTF("Error: Failed to create building");
+                                                db.query(
+                                                    `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
+                                                    [building.metal, building.crystal, playerId],
+                                                    () => {
+                                                        connection.sendUTF("Error: Failed to create building; resources refunded");
+                                                        updateResources(connection);
+                                                    }
+                                                );
                                                 return;
                                             }
                                             
@@ -3457,21 +3523,32 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
 
                     const placeholders = selectedIds.map(() => '?').join(',');
                     db.query(
-                        `UPDATE ships${gameId} SET sectorid = ? WHERE id IN (${placeholders})`,
-                        [toSector, ...selectedIds],
-                        (moveErr, moveResult) => {
-                            const affected = moveResult && Number(moveResult.affectedRows);
-                            if (moveErr || (Number.isFinite(affected) && affected !== selectedIds.length)) {
-                                connection.sendUTF("Error: Failed moving fleet");
+                        `UPDATE players${gameId} SET crystal = crystal - ?
+                         WHERE userid = ? AND crystal >= ?`,
+                        [moveCost, playerId, moveCost],
+                        (deductErr, deductResult) => {
+                            if (deductErr || !deductResult || Number(deductResult.affectedRows) !== 1) {
+                                connection.sendUTF(deductErr
+                                    ? "Error: Failed to charge movement"
+                                    : `Error: Not enough crystal for movement (need ${moveCost})`);
                                 return;
                             }
 
                             db.query(
-                                `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ?`,
-                                [moveCost, playerId],
-                                deductErr => {
-                                    if (deductErr) {
-                                        connection.sendUTF("Error: Failed to finalize movement");
+                                `UPDATE ships${gameId} SET sectorid = ?
+                                 WHERE id IN (${placeholders}) AND owner = ? AND sectorid = ?`,
+                                [toSector, ...selectedIds, playerId, fromSector],
+                                (moveErr, moveResult) => {
+                                    const affected = moveResult && Number(moveResult.affectedRows);
+                                    if (moveErr || affected !== selectedIds.length) {
+                                        db.query(
+                                            `UPDATE players${gameId} SET crystal = crystal + ? WHERE userid = ?`,
+                                            [moveCost, playerId],
+                                            () => {
+                                                connection.sendUTF("Error: Fleet changed before movement; crystal refunded");
+                                                updateResources(connection);
+                                            }
+                                        );
                                         return;
                                     }
 
@@ -4026,11 +4103,15 @@ function preMoveFleet(data, connection) {
                     }
 
                     const selectedIds = [];
+                    const selectedMoves = [];
                     const touchedSectors = new Set();
                     moveEntries.forEach(entry => {
                         const key = `${entry.sourceSector}:${entry.shipType}`;
                         const ids = available.get(key).slice(0, entry.count);
-                        ids.forEach(id => selectedIds.push(id));
+                        ids.forEach(id => {
+                            selectedIds.push(id);
+                            selectedMoves.push({ id, sourceSector: entry.sourceSector });
+                        });
                         touchedSectors.add(entry.sourceSector);
                     });
 
@@ -4039,57 +4120,72 @@ function preMoveFleet(data, connection) {
                         return;
                     }
 
-                    let completed = 0;
-                    let failed = false;
-                    const finishMovement = () => {
-                        if (failed) return;
-                        completed += 1;
-                        if (completed !== selectedIds.length) return;
+                    db.query(
+                        `UPDATE players${gameId} SET crystal = crystal - ?
+                         WHERE userid = ? AND crystal >= ?`,
+                        [moveCost, playerId, moveCost],
+                        (deductErr, deductResult) => {
+                            if (deductErr || !deductResult || Number(deductResult.affectedRows) !== 1) {
+                                connection.sendUTF(deductErr
+                                    ? "Error: Failed to charge movement"
+                                    : `Error: Not enough crystal for movement (need ${moveCost})`);
+                                return;
+                            }
 
-                        db.query(
-                            `UPDATE players${gameId} SET crystal = crystal - ? WHERE userid = ?`,
-                            [moveCost, playerId],
-                            deductErr => {
-                                if (deductErr) {
-                                    connection.sendUTF("Error: Failed to finalize movement");
-                                    return;
-                                }
+                            Promise.all(selectedMoves.map(move => queryDb(
+                                `UPDATE ships${gameId} SET sectorid = ?
+                                 WHERE id = ? AND owner = ? AND sectorid = ?`,
+                                [targetSector, move.id, playerId, move.sourceSector]
+                            ).then(result => ({
+                                ...move,
+                                moved: Number(result && result.affectedRows) === 1
+                            })).catch(() => ({ ...move, moved: false }))))
+                                .then(results => {
+                                    const moved = results.filter(result => result.moved);
+                                    if (moved.length !== selectedMoves.length) {
+                                        return Promise.all(moved.map(move => queryDb(
+                                            `UPDATE ships${gameId} SET sectorid = ?
+                                             WHERE id = ? AND owner = ? AND sectorid = ?`,
+                                            [move.sourceSector, move.id, playerId, targetSector]
+                                        ).catch(() => null))).then(() => {
+                                            db.query(
+                                                `UPDATE players${gameId} SET crystal = crystal + ? WHERE userid = ?`,
+                                                [moveCost, playerId],
+                                                () => {
+                                                    connection.sendUTF("Error: Fleet changed before movement; move rolled back and crystal refunded");
+                                                    updateResources(connection);
+                                                }
+                                            );
+                                        });
+                                    }
 
-                                markSectorExplored(gameId, playerId, targetSector);
-                                moveEntries.forEach(entry => {
-                                    broadcastFleetMove(gameId, playerId, entry.sourceSector, targetSector, entry.count, false);
-                                });
-
-                                // HAZARD HANDLING & TERRITORY CONTROL
-                                applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
-                                    updateResources(connection);
-                                    touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));
-                                    updateSector2(gameId, targetSector);
-                                    gameState.clients.forEach(client => {
-                                        if (Number(client.gameid) === Number(gameId)) {
-                                            sendVisibleMapState(gameId, client);
-                                        }
+                                    markSectorExplored(gameId, playerId, targetSector);
+                                    moveEntries.forEach(entry => {
+                                        broadcastFleetMove(gameId, playerId, entry.sourceSector, targetSector, entry.count, false);
                                     });
-                                });
-                            }
-                        );
-                    };
 
-                    selectedIds.forEach(id => {
-                        db.query(
-                            `UPDATE ships${gameId} SET sectorid = ? WHERE id = ?`,
-                            [targetSector, id],
-                            updateErr => {
-                                if (failed) return;
-                                if (updateErr) {
-                                    failed = true;
-                                    connection.sendUTF("Error: Failed moving fleet");
-                                    return;
-                                }
-                                finishMovement();
-                            }
-                        );
-                    });
+                                    // HAZARD HANDLING & TERRITORY CONTROL
+                                    applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
+                                        updateResources(connection);
+                                        touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));
+                                        updateSector2(gameId, targetSector);
+                                        gameState.clients.forEach(client => {
+                                            if (Number(client.gameid) === Number(gameId)) {
+                                                sendVisibleMapState(gameId, client);
+                                            }
+                                        });
+                                    });
+                                    return null;
+                                })
+                                .catch(() => {
+                                    db.query(
+                                        `UPDATE players${gameId} SET crystal = crystal + ? WHERE userid = ?`,
+                                        [moveCost, playerId],
+                                        () => connection.sendUTF("Error: Failed moving fleet; crystal refunded")
+                                    );
+                                });
+                        }
+                    );
                 }
             );
         }
@@ -4321,6 +4417,42 @@ function updateAllSectors(gameId, connection) {
     );
 }
 
+function reserveLobbySeat(gameId, persistedPlayerCount, maxPlayers) {
+    const id = Number(gameId);
+    const reserved = lobbySeatReservations.get(id) || 0;
+    if (maxPlayers > 0 && persistedPlayerCount + reserved >= maxPlayers) {
+        return false;
+    }
+    lobbySeatReservations.set(id, reserved + 1);
+    return true;
+}
+
+function beginLobbyMutation(gameId) {
+    const id = Number(gameId);
+    lobbyMutationCounts.set(id, (lobbyMutationCounts.get(id) || 0) + 1);
+    let finished = false;
+    return () => {
+        if (finished) return;
+        finished = true;
+        const pending = lobbyMutationCounts.get(id) || 0;
+        if (pending <= 1) {
+            lobbyMutationCounts.delete(id);
+        } else {
+            lobbyMutationCounts.set(id, pending - 1);
+        }
+    };
+}
+
+function releaseLobbySeat(gameId) {
+    const id = Number(gameId);
+    const reserved = lobbySeatReservations.get(id) || 0;
+    if (reserved <= 1) {
+        lobbySeatReservations.delete(id);
+        return;
+    }
+    lobbySeatReservations.set(id, reserved - 1);
+}
+
 function handleJoinGame(data, connection) {
     const parts = data.split(":");
     const gameId = parsePositiveInt(parts[1], 0);
@@ -4338,8 +4470,11 @@ function handleJoinGame(data, connection) {
         return;
     }
 
+    const finishLobbyMutation = beginLobbyMutation(gameId);
+
     ensurePlayerTableColumns(gameId, tableErr => {
         if (tableErr) {
+            finishLobbyMutation();
             connection.sendUTF('joingame::error::Game is not ready yet. Please try again.');
             return;
         }
@@ -4356,6 +4491,7 @@ function handleJoinGame(data, connection) {
 
         loadGameForJoin((err, games) => {
             if (err || !games || games.length === 0) {
+                finishLobbyMutation();
                 connection.sendUTF('joingame::error::Game not found or already started.');
                 return;
             }
@@ -4370,6 +4506,7 @@ function handleJoinGame(data, connection) {
                             : Number((counts && counts[0] && (counts[0].count ?? counts[0].c)) || 1);
                         connection.gameid = gameId;
                         connection.raceid = existing[0].race_id || raceId;
+                        finishLobbyMutation();
                         sendJoinSuccess(connection, game, connection.raceid, playerCount);
                         broadcastPlayerList(gameId);
                     });
@@ -4378,19 +4515,30 @@ function handleJoinGame(data, connection) {
 
                 db.query(`SELECT COUNT(*) AS count FROM players${gameId}`, (countErr, counts) => {
                     if (countErr) {
+                        finishLobbyMutation();
                         connection.sendUTF('joingame::error::Unable to check available seats.');
                         return;
                     }
 
                     const playerCount = Number((counts && counts[0] && (counts[0].count ?? counts[0].c)) || 0);
                     const maxPlayers = parsePositiveInt(game.maxplayers, 0);
-                    if (maxPlayers > 0 && playerCount >= maxPlayers) {
+                    if (!reserveLobbySeat(gameId, playerCount, maxPlayers)) {
+                        finishLobbyMutation();
                         connection.sendUTF('joingame::error::Game is already full.');
                         return;
                     }
 
+                    let reservationReleased = false;
+                    const releaseReservation = () => {
+                        if (reservationReleased) return;
+                        reservationReleased = true;
+                        releaseLobbySeat(gameId);
+                        finishLobbyMutation();
+                    };
+
                     loadUserAccess(playerId, (accessErr, access) => {
                         if (accessErr || !access) {
+                            releaseReservation();
                             connection.sendUTF('joingame::error::Unable to load your account stats.');
                             return;
                         }
@@ -4400,16 +4548,19 @@ function handleJoinGame(data, connection) {
                         const minLevel = normalizeMinLevel(active.minLevel ?? game.min_level);
                         const isCreator = String(game.creator) === String(playerId);
                         if (!isCreator && registeredOnly && access.isGuest) {
+                            releaseReservation();
                             connection.sendUTF('joingame::error::This room requires a registered account.');
                             return;
                         }
                         if (!isCreator && minLevel > 0 && access.level < minLevel) {
+                            releaseReservation();
                             connection.sendUTF(`joingame::error::This room requires level ${minLevel}. Your level is ${access.level}.`);
                             return;
                         }
 
                         raceSystem.isRaceUnlocked(playerId, raceId, access.stats, db, unlocked => {
                             if (!unlocked) {
+                                releaseReservation();
                                 connection.sendUTF('joingame::error::Race not unlocked.');
                                 return;
                             }
@@ -4426,6 +4577,7 @@ function handleJoinGame(data, connection) {
                                 [playerId, raceId, startingResources.metal, startingResources.crystal, startingResources.research, 0, 'medium', 'balanced'],
                                 insertErr => {
                                     if (insertErr) {
+                                        releaseReservation();
                                         connection.sendUTF('joingame::error::Unable to join this game.');
                                         return;
                                     }
@@ -4435,10 +4587,14 @@ function handleJoinGame(data, connection) {
                                         [gameId, playerId],
                                         updateErr => {
                                             if (updateErr) {
-                                                connection.sendUTF('joingame::error::Unable to update user state.');
+                                                db.query(`DELETE FROM players${gameId} WHERE userid = ?`, [playerId], () => {
+                                                    releaseReservation();
+                                                    connection.sendUTF('joingame::error::Unable to update user state.');
+                                                });
                                                 return;
                                             }
 
+                                            releaseReservation();
                                             connection.gameid = gameId;
                                             connection.raceid = raceId;
                                             sendJoinSuccess(connection, game, raceId, playerCount + 1);
@@ -4717,7 +4873,13 @@ function createAiUser(callback) {
             }
 
             const userId = Number(result.insertId);
-            db.query('INSERT INTO user_stats (user_id) VALUES (?)', [userId], () => {
+            db.query('INSERT INTO user_stats (user_id) VALUES (?)', [userId], statsErr => {
+                if (statsErr) {
+                    db.query('DELETE FROM users WHERE id = ?', [userId], () => {
+                        callback(statsErr);
+                    });
+                    return;
+                }
                 callback(null, {
                     id: userId,
                     username
@@ -4725,6 +4887,14 @@ function createAiUser(callback) {
             });
         }
     );
+}
+
+function deleteAiUser(userId, callback) {
+    db.query('DELETE FROM user_stats WHERE user_id = ?', [userId], () => {
+        db.query('DELETE FROM users WHERE id = ?', [userId], () => {
+            if (callback) callback();
+        });
+    });
 }
 
 function handleAddAi(data, connection) {
@@ -4738,38 +4908,53 @@ function handleAddAi(data, connection) {
     const parts = data.split(':');
     const aiDifficulty = normalizeAiDifficulty(parts[1]);
     const aiStrategy = normalizeAiStrategy(parts[2]);
+    const finishLobbyMutation = beginLobbyMutation(gameId);
 
     db.query('SELECT creator, maxplayers, started FROM games WHERE id = ? LIMIT 1', [gameId], (gameErr, games) => {
         if (gameErr || !games || games.length === 0) {
+            finishLobbyMutation();
             connection.sendUTF('addai::error::Game not found.');
             return;
         }
 
         const game = games[0];
         if (String(game.creator) !== String(creatorId)) {
+            finishLobbyMutation();
             connection.sendUTF('addai::error::Only the game creator can add AI opponents.');
             return;
         }
         if (Number(game.started) === 1) {
+            finishLobbyMutation();
             connection.sendUTF('addai::error::Cannot add AI after game start.');
             return;
         }
 
         db.query(`SELECT COUNT(*) AS count FROM players${gameId}`, (countErr, counts) => {
             if (countErr) {
+                finishLobbyMutation();
                 connection.sendUTF('addai::error::Unable to check lobby capacity.');
                 return;
             }
 
             const playerCount = Number((counts && counts[0] && (counts[0].count ?? counts[0].c)) || 0);
             const maxPlayers = parsePositiveInt(game.maxplayers, 0);
-            if (maxPlayers > 0 && playerCount >= maxPlayers) {
+            if (!reserveLobbySeat(gameId, playerCount, maxPlayers)) {
+                finishLobbyMutation();
                 connection.sendUTF('addai::error::Game is already full.');
                 return;
             }
 
+            let reservationReleased = false;
+            const releaseReservation = () => {
+                if (reservationReleased) return;
+                reservationReleased = true;
+                releaseLobbySeat(gameId);
+                finishLobbyMutation();
+            };
+
             createAiUser((createErr, aiUser) => {
                 if (createErr || !aiUser) {
+                    releaseReservation();
                     connection.sendUTF('addai::error::Unable to create AI opponent.');
                     return;
                 }
@@ -4779,14 +4964,28 @@ function handleAddAi(data, connection) {
                     [aiUser.id, 1, 100, 100, 50, 1, aiDifficulty, aiStrategy],
                     insertErr => {
                         if (insertErr) {
-                            connection.sendUTF('addai::error::Unable to add AI opponent.');
+                            deleteAiUser(aiUser.id, () => {
+                                releaseReservation();
+                                connection.sendUTF('addai::error::Unable to add AI opponent.');
+                            });
                             return;
                         }
 
                         db.query(
                             'UPDATE users SET currentgame = ? WHERE id = ?',
                             [gameId, aiUser.id],
-                            () => {
+                            updateErr => {
+                                if (updateErr) {
+                                    db.query(`DELETE FROM players${gameId} WHERE userid = ?`, [aiUser.id], () => {
+                                        deleteAiUser(aiUser.id, () => {
+                                            releaseReservation();
+                                            connection.sendUTF('addai::error::Unable to update AI state.');
+                                        });
+                                    });
+                                    return;
+                                }
+
+                                releaseReservation();
                                 connection.sendUTF(`addai::success::${encodeURIComponent(aiUser.username)}`);
                                 broadcastPlayerList(gameId);
                             }

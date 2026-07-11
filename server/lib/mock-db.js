@@ -504,6 +504,11 @@ class MockDatabase {
                         conditionalChecks.push({ field: gtMatch[1], op: '>', value: Number(whereParams[whereParamIdx++]) });
                         return;
                     }
+
+                    const eqMatch = cond.match(/([a-z_]+) = \?/i);
+                    if (eqMatch) {
+                        conditionalChecks.push({ field: eqMatch[1], op: '=', value: whereParams[whereParamIdx++] });
+                    }
                 });
 
                 // Fallback for simple WHERE userid = ?
@@ -523,6 +528,9 @@ class MockDatabase {
                         return this._async(callback, null, { affectedRows: 0 });
                     }
                     if (check.op === '>' && fieldValue <= check.value) {
+                        return this._async(callback, null, { affectedRows: 0 });
+                    }
+                    if (check.op === '=' && String(player[check.field] ?? '') !== String(check.value ?? '')) {
                         return this._async(callback, null, { affectedRows: 0 });
                     }
                 }
@@ -925,27 +933,48 @@ class MockDatabase {
 
                 if (/^UPDATE `?map\d+`? SET/i.test(normalized)) {
                     const paramsCopy = Array.isArray(params) ? [...params] : [];
-                    const sectorId = /WHERE sectorid = \?/i.test(normalized)
-                        ? Number(paramsCopy.pop())
-                        : null;
-                    const ownerFilter = /WHERE owner = \?/i.test(normalized)
-                        ? Number(paramsCopy.pop())
-                        : null;
                     const assignments = normalized
                         .replace(/^UPDATE `?map\d+`? SET /i, '')
                         .split(' WHERE ')[0]
                         .split(',')
                         .map(part => part.trim());
+                    const setParamCount = assignments.reduce(
+                        (count, assignment) => count + ((assignment.match(/\?/g) || []).length),
+                        0
+                    );
+                    const setParams = paramsCopy.slice(0, setParamCount);
+                    const whereParams = paramsCopy.slice(setParamCount);
+                    const whereClause = (normalized.match(/ WHERE (.+)$/i) || [])[1] || '';
+                    const conditions = whereClause.split(/\s+AND\s+/i);
+                    let whereParamIndex = 0;
+                    let sectorId = null;
+                    let ownerFilter = null;
+                    conditions.forEach(condition => {
+                        if (/sectorid = \?/i.test(condition)) {
+                            sectorId = Number(whereParams[whereParamIndex++]);
+                            return;
+                        }
+                        if (/owner = \?/i.test(condition)) {
+                            ownerFilter = Number(whereParams[whereParamIndex++]);
+                        }
+                    });
                     let targets = sectorId !== null && sectorId !== undefined ? [sectorId] : Array.from(map.keys());
                     if (ownerFilter !== null && ownerFilter !== undefined) {
                         targets = targets.filter(id => Number((map.get(id) || {}).owner) === ownerFilter);
                     }
+                    if (/owner IS NULL/i.test(normalized)) {
+                        targets = targets.filter(id => {
+                            const owner = (map.get(id) || {}).owner;
+                            return owner === null || owner === undefined;
+                        });
+                    }
                     targets.forEach(id => {
                         const entry = map.get(id) || this._buildMapRow(id);
+                        let setParamIndex = 0;
                         assignments.forEach(assignment => {
                             const qMatch = assignment.match(/^([a-z_]+) = \?/i);
                             if (qMatch) {
-                                entry[qMatch[1]] = paramsCopy.shift();
+                                entry[qMatch[1]] = setParams[setParamIndex++];
                                 return;
                             }
                             const literalMatch = assignment.match(/^([a-z_]+) = ([0-9]+)/i);
@@ -1227,9 +1256,21 @@ class MockDatabase {
                     const idListMatch = normalized.match(/id IN \(([^)]+)\)/i);
                     let affectedRows = 0;
                     if (idListMatch) {
-                        const ids = idListMatch[1].split(',').map(v => Number(v.trim())).filter(Number.isFinite);
+                        const idTokens = idListMatch[1].split(',').map(value => value.trim());
+                        const ids = idTokens.every(value => value === '?')
+                            ? params.slice(1, 1 + idTokens.length).map(Number).filter(Number.isFinite)
+                            : idTokens.map(Number).filter(Number.isFinite);
+                        const ownerParamIndex = 1 + (idTokens.every(value => value === '?') ? idTokens.length : 0);
+                        const owner = /owner = \?/i.test(normalized) ? Number(params[ownerParamIndex]) : null;
+                        const source = /sectorid = \?/i.test(normalized.substring(normalized.indexOf('WHERE')))
+                            ? Number(params[ownerParamIndex + (owner !== null ? 1 : 0)])
+                            : null;
                         ships.forEach(ship => {
-                            if (ids.includes(ship.id)) {
+                            if (
+                                ids.includes(ship.id) &&
+                                (owner === null || ship.owner === owner) &&
+                                (source === null || ship.sectorid === source)
+                            ) {
                                 ship.sectorid = sectorid;
                                 affectedRows++;
                             }
@@ -1237,7 +1278,15 @@ class MockDatabase {
                     } else if (/WHERE id = \?/i.test(normalized)) {
                         const id = Number(params[1]);
                         const ship = ships.find(s => s.id === id);
-                        if (ship) {
+                        const owner = /owner = \?/i.test(normalized) ? Number(params[2]) : null;
+                        const source = /sectorid = \?/i.test(normalized.substring(normalized.indexOf('WHERE')))
+                            ? Number(params[owner !== null ? 3 : 2])
+                            : null;
+                        if (
+                            ship &&
+                            (owner === null || ship.owner === owner) &&
+                            (source === null || ship.sectorid === source)
+                        ) {
                             ship.sectorid = sectorid;
                             affectedRows = 1;
                         }

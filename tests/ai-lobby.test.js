@@ -186,4 +186,32 @@ test.describe('AI lobby controls', () => {
         const players = await query(mockDb, `SELECT * FROM players${hostConn.gameid}`);
         assert.equal(players.length, 2, 'only host + one AI should be present');
     });
+
+    test('concurrent AI requests cannot claim the same final seat', async t => {
+        const { mockDb } = t.context;
+        const reg = await executeJsonHandler(serverLogic.handleRegister, {
+            username: 'seatRace',
+            password: 'Secure123',
+            email: 'seatrace@example.com'
+        });
+        const hostConn = createMockConnection(reg.body.userId);
+        attachConnection(hostConn);
+
+        serverLogic.handleCreateGame('//creategame:Seat%20Race:2', hostConn);
+        const createdMessage = await waitForMessage(hostConn, m => m.startsWith('creategame::success::'));
+        const gameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${gameId}:1`, hostConn);
+        await waitForMessage(hostConn, m => m.startsWith('joingame::success::'));
+
+        // Fire both requests without waiting for the first insert to complete.
+        serverLogic.handleAddAi('//addai:medium:balanced', hostConn);
+        serverLogic.handleAddAi('//addai:hard:aggressive', hostConn);
+
+        await waitForMessage(hostConn, m => m.startsWith('addai::success::'));
+        const fullMessage = await waitForMessage(hostConn, m => m.startsWith('addai::error::'));
+        assert.match(fullMessage, /Game is already full/);
+
+        const players = await query(mockDb, `SELECT * FROM players${gameId}`);
+        assert.equal(players.length, 2, 'host + exactly one AI should be seated');
+    });
 });

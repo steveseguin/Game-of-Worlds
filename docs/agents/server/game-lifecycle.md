@@ -71,6 +71,8 @@ flowchart TD
 
 `//creategame` creates the room row and per-game tables but does not seat the creator. The creator joins through the same `//joingame:<gameId>:<raceId>` path as everyone else; this keeps race unlock and seat-count logic centralized.
 
+Pending human joins and AI additions reserve lobby seats before their `playersN` insert is visible. The creator cannot start while one of these lobby mutations is still in flight. This prevents over-capacity rooms and ensures every accepted player is included in homeworld assignment.
+
 Waiting games are disposable. If the last seated player leaves before start, the server drops per-game tables and deletes the `games` row.
 
 ## Active Leave And Surrender

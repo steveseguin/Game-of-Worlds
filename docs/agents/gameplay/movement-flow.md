@@ -34,12 +34,13 @@ flowchart TD
   Cost -- yes --> Verify[Load ships in source sector]
   Verify --> Enough{Full requested fleet exists?}
   Enough -- no --> ErrorFleet[Error: Not enough ships]
-  Enough -- yes --> UpdateShips[Update all selected ship ids]
-  UpdateShips --> Deduct[Deduct movement crystal]
-  Deduct --> Arrival[Mark explored, broadcast fleetmove, apply arrival effects]
+  Enough -- yes --> Deduct[Guarded crystal deduction]
+  Deduct --> UpdateShips[Guarded update of all selected ship ids still in the source]
+  UpdateShips -- stale or failed --> Refund[Refund crystal; do not resolve arrival]
+  UpdateShips -- all moved --> Arrival[Mark explored, broadcast fleetmove, apply arrival effects]
 ```
 
-Key invariant: the single-source path must verify the complete requested fleet before updating any ship rows. Otherwise an over-requested move can partially move ships without cost or hazard resolution.
+Key invariant: the single-source path verifies the complete requested fleet, conditionally charges crystal, and only moves ids that still belong to the player in the expected source sector. A stale fleet write refunds the charge and does not resolve arrival effects.
 
 ## Multi-Source Flow
 
@@ -47,7 +48,8 @@ Key invariant: the single-source path must verify the complete requested fleet b
 2. Server sends `mmoptions:<targetHex>:<sourceHex>:<count1>...<count9>...` when adjacent owned ships can reach the target.
 3. Client renders one option per available ship. Each option value is `<sourceHex>:<shipType>:<ordinal>`, where ordinal is the one-based ship number within that source/type option list.
 4. `//sendmmf` sends selected option triplets.
-5. Server counts triplets by source/type, validates all source sectors are adjacent, verifies resources and available ships, updates selected ids, deducts crystal, then calls `applyArrivalEffects()`.
+5. Server counts triplets by source/type, validates all source sectors are adjacent, verifies resources and available ships, then conditionally charges crystal and moves each selected id only from its expected source sector.
+6. If any selected id is stale or fails to move, successful writes are returned to their source sectors and the crystal charge is refunded. Arrival effects run only after every selected ship moves.
 
 ## Arrival Effects
 

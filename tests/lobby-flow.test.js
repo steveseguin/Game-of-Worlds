@@ -187,6 +187,41 @@ test.describe('Lobby lifecycle flows', () => {
         await waitForMessage(joinerConnection, message => message === 'startgame::');
     });
 
+    test('host cannot start while another player is still joining', async () => {
+        const hostRegistration = await executeJsonHandler(serverLogic.handleRegister, {
+            username: 'patientHost',
+            password: 'Secure123',
+            email: 'patient@example.com'
+        });
+        const joinerRegistration = await executeJsonHandler(serverLogic.handleRegister, {
+            username: 'midJoiner',
+            password: 'Secure123',
+            email: 'midjoin@example.com'
+        });
+
+        const hostConnection = createMockConnection(hostRegistration.body.userId);
+        const joinerConnection = createMockConnection(joinerRegistration.body.userId);
+        attachConnection(hostConnection);
+        attachConnection(joinerConnection);
+
+        serverLogic.handleCreateGame('//creategame:Join%20Barrier:2', hostConnection);
+        const createdMessage = await waitForMessage(hostConnection, message => message.startsWith('creategame::success::'));
+        const gameId = Number(createdMessage.split('::')[2]);
+        serverLogic.handleJoinGame(`//joingame:${gameId}:1`, hostConnection);
+        await waitForMessage(hostConnection, message => message.startsWith('joingame::success::'));
+
+        serverLogic.handleJoinGame(`//joingame:${gameId}:1`, joinerConnection);
+        serverLogic.handleGameStart(hostConnection);
+
+        const blocked = await waitForMessage(hostConnection, message => message.includes('still joining'));
+        assert.match(blocked, /try starting again/);
+        await waitForMessage(joinerConnection, message => message.startsWith('joingame::success::'));
+
+        serverLogic.handleGameStart(hostConnection);
+        await waitForMessage(hostConnection, message => message === 'startgame::');
+        await waitForMessage(joinerConnection, message => message === 'startgame::');
+    });
+
     test('player with an existing waiting game receives a current game snapshot', async t => {
         const registration = await executeJsonHandler(serverLogic.handleRegister, {
             username: 'returningHost',
