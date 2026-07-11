@@ -174,7 +174,12 @@ const GameUI = (function() {
         const slotsByType = { 1: 1, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6 };
         const slotsEl = document.getElementById('sectorslots');
         if (slotsEl) {
-            const maxSlots = slotsByType[sectorData.type] || 0;
+            const hasAuthoritativeLimit = sectorData.buildingSlotLimit !== null
+                && sectorData.buildingSlotLimit !== undefined
+                && Number.isFinite(Number(sectorData.buildingSlotLimit));
+            const maxSlots = hasAuthoritativeLimit
+                ? Number(sectorData.buildingSlotLimit)
+                : (slotsByType[sectorData.type] || 0);
             const used = Array.isArray(sectorData.buildings) ? sectorData.buildings.length : 0;
             slotsEl.textContent = maxSlots > 0 ? `${used}/${maxSlots}` : 'none';
         }

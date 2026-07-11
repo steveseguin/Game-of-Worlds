@@ -81,6 +81,7 @@ Building ids:
 | `5` | Warp Gate | Requires Orbital Engineering 1; enables long movement when both endpoints have gates. |
 
 Slot limits depend on sector type. Black holes and empty/non-colonizable hazards should not accept normal buildings.
+The server owns the slot table, includes `buildingSlotLimit` in live sector detail, and shares the same table with the read-only invariant auditor. Client fallback values exist only for compatibility before authoritative detail arrives.
 
 ## Ships
 
@@ -109,6 +110,8 @@ Battle trigger:
 7. `battlepause::` freezes the turn clock.
 8. Players receive full or summary battle telemetry depending on visibility/stealth rules.
 9. `battlereport::`, plain battle reports, and map refreshes follow.
+
+The Analytics tab is scoped to the authenticated player's own aggregate combat record. Recent entries are limited to battles involving that player; it must not become a fog-of-war bypass for other commanders' hidden combat.
 
 ## Technology
 

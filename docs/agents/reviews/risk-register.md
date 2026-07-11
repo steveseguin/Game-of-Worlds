@@ -40,6 +40,12 @@ This file records review findings that matter for future work. Keep entries conc
 | Building slot concurrency | Slot count and insert were separate and simultaneous orders could both observe the last slot. | Construction is serialized per player/game through the insert/refund completion; a concurrent order is rejected before counting capacity. |
 | Partial game start | `games.started` was written before map/player initialization and concurrent starts had no dedicated lock. | MySQL initialization now uses one connection/transaction, publishes `started` last, rolls back failure, and rejects a second in-process start. |
 | Battle reconnect/order freeze | Reconnecting clients did not recover an active battle pause, and hidden/direct controls could still mutate the world during playback. | Snapshot now carries `battlePauseUntil`; the client restores the freeze and the command dispatcher rejects mutating orders until combat completes. |
+| Combat analytics visibility | The member-authorized endpoint exposed aggregate telemetry for every commander, including battles outside the viewer's normal intel. | Responses now contain only the viewer's aggregate record and recent battles involving that viewer; two-client E2E asserts both scopes. |
+| Duplicate probe charge | Two concurrent clicks could both charge 300 crystal for the same player/sector scan. | In-flight scans are coalesced per game/player/sector before lookup/charge; later intentional scans remain possible. |
+| Turn trigger race | Timer expiry and all-ready completion could validate/schedule the same turn together. | A per-game scheduling lock coalesces simultaneous triggers, with a regression test proving one persisted and broadcast turn. |
+| Persistence outage turn drift | A failed player-table read previously allowed turn processing to continue. | Turn advancement now pauses on the read error instead of incrementing runtime without authoritative player state. |
+| Silent state corruption | There was no non-mutating whole-game consistency oracle for functional journeys. | Added a read-only invariant evaluator and test-only member endpoint covering resources, references, ownership, types, capacity, turn state, and terminal runtime cleanup. |
+| Shared tech drift | Server/client tech files depended on a comment telling contributors to update both. | Unit coverage now requires normalized files to remain byte-for-byte identical. |
 
 ## Active Risks To Revisit
 

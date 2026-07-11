@@ -1147,6 +1147,9 @@ function updateSectorInfo(message) {
             metalBonus: Number.isFinite(metalBonus) ? metalBonus : 100,
             crystalBonus: Number.isFinite(crystalBonus) ? crystalBonus : 100,
             terraformLevel: Number.isFinite(terraformLevel) ? terraformLevel : 0,
+            buildingSlotLimit: Number.isFinite(Number(rawSector.buildingSlotLimit))
+                ? Number(rawSector.buildingSlotLimit)
+                : null,
             ships: data.ships || [],
             buildings: data.buildings || []
         };

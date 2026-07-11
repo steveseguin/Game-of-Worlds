@@ -432,3 +432,52 @@ test('solo sandbox games advance turns without completing immediately', async ()
         resetGameState();
     }
 });
+
+test('simultaneous turn triggers schedule only one turn advance', async () => {
+    const db = createMockDatabase();
+    server.setDatabase(db);
+    resetGameState();
+
+    try {
+        const registration = await execJson(server.handleGuestLogin, { username: 'turnLock' });
+        const hostId = registration.body.userId;
+        const host = createConnection(hostId);
+        attach(host);
+        const gameId = await createJoinedGame(host, { name: 'Turn Lock' });
+        await startGame(host);
+        host.messages.length = 0;
+
+        server.processTurn(gameId);
+        server.processTurn(gameId);
+
+        await waitFor(host, message => message === 'newturn::2');
+        await delay(100);
+        assert.equal(server.gameState.turns[gameId], 2);
+        assert.equal(db.games.find(row => row.id === gameId).turn, 2);
+        assert.equal(host.messages.filter(message => message === 'newturn::2').length, 1);
+        assert.equal(host.messages.some(message => message === 'newturn::3'), false);
+    } finally {
+        resetGameState();
+    }
+});
+
+test('turn processing pauses instead of advancing runtime when persistence is unavailable', async () => {
+    resetGameState();
+    server.setDatabase({
+        isOffline: true,
+        query(sql, params, callback) {
+            const cb = typeof params === 'function' ? params : callback;
+            process.nextTick(() => cb(new Error('database unavailable')));
+        }
+    });
+    server.gameState.turns[1] = 9;
+    server.gameState.activeGames[1] = { mode: 'quick', status: 'in-progress' };
+
+    try {
+        server.processTurn(1);
+        await delay(25);
+        assert.equal(server.gameState.turns[1], 9);
+    } finally {
+        resetGameState();
+    }
+});

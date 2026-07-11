@@ -46,6 +46,24 @@ test('probing a nonexistent sector does not charge crystal', () => {
     assert.equal(queries.some(query => /^UPDATE players1/.test(query.sql)), false);
 });
 
+test('duplicate in-flight probe requests cannot charge the same scan twice', () => {
+    let releaseSectorLookup;
+    const queries = setScriptedDb((sql, params, callback) => {
+        assert.match(sql, /^SELECT \* FROM map1 WHERE sectorid = \?/);
+        releaseSectorLookup = callback;
+    });
+    const first = makeConnection();
+    const second = makeConnection();
+
+    server.probeSector('//probe:a', first);
+    server.probeSector('//probe:a', second);
+
+    assert.equal(queries.length, 1);
+    assert.deepEqual(second.sent, ['Error: A probe is already en route to this sector']);
+    releaseSectorLookup(new Error('test cleanup'), []);
+    assert.deepEqual(first.sent, ['Error: Invalid sector']);
+});
+
 test('ship purchase does not insert after a concurrent balance change', () => {
     const scout = Object.values(combat.SHIP_TYPES).find(ship => ship.id === 1);
     assert.ok(scout, 'expected scout ship definition');

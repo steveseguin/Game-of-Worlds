@@ -464,11 +464,25 @@ test.describe('Live two-client combat with multiple rounds', () => {
         expect(lobbyGameId).toBeTruthy();
         const telemetryResponse = await hostPage.request.get(`/api/game/${lobbyGameId}/combat-telemetry`);
         expect(telemetryResponse.status()).toBe(200);
+        expect(telemetryResponse.headers()['cache-control']).toContain('no-store');
         const telemetry = await telemetryResponse.json();
         expect(Number(telemetry.gameId)).toBe(Number(lobbyGameId));
         expect(Number(telemetry.battles)).toBeGreaterThanOrEqual(2);
+        const hostUserId = await hostPage.evaluate(() => Number(localStorage.getItem('userId')));
+        expect((telemetry.players || []).every(player => Number(player.playerId) === hostUserId)).toBe(true);
+
+        const joinerTelemetryResponse = await joinerPage.request.get(`/api/game/${lobbyGameId}/combat-telemetry`);
+        expect(joinerTelemetryResponse.status()).toBe(200);
+        const joinerTelemetry = await joinerTelemetryResponse.json();
+        const joinerUserId = await joinerPage.evaluate(() => Number(localStorage.getItem('userId')));
+        expect((joinerTelemetry.players || []).every(player => Number(player.playerId) === joinerUserId)).toBe(true);
 
         expect((telemetry.recentBattles || []).length).toBeGreaterThanOrEqual(2);
+
+        const invariantResponse = await hostPage.request.get(`/api/game/${lobbyGameId}/invariants`);
+        expect(invariantResponse.status()).toBe(200);
+        const invariantResult = await invariantResponse.json();
+        expect(invariantResult.ok, JSON.stringify(invariantResult.errors || [])).toBe(true);
 
         await hostPage.click('#analyticstab');
         await expect(hostPage.locator('#analytics')).toBeVisible({ timeout: 10000 });

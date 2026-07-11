@@ -68,12 +68,13 @@ These endpoints require `userId` and `tempKey` cookies matching `users.tempkey`.
 | Method | Path | Handler | Notes |
 | --- | --- | --- | --- |
 | `GET` | `/api/user/:id/current-game` | `handleGetCurrentGame` | Returns `{ userId, currentGame }`; this is the HTTP reconnect pointer, not the WebSocket `currentgame::` snapshot. |
-| `GET` | `/api/game/:id/combat-telemetry` | `handleGetCombatTelemetry` | Recent battle/ship telemetry for the game. |
+| `GET` | `/api/game/:id/combat-telemetry` | `handleGetCombatTelemetry` | Authenticated member's own aggregate combat metrics and battles involving that member. |
+| `GET` | `/api/game/:id/invariants` | `handleGetGameInvariants` | Test-only, read-only persisted/runtime integrity audit; `404` outside `NODE_ENV=test`. |
 | `GET` | `/api/game/:id/test-map-terrain` | `handleGetTestMapTerrain` | Test-only terrain output. Returns `404` unless `NODE_ENV=test`. |
 
 User-scoped routes require the cookie `userId` to match the `:id` path segment. Game-scoped routes additionally require the authenticated user to be seated in the game's `playersN` table.
 
-`/api/game/:id/combat-telemetry` is in-memory runtime telemetry, not persisted battle history. Empty games return `{ gameId, battles: 0, updatedAt: null, recentBattles: [], players: [] }`.
+`/api/game/:id/combat-telemetry` is in-memory runtime telemetry, not persisted battle history. It is viewer-scoped to preserve fog of war and uses `Cache-Control: no-store`. Empty games return `{ gameId, battles: 0, updatedAt: null, recentBattles: [], players: [] }`.
 
 `/api/game/:id/test-map-terrain` returns `{ gameId, sectors }`, where each sector includes `sectorid`, `type`, `x`, `y`, `owner`, and `terraformlvl`. E2E tests use it for deterministic path planning.
 

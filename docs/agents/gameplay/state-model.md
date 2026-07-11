@@ -88,3 +88,5 @@ stateDiagram-v2
 - `activeGames[gameId].turnReady` must be cleared after each processed turn.
 - `activeGames[gameId].lastHumanActivityTurn` should advance when humans send authenticated game commands, otherwise stale-game abandonment can fire too aggressively.
 - The browser clock is a projection of `activeGames[gameId].turnEndsAt`; reconnect snapshots and `turnclock::` must not fall back to a hard-coded quick-game duration.
+- A terminal game must not retain `activeGames`, a turn timer, or a battle pause. The test-only invariant audit checks these alongside persisted ownership, resources, and references.
+- State audits are read-only. Do not use `server/lib/sync.js` repair methods as a second gameplay mutation path; gameplay handlers remain authoritative.

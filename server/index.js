@@ -574,8 +574,16 @@ const httpServer = http.createServer((request, response) => {
     // Handle live combat telemetry query
     const combatTelemetryMatch = pathname.match(/^\/api\/game\/(\d+)\/combat-telemetry$/);
     if (combatTelemetryMatch && request.method === 'GET') {
-        authorizeGameMember(request, response, combatTelemetryMatch[1], () => {
-            serverLogic.handleGetCombatTelemetry(request, response, combatTelemetryMatch[1]);
+        authorizeGameMember(request, response, combatTelemetryMatch[1], auth => {
+            serverLogic.handleGetCombatTelemetry(request, response, combatTelemetryMatch[1], auth.userId);
+        });
+        return;
+    }
+
+    const gameInvariantsMatch = pathname.match(/^\/api\/game\/(\d+)\/invariants$/);
+    if (gameInvariantsMatch && request.method === 'GET' && process.env.NODE_ENV === 'test') {
+        authorizeGameMember(request, response, gameInvariantsMatch[1], () => {
+            serverLogic.handleGetGameInvariants(request, response, gameInvariantsMatch[1]);
         });
         return;
     }

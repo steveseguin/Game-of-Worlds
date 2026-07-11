@@ -701,6 +701,17 @@ async function waitForBattleOverlay(page, timeout = 15000) {
     await expect(page.locator('#battleGround, #battleTheater.on')).toBeVisible({ timeout });
 }
 
+async function waitForBattleResolution(page, timeout = 15000) {
+    await expect.poll(async () => {
+        const overlayVisible = await page.locator('#battleGround, #battleTheater.on').isVisible().catch(() => false);
+        const battleReport = await page.locator('#chatMessages').getByText(/Battle report:\s+(?:Victory|Defeat)\s+in sector/i).count().catch(() => 0);
+        return overlayVisible || battleReport > 0;
+    }, {
+        timeout,
+        intervals: [100, 250, 500]
+    }).toBe(true);
+}
+
 async function closeBattleOverlay(page) {
     if (await page.locator('#battleTheater.on').isVisible().catch(() => false)) {
         await page.locator('#battleTheater.on #b3dSkip').click({ timeout: 3000 });
@@ -768,6 +779,7 @@ module.exports = {
     pickColonizationTargets,
     splitRendezvousPaths,
     waitForBattleOverlay,
+    waitForBattleResolution,
     closeBattleOverlay,
     surrender,
     returnToLobbyFromGameOver

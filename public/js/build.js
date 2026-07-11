@@ -73,7 +73,12 @@ const BuildSystem = (() => {
         const counts = buildingCounts(sector?.buildings);
         const myId = Number((document.cookie.match(/(?:^|; )userId=([^;]+)/) || [])[1]);
         const owned = Boolean(sector) && Number(sector.owner ?? sector.ownerid) === myId;
-        const slotLimit = BUILDING_SLOTS[Number(sector?.type)] || 0;
+        const hasAuthoritativeLimit = sector?.buildingSlotLimit !== null
+            && sector?.buildingSlotLimit !== undefined
+            && Number.isFinite(Number(sector.buildingSlotLimit));
+        const slotLimit = hasAuthoritativeLimit
+            ? Number(sector.buildingSlotLimit)
+            : (BUILDING_SLOTS[Number(sector?.type)] || 0);
         const usedSlots = counts.reduce((sum, count) => sum + count, 0);
         const techFx = window.TechSystem?.aggregateEffects?.(player?.techLevels || {}) || {};
         const battleFrozen = typeof turnFrozen !== 'undefined' && turnFrozen;

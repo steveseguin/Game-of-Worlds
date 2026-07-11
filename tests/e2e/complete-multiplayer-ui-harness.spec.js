@@ -27,7 +27,7 @@ const {
     readTestTerrain,
     pickColonizationTargets,
     splitRendezvousPaths,
-    waitForBattleOverlay,
+    waitForBattleResolution,
     closeBattleOverlay,
     returnToLobbyFromGameOver
 } = require('./support/ui-game-harness');
@@ -173,15 +173,20 @@ test.describe('Complete multiplayer UI harness', () => {
 
             await marchShip(hostPage, battlePaths.hostPath, 'Frigate');
             await marchShip(guestPage, battlePaths.joinerPath, 'Frigate');
-            const battleOverlay = Promise.all([
-                waitForBattleOverlay(hostPage, 15000),
-                waitForBattleOverlay(guestPage, 15000)
+            const battleResolution = Promise.all([
+                waitForBattleResolution(hostPage, 15000),
+                waitForBattleResolution(guestPage, 15000)
             ]);
             await requestEndTurnAll([hostPage, guestPage]);
-            await battleOverlay;
+            await battleResolution;
             await hostPage.screenshot({ path: testInfo.outputPath('05-battle.png'), fullPage: true });
             await closeBattleOverlay(hostPage);
             await closeBattleOverlay(guestPage);
+
+            const integrityResponse = await hostPage.request.get(`/api/game/${gameId}/invariants`);
+            expect(integrityResponse.status()).toBe(200);
+            const integrity = await integrityResponse.json();
+            expect(integrity.ok, JSON.stringify(integrity.errors || [])).toBe(true);
 
             if (!(await isGameOverVisible(hostPage))) {
                 for (let index = 2; index < colonizationTargets.length; index++) {
@@ -210,6 +215,15 @@ test.describe('Complete multiplayer UI harness', () => {
             await expect(hostPage.locator('#gameOverBody')).toContainText('Domination');
             await expect(guestPage.locator('#gameOverRegisterBtn')).toBeVisible();
             await hostPage.screenshot({ path: testInfo.outputPath('07-game-over.png'), fullPage: true });
+
+            await expect.poll(async () => {
+                const response = await hostPage.request.get(`/api/game/${gameId}/invariants`);
+                return response.status();
+            }, { timeout: 15000 }).toBe(200);
+            const terminalIntegrityResponse = await hostPage.request.get(`/api/game/${gameId}/invariants`);
+            expect(terminalIntegrityResponse.status()).toBe(200);
+            const terminalIntegrity = await terminalIntegrityResponse.json();
+            expect(terminalIntegrity.ok, JSON.stringify(terminalIntegrity.errors || [])).toBe(true);
 
             await Promise.all([
                 returnToLobbyFromGameOver(hostPage),

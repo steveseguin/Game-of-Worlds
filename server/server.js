@@ -24,6 +24,7 @@ const aiSystem = require('./lib/ai');
 const diplomacySystem = require('./lib/diplomacy');
 const { PaymentManager } = require('./lib/payments');
 const PaymentEndpoints = require('./lib/payment-endpoints');
+const gameInvariants = require('./lib/game-invariants');
 
 // Game state (shared with index.js)
 const gameState = {
@@ -51,6 +52,8 @@ const lobbySeatReservations = new Map();
 const lobbyMutationCounts = new Map();
 const pendingBuildingPurchases = new Set();
 const initializingGames = new Set();
+const processingTurns = new Set();
+const pendingProbeRequests = new Set();
 
 // Expose game state for other modules that rely on it
 global.gameState = gameState;
@@ -111,15 +114,8 @@ const TEST_STARTING_RESOURCES = Object.freeze({
     research: Number(process.env.TEST_STARTING_RESEARCH) || 1200
 });
 const JSON_BODY_LIMIT_BYTES = 16 * 1024;
-// Building slots scale with the body being built on.
-const BUILDING_SLOTS_BY_TYPE = Object.freeze({
-    1: 1,  // secured asteroid belt: one mining rig
-    6: 2,  // micro planet
-    7: 3,  // small planet
-    8: 4,  // medium planet
-    9: 5,  // large planet
-    10: 6  // homeworld
-});
+// Shared by construction enforcement and the read-only invariant auditor.
+const BUILDING_SLOTS_BY_TYPE = gameInvariants.BUILDING_SLOTS_BY_TYPE;
 const STARTING_BUILDINGS = Object.freeze([0, 4]); // Metal Extractor + Orbital Turret, matching the PHP start.
 const GAME_TABLE_SUFFIXES = [
     'map',
@@ -883,7 +879,8 @@ function connectedHumanIdsForGame(gameId) {
 function shouldProcessTurn(gameId, callback) {
     getGamePlayers(gameId, (err, rows) => {
         if (err) {
-            callback(true);
+            console.warn(`Turn ${gameId} paused because player state could not be loaded:`, err.message || err);
+            callback(false);
             return;
         }
 
@@ -1835,12 +1832,30 @@ function processTurn(gameId) {
     if (isBattlePauseActive(gameId)) {
         return;
     }
-    shouldProcessTurn(gameId, shouldContinue => {
-        if (!shouldContinue) {
-            return;
-        }
-        processTurnUnchecked(gameId);
-    });
+    const numericGameId = Number(gameId);
+    if (!Number.isSafeInteger(numericGameId) || numericGameId <= 0 || processingTurns.has(numericGameId)) {
+        return;
+    }
+    processingTurns.add(numericGameId);
+    try {
+        shouldProcessTurn(gameId, shouldContinue => {
+            if (!shouldContinue) {
+                processingTurns.delete(numericGameId);
+                return;
+            }
+            try {
+                processTurnUnchecked(gameId);
+            } finally {
+                // This lock closes the timer/manual-ready race around validation and
+                // turn scheduling. Individual economy writes retain their existing
+                // asynchronous behavior and guarded mutation rules.
+                processingTurns.delete(numericGameId);
+            }
+        });
+    } catch (error) {
+        processingTurns.delete(numericGameId);
+        throw error;
+    }
 }
 
 function processTurnUnchecked(gameId) {
@@ -2380,7 +2395,7 @@ function buildShipTelemetryView(stat) {
     };
 }
 
-function getCombatTelemetrySnapshot(gameId) {
+function getCombatTelemetrySnapshot(gameId, viewerId) {
     const normalizedGameId = Number(gameId);
     const gameTelemetry = combatTelemetryStore.get(normalizedGameId);
     if (!gameTelemetry) {
@@ -2393,7 +2408,9 @@ function getCombatTelemetrySnapshot(gameId) {
         };
     }
 
+    const normalizedViewerId = Number(viewerId);
     const players = Object.values(gameTelemetry.players)
+        .filter(player => player.playerId === normalizedViewerId)
         .sort((a, b) => a.playerId - b.playerId)
         .map(player => {
             const shipStats = SHIP_TYPE_IDS
@@ -2418,26 +2435,66 @@ function getCombatTelemetrySnapshot(gameId) {
             };
         });
 
+    const recentBattles = gameTelemetry.recentBattles
+        .filter(battle => battle.attackerId === normalizedViewerId || battle.defenderId === normalizedViewerId)
+        .slice(-25);
+    const viewerRecord = gameTelemetry.players[normalizedViewerId];
     return {
         gameId: gameTelemetry.gameId,
-        battles: gameTelemetry.battles,
+        battles: viewerRecord ? viewerRecord.battles : 0,
         updatedAt: gameTelemetry.updatedAt,
-        recentBattles: gameTelemetry.recentBattles.slice(-25),
+        recentBattles,
         players
     };
 }
 
-function handleGetCombatTelemetry(request, response, gameId) {
+function handleGetCombatTelemetry(request, response, gameId, viewerId) {
+    const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
     const parsedGameId = parsePositiveInt(gameId, 0);
+    const parsedViewerId = parsePositiveInt(viewerId, 0);
     if (!parsedGameId) {
-        response.writeHead(400, { 'Content-Type': 'application/json' });
+        response.writeHead(400, headers);
         response.end(JSON.stringify({ error: 'Invalid game ID' }));
         return;
     }
+    if (!parsedViewerId) {
+        response.writeHead(403, headers);
+        response.end(JSON.stringify({ error: 'Forbidden' }));
+        return;
+    }
 
-    const payload = getCombatTelemetrySnapshot(parsedGameId);
-    response.writeHead(200, { 'Content-Type': 'application/json' });
+    const payload = getCombatTelemetrySnapshot(parsedGameId, parsedViewerId);
+    response.writeHead(200, headers);
     response.end(JSON.stringify(payload));
+}
+
+function handleGetGameInvariants(request, response, gameId) {
+    const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+    if (process.env.NODE_ENV !== 'test') {
+        response.writeHead(404, headers);
+        response.end(JSON.stringify({ error: 'Not found' }));
+        return;
+    }
+    const parsedGameId = parsePositiveInt(gameId, 0);
+    if (!parsedGameId) {
+        response.writeHead(400, headers);
+        response.end(JSON.stringify({ error: 'Invalid game ID' }));
+        return;
+    }
+    gameInvariants.auditGameState(db, parsedGameId, {
+        turn: gameState.turns[parsedGameId],
+        active: Boolean(gameState.activeGames[parsedGameId]),
+        hasTimer: Boolean(gameState.gameTimer[parsedGameId]),
+        battlePaused: isBattlePauseActive(parsedGameId)
+    })
+        .then(result => {
+            response.writeHead(result.ok ? 200 : 409, headers);
+            response.end(JSON.stringify({ gameId: parsedGameId, ...result }));
+        })
+        .catch(error => {
+            response.writeHead(error.message === 'Game not found' ? 404 : 500, headers);
+            response.end(JSON.stringify({ error: 'Unable to audit game state' }));
+        });
 }
 
 function handleGetTestMapTerrain(request, response, gameId) {
@@ -3074,6 +3131,16 @@ function probeSector(data, connection) {
         connection.sendUTF("Error: Invalid sector");
         return;
     }
+    const probeKey = `${gameId}:${playerId}:${targetSector}`;
+    if (pendingProbeRequests.has(probeKey)) {
+        connection.sendUTF("Error: A probe is already en route to this sector");
+        return;
+    }
+    pendingProbeRequests.add(probeKey);
+    const failProbe = message => {
+        pendingProbeRequests.delete(probeKey);
+        connection.sendUTF(message);
+    };
 
     // Validate the destination before charging. A mistyped/out-of-range sector
     // must not consume a probe.
@@ -3082,7 +3149,7 @@ function probeSector(data, connection) {
         [targetSector],
         (sectorErr, sectorRows) => {
             if (sectorErr || !Array.isArray(sectorRows) || sectorRows.length === 0) {
-                connection.sendUTF("Error: Invalid sector");
+                failProbe("Error: Invalid sector");
                 return;
             }
 
@@ -3092,10 +3159,11 @@ function probeSector(data, connection) {
                 [PROBE_COST_CRYSTAL, playerId, PROBE_COST_CRYSTAL],
                 (costErr, costResult) => {
                     if (costErr || !costResult || Number(costResult.affectedRows) !== 1) {
-                        connection.sendUTF(`Error: Probes cost ${PROBE_COST_CRYSTAL} crystal`);
+                        failProbe(`Error: Probes cost ${PROBE_COST_CRYSTAL} crystal`);
                         return;
                     }
 
+                    pendingProbeRequests.delete(probeKey);
                     revealProbedSector(gameId, playerId, targetSector, connection, sectorRows);
                 }
             );
@@ -3189,7 +3257,7 @@ function finishProbeReveal(gameId, playerId, targetSector, sectorRow, connection
 
             const advantage = intel.advantage;
             const probeData = {
-                sector: { ...sectorRow },
+                sector: withSectorRules(sectorRow),
                 ships,
                 buildings: [],
                 intel: { advantage }
@@ -3984,6 +4052,12 @@ function markSectorExplored(gameId, playerId, sectorId) {
     );
 }
 
+function withSectorRules(sector) {
+    const row = sector && typeof sector === 'object' ? sector : {};
+    const sectorType = Number(row.type ?? row.sectortype) || 0;
+    return { ...row, buildingSlotLimit: BUILDING_SLOTS_BY_TYPE[sectorType] || 0 };
+}
+
 function updateSector2(gameId, sectorId) {
     // Get sector data
     db.query(
@@ -4010,7 +4084,7 @@ function updateSector2(gameId, sectorId) {
                             if (err) buildings = [];
 
                             const sectorData = {
-                                sector: sector[0],
+                                sector: withSectorRules(sector[0]),
                                 ships: ships,
                                 buildings: buildings
                             };
@@ -4500,7 +4574,7 @@ function updateAllSectors(gameId, connection) {
                                                 if (err) buildings = [];
 
                                                 const data = {
-                                                    sector: sectorData[0],
+                                                    sector: withSectorRules(sectorData[0]),
                                                     ships: ships,
                                                     buildings: buildings
                                                 };
@@ -6187,6 +6261,7 @@ module.exports = {
     handleGetCurrentGame,
     resumeActiveGamesFromDatabase,
     handleGetCombatTelemetry,
+    handleGetGameInvariants,
     handleGetTestMapTerrain,
     handlePlayerDisconnect,
     getAdjacentSectorIds,

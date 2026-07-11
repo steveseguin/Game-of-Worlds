@@ -58,6 +58,8 @@ Unknown sectors create the core risk/reward choice:
 
 The server enforces fog of war. Hidden detail must not leak through sector, map, tooltip, battle, or empire messages. Stale remembered intel should be distinguishable from live visibility. Movement validates the entire fleet and cost before arrival effects; failed partial writes are rolled back and refunded.
 
+Two simultaneous clicks for the same player/sector probe are coalesced before charging, preventing an accidental duplicate scan. A later intentional probe remains allowed.
+
 Review moments: malformed/zero sector, unaffordable probe/move, missing ships, simultaneous orders, blind black hole, three asteroid outcomes, owned asteroid transit, warp endpoints, stale intel, visibility after fleet departure, and refresh during an order.
 
 ## 6. Expansion, Economy, Research, And Construction
@@ -95,5 +97,6 @@ Victory, surrender, no-human abandonment, stale-game cleanup, and solo sandbox e
 - Multiplayer E2E: create/join/race/start, refresh/reconnect, manual turns, exploration/movement/colonization, construction/research, combat, surrender, and terminal cleanup.
 - Hostile/recovery E2E: access gates, guest upgrade, malformed or rejected actions, safe Lobby/resume, and explicit resignation.
 - Gameplay-controls E2E: authoritative mode clock/reconnect, Spaceport-to-ship progression, advanced hull lock reason, and confirmed AI-seat launch.
+- Full-game and live-combat E2E: read-only invariant audits after real mutations; the complete harness also confirms terminal runtime cleanup after victory.
 
 When a user-facing rule changes, prefer a browser journey that proves the state before action, feedback during it, authoritative result afterward, and refresh/reconnect recovery—not only a direct handler unit test.

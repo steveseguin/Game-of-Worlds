@@ -39,6 +39,7 @@ Environment variables can override turn intervals and mode multipliers; do not h
 | Victory/surrender/cleanup | Implemented | Victory module, explicit resignation, abandonment rules, runtime cleanup tests. |
 | Payments | Optional | Stripe-disabled behavior must remain isolated; production availability depends on secrets/webhook configuration. |
 | Deploy/observability | Implemented | CI, SSH deployment helper, `/health`, `/status`, deploy commit/dirty metadata verifier. |
+| Gameplay integrity oracle | Implemented for tests | Read-only whole-game checks run inside full expansion/combat/victory journeys; no automatic repair path changes gameplay. |
 
 ## Test Layers
 
@@ -47,6 +48,8 @@ Environment variables can override turn intervals and mode multipliers; do not h
 - `npm run test:e2e`: serial Playwright journeys using the actual browser client and mock server.
 - `tests/e2e/gameplay-controls.spec.js`: clock truth/reconnect, construction progression, and AI sandbox coordination.
 - `tests/e2e/hostile-workflows.spec.js`: route/auth gates, guest upgrade, safe active-game navigation/resume, explicit resignation.
+- `tests/game-invariants.test.js`: deliberately corrupts resources, references, ownership, types, capacity, and terminal runtime to prove detection.
+- `tests/shared-rules-sync.test.js`: prevents server/client technology drift and accidental activation of the stale client combat simulator.
 
 ## Known Material Risks
 

@@ -28,6 +28,8 @@ flowchart TD
 
 It also records `activeGames[gameId].turnEndsAt` and publishes `turnclock::<turn>::<endsAt>::<durationSeconds>`. The client counts down from the epoch deadline instead of decrementing an assumed 180-second value, so epic/test games, background tabs, reconnects, and battle-clock restarts show server time.
 
+`processingTurns` coalesces a timer tick and an all-humans-ready trigger that arrive while the same turn validation is in flight. If the player table cannot be read, the turn pauses instead of incrementing runtime state without persistence.
+
 ## Process Turn
 
 High-level turn flow:
