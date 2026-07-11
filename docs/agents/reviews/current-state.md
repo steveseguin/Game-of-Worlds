@@ -2,6 +2,8 @@
 
 Last code review update: 2026-07-11. Runtime status must still be verified through production `/health` and `/status` after every release.
 
+Production verification on 2026-07-11 reported service `ok`, database `connected`, a clean checkout, and deployed app commit `1a4fb415c4ee`. Startup also warned that `STRIPE_SECRET_KEY` is configured while `STRIPE_WEBHOOK_SECRET` is missing; core gameplay is healthy, but verified Stripe webhook handling is not production-ready until that secret is supplied.
+
 ## Product Shape
 
 Game of Words is a browser-based, simultaneous turn strategy game. The frontend is vanilla JavaScript with a tactical map and WebSocket session. Node owns lobby/game rules; MySQL owns accounts, room rows, per-game map/player/ship/building state, history, and progression. A mock database supports local integration and Playwright journeys.

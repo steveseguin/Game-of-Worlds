@@ -52,6 +52,7 @@ This file records review findings that matter for future work. Keep entries conc
 | Legacy docs | Several root deployment docs predate current CI/CD. | Contributors and agents may follow stale deployment instructions. | Gradually archive or rewrite old deployment docs to point at `docs/agents/operations/ci-cd.md`. |
 | Tech definitions | Tech tree is duplicated in `server/lib/tech.js` and `public/js/tech.js`. | Divergence can create client/server disagreement. | Add a sync check or generate the client copy from server definitions. |
 | Payment surface | Payment endpoints are present but optional. | Stripe config gaps should not break non-payment gameplay. | Keep payment tests isolated and ensure `503` behavior remains explicit when disabled. |
+| Production Stripe webhook | Production has `STRIPE_SECRET_KEY` but currently reports missing `STRIPE_WEBHOOK_SECRET`. | Incoming payment events cannot be signature-verified, so webhook-driven fulfillment is not production-ready even though gameplay is unaffected. | Configure the matching endpoint signing secret, restart, and confirm the startup warning is gone with a signed webhook test. |
 | Turn sequencing | Income writes, standing orders, AI, battle, and victory are mixed callback/async flows in `processTurnUnchecked()`. | Economic-victory and combat-victory timing can be hard to reason about, and broad refactors risk regressions. | Add focused turn sequencing tests before changing this order; eventually make turn processing explicitly awaited. |
 
 ## Review Checklist For Gameplay Changes
