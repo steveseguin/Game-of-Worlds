@@ -41,7 +41,7 @@ Rules:
 - Warp movement is allowed when both endpoints have warp gates.
 - Movement costs crystal based on moved ship hull classes and propulsion tech discounts.
 - The server verifies resource balance and the full requested fleet before moving ships.
-- Ships are moved in DB, crystal is deducted, then `applyArrivalEffects()` resolves hazards/ownership prompts.
+- Crystal is conditionally deducted first, then the complete requested fleet is moved. A stale/partial fleet write is rolled back and refunded before `applyArrivalEffects()` resolves hazards or ownership.
 - `fleetmove::` broadcasts visible movement animation/event.
 
 Arrival effects:
@@ -93,6 +93,8 @@ Construction checks:
 - Enough metal/crystal.
 - Spaceport exists in current sector.
 - Shipyard tech is high enough for advanced hulls.
+
+Ship construction is immediate; there is no shipyard queue or weighted build-slot capacity. `techstate::` includes race-adjusted `shipCosts` and shipyard requirements so the browser can explain the same rules the server enforces.
 
 ## Combat
 

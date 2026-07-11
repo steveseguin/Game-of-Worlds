@@ -837,6 +837,14 @@ wsServer.on('request', request => {
 // Handle commands from clients
 function handleCommand(data, connection) {
     const command = data.split(":")[0].substring(2);
+    const frozenCommands = new Set([
+        'start', 'colonize', 'buytech', 'probe', 'buyship', 'buybuilding',
+        'move', 'sendmmf', 'applyorders'
+    ]);
+    if (connection.gameid && frozenCommands.has(command) && serverLogic.isBattlePauseActive(connection.gameid)) {
+        connection.sendUTF('Error: Battle in progress; orders are temporarily frozen');
+        return;
+    }
     serverLogic.markPlayerGameActivity(connection);
     
     switch (command) {

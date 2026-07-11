@@ -125,6 +125,7 @@ const GameUI = (function() {
         // Set sector type
         let planetType = 'Unknown';
         switch (sectorData.type) {
+            case 0: planetType = 'Empty Space'; break;
             case 1: planetType = 'Asteroid Belt'; break;
             case 2: planetType = 'Black Hole'; break;
             case 3: planetType = 'Unstable Star'; break;

@@ -49,6 +49,8 @@ let hasEnsuredGameAccessColumns = false;
 // so concurrent callbacks cannot all claim the final lobby seat or race game start.
 const lobbySeatReservations = new Map();
 const lobbyMutationCounts = new Map();
+const pendingBuildingPurchases = new Set();
+const initializingGames = new Set();
 
 // Expose game state for other modules that rely on it
 global.gameState = gameState;
@@ -1454,6 +1456,11 @@ function handleGameStart(connection) {
             return;
         }
 
+        if (initializingGames.has(Number(gameId))) {
+            connection.sendUTF("Error: Game initialization is already in progress");
+            return;
+        }
+
         initializeGame(gameId, connection, game);
     });
 }
@@ -1470,32 +1477,67 @@ function queryDb(sql, params = []) {
     });
 }
 
-async function initializeGame(gameId, connection, game = {}) {
+async function openInitializationSession() {
+    if (!db || typeof db.getConnection !== 'function') {
+        return {
+            query: queryDb,
+            commit: async () => {},
+            rollback: async () => {},
+            release: () => {}
+        };
+    }
+    const connection = await new Promise((resolve, reject) => {
+        db.getConnection((err, value) => err ? reject(err) : resolve(value));
+    });
+    const run = (sql, params = []) => new Promise((resolve, reject) => {
+        connection.query(sql, params, (err, rows) => err ? reject(err) : resolve(rows));
+    });
+    const invoke = method => new Promise((resolve, reject) => {
+        connection[method](err => err ? reject(err) : resolve());
+    });
     try {
+        await invoke('beginTransaction');
+    } catch (error) {
+        connection.release();
+        throw error;
+    }
+    let transactionOpen = true;
+    return {
+        query: run,
+        commit: async () => {
+            await invoke('commit');
+            transactionOpen = false;
+        },
+        rollback: async () => {
+            if (!transactionOpen) return;
+            await invoke('rollback');
+            transactionOpen = false;
+        },
+        release: () => connection.release()
+    };
+}
+
+async function initializeGame(gameId, connection, game = {}) {
+    const numericGameId = Number(gameId);
+    if (initializingGames.has(numericGameId)) {
+        connection.sendUTF("Error: Game initialization is already in progress");
+        return;
+    }
+    initializingGames.add(numericGameId);
+    let session = null;
+    try {
+        session = await openInitializationSession();
+        const runQuery = session.query;
         // Initialize players in deterministic join order so homeworld assignment is stable.
-        const players = await queryDb(
+        const players = await runQuery(
             `SELECT userid FROM players${gameId} ORDER BY joined_at ASC, userid ASC`
         );
         const playerRows = Array.isArray(players) ? players : [];
 
-        // Initialize turn counter.
-        gameState.turns[gameId] = 1;
         const maxPlayersForMap = parsePositiveInt(game.maxplayers, Math.max(playerRows.length, DEFAULT_MAX_PLAYERS));
         const mode = normalizeMode((gameState.activeGames[gameId] && gameState.activeGames[gameId].mode) || game.mode);
         const mapSize = calculateMapSize(maxPlayersForMap, mode);
         const startingResources = getStartingResources(mode);
-        const activeState = ensureActiveGameState(gameId);
-        activeState.status = 'in-progress';
-        activeState.mapSize = mapSize;
-        activeState.mode = mode;
-        activeState.creator = Number(game.creator) || activeState.creator || null;
-        activeState.lastHumanActivityTurn = 1;
-        activeState.lastHumanActivityAt = Date.now();
-
-        await queryDb(
-            'UPDATE games SET started = 1, status = ?, turn = ?, mode = ?, mapwidth = ?, mapheight = ? WHERE id = ?',
-            ['in-progress', 1, mode, mapSize.width, mapSize.height, gameId]
-        );
 
         // Create and persist the game map before players can interact with sectors.
         const generatedMap = mapSystem.generateMap(mapSize.width, mapSize.height, playerRows.length);
@@ -1524,7 +1566,7 @@ async function initializeGame(gameId, connection, game = {}) {
             const crystalBonus = Number(sector && sector.crystalbonus) || 100;
             const terraformLevel = Number(sector && sector.terraformlvl) || 0;
             const artifact = Number(sector && sector.artifact) || 0;
-            return queryDb(
+            return runQuery(
                 `INSERT INTO map${gameId} (sectorid, x, y, type, metalbonus, crystalbonus, terraformlvl, artifact) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [sectorId, x, y, sectorType, metalBonus, crystalBonus, terraformLevel, artifact]
             );
@@ -1533,37 +1575,53 @@ async function initializeGame(gameId, connection, game = {}) {
         await Promise.all(playerRows.map((row, index) => {
             const homeworld = generatedHomeworlds[index] || assignHomeworld(index, mapSize);
             return (async () => {
-                await queryDb(
+                await runQuery(
                     `UPDATE players${gameId} SET
                      metal = ?, crystal = ?, research = ?,
                      homeworld = ?, currentsector = ?
                      WHERE userid = ?`,
                     [startingResources.metal, startingResources.crystal, startingResources.research, homeworld, homeworld, row.userid]
                 );
-                await queryDb(
+                await runQuery(
                     `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
                     [row.userid, homeworld]
                 );
                 // Mark homeworld as explored
-                await queryDb(
+                await runQuery(
                     `INSERT IGNORE INTO explored_sectors${gameId} (playerid, sectorid) VALUES (?, ?)`,
                     [row.userid, homeworld]
                 );
                 // Spawn starter ships so players can scout and colonize immediately.
-                await queryDb(
+                await runQuery(
                     `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
                     [row.userid, SCOUT_SHIP_ID, homeworld]
                 );
-                await queryDb(
+                await runQuery(
                     `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
                     [row.userid, COLONY_SHIP_ID, homeworld]
                 );
-                await Promise.all(STARTING_BUILDINGS.map(buildingType => queryDb(
+                await Promise.all(STARTING_BUILDINGS.map(buildingType => runQuery(
                     `INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`,
                     [homeworld, buildingType, row.userid]
                 )));
             })();
         }));
+
+        // Publish the started state only after the entire world is durable.
+        await runQuery(
+            'UPDATE games SET started = 1, status = ?, turn = ?, mode = ?, mapwidth = ?, mapheight = ? WHERE id = ?',
+            ['in-progress', 1, mode, mapSize.width, mapSize.height, gameId]
+        );
+        await session.commit();
+
+        gameState.turns[gameId] = 1;
+        const activeState = ensureActiveGameState(gameId);
+        activeState.status = 'in-progress';
+        activeState.mapSize = mapSize;
+        activeState.mode = mode;
+        activeState.creator = Number(game.creator) || activeState.creator || null;
+        activeState.lastHumanActivityTurn = 1;
+        activeState.lastHumanActivityAt = Date.now();
 
         // Start turn timer after setup is complete.
         startTurnTimer(gameId);
@@ -1577,8 +1635,16 @@ async function initializeGame(gameId, connection, game = {}) {
         broadcastToGame(gameId, "startgame::");
         broadcastToGame(gameId, `newturn::${gameState.turns[gameId]}`);
     } catch (error) {
+        if (session) {
+            try { await session.rollback(); } catch (rollbackError) {
+                console.error("Error rolling back game initialization:", rollbackError);
+            }
+        }
         console.error("Error initializing game:", error);
         connection.sendUTF("Error: Failed to start game");
+    } finally {
+        if (session) session.release();
+        initializingGames.delete(numericGameId);
     }
 }
 
@@ -1598,12 +1664,24 @@ function startTurnTimer(gameId) {
     }
     const mode = normalizeMode(gameState.activeGames[gameId] && gameState.activeGames[gameId].mode);
     const interval = TURN_SPEEDS_MS[mode] || TURN_SPEEDS_MS.quick;
+    const activeState = ensureActiveGameState(gameId);
+    activeState.turnEndsAt = Date.now() + interval;
     gameState.gameTimer[gameId] = setInterval(() => {
         processTurn(gameId);
     }, interval);
     if (typeof gameState.gameTimer[gameId].unref === 'function') {
         gameState.gameTimer[gameId].unref();
     }
+    broadcastTurnClock(gameId);
+}
+
+function broadcastTurnClock(gameId) {
+    const state = gameState.activeGames[gameId] || {};
+    const mode = normalizeMode(state.mode);
+    const durationMs = TURN_SPEEDS_MS[mode] || TURN_SPEEDS_MS.quick;
+    const endsAt = Number(state.turnEndsAt) || (Date.now() + durationMs);
+    state.turnEndsAt = endsAt;
+    broadcastToGame(gameId, `turnclock::${parseTurnNumber(gameState.turns[gameId], 1)}::${endsAt}::${Math.ceil(durationMs / 1000)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1856,6 +1934,9 @@ function processTurnUnchecked(gameId) {
     
     // Notify players of new turn
     broadcastToGame(gameId, `newturn::${gameState.turns[gameId]}`);
+    const modeDuration = TURN_SPEEDS_MS[normalizeMode(activeState.mode)] || TURN_SPEEDS_MS.quick;
+    activeState.turnEndsAt = Date.now() + modeDuration;
+    broadcastTurnClock(gameId);
 }
 
 function processBattles(gameId) {
@@ -2818,6 +2899,15 @@ function sendTechState(connection) {
             Object.values(techSystem.TECHNOLOGIES).forEach(def => {
                 techCaps[def.id] = raceSystem.getTechLevelCap(raceId, def);
             });
+            const shipCosts = {};
+            Object.values(combatSystem.SHIP_TYPES).forEach(ship => {
+                const modified = raceSystem.applyShipModifiers(raceId, ship.id, ship);
+                shipCosts[ship.id] = {
+                    metal: Number(modified.cost.metal) || 0,
+                    crystal: Number(modified.cost.crystal) || 0,
+                    shipyard: techSystem.shipyardLevelRequired(ship.id)
+                };
+            });
 
             connection.sendUTF(`techstate::${JSON.stringify({
                 levels,
@@ -2826,7 +2916,8 @@ function sendTechState(connection) {
                 raceId,
                 raceName: getRaceById(raceId).name,
                 techCaps,
-                shipAccess: raceSystem.getRaceShipAccess(raceId)
+                shipAccess: raceSystem.getRaceShipAccess(raceId),
+                shipCosts
             })}`);
         }
     );
@@ -3294,6 +3385,16 @@ function buyBuilding(data, connection) {
         connection.sendUTF("Error: Invalid building type");
         return;
     }
+    const purchaseKey = `${gameId}:${playerId}`;
+    if (pendingBuildingPurchases.has(purchaseKey)) {
+        connection.sendUTF("Error: Another construction order is still processing");
+        return;
+    }
+    pendingBuildingPurchases.add(purchaseKey);
+    const fail = message => {
+        pendingBuildingPurchases.delete(purchaseKey);
+        connection.sendUTF(message);
+    };
     
     // Get player data
     db.query(
@@ -3301,7 +3402,7 @@ function buyBuilding(data, connection) {
         [playerId],
         (err, results) => {
             if (err || results.length === 0) {
-                connection.sendUTF("Error: Could not get player data");
+                fail("Error: Could not get player data");
                 return;
             }
 
@@ -3309,7 +3410,7 @@ function buyBuilding(data, connection) {
 
             // Check resources
             if (player.metal < building.metal || player.crystal < building.crystal) {
-                connection.sendUTF("Error: Not enough resources");
+                fail("Error: Not enough resources");
                 return;
             }
 
@@ -3317,7 +3418,7 @@ function buyBuilding(data, connection) {
             if (buildingType === 5) {
                 const techFx = techSystem.aggregateEffects(techSystem.parseTechLevels(player.tech));
                 if (techFx.orbital < 1) {
-                    connection.sendUTF("Error: Warp Gates require Orbital Engineering 1 (Orbital branch)");
+                    fail("Error: Warp Gates require Orbital Engineering 1 (Orbital branch)");
                     return;
                 }
             }
@@ -3328,14 +3429,14 @@ function buyBuilding(data, connection) {
                 [player.currentsector],
                 (err, sector) => {
                     if (err || sector.length === 0 || Number(sector[0].owner) !== Number(playerId)) {
-                        connection.sendUTF("Error: You don't own this sector");
+                        fail("Error: You don't own this sector");
                         return;
                     }
 
                     // Building slots scale with the planet (homeworld 6 … asteroid 1).
                     const slotLimit = BUILDING_SLOTS_BY_TYPE[Number(sector[0].type)] || 0;
                     if (slotLimit === 0) {
-                        connection.sendUTF("Error: Nothing can be built in this sector");
+                        fail("Error: Nothing can be built in this sector");
                         return;
                     }
 
@@ -3344,7 +3445,7 @@ function buyBuilding(data, connection) {
                         [player.currentsector],
                         (err, count) => {
                             if (err || count[0].count >= slotLimit) {
-                                connection.sendUTF(`Error: Building limit reached (${slotLimit} slots here)`);
+                                fail(`Error: Building limit reached (${slotLimit} slots here)`);
                                 return;
                             }
                             
@@ -3356,7 +3457,7 @@ function buyBuilding(data, connection) {
                                 [building.metal, building.crystal, playerId, building.metal, building.crystal],
                                 (err, spendResult) => {
                                     if (err || !spendResult || Number(spendResult.affectedRows) !== 1) {
-                                        connection.sendUTF(err
+                                        fail(err
                                             ? "Error: Failed to deduct resources"
                                             : "Error: Resources changed; refresh and try again");
                                         return;
@@ -3372,13 +3473,14 @@ function buyBuilding(data, connection) {
                                                     `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
                                                     [building.metal, building.crystal, playerId],
                                                     () => {
-                                                        connection.sendUTF("Error: Failed to create building; resources refunded");
+                                                        fail("Error: Failed to create building; resources refunded");
                                                         updateResources(connection);
                                                     }
                                                 );
                                                 return;
                                             }
                                             
+                                            pendingBuildingPurchases.delete(purchaseKey);
                                             connection.sendUTF(`Success: Built ${building.name}`);
                                             updateResources(connection);
                                             updateSector2(gameId, player.currentsector);
@@ -4713,6 +4815,13 @@ function sendCurrentGameSnapshot(connection, callback) {
                         registeredOnly: normalizeRegisteredOnly(active.registeredOnly ?? game.registered_only),
                         minLevel: normalizeMinLevel(active.minLevel ?? game.min_level),
                         turn: isStarted ? parseTurnNumber(gameState.turns[currentGameId] || game.turn, 1) : 0,
+                        turnEndsAt: isStarted ? Number(active.turnEndsAt) || null : null,
+                        turnSeconds: isStarted
+                            ? Math.max(1, Math.ceil(((Number(active.turnEndsAt) || Date.now()) - Date.now()) / 1000))
+                            : 0,
+                        battlePauseUntil: isStarted && isBattlePauseActive(currentGameId)
+                            ? Number(gameState.battlePause[currentGameId].until)
+                            : null,
                         started: isStarted,
                         status: isStarted ? 'in-progress' : 'waiting'
                     };
@@ -6046,6 +6155,7 @@ module.exports = {
     handleChangeRace,
     handleSurrender,
     handleGameStart,
+    initializeGame,
     processTurn,
     colonizePlanet,
     buyTech,

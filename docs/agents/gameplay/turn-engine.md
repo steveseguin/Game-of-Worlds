@@ -26,6 +26,8 @@ flowchart TD
 - `epic`: default 24 hours.
 - `test`: default 30 seconds when test mode is enabled.
 
+It also records `activeGames[gameId].turnEndsAt` and publishes `turnclock::<turn>::<endsAt>::<durationSeconds>`. The client counts down from the epoch deadline instead of decrementing an assumed 180-second value, so epic/test games, background tabs, reconnects, and battle-clock restarts show server time.
+
 ## Process Turn
 
 High-level turn flow:
@@ -40,6 +42,7 @@ High-level turn flow:
 8. Process battles.
 9. Check victory.
 10. Broadcast `newturn::<turn>`.
+11. Publish the next authoritative `turnclock::` deadline.
 
 Important implementation detail: AI, standing orders, income writes, battle resolution, and victory checks are callback/promise-driven and are not one awaited transaction. `newturn::` can be sent before some side effects finish. In most gameplay this is acceptable because clients receive follow-up resource/map/battle messages, but economic-victory/resource/combat timing should be tested carefully if changed.
 
@@ -83,8 +86,10 @@ Movement path:
 flowchart TD
   Move[//move or //sendmmf] --> Validate[Validate sector tokens, adjacency/warp, fleet counts]
   Validate --> Cost[Calculate crystal movement cost]
-  Cost --> MoveRows[Update ships sectorid]
-  MoveRows --> Arrival[applyArrivalEffects]
+  Cost --> Charge[Guarded crystal deduction]
+  Charge --> MoveRows[Guarded full-fleet update]
+  MoveRows -->|stale/partial| Rollback[Restore ships + refund]
+  MoveRows -->|complete| Arrival[applyArrivalEffects]
   Arrival --> Hazards[Black hole / asteroid / ownership / terraform]
   Hazards --> Battle[processBattles]
   Battle --> Sync[updateSector2 + fleetmove + alerts]

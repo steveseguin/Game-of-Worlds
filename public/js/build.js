@@ -1,210 +1,123 @@
 /**
- * build.js - Client-side building and ship construction UI manager
- *
- * Handles the building and ship construction UI elements and interactions.
- * Manages button setup, updates building UI based on sector data,
- * and updates ship building UI based on available resources and slots.
- *
- * This module is client-side only and does not directly access the database.
- * It communicates with the server via websocket messages to request building/ship construction.
- *
- * Dependencies:
- * - None, but is used by game.js
+ * Keeps construction controls aligned with the server's instant-build rules.
+ * The server remains authoritative; this layer prevents predictable rejected
+ * clicks and explains why an action is unavailable.
  */
- const BuildSystem = (function() {
+const BuildSystem = (() => {
+    const BUILDING_COSTS = {
+        0: { metal: 50, crystal: 20 },
+        1: { metal: 40, crystal: 30 },
+        2: { metal: 60, crystal: 40 },
+        3: { metal: 100, crystal: 50 },
+        4: { metal: 80, crystal: 60 },
+        5: { metal: 200, crystal: 150 }
+    };
+    const BUILDING_SLOTS = { 1: 1, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6 };
+    const FALLBACK_SHIP_COSTS = {
+        1: { metal: 430, crystal: 0, shipyard: 0 },
+        2: { metal: 780, crystal: 0, shipyard: 1 },
+        3: { metal: 200, crystal: 0, shipyard: 0 },
+        4: { metal: 980, crystal: 120, shipyard: 1 },
+        5: { metal: 1650, crystal: 220, shipyard: 2 },
+        6: { metal: 1000, crystal: 0, shipyard: 0 },
+        7: { metal: 3200, crystal: 450, shipyard: 3 },
+        8: { metal: 1950, crystal: 133, shipyard: 2 },
+        9: { metal: 3000, crystal: 80, shipyard: 3 }
+    };
     let initialized = false;
 
     function initialize() {
         if (initialized) return;
         initialized = true;
-
-        // Set up building buttons
-        setupBuildingButtons();
-
-        // Set up ship building buttons
-        setupShipButtons();
-    }
-
-    function setupBuildingButtons() {
-        for (let i = 1; i <= 6; i++) {
-            const buildBtn = document.getElementById(`bb${i}`);
-            if (buildBtn) {
-                const configuredId = Number.parseInt(buildBtn.dataset.buildingId, 10);
-                const buildingId = Number.isFinite(configuredId) ? configuredId : i - 1;
-                buildBtn.addEventListener('click', function() {
-                    buyBuilding(buildingId);
-                });
-            }
-        }
-    }
-
-    function setupShipButtons() {
-        const shipButtons = document.querySelectorAll('.ship-button');
-        shipButtons.forEach(button => {
-            const shipId = button.getAttribute('data-ship-id');
-            if (shipId) {
-                button.addEventListener('click', function() {
-                    buyShip(parseInt(shipId));
-                });
-            }
+        document.querySelectorAll('[data-building-id]').forEach(button => {
+            button.addEventListener('click', () => buyBuilding(Number(button.dataset.buildingId)));
         });
-
-        // Initial doctrine/shipyard lock pass (techstate refreshes it thereafter).
-        if (typeof window.refreshShipBuildAccess === 'function') {
-            window.refreshShipBuildAccess();
-        }
+        document.querySelectorAll('.ship-button[data-ship-id]').forEach(button => {
+            button.addEventListener('click', () => buyShip(Number(button.dataset.shipId)));
+        });
+        refresh();
     }
 
-    function updateBuildingUI(sector) {
-        if (!sector) return;
-
-        // Update building levels display
-        for (let i = 1; i <= 6; i++) {
-            const levelDisplay = document.getElementById(`bbb${i}`);
-            if (levelDisplay) {
-                let level = 0;
-
-                switch (i) {
-                    case 1: level = sector.metallvl; break;
-                    case 2: level = sector.crystallvl; break;
-                    case 3: level = sector.academylvl; break;
-                    case 4: level = sector.shipyardlvl; break;
-                    case 5: level = sector.orbitalturret; break;
-                    case 6: level = sector.warpgate; break;
-                }
-
-                levelDisplay.textContent = level || '0';
-            }
+    function buildingCounts(buildings) {
+        const counts = [0, 0, 0, 0, 0, 0];
+        if (Array.isArray(buildings)) {
+            buildings.forEach(item => {
+                const type = Number(item?.type);
+                if (type >= 0 && type <= 5) counts[type] += Number(item?.count) || 1;
+            });
+        } else if (buildings && typeof buildings === 'object') {
+            const names = ['metalExtractor', 'crystalRefinery', 'researchAcademy', 'spaceport', 'orbitalTurret', 'warpgate'];
+            names.forEach((name, type) => { counts[type] = Number(buildings[name]) || 0; });
         }
-
-        // Disable max level buildings
-        if (sector.sectortype > 5) {
-            const maxLevels = {
-                6: 4,  // Micro planet
-                7: 6,  // Small planet
-                8: 8,  // Medium planet
-                9: 10, // Large planet
-                10: 12 // Homeworld
-            };
-
-            const maxLevel = maxLevels[sector.sectortype] || 4;
-
-            // Check resource buildings against max level
-            for (let i = 1; i <= 3; i++) {
-                const buildBtn = document.getElementById(`bb${i}`);
-                let currentLevel = 0;
-
-                switch (i) {
-                    case 1: currentLevel = sector.metallvl; break;
-                    case 2: currentLevel = sector.crystallvl; break;
-                    case 3: currentLevel = sector.academylvl; break;
-                }
-
-                if (buildBtn && currentLevel >= maxLevel / 2) {
-                    buildBtn.classList.add('disabled');
-                    buildBtn.disabled = true;
-                } else if (buildBtn) {
-                    buildBtn.classList.remove('disabled');
-                    buildBtn.disabled = false;
-                }
-            }
-
-            // Disable warp gate button if already built
-            const warpBtn = document.getElementById(`bb6`);
-            if (warpBtn && sector.warpgate >= 1) {
-                warpBtn.classList.add('disabled');
-                warpBtn.disabled = true;
-            } else if (warpBtn) {
-                warpBtn.classList.remove('disabled');
-                warpBtn.disabled = false;
-            }
-        }
+        return counts;
     }
 
-    function updateShipBuildingUI(sector, playerResources) {
-        if (!sector) return;
-
-        // Calculate available build slots
-        const usedSlots = (sector.totship1build || 0) * 3 +
-                         (sector.totship2build || 0) * 5 +
-                         (sector.totship3build || 0) * 1 +
-                         (sector.totship4build || 0) * 8 +
-                         (sector.totship5build || 0) * 12 +
-                         (sector.totship6build || 0) * 7 +
-                         (sector.totship7build || 0) * 20 +
-                         (sector.totship8build || 0) * 5 +
-                         (sector.totship9build || 0) * 15;
-
-        const availableSlots = (sector.shipyardlvl || 0) - usedSlots;
-
-        // Update ships in construction display
-        for (let i = 1; i <= 9; i++) {
-            const buildingCount = document.getElementById(`fa${i}`);
-            if (buildingCount) {
-                buildingCount.textContent = sector[`totship${i}build`] || '0';
-            }
-
-            // Show/hide cancel buttons
-            const cancelButton = document.getElementById(`fc${i}`);
-            if (cancelButton) {
-                cancelButton.style.display = (parseInt(sector[`totship${i}build`]) || 0) > 0 ? 'inline-block' : 'none';
-            }
-
-            // Disable ship buttons if not enough slots or resources
-            const shipButton = document.querySelector(`.ship-button[data-ship-id="${i}"]`);
-            if (shipButton) {
-                // Get required slots and cost
-                let requiredSlots = 0;
-                let metalCost = 0;
-                let crystalCost = 0;
-
-                switch (i) {
-                    case 1: requiredSlots = 3; metalCost = 430; break; // Frigate
-                    case 2: requiredSlots = 5; metalCost = 780; break; // Destroyer
-                    case 3: requiredSlots = 1; metalCost = 200; break; // Scout
-                    case 4: requiredSlots = 8; metalCost = 980; crystalCost = 120; break; // Cruiser
-                    case 5: requiredSlots = 12; metalCost = 1650; crystalCost = 220; break; // Battleship
-                    case 6: requiredSlots = 7; metalCost = 1000; break; // Colony Ship
-                    case 7: requiredSlots = 24; metalCost = 3200; crystalCost = 450; break; // Dreadnought
-                    case 8: requiredSlots = 7; metalCost = 1950; crystalCost = 133; break; // Intruder
-                    case 9: requiredSlots = 16; metalCost = 3000; crystalCost = 80; break; // Carrier
-                }
-
-                // Check for warp gate requirement for carriers
-                if (i === 9 && (!sector.warpgate || sector.warpgate < 1)) {
-                    shipButton.classList.add('disabled');
-                    shipButton.disabled = true;
-                }
-                // Check if enough slots available
-                else if (availableSlots < requiredSlots) {
-                    shipButton.classList.add('disabled');
-                    shipButton.disabled = true;
-                }
-                // Check if enough resources
-                else if ((playerResources?.metal || 0) < metalCost || (playerResources?.crystal || 0) < crystalCost) {
-                    shipButton.classList.add('disabled');
-                    shipButton.disabled = true;
-                }
-                else {
-                    shipButton.classList.remove('disabled');
-                    shipButton.disabled = false;
-                }
-            }
-        }
-
-        // Re-apply the per-race doctrine lock on top of the resource/slot state.
-        if (typeof window.refreshShipBuildAccess === 'function') {
-            window.refreshShipBuildAccess();
-        }
+    function setAvailability(button, enabled, reason) {
+        if (!button) return;
+        button.disabled = !enabled;
+        button.classList.toggle('disabled', !enabled);
+        if (reason) button.title = reason;
+        else button.removeAttribute('title');
     }
 
-    return {
-        initialize,
-        updateBuildingUI,
-        updateShipBuildingUI
-    };
+    function hasResources(resources, cost) {
+        return Number(resources?.metal) >= Number(cost?.metal || 0)
+            && Number(resources?.crystal) >= Number(cost?.crystal || 0);
+    }
+
+    function refresh() {
+        const sector = window.GAME_STATE?.selectedSectorData || (typeof GAME_STATE !== 'undefined' ? GAME_STATE.selectedSectorData : null);
+        const player = window.GAME_STATE?.player || (typeof GAME_STATE !== 'undefined' ? GAME_STATE.player : {});
+        const resources = player?.resources || {};
+        const access = player?.raceAccess || {};
+        const counts = buildingCounts(sector?.buildings);
+        const myId = Number((document.cookie.match(/(?:^|; )userId=([^;]+)/) || [])[1]);
+        const owned = Boolean(sector) && Number(sector.owner ?? sector.ownerid) === myId;
+        const slotLimit = BUILDING_SLOTS[Number(sector?.type)] || 0;
+        const usedSlots = counts.reduce((sum, count) => sum + count, 0);
+        const techFx = window.TechSystem?.aggregateEffects?.(player?.techLevels || {}) || {};
+        const battleFrozen = typeof turnFrozen !== 'undefined' && turnFrozen;
+
+        for (let type = 0; type <= 5; type += 1) {
+            const button = document.querySelector(`[data-building-id="${type}"]`);
+            const count = document.getElementById(`bbb${type + 1}`);
+            if (count) count.textContent = String(counts[type]);
+            let reason = '';
+            if (battleFrozen) reason = 'Orders are frozen during battle playback';
+            else if (!sector) reason = 'Select one of your sectors first';
+            else if (!owned) reason = 'You can only build in a sector you own';
+            else if (!slotLimit) reason = 'This sector cannot support buildings';
+            else if (usedSlots >= slotLimit) reason = `All ${slotLimit} building slots are occupied`;
+            else if (type === 5 && Number(techFx.orbital || 0) < 1) reason = 'Needs Orbital Engineering Lv1';
+            else if (!hasResources(resources, BUILDING_COSTS[type])) reason = 'Not enough resources';
+            setAvailability(button, !reason, reason);
+        }
+
+        const allowed = Array.isArray(access.shipAccess) ? access.shipAccess : null;
+        const shipCosts = access.shipCosts || FALLBACK_SHIP_COSTS;
+        const yardLevel = Number(techFx.shipyards || 0);
+        document.querySelectorAll('.ship-button[data-ship-id]').forEach(button => {
+            const id = Number(button.dataset.shipId);
+            const cost = shipCosts[id] || FALLBACK_SHIP_COSTS[id] || {};
+            const yardNeeded = Number(cost.shipyard || 0);
+            const label = button.querySelector('small');
+            if (label) {
+                label.textContent = `${cost.metal || 0}M${cost.crystal ? ` ${cost.crystal}C` : ''}${yardNeeded ? ` · Yard ${yardNeeded}` : ''}`;
+            }
+            let reason = '';
+            if (battleFrozen) reason = 'Orders are frozen during battle playback';
+            else if (!sector) reason = 'Select one of your sectors first';
+            else if (!owned) reason = 'Ships can only be built in your own sector';
+            else if (counts[3] < 1) reason = 'Build a Spaceport in this sector first';
+            else if (allowed && !allowed.includes(id)) reason = `${access.raceName || 'Your race'} cannot build this hull`;
+            else if (yardLevel < yardNeeded) reason = `Needs Military Shipyards Lv${yardNeeded}`;
+            else if (!hasResources(resources, cost)) reason = 'Not enough resources';
+            setAvailability(button, !reason, reason);
+        });
+    }
+
+    return { initialize, refresh, updateBuildingUI: refresh, updateShipBuildingUI: refresh };
 })();
 
-// Initialize when document is loaded
 document.addEventListener('DOMContentLoaded', BuildSystem.initialize);
 window.BuildSystem = BuildSystem;

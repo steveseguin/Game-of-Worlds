@@ -52,6 +52,7 @@ Current sequence:
 7. Schedule battle resolution for conflict sectors.
 8. Schedule victory checks.
 9. Broadcast `newturn::<turn>`.
+10. Record/publish the next `turnclock::` deadline.
 
 Important: steps 4 through 8 are callback/promise-driven and are not a single awaited transaction. This means resource, combat, and victory side effects can land after `newturn::` has already been sent. Do not change victory/resource timing without focused tests.
 

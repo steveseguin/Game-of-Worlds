@@ -79,6 +79,7 @@ After game start:
 The game has started!
 startgame::
 newturn::<turn>
+turnclock::<turn>::<endsAtEpochMs>::<durationSeconds>
 ```
 
 Clients then request `//update` and `//victoryprogress` for full state.
@@ -103,6 +104,7 @@ Keep this list in sync when touching server sends or client parsers.
 | `startgame::` | Move to active game UI. |
 | `turnready::` | Manual end-turn readiness count. |
 | `newturn::` | Turn advanced. |
+| `turnclock::` | Authoritative server deadline and configured cadence for the active turn. |
 | `resources::` | Player resource totals. |
 | `techstate::` | Canonical tech state. |
 | `empire::` | Economy/world/fleet summary. |

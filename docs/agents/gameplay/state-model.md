@@ -23,10 +23,12 @@ const gameState = {
 | `clientMap` | Auth layer | User id -> current connection. |
 | `gameTimer` | Turn engine | Game id -> interval handle. |
 | `turns` | Turn engine | Game id -> current turn number. |
-| `activeGames` | Lobby/turn engine | Runtime metadata: mode, status, creator, AI profiles, standing orders, readiness, map size. |
+| `activeGames` | Lobby/turn engine | Runtime metadata: mode, status, creator, AI profiles, standing orders, readiness, map size, and authoritative `turnEndsAt`. |
 | `battlePause` | Combat/turn engine | Game id -> pause timer while battle playback is shown. Must be cleared on completed or abandoned games. |
 
 Runtime state is reconstructed on process start by `resumeActiveGamesFromDatabase()`, which loads started games and restarts turn timers when human players remain.
+
+Lobby seat reservations and mutation counters are separate in-process maps, not fields on `gameState`. They cover the gap between an accepted join/AI request and its visible `playersN` row, preventing over-capacity rooms and start/join overlap.
 
 See `docs/agents/server/persistence.md` for table schema and lifecycle details.
 
@@ -85,3 +87,4 @@ stateDiagram-v2
 - Production `/status.deploy.dirty` should be `false`; a dirty deploy indicates generated/tracked files or wrong checkout state in CI.
 - `activeGames[gameId].turnReady` must be cleared after each processed turn.
 - `activeGames[gameId].lastHumanActivityTurn` should advance when humans send authenticated game commands, otherwise stale-game abandonment can fire too aggressively.
+- The browser clock is a projection of `activeGames[gameId].turnEndsAt`; reconnect snapshots and `turnclock::` must not fall back to a hard-coded quick-game duration.

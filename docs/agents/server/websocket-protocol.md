@@ -52,7 +52,7 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//currentgame` | lobby/game | `handleCurrentGame` | Request current game snapshot. |
 | `//creategame:<name>:<max>:<mode>:<registeredOnly>:<minLevel>` | lobby | `handleCreateGame` | Create waiting room. |
 | `//joingame:<gameId>:<raceId>` | lobby | `handleJoinGame` | Join waiting room. |
-| `//leavegame` | lobby/game | `handleLeaveGame` | Leave waiting room or active game. |
+| `//leavegame` | lobby/server compatibility | `handleLeaveGame` | Leave a waiting room or destructively abandon an active empire. The active game UI's **Lobby** button does not send this command; it only navigates. |
 | `//changerace:<raceId>` | lobby | `handleChangeRace` | Change selected race before start. |
 | `//addai:<difficulty>:<strategy>` | lobby | `handleAddAi` | Creator adds AI seat. |
 | `//start` | lobby/game | `handleGameStart` | Creator starts a waiting game; active-game players use the same command to mark turn ready. |
@@ -100,8 +100,9 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `startgame::` | game | Switch to active game UI. |
 | `turnready::<ready>::<humans>` | game | Manual end-turn readiness count. |
 | `newturn::<turn>` | game | Turn advanced. |
+| `turnclock::<turn>::<endsAtEpochMs>::<durationSeconds>` | game | Authoritative turn deadline/cadence; sent on start, turn advance, and clock restart. |
 | `resources::<metal>::<crystal>::<research>` | game | Player resources. |
-| `techstate::<json>` | game | Tech tree state. |
+| `techstate::<json>` | game | Tech tree, race access, race-adjusted ship costs, and shipyard requirements. |
 | `empire::<json>` | game | Owned sectors/buildings/fleets summary. |
 | `victoryprogress::<json>` | game | Victory progress. |
 | `mapconfig::<width>::<height>` | game | Map dimensions. |

@@ -47,6 +47,7 @@ let hasAuthenticated = false;
 let pendingInitialUpdate = false;
 let turnTimer = 180; // 3 minutes per turn
 let turnInterval;
+let turnDeadlineAt = null;
 let turnFrozen = false; // true while a battle theater is playing (clock paused for everyone)
 let battleFreezeTimer = null;
 let currentTurnNumber = null;
@@ -142,6 +143,7 @@ const MESSAGE_HANDLERS = {
         const base = (window.__battleFreezeUntil && window.__battleFreezeUntil > now) ? window.__battleFreezeUntil : now;
         window.__battleFreezeUntil = Math.min(base + freezeMs, now + 26000);
         turnFrozen = true;
+        if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
         setNextTurnButtonDisabled(true);
         setNextTurnButtonLabel('Battle');
         const el = document.getElementById('turnRedFlashWhenLow');
@@ -154,6 +156,7 @@ const MESSAGE_HANDLERS = {
             setNextTurnButtonDisabled(false);
             setNextTurnButtonLabel('End Turn');
             renderTurnTimer();
+            if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
         }, Math.max(1, window.__battleFreezeUntil - now));
     },
     battleSummary(payload) {
@@ -536,7 +539,9 @@ function renderTurnHeader() {
 }
 
 function setGameModeLabel(mode) {
-    currentGameModeLabel = mode === 'epic' ? 'Epic Campaign' : 'Quick Match';
+    currentGameModeLabel = mode === 'epic'
+        ? 'Epic Campaign'
+        : (mode === 'test' ? 'Test Match' : 'Quick Match');
     renderTurnHeader();
 }
 
@@ -561,15 +566,19 @@ function updateTimer() {
     if (turnFrozen) {
         return;
     }
-    if (turnTimer > 0) {
-        turnTimer = turnTimer - 1;
-    }
+    turnTimer = turnDeadlineAt
+        ? Math.max(0, Math.ceil((turnDeadlineAt - Date.now()) / 1000))
+        : Math.max(0, turnTimer - 1);
     renderTurnTimer();
 }
 
-function beginTurnCountdown(turnNumber, seconds = 180) {
+function beginTurnCountdown(turnNumber, seconds = 180, deadlineAt = null) {
     currentTurnNumber = Number.parseInt(turnNumber, 10) || currentTurnNumber || 1;
-    turnTimer = Number.isFinite(Number(seconds)) && Number(seconds) > 0 ? Number(seconds) : 180;
+    const parsedDeadline = Number(deadlineAt);
+    turnDeadlineAt = Number.isFinite(parsedDeadline) && parsedDeadline > Date.now() ? parsedDeadline : null;
+    turnTimer = turnDeadlineAt
+        ? Math.max(1, Math.ceil((turnDeadlineAt - Date.now()) / 1000))
+        : (Number.isFinite(Number(seconds)) && Number(seconds) > 0 ? Number(seconds) : 180);
     setNextTurnButtonLabel('End Turn');
     setNextTurnButtonDisabled(turnFrozen);
     clearInterval(turnInterval);
@@ -579,6 +588,24 @@ function beginTurnCountdown(turnNumber, seconds = 180) {
 }
 
 // Game action functions
+function sendGameCommand(command) {
+    if (turnFrozen) {
+        window.NotificationSystem?.notify?.('Battle in progress', 'Orders resume after combat playback.', 'info', 3000);
+        return false;
+    }
+    if (!websocket || websocket.readyState !== WebSocket.OPEN || !hasAuthenticated) {
+        window.NotificationSystem?.notify?.(
+            'Connection not ready',
+            'Your order was not sent. Wait for the connection to finish syncing, then try again.',
+            'warning',
+            4000
+        );
+        return false;
+    }
+    websocket.send(command);
+    return true;
+}
+
 function nextTurn() {
     if (turnFrozen) {
         if (window.NotificationSystem?.notify) {
@@ -586,19 +613,19 @@ function nextTurn() {
         }
         return;
     }
-    websocket.send("//start");
+    sendGameCommand("//start");
 }
 
 function buyTech(techId) {
-    websocket.send("//buytech:" + techId);
+    sendGameCommand("//buytech:" + techId);
 }
 
 function buyShip(shipId) {
-    websocket.send("//buyship:" + shipId);
+    sendGameCommand("//buyship:" + shipId);
 }
 
 function buyBuilding(buildingId) {
-    websocket.send("//buybuilding:" + buildingId);
+    sendGameCommand("//buybuilding:" + buildingId);
 }
 
 // Authentication function
@@ -733,6 +760,13 @@ function scheduleReconnect() {
 // Handle WebSocket messages
 function handleWebSocketMessage(message) {
     console.log("Received message:", message);
+    if (["Invalid credentials", "User not found", "Invalid authentication format"].includes(message)) {
+        shouldAutoReconnect = false;
+        document.cookie = 'userId=; path=/; max-age=0';
+        document.cookie = 'tempKey=; path=/; max-age=0';
+        window.location.href = '/login.html?session=expired';
+        return;
+    }
     if (window.Onboarding?.observe) {
         window.Onboarding.observe(message);
     }
@@ -793,7 +827,15 @@ function handleWebSocketMessage(message) {
                     window.SoundSystem.playContextualMusic('game');
                 }
                 if (snapshot.started) {
-                    beginTurnCountdown(snapshot.turn || currentTurnNumber || 1);
+                    beginTurnCountdown(
+                        snapshot.turn || currentTurnNumber || 1,
+                        snapshot.turnSeconds || 180,
+                        snapshot.turnEndsAt
+                    );
+                    if (Number(snapshot.battlePauseUntil) > Date.now()) {
+                        const remaining = Number(snapshot.battlePauseUntil) - Date.now();
+                        MESSAGE_HANDLERS.battlePause(`${remaining}::${remaining}`);
+                    }
                 } else {
                     setNextTurnButtonLabel('Start Game');
                     currentTurnNumber = null;
@@ -915,6 +957,10 @@ function handleWebSocketMessage(message) {
         if (websocket && websocket.readyState === WebSocket.OPEN) {
             websocket.send("//victoryprogress");
         }
+    }
+    else if (message.indexOf("turnclock::") === 0) {
+        const [, turnNumber, deadlineAt, durationSeconds] = message.split("::");
+        beginTurnCountdown(turnNumber, durationSeconds, deadlineAt);
     }
     // New round (legacy)
     else if (message === "newround:") {
@@ -1124,6 +1170,7 @@ function updateSectorInfo(message) {
         if (shouldFocusPanel) {
             GAME_STATE.selectedSectorData = sectorData;
             GAME_STATE.selectedSector = sectorId;
+            if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
             if (window.Galaxy3D && window.Galaxy3D.setSectorDetail) {
                 window.Galaxy3D.setSectorDetail(sectorData);
             }
@@ -1256,6 +1303,7 @@ function updateResources(message) {
         window.GameUI.updateResources(resources.metal, resources.crystal, resources.research);
     }
     renderTechTree();
+    if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
 
     // If we have a pending turn digest, emit it now that resources are updated
     if (pendingTurnDigest !== null) {
@@ -1718,9 +1766,10 @@ function updateTechState(message) {
             raceId: Number(data.raceId) || 1,
             raceName: data.raceName || '',
             techCaps: data.techCaps || null,
-            shipAccess: Array.isArray(data.shipAccess) ? data.shipAccess : null
+            shipAccess: Array.isArray(data.shipAccess) ? data.shipAccess : null,
+            shipCosts: data.shipCosts || null
         };
-        if (typeof refreshShipBuildAccess === 'function') refreshShipBuildAccess();
+        if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
         if (Number.isFinite(Number(data.research))) {
             GAME_STATE.player.resources.research = Number(data.research);
             const researchEl = document.getElementById('researchresource');
@@ -1867,6 +1916,7 @@ function updateTechLevels(message) {
     if (tech3El) tech3El.textContent = techLevels.shields;
     if (tech4El) tech4El.textContent = techLevels.engines;
     renderTechTree();
+    if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
 }
 
 function updateFleet(message) {
@@ -1996,27 +2046,9 @@ function navigateToLobby() {
 }
 
 function leaveCurrentGame() {
-    if (lobbyRedirectFallbackId) {
-        clearTimeout(lobbyRedirectFallbackId);
-        lobbyRedirectFallbackId = null;
-    }
-
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-        pendingLobbyRedirect = true;
-        shouldAutoReconnect = false;
-        const overlay = document.getElementById('lobbyWindow');
-        if (overlay) {
-            overlay.style.display = 'block';
-        }
-        websocket.send("//leavegame");
-        lobbyRedirectFallbackId = setTimeout(() => {
-            if (pendingLobbyRedirect) {
-                navigateToLobby();
-            }
-        }, 2000);
-    } else {
-        navigateToLobby();
-    }
+    // Leaving the game screen is navigation, not resignation. The lobby exposes
+    // an explicit, confirmed Resign action for abandoning an active empire.
+    navigateToLobby();
 }
 
 // Export functions that need to be globally accessible

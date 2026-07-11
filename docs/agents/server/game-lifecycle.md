@@ -43,6 +43,9 @@ or:
   "registeredOnly": false,
   "minLevel": 0,
   "turn": 1,
+  "turnEndsAt": 1770000000000,
+  "turnSeconds": 142,
+  "battlePauseUntil": null,
   "started": true,
   "status": "in-progress"
 }
@@ -87,6 +90,8 @@ Active `//leavegame` and active `//surrender` are intentionally different:
 | `//surrender` with no remaining humans | Removes the player, sends no-human feedback, and abandons the game. |
 
 Surrender removes the player's id from `activeGames[gameId].turnReady` so a removed player cannot block or accidentally satisfy manual end-turn readiness.
+
+The active game screen deliberately labels its navigation action **Lobby** and only changes pages. It preserves the player row, empire, current-game pointer, and ability to resume. Destructive departure is exposed in the lobby as the confirmed **Resign** action, which sends `//surrender`. Do not reconnect the game-screen navigation button to `//leavegame`.
 
 ## Terminal States
 

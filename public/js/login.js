@@ -153,8 +153,12 @@ const LoginSystem = (function() {
     
     function handleLogin(e) {
         e.preventDefault();
+        const submitButton = e.currentTarget?.querySelector('button[type="submit"]');
+        const errorEl = document.getElementById('loginError');
         const username = document.getElementById('loginUsername').value;
         const password = document.getElementById('loginPassword').value;
+        if (errorEl) errorEl.textContent = '';
+        if (submitButton) submitButton.disabled = true;
         
         // Send login request to server
         fetch('/login', {
@@ -177,6 +181,10 @@ const LoginSystem = (function() {
         })
         .catch(error => {
             console.error('Login error:', error);
+            if (errorEl) errorEl.textContent = 'Unable to reach the server. Check your connection and try again.';
+        })
+        .finally(() => {
+            if (submitButton) submitButton.disabled = false;
         });
     }
 
@@ -229,6 +237,7 @@ const LoginSystem = (function() {
     
     function handleRegister(e) {
         e.preventDefault();
+        const submitButton = e.currentTarget?.querySelector('button[type="submit"]');
         const username = document.getElementById('registerUsername').value;
         const email = document.getElementById('registerEmail').value.trim();
         const password = document.getElementById('registerPassword').value;
@@ -253,6 +262,7 @@ const LoginSystem = (function() {
             errorEl.textContent = 'Password must be 8-128 characters and include at least one letter and one number';
             return;
         }
+        if (submitButton) submitButton.disabled = true;
         
         // Send registration request to server
         fetch('/register', {
@@ -283,6 +293,10 @@ const LoginSystem = (function() {
         })
         .catch(error => {
             console.error('Registration error:', error);
+            errorEl.textContent = 'Unable to reach the server. Check your connection and try again.';
+        })
+        .finally(() => {
+            if (submitButton) submitButton.disabled = false;
         });
     }
 

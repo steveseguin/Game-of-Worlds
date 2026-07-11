@@ -30,6 +30,7 @@ function getWebSocketUrl() {
 const MIN_AUTO_START_PLAYERS = 1;
 
 let websocket;
+let lobbyReconnectTimer = null;
 let userId;
 let tempKey;
 let isCreatingGame = false;
@@ -62,6 +63,7 @@ let currentGameMode = 'quick';
 let currentRegisteredOnly = false;
 let currentMinLevel = 0;
 let countdownSeconds = null;
+let sandboxAutoStartTarget = null;
 
 function formatModeLabel(mode) {
     if (mode === 'epic') {
@@ -159,32 +161,51 @@ function configureGuestCreateOptions() {
 }
 
 function initWebSocket() {
-    websocket = new WebSocket(getWebSocketUrl());
-    window.websocket = websocket;
+    if (websocket && (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING)) {
+        return;
+    }
+    if (lobbyReconnectTimer) {
+        clearTimeout(lobbyReconnectTimer);
+        lobbyReconnectTimer = null;
+    }
+    const socket = new WebSocket(getWebSocketUrl());
+    websocket = socket;
+    window.websocket = socket;
 
-    websocket.onopen = () => {
+    socket.onopen = () => {
         console.log('Connected to server');
         setLobbyConnectionState('authorizing');
-        websocket.send(`//auth:${userId}:${tempKey}`);
+        socket.send(`//auth:${userId}:${tempKey}`);
     };
 
-    websocket.onmessage = evt => handleMessage(evt.data);
-    websocket.onerror = evt => {
+    socket.onmessage = evt => handleMessage(evt.data);
+    socket.onerror = evt => {
         console.error('WebSocket error:', evt);
         setLobbyConnectionState('connecting', 'Lobby: Connection issue');
     };
-    websocket.onclose = () => {
+    socket.onclose = () => {
+        if (websocket !== socket) {
+            return;
+        }
         console.log('Disconnected from server');
+        websocket = null;
         window.websocket = null;
         setLobbyConnectionState('disconnected');
         resetCreateGameState();
         renderGameListSkeleton('Reconnecting to server…');
-        setTimeout(initWebSocket, 3000);
+        lobbyReconnectTimer = setTimeout(initWebSocket, 3000);
     };
 }
 
 function handleMessage(message) {
     console.log('Received:', message);
+
+    if (['Invalid credentials', 'User not found', 'Invalid authentication format'].includes(message)) {
+        document.cookie = 'userId=; path=/; max-age=0';
+        document.cookie = 'tempKey=; path=/; max-age=0';
+        window.location.href = '/login.html?session=expired';
+        return;
+    }
 
     if (message.startsWith('$^$')) {
         const count = message.substring(3) || '0';
@@ -198,6 +219,7 @@ function handleMessage(message) {
     if (message.startsWith('Error:')) {
         const errorText = message.substring('Error:'.length).trim() || 'An unexpected lobby error occurred.';
         showToast(errorText, 'error');
+        sandboxAutoStartTarget = null;
         if (isStartingGame) {
             isStartingGame = false;
             updateWaitingView();
@@ -340,6 +362,7 @@ function handleMessage(message) {
     if (message.startsWith('addai::error::')) {
         const errMsg = message.substring('addai::error::'.length) || 'Unable to add AI';
         showToast(errMsg, 'error');
+        sandboxAutoStartTarget = null;
         return;
     }
 
@@ -1118,6 +1141,10 @@ function updatePlayerList(rawList) {
     currentPlayers = players.map(p => p.name);
     currentPlayerCount = players.length;
     updateWaitingView();
+    if (sandboxAutoStartTarget && currentPlayerCount >= sandboxAutoStartTarget) {
+        sandboxAutoStartTarget = null;
+        startGame();
+    }
 }
 
 function updateWaitingView() {
@@ -1171,10 +1198,16 @@ function startAiSandbox() {
     const needed = Math.max(0, targetSeats - currentPlayerCount);
     const atLeastOne = currentPlayerCount < 2 ? 1 : 0;
     const toAdd = Math.max(needed, atLeastOne);
+    sandboxAutoStartTarget = currentPlayerCount + toAdd;
+    if (toAdd === 0) {
+        sandboxAutoStartTarget = null;
+        startGame();
+        return;
+    }
     for (let i = 0; i < toAdd; i++) {
         websocket.send('//addai:aggressive:balanced');
     }
-    setTimeout(() => startGame(), 400);
+    showToast(`Preparing ${toAdd} AI commander${toAdd === 1 ? '' : 's'} before launch...`, 'info');
 }
 
 async function copyInviteLink(link) {

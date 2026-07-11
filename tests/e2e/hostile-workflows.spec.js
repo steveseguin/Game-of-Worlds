@@ -70,7 +70,7 @@ test.describe('Hostile and recovery UI workflows', () => {
         }
     });
 
-    test('active game continues after one player leaves and ends when the last player leaves', async ({ browser }) => {
+    test('Lobby navigation preserves an active empire and explicit resignation remains destructive', async ({ browser }) => {
         const hostContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
         const guestContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
         const hostPage = await hostContext.newPage();
@@ -98,11 +98,16 @@ test.describe('Hostile and recovery UI workflows', () => {
 
             await hostPage.click('#leaveGameBtn');
             await hostPage.waitForURL('**/lobby.html', { timeout: 20000 });
-            await expect(hostPage.locator('#createGameBtn')).toBeVisible({ timeout: 15000 });
+            await expect(hostPage.locator('.waiting-view')).toContainText('In progress', { timeout: 15000 });
+            await expect(hostPage.locator('.waiting-view')).toContainText('2 players');
+
+            await hostPage.click('.open-game-banner');
+            await hostPage.waitForURL('**/game.html', { timeout: 20000 });
+            await dismissFirstRunGuidance(hostPage);
 
             await expect(guestPage).toHaveURL(/\/game\.html$/);
             const before = await readTurnNumber(guestPage);
-            await endTurnAll([guestPage], 1);
+            await endTurnAll([hostPage, guestPage], 1);
             await expect.poll(() => readTurnNumber(guestPage), {
                 timeout: 15000,
                 intervals: [300, 700, 1200]
@@ -110,6 +115,8 @@ test.describe('Hostile and recovery UI workflows', () => {
 
             await guestPage.click('#leaveGameBtn');
             await guestPage.waitForURL('**/lobby.html', { timeout: 20000 });
+            await expect(guestPage.locator('.waiting-view')).toContainText('2 players', { timeout: 15000 });
+            await guestPage.click('button:has-text("Resign")');
             await expect(guestPage.locator('#createGameBtn')).toBeVisible({ timeout: 15000 });
         } finally {
             await hostContext.close();

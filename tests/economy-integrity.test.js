@@ -100,6 +100,28 @@ test('building purchase does not insert after a concurrent balance change', () =
     assert.equal(queries.some(query => /^INSERT INTO buildings1/.test(query.sql)), false);
 });
 
+test('simultaneous building orders are serialized before the slot count', () => {
+    let firstPlayerQuery;
+    const queries = setScriptedDb((sql, params, callback) => {
+        if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) {
+            firstPlayerQuery = callback;
+            return;
+        }
+        assert.fail(`unexpected query: ${sql}`);
+    });
+    const first = makeConnection();
+    const second = makeConnection();
+
+    server.buyBuilding('//buybuilding:0', first);
+    server.buyBuilding('//buybuilding:1', second);
+
+    assert.deepEqual(second.sent, ['Error: Another construction order is still processing']);
+    assert.equal(queries.length, 1);
+
+    firstPlayerQuery(new Error('test cleanup'), []);
+    assert.deepEqual(first.sent, ['Error: Could not get player data']);
+});
+
 test('research uses optimistic state so the same level cannot be bought twice', () => {
     const technology = tech.TECHNOLOGIES.METAL_EXTRACTION;
     const queries = setScriptedDb((sql, params, callback) => {
