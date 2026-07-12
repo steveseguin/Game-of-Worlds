@@ -176,11 +176,21 @@
         const submitButton = document.getElementById('submit');
 
         if (!race) {
-            document.getElementById('racePreview').innerHTML = '<h2>Race unavailable</h2><p>This race cannot be purchased from this page.</p>';
+            const preview = document.getElementById('racePreview');
+            const heading = document.createElement('h2');
+            const description = document.createElement('p');
+            heading.textContent = 'Race unavailable';
+            description.textContent = 'This race cannot be purchased from this page.';
+            preview.replaceChildren(heading, description);
             submitButton.disabled = true;
             setStatus('Choose a premium race from the lobby race selector.', 'error');
         } else {
-            document.getElementById('racePreview').innerHTML = `<h2>${race.name}</h2><p>${race.description}</p>`;
+            const preview = document.getElementById('racePreview');
+            const heading = document.createElement('h2');
+            const description = document.createElement('p');
+            heading.textContent = race.name;
+            description.textContent = race.description;
+            preview.replaceChildren(heading, description);
         }
 
         const userId = getCookie('userId');

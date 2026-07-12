@@ -57,6 +57,9 @@ This file records review findings that matter for future work. Keep entries conc
 | Reconnect sector query fan-out | Reconnect requested full detail for every known sector, creating per-sector query amplification and unnecessary disclosure pressure. | Reconnect now sends one batched map state plus the home-sector detail; selected sectors are loaded on demand. |
 | Defeated defender retained sector | The active battle resolver replaced survivors but did not transfer sector or building control after an attacking victory. | A surviving attacking victor now captures the sector and remaining infrastructure; captured Spaceports lose one tier and reset their local production ledger. |
 | Flat local ship production | Any Spaceport could immediately produce every researched hull without local capacity. | Added four persisted Spaceport tiers, dual research/facility gates, and guarded per-turn local capacity using each hull's existing `buildSlots` weight. |
+| Partial battle persistence | Turret losses, survivor replacement, conquest, and captured buildings could be written only partially. | Battle persistence now uses one database transaction and propagates failure to turn-phase recovery. |
+| Partial Spaceport upgrades | Resource deduction and the local tier update could be separated by a process/database failure. | Spaceport upgrades now commit resource spending and the guarded tier update in one transaction. |
+| Restoration movement feedback | A failed persisted-map lookup looked like a malformed player order. | Movement now distinguishes nonexistent sectors from temporarily unavailable map validation. |
 
 ## Active Risks To Revisit
 
@@ -69,7 +72,11 @@ This file records review findings that matter for future work. Keep entries conc
 | Tech definitions | Tech tree is duplicated in `server/lib/tech.js` and `public/js/tech.js`. | Divergence can create client/server disagreement. | Byte-sync tests now fail on drift; eventually generate the client copy when packaging changes are safe. |
 | Payment surface | Payment endpoints are present but optional. | Stripe config gaps should not break non-payment gameplay. | Keep payment tests isolated and ensure `503` behavior remains explicit when disabled. |
 | Production Stripe webhook | Production has `STRIPE_SECRET_KEY` but currently reports missing `STRIPE_WEBHOOK_SECRET`. | Incoming payment events cannot be signature-verified, so webhook-driven fulfillment is not production-ready even though gameplay is unaffected. | Configure the matching endpoint signing secret, restart, and confirm the startup warning is gone with a signed webhook test. |
-| Mid-battle process loss | Ship/turret survivor replacement spans multiple queries inside a persisted `battles` phase. | Startup can revisit the conflict, but a hard kill between survivor writes is not fully atomic. | Add a per-battle transaction/idempotency record before attempting broader combat persistence changes. |
+| Battle replay determinism | Battle writes are atomic, but a rolled-back retry can generate a different random outcome. | Rare persistence failures cannot reproduce the originally attempted combat exactly. | Persist a battle seed/idempotency record when deterministic replay work is scheduled. |
+| Runtime-only turn deadline | `turnEndsAt` is authoritative while the process lives but is not persisted. | A restart grants a fresh cadence instead of restoring the exact remaining time. | Persist the deadline with an explicit downtime grace policy. |
+| CSP observability | CSP remains report-only, permits inline code, and has no centralized report receiver. | Browser-console-only violations do not provide an operational inventory for safe enforcement. | Add a rate-limited reporting endpoint before tightening directives incrementally. |
+| In-place deployment cleanup | Deploys are serialized, but removed files are deleted through a manually maintained list. | A forgotten deletion entry can leave obsolete public code available on production. | Move to versioned atomic releases or add a generated deploy manifest and stale-file regression. |
+| Best-effort read masking | Some optional and user-facing reads convert database failures into empty arrays. | A temporary outage can look like legitimate empty intelligence or state. | Add contextual logging and explicit unavailable states as each affected surface is touched. |
 
 ## Review Checklist For Gameplay Changes
 

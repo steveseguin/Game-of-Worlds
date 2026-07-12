@@ -82,6 +82,16 @@ test('moveFleet does not reject a supported large-map sector while runtime resto
     assert.deepEqual(connection.sent, ['Error: Could not get player data']);
 });
 
+test('moveFleet reports restoration lookup failures as temporarily unavailable', async () => {
+    setDb({ query(sql, params, callback) { callback(new Error('database unavailable')); } });
+    delete server.gameState.activeGames[1];
+    const connection = makeConnection();
+
+    await server.moveFleet('//move:1:78:3:1', connection);
+
+    assert.deepEqual(connection.sent, ['Error: Map validation is temporarily unavailable; try again']);
+});
+
 test('probeSector rejects sector zero before charging crystal', () => {
     setDb({
         query() {

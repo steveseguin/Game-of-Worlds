@@ -228,7 +228,7 @@ test('a maximum-tier Spaceport is rejected before consuming resources or a build
     assert.equal(queries.some(query => /^SELECT COUNT/.test(query.sql)), false);
 });
 
-test('Spaceport upgrades require research and persist the next local tier', () => {
+test('Spaceport upgrades require research and persist the next local tier', async () => {
     const queries = setScriptedDb((sql, params, callback) => {
         if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) return callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '19:1' }]);
         if (/^SELECT owner, type FROM map1/.test(sql)) return callback(null, [{ owner: 7, type: 10 }]);
@@ -242,6 +242,7 @@ test('Spaceport upgrades require research and persist the next local tier', () =
     const connection = makeConnection();
 
     server.buyBuilding('//buybuilding:3:4', connection);
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.ok(connection.sent.includes('Success: Upgraded Spaceport to level 2 in sector 4'));
     assert.ok(queries.some(query => /^UPDATE buildings1 SET level =/.test(query.sql) && Number(query.params[0]) === 2));

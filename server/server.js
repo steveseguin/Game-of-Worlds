@@ -593,7 +593,7 @@ function validateRestoringMapSectors(gameId, sectorIds, callback) {
         `SELECT sectorid FROM map${gameId} WHERE sectorid IN (${unique.map(() => '?').join(',')})`,
         unique,
         (error, rows) => {
-            if (error || !Array.isArray(rows)) return callback(false);
+            if (error || !Array.isArray(rows)) return callback(false, true);
             const found = new Set(rows.map(row => Number(row.sectorid)));
             callback(unique.every(sectorId => found.has(sectorId)));
         }
@@ -4003,38 +4003,13 @@ function buyBuilding(data, connection) {
                                             fail('Error: Not enough resources for this Spaceport upgrade');
                                             return;
                                         }
-                                        const tables = gameTables(gameId);
-                                        db.query(
-                                            `UPDATE ${tables.players} SET metal = metal - ?, crystal = crystal - ? WHERE userid = ? AND metal >= ? AND crystal >= ?`,
-                                            [tier.metal, tier.crystal, playerId, tier.metal, tier.crystal],
-                                            (spendErr, spendResult) => {
-                                                if (spendErr || !spendResult || Number(spendResult.affectedRows) !== 1) {
-                                                    fail('Error: Resources changed; refresh and try again');
-                                                    return;
-                                                }
-                                                db.query(
-                                                    `UPDATE ${tables.buildings} SET level = ? WHERE id = ? AND owner = ? AND level = ?`,
-                                                    [nextLevel, rows[0].id, playerId, currentLevel],
-                                                    (upgradeErr, upgradeResult) => {
-                                                        if (upgradeErr || !upgradeResult || Number(upgradeResult.affectedRows) !== 1) {
-                                                            db.query(
-                                                                `UPDATE ${tables.players} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
-                                                                [tier.metal, tier.crystal, playerId],
-                                                                () => {
-                                                                    fail('Error: Spaceport changed; resources refunded');
-                                                                    updateResources(connection);
-                                                                }
-                                                            );
-                                                            return;
-                                                        }
-                                                        pendingBuildingPurchases.delete(purchaseKey);
-                                                        connection.sendUTF(`Success: Upgraded Spaceport to level ${nextLevel} in sector ${buildSector}`);
-                                                        updateResources(connection);
-                                                        updateSector2(gameId, buildSector);
-                                                    }
-                                                );
-                                            }
-                                        );
+                                        persistSpaceportUpgrade({
+                                            gameId, playerId, buildSector, buildingId: rows[0].id,
+                                            currentLevel, nextLevel, tier, purchaseKey, connection, fail
+                                        }).catch(error => {
+                                            console.error(`Unhandled Spaceport upgrade failure in game ${gameId}:`, error);
+                                            fail('Error: Spaceport upgrade is temporarily unavailable; try again');
+                                        });
                                         return;
                                     }
                                     fail(`Error: This sector already has a ${building.name}`);
@@ -4050,6 +4025,38 @@ function buyBuilding(data, connection) {
             );
         }
     );
+}
+
+async function persistSpaceportUpgrade({ gameId, playerId, buildSector, buildingId, currentLevel, nextLevel, tier, purchaseKey, connection, fail }) {
+    let session = null;
+    try {
+        session = await openTransactionSession();
+        const tables = gameTables(gameId);
+        const spendResult = await session.query(
+            `UPDATE ${tables.players} SET metal = metal - ?, crystal = crystal - ? WHERE userid = ? AND metal >= ? AND crystal >= ?`,
+            [tier.metal, tier.crystal, playerId, tier.metal, tier.crystal]
+        );
+        if (!spendResult || Number(spendResult.affectedRows) !== 1) {
+            throw Object.assign(new Error('Resources changed'), { userMessage: 'Error: Resources changed; refresh and try again' });
+        }
+        const upgradeResult = await session.query(
+            `UPDATE ${tables.buildings} SET level = ? WHERE id = ? AND owner = ? AND level = ?`,
+            [nextLevel, buildingId, playerId, currentLevel]
+        );
+        if (!upgradeResult || Number(upgradeResult.affectedRows) !== 1) {
+            throw Object.assign(new Error('Spaceport changed'), { userMessage: 'Error: Spaceport changed; no resources were consumed' });
+        }
+        await session.commit();
+        pendingBuildingPurchases.delete(purchaseKey);
+        connection.sendUTF(`Success: Upgraded Spaceport to level ${nextLevel} in sector ${buildSector}`);
+        updateResources(connection);
+        updateSector2(gameId, buildSector);
+    } catch (error) {
+        if (session) await session.rollback().catch(() => {});
+        fail(error.userMessage || 'Error: Spaceport upgrade is temporarily unavailable; try again');
+    } finally {
+        if (session) session.release();
+    }
 }
 
 function moveFleet(data, connection) {
@@ -4081,9 +4088,11 @@ function moveFleetWithCompletion(data, connection, complete) {
         return;
     }
 
-    validateRestoringMapSectors(gameId, [fromSector, toSector], endpointsValid => {
+    validateRestoringMapSectors(gameId, [fromSector, toSector], (endpointsValid, validationUnavailable) => {
         if (!endpointsValid) {
-            connection.sendUTF("Error: Invalid fleet order");
+            connection.sendUTF(validationUnavailable
+                ? "Error: Map validation is temporarily unavailable; try again"
+                : "Error: Invalid fleet order");
             finish();
             return;
         }
@@ -4966,9 +4975,11 @@ function preMoveFleet(data, connection) {
 
     const totalShips = moveEntries.reduce((sum, entry) => sum + entry.count, 0);
 
-    validateRestoringMapSectors(gameId, [targetSector, ...moveEntries.map(entry => entry.sourceSector)], endpointsValid => {
+    validateRestoringMapSectors(gameId, [targetSector, ...moveEntries.map(entry => entry.sourceSector)], (endpointsValid, validationUnavailable) => {
     if (!endpointsValid) {
-        connection.sendUTF("Error: Invalid fleet order");
+        connection.sendUTF(validationUnavailable
+            ? "Error: Map validation is temporarily unavailable; try again"
+            : "Error: Invalid fleet order");
         return;
     }
     checkWarpGateSources(gameId, playerId, moveEntries.map(entry => entry.sourceSector), targetSector, warpSources => {
