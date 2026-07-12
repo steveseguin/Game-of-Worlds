@@ -1,6 +1,8 @@
 # Phase 2 Implementation Summary
 ## Restore Original Game Personality - Hazard Mechanics
 
+**Historical record:** Later refinements supersede parts of this report. Current movement traces every crossed sector, destroyed probes do not identify their cause, and planets require explicit colonization. See `docs/agents/gameplay/mechanics.md` and `movement-flow.md`.
+
 **Status**: ✅ COMPLETE
 
 ### Overview
@@ -50,7 +52,7 @@ Phase 2 successfully implemented all hazard mechanics from the original 2012 PHP
 - Sending probe to BLACK_HOLE: Probe destroyed, sector not revealed
 - Sending probe to ASTEROID_BELT: Probe destroyed, sector not revealed
 - Safe sectors: Probe succeeds, sector information revealed
-- Player receives message: *"Our probe was destroyed in sector X - there's a BLACK HOLE there!"*
+- Player receives a generic loss message identifying sector X without revealing the hidden cause.
 
 **Code Path**:
 1. probeSector() called with target sector
@@ -58,10 +60,10 @@ Phase 2 successfully implemented all hazard mechanics from the original 2012 PHP
 3. If hazardous, probe destroyed (return early)
 4. If safe, probeSector() continues with revelation
 
-#### 4. ✅ Automatic Colonization on Arrival
+#### 4. ✅ Automatic Colonization on Arrival (historical; superseded)
 **File**: `server/lib/movement/hazards.js` - `handleAutoColonization()`
 
-**Mechanic**: Fleets automatically take control of unowned colonizable planets
+**Historical mechanic**: Fleets automatically took control of unowned colonizable planets. Current gameplay requires an explicit colonization action, a surviving Colony Ship, and sufficient terraform capability.
 - When fleet arrives at unowned planet (type 6-9), ownership transfers to fleet owner
 - Happens after hazards are resolved (so hazard losses reduce fleet strength)
 - Enables dynamic map control through exploration
@@ -78,7 +80,7 @@ Phase 2 successfully implemented all hazard mechanics from the original 2012 PHP
 **Implementation**: Each hazard outcome has multiple dramatic messages
 - Black hole messages vary randomly for replayability
 - Asteroid belt messages change based on outcome severity
-- Probe destruction messages specify hazard type
+- Probe destruction messages in this historical phase specified hazard type; current messages intentionally conceal it
 - All messages sent via `systemalert::` protocol
 
 **Messages Include**:

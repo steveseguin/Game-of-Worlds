@@ -4,6 +4,8 @@
 **Status**: ✅ VERIFIED  
 **Date**: 2026-04-27
 
+**Maintenance note (2026-07-12):** This verification record preserves the original-design comparison, but its old source line numbers and auto-colonization flow are historical. Current planets require explicit colonization with a Colony Ship and sufficient terraform capability. Current movement resolves every sector crossed by the direct route. Use `docs/agents/gameplay/mechanics.md` and `movement-flow.md` as the live references.
+
 ---
 
 ## Sector Type Hierarchy

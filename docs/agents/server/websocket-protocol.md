@@ -72,7 +72,7 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//buytech:<techId>` | `buyTech` | Checks cost, prerequisites, and race branch caps. |
 | `//techstate` | `handleTechStateRequest` | Returns `techstate::` JSON. |
 | `//victoryprogress` | `handleVictoryProgressRequest` | Returns `victoryprogress::` JSON. |
-| `//move:<fromHex>:<toHex>:<shipTypeCsv>:<countCsv>` | `moveFleet` | Single-source movement. The ship type/count CSVs must be the same length, positive decimal integers, and use ship ids `1-9`. Movement is adjacent or warp-gate, charges crystal, then resolves arrival effects. |
+| `//move:<fromHex>:<toHex>:<shipTypeCsv>:<countCsv>` | `moveFleet` | Single-source movement. The server traces the direct line, charges distance-adjusted crystal, resolves crossed hazards, then resolves the destination. Paired owned Warp Gates bypass normal-space hazards. |
 | `//sendmmf:<targetHex>:<sourceHex>:<shipType>:<ordinal>...` | `preMoveFleet` | Multi-source movement. Each selected ship option contributes a source/type/positive-ordinal triplet; the server counts valid triplets per source/type and verifies available ships. |
 | `//mmove:<sectorHex>` | `surroundShips` | Multi-source movement helper. |
 | `//standingorders:get` | `handleStandingOrders` | Reads automation settings. |
@@ -113,7 +113,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `sectorcontact::<sectorId>::<json>` | game | Passive one-tile sensor contact: terrain, controller, and total presence only. |
 | `sectorintel::<sectorId>::<json>` | game | Persisted, dated probe memory returned outside current live coverage. |
 | `probeonly:<sectorHex>` | game | Sector is not visible; probing is possible. |
-| `mmoptions:<target>:...` | game | Multi-source move options. |
+| `mmoptions:<target>:...` | game | Legacy multi-source shape retained for compatibility; new responses use `mmoptionsv2::`. |
 | `mmoptionsv2::<json>` | game | Route-aware fleet options; classifies only known hazards and counts unmapped route sectors. |
 | `fleetmove::<from>::<to>::<player>::<count>::<warpFlag>` | game | Fleet movement animation/event. |
 | `battlepause::<freezeMs>::<playbackMs>` | game | Turn timer is paused during battle playback. |

@@ -1,6 +1,8 @@
 # Code Reorganization & Game Personality Restoration - COMPLETE
 
 **Completion Date**: 2026-04-27  
+
+**Historical record:** This report describes that phase boundary, not every current rule. Later work added explicit planetary colonization, direct-route crossed-sector hazards, route preflight, and cause-concealing probe loss. Use `docs/agents/` and `/docs/` for current behavior.
 **Status**: ✅ ALL PHASES COMPLETE AND READY FOR PRODUCTION
 
 ---

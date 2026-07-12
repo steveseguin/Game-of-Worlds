@@ -57,7 +57,7 @@ Unknown sectors create the core risk/reward choice:
 
 - Probe: costs 300 crystal and can be destroyed by hazards/counter-intelligence, but avoids fleet exposure.
 - Move blind: retains strategic tempo but risks asteroid losses or total black-hole annihilation.
-- Scout known space: adjacency is normal; paired Warp Gates permit long movement.
+- Move through known space: normal movement follows a direct origin-to-destination line whose crossed sectors matter; paired owned Warp Gates bypass normal-space route hazards.
 - Secure an asteroid: surviving entry claims it, making later transit safe for that owner.
 
 The player always gets a stable left-side **Selected Sector** context without losing the central 3D galaxy view. Selection first clears stale values, then shows one of four honest states: direct live detail, limited sensor contact, dated probe memory, or unknown fields. Ownership or a fleet grants passive sensors exactly one tile outward, including diagonals; the map highlights that ring. Passive contact reveals terrain, controller, and total presence, not economic values, buildings, terraform requirements, or ship composition. A successful probe records those specifics as a dated snapshot that survives refresh and is explicitly labeled stale when no longer live. Outside known space, the inline warning offers **Send Probe**, **Move Ships**, and **Dismiss**. Movement is requested only after **Move Ships** is chosen. The move console can draw from fleets elsewhere in the empire and shows a progressively disclosed direct-route preflight: known hazards are named, while unmapped route sectors remain unknown. An empty fleet result is explicit rather than silent.

@@ -70,4 +70,4 @@ Route and arrival resolution is shared by both movement paths:
 
 - Add or update tests when changing command delimiters, sector token parsing, movement cost, or arrival effects.
 - Use `tests/movement-validation.test.js` for malformed protocol and all-or-nothing movement checks.
-- Use E2E tests when changing client `mmoptions`, `fleetmove::`, or visible movement UI behavior.
+- Use E2E tests when changing `mmoptionsv2::` parsing, `fleetmove::`, route confirmation, or visible movement UI behavior. Keep legacy `mmoptions:` parsing only as an explicit compatibility path.

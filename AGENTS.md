@@ -174,14 +174,14 @@ Run `npm run setup` to create tables. Key tables:
 
 ### Probe Mechanics
 - **Cost**: 300 crystals per probe
-- **Risk**: Probe DESTROYED if entering sectortype < 2 (Empty Space, Asteroid, or Black Hole)
+- **Risk**: Probes can be destroyed by asteroid belts, black holes, and enemy counter-intelligence
   - Probing black holes destroys probe with message: "Our probe was destroyed in sector X"
   - Probing asteroids risks destruction
   - Probing planets is safe and reveals resources
-- **Reward**: Reveals full sector info without fleet risk
+- **Information discipline**: A destroyed probe reports where telemetry ended, not what destroyed it. A successful probe reveals a dated sector snapshot without fleet risk.
 
 ### Fleet Movement & Colonization
-- **Auto-Colonization**: Moving fleet to unowned sector = automatic ownership
+- **Original auto-colonization**: The 2012 implementation transferred eligible territory on arrival. The current game requires an explicit colonization action for planets, a Colony Ship, and sufficient terraform capability; empty space and surviving asteroid entries can still establish route control.
   - Hazard damage applied first (if asteroid/black hole)
   - Surviving fleet takes control of sector
   - Can immediately build on newly taken sectors

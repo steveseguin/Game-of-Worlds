@@ -1,6 +1,6 @@
 # Game of Words Game Review & Improvement Analysis
 
-This is a design review and idea bank, not a required roadmap. For current contributor setup and branch workflow, use the root `README.md` and `CONTRIBUTING.md`.
+This is an archived design review and idea bank, not a required roadmap or live rules reference. Its code samples include unimplemented and superseded proposals. Players should use `/docs/`; contributors should use `docs/agents/gameplay/mechanics.md`, `movement-flow.md`, `turn-engine.md`, and `user-journey.md`.
 
 ## Game Overview
 
