@@ -6,17 +6,17 @@ const { EpicMusicEngine, calculateUrgencyTempo } = require('../public/js/epic-mu
 test('music urgency begins only in the final 20 percent of a quick turn', () => {
     assert.equal(calculateUrgencyTempo(120, 180), 1);
     assert.equal(calculateUrgencyTempo(37, 180), 1);
-    assert.equal(calculateUrgencyTempo(36, 180), 1);
-    assert.ok(calculateUrgencyTempo(30, 180) > 1);
+    assert.equal(calculateUrgencyTempo(30, 180), 1);
+    assert.ok(calculateUrgencyTempo(20, 180) > 1);
     assert.ok(calculateUrgencyTempo(10, 180) > calculateUrgencyTempo(30, 180));
-    assert.equal(calculateUrgencyTempo(0, 180), 1.12);
+    assert.equal(calculateUrgencyTempo(0, 180), 1.06);
 });
 
-test('long turns cap the music urgency window at sixty seconds', () => {
+test('long turns cap the music urgency window at thirty seconds', () => {
     assert.equal(calculateUrgencyTempo(61, 86400), 1);
-    assert.equal(calculateUrgencyTempo(60, 86400), 1);
-    assert.ok(calculateUrgencyTempo(30, 86400) > 1);
-    assert.equal(calculateUrgencyTempo(0, 86400), 1.12);
+    assert.equal(calculateUrgencyTempo(30, 86400), 1);
+    assert.ok(calculateUrgencyTempo(20, 86400) > 1);
+    assert.equal(calculateUrgencyTempo(0, 86400), 1.06);
 });
 
 test('short test turns use their final twenty percent', () => {

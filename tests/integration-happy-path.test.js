@@ -142,5 +142,17 @@ test.describe('Happy path: signup → create → add AI → select race → star
     const owners = await sectorOwners(mockDb, gameId);
     const ownedSectors = owners.filter(r => r.owner !== null && r.owner !== undefined);
     assert.ok(ownedSectors.length >= 2, 'each player should have at least a homeworld');
+
+    const starterBuildings = await new Promise((resolve, reject) => {
+      mockDb.query(`SELECT * FROM buildings${gameId}`, (err, rows) => err ? reject(err) : resolve(rows));
+    });
+    ownedSectors.forEach(sector => {
+      const types = starterBuildings
+        .filter(building => Number(building.sectorid) === Number(sector.sectorid))
+        .map(building => Number(building.type));
+      assert.ok(types.includes(0), 'homeworld starts with metal income');
+      assert.ok(types.includes(1), 'homeworld starts with crystal income');
+      assert.ok(types.includes(3), 'homeworld starts with local ship production');
+    });
   });
 });

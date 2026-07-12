@@ -36,9 +36,11 @@ const BuildSystem = (() => {
         if (initialized) return;
         initialized = true;
         document.querySelectorAll('[data-building-id]').forEach(button => {
+            if (button.title) button.dataset.help = button.title;
             button.addEventListener('click', () => buyBuilding(Number(button.dataset.buildingId)));
         });
         document.querySelectorAll('.ship-button[data-ship-id]').forEach(button => {
+            if (button.title) button.dataset.help = button.title;
             button.addEventListener('click', () => buyShip(Number(button.dataset.shipId)));
         });
         refresh();
@@ -62,8 +64,8 @@ const BuildSystem = (() => {
         if (!button) return;
         button.disabled = !enabled;
         button.classList.toggle('disabled', !enabled);
-        if (reason) button.title = reason;
-        else button.removeAttribute('title');
+        const help = button.dataset.help || '';
+        button.title = reason ? `${reason}. ${help}`.trim() : help;
     }
 
     function hasResources(resources, cost) {
@@ -120,13 +122,13 @@ const BuildSystem = (() => {
                 const costLabel = button.querySelector('small');
                 if (spaceportLevel > 0 && spaceportLevel < 4) {
                     const next = SPACEPORT_TIERS[spaceportLevel + 1];
-                    button.childNodes[0].textContent = `Upgrade Spaceport ${spaceportLevel + 1} `;
+                    button.childNodes[0].textContent = `🚀 Upgrade Spaceport ${spaceportLevel + 1} `;
                     if (costLabel) costLabel.textContent = `${next.metal}M ${next.crystal}C · needs Yard ${next.research}`;
                 } else if (spaceportLevel >= 4) {
-                    button.childNodes[0].textContent = 'Spaceport 4 ';
+                    button.childNodes[0].textContent = '🚀 Spaceport 4 ';
                     if (costLabel) costLabel.textContent = 'Maximum tier · 48 production';
                 } else {
-                    button.childNodes[0].textContent = 'Spaceport ';
+                    button.childNodes[0].textContent = '🚀 Spaceport ';
                     if (costLabel) costLabel.textContent = '100M 50C · 12 production';
                 }
             }

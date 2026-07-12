@@ -89,7 +89,7 @@ const AvatarNotifications = (function() {
         style.textContent = `
             #avatar-notification-system {
                 position: fixed;
-                top: 100px;
+                top: calc(42vh + 90px);
                 right: 10px;
                 display: flex;
                 flex-direction: row-reverse;
@@ -108,7 +108,7 @@ const AvatarNotifications = (function() {
                 box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
                 overflow: hidden;
                 flex-shrink: 0;
-                pointer-events: auto;
+                pointer-events: none;
             }
 
             .avatar-image {
@@ -139,7 +139,7 @@ const AvatarNotifications = (function() {
             .speech-bubble-container {
                 position: relative;
                 max-width: 280px;
-                pointer-events: auto;
+                pointer-events: none;
             }
 
             .speech-bubble {
@@ -183,6 +183,7 @@ const AvatarNotifications = (function() {
                 cursor: pointer;
                 font-size: 10px;
                 transition: background 0.15s ease;
+                pointer-events: auto;
             }
 
             .nav-btn:hover {

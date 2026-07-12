@@ -130,7 +130,9 @@ const TEST_STARTING_RESOURCES = Object.freeze({
 const JSON_BODY_LIMIT_BYTES = 16 * 1024;
 // Shared by construction enforcement and the read-only invariant auditor.
 const BUILDING_SLOTS_BY_TYPE = gameInvariants.BUILDING_SLOTS_BY_TYPE;
-const STARTING_BUILDINGS = Object.freeze([0, 4]); // Metal Extractor + Orbital Turret, matching the PHP start.
+// Every opening must remain economically viable under local Spaceport rules.
+// Race-specific starter facilities can be layered on later after balance work.
+const STARTING_BUILDINGS = Object.freeze([0, 1, 3]); // Metal, crystal, and Tier-1 Spaceport.
 const GAME_TABLE_SUFFIXES = TABLE_BASES;
 const GAME_STATUS_ABANDONED = 'abandoned';
 const GAME_STATUS_COMPLETED = 'completed';

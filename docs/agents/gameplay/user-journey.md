@@ -30,7 +30,7 @@ Review moments: empty/encoded room names, full room, simultaneous last-seat join
 
 ## 3. Starting And First Orientation
 
-`initializeGame()` creates the map, homeworld assignments, initial resources, starter Scout/Colony Ship, and starting Metal Extractor/Orbital Turret. The player then receives `startgame::`, `newturn::`, `turnclock::`, map configuration/state, resources, tech, empire, victory progress, and focused sector detail.
+`initializeGame()` creates the map, homeworld assignments, initial resources, starter Scout/Colony Ship, and a viable home economy: Metal Extractor, Crystal Refinery, and Tier-1 Spaceport. The player then receives `startgame::`, `newturn::`, `turnclock::`, map configuration/state, resources, tech, empire, victory progress, and focused sector detail.
 
 The first useful loop should be legible without trial-and-error:
 

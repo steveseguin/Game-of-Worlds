@@ -107,7 +107,7 @@
         if (mapLegend) {
             const legendWidth = clamp(220 * scale, 150, 260);
             setImportant(mapLegend, 'width', px(legendWidth));
-            setImportant(mapLegend, 'right', stackBottomPanels ? '8px' : '10px');
+            setImportant(mapLegend, 'right', stackBottomPanels ? '8px' : '370px');
             setImportant(mapLegend, 'bottom', px(minimapBottom + minimapHeight + 8));
             setImportant(mapLegend, 'display', shortLandscape || veryNarrow ? 'none' : 'block');
             mapLegend.style.fontSize = `${clamp(11 * scale, 9.5, 12)}px`;

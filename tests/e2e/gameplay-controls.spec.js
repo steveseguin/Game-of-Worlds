@@ -38,14 +38,13 @@ test.describe('Authoritative gameplay controls', () => {
         expect(tempoBehavior.early).toBe(1);
         expect(tempoBehavior.threshold).toBe(1);
         expect(tempoBehavior.urgent).toBeGreaterThan(1);
-        expect(tempoBehavior.final).toBeCloseTo(1.12, 5);
+        expect(tempoBehavior.final).toBeCloseTo(1.06, 5);
 
         const scoutButton = page.locator('.ship-button[data-ship-id="3"]');
-        await expect(scoutButton).toBeDisabled({ timeout: 15000 });
-        await expect(scoutButton).toHaveAttribute('title', /Spaceport/i);
-        await expect(page.locator('#bb4')).toBeEnabled();
-        await page.locator('#bb4').click();
         await expect(scoutButton).toBeEnabled({ timeout: 15000 });
+        await expect(page.locator('#bb4')).toBeDisabled();
+        await expect(page.locator('#bb4')).toContainText('Upgrade Spaceport 2');
+        await expect(page.locator('#bb4')).toHaveAttribute('title', /Military Shipyards Lv1/);
         await expect(page.locator('#spaceportProductionStatus')).toContainText('12/12 production', { timeout: 15000 });
         await expect(scoutButton.locator('small')).toContainText('1P');
         await scoutButton.click();

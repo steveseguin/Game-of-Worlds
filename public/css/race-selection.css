@@ -192,7 +192,11 @@
     box-shadow: inset 1px 1px 4px rgba(0,0,0,0.8);
 }
 .race-card-header img[src$="terran-icon.svg"],
-.race-detail-header img[src$="terran-icon.svg"] { filter: invert(82%) sepia(16%) saturate(1090%) hue-rotate(158deg) brightness(103%); }
+.race-detail-header img[src$="terran-icon.svg"] {
+    filter: brightness(0) invert(1) drop-shadow(0 0 5px rgba(255,255,255,0.75));
+    background: rgba(5, 18, 28, 0.72);
+    border-radius: 50%;
+}
 .race-card-title { min-width: 0; flex: 1; }
 .race-card-index { display: block; color: #718097; font-size: 0.52rem; line-height: 1; }
 .race-card h3 {

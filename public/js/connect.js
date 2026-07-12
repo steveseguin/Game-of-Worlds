@@ -1678,6 +1678,7 @@ function focusHomeworld() {
     }
     if (window.GalaxyMap?.selectSector) {
         window.GalaxyMap.selectSector(homeworld);
+        window.GalaxyMap.focusSector?.(homeworld);
     } else {
         changeSector(homeworld.toString(16).toUpperCase());
     }
@@ -1701,7 +1702,8 @@ function ensureEventPanel() {
     eventPanel.id = 'event-panel';
     eventPanel.style.position = 'fixed';
     eventPanel.style.right = '16px';
-    eventPanel.style.bottom = '80px';
+    eventPanel.style.top = '70px';
+    eventPanel.style.bottom = 'auto';
     eventPanel.style.width = '340px';
     eventPanel.style.maxHeight = '42vh';
     eventPanel.style.overflowY = 'auto';
@@ -1976,11 +1978,13 @@ function updateTechState(message) {
             }
         }
         if (Number.isFinite(Number(data.homeworld))) {
+            const firstHomeworldSync = !Number.isFinite(Number(GAME_STATE.player.homeworld));
             GAME_STATE.player.homeworld = Number(data.homeworld);
             const btn = document.getElementById('homeworldBtn');
             if (btn) {
                 btn.title = `Focus homeworld sector ${GAME_STATE.player.homeworld}`;
             }
+            if (firstHomeworldSync) focusHomeworld();
         }
         renderTechTree();
     } catch (err) {

@@ -4,16 +4,16 @@
     const LOOKAHEAD_SECONDS = 0.65;
     const TICK_MS = 55;
     const SILENCE = 0.0001;
-    const MAX_TEMPO_MULTIPLIER = 1.12;
+    const MAX_TEMPO_MULTIPLIER = 1.06;
 
     function calculateUrgencyTempo(secondsRemaining, turnDurationSeconds) {
         const remaining = Number(secondsRemaining);
         const duration = Number(turnDurationSeconds);
         if (!Number.isFinite(remaining) || !Number.isFinite(duration) || duration <= 0) return 1;
 
-        // Quick turns build tension during their final 20%. Long-form modes do
-        // not spend hours accelerated: their urgency window is capped at 60s.
-        const urgencyWindow = Math.min(60, duration * 0.2);
+        // Urgency is a final warning, not the dominant sound of a normal turn.
+        // Start in the last 20%, capped at 30 seconds, with a subtle tempo lift.
+        const urgencyWindow = Math.min(30, duration * 0.2);
         if (urgencyWindow <= 0 || remaining >= urgencyWindow) return 1;
         const progress = Math.max(0, Math.min(1, (urgencyWindow - Math.max(0, remaining)) / urgencyWindow));
         return 1 + (MAX_TEMPO_MULTIPLIER - 1) * progress;
