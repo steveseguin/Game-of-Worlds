@@ -128,6 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
     configureGameModeOptions();
     configureGuestCreateOptions();
     initWebSocket();
+    window.SoundSystem?.playContextualMusic?.('lobby');
 
     document.getElementById('createGameBtn').addEventListener('click', createGame);
     document.getElementById('refreshGamesBtn').addEventListener('click', refreshGames);
@@ -233,9 +234,11 @@ function handleMessage(message) {
             countdownSeconds = null;
             isStartingGame = false;
             showToast('Start aborted — a player left or changed.', 'warning');
+            window.SoundSystem?.playContextualMusic?.('lobby');
         } else {
             countdownSeconds = parseInt(payload, 10);
             isStartingGame = true;
+            window.SoundSystem?.playContextualMusic?.('launch');
         }
         updateWaitingView();
         return;

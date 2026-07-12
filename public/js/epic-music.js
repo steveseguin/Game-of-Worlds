@@ -20,7 +20,9 @@
     }
 
     const playlists = {
-        campaign: ['ionStormRun', 'orbitalSiege', 'starlanceOverture', 'forgeOfStars'],
+        lobby: ['quietOrbit', 'distantWorlds', 'councilChamber'],
+        launch: ['firstLight', 'starlanceOverture'],
+        campaign: ['frontierDrift', 'starChart', 'borderMarch', 'forgeOfStars'],
         battle: ['orbitalSiege', 'ionStormRun', 'starlanceOverture'],
         building: ['forgeOfStars', 'borderMarch', 'starlanceOverture'],
         victory: ['victoryBurn'],
@@ -28,6 +30,114 @@
     };
 
     const tracks = {
+        quietOrbit: {
+            tempo: 86,
+            bars: 16,
+            color: 'gentle',
+            chords: [
+                ['C3', 'G3', 'B3', 'E4'],
+                ['A2', 'E3', 'G3', 'C4'],
+                ['F2', 'C3', 'G3', 'A3'],
+                ['G2', 'D3', 'A3', 'B3']
+            ],
+            lead: [
+                'E5', null, null, null, 'G5', null, null, null,
+                'B4', null, null, 'D5', null, null, null, null
+            ],
+            bass: ['root', null, null, null, null, null, null, null, 'fifth', null, null, null, null, null, null, null],
+            accents: [0, 8],
+            arpEvery: 4
+        },
+        distantWorlds: {
+            tempo: 94,
+            bars: 16,
+            color: 'gentle',
+            chords: [
+                ['D3', 'A3', 'C4', 'F4'],
+                ['Bb2', 'F3', 'A3', 'D4'],
+                ['F2', 'C3', 'A3', 'C4'],
+                ['C3', 'G3', 'Bb3', 'E4']
+            ],
+            lead: [
+                'A4', null, null, 'D5', null, null, 'F5', null,
+                null, null, 'E5', null, 'C5', null, null, null
+            ],
+            bass: ['root', null, null, null, null, null, 'fifth', null, 'root', null, null, null, null, null, null, null],
+            accents: [0, 8],
+            arpEvery: 4
+        },
+        councilChamber: {
+            tempo: 102,
+            bars: 16,
+            color: 'gentle',
+            chords: [
+                ['E3', 'B3', 'D4', 'G4'],
+                ['C3', 'G3', 'B3', 'E4'],
+                ['G2', 'D3', 'A3', 'D4'],
+                ['D3', 'A3', 'C4', 'F#4']
+            ],
+            lead: [
+                'B4', null, null, null, 'E5', null, 'G5', null,
+                null, 'F#5', null, null, 'D5', null, null, null
+            ],
+            bass: ['root', null, null, null, 'fifth', null, null, null, 'root', null, null, null, 'fifth', null, null, null],
+            accents: [0, 8],
+            arpEvery: 4
+        },
+        firstLight: {
+            tempo: 132,
+            bars: 12,
+            color: 'heroic',
+            chords: [
+                ['C3', 'G3', 'C4', 'E4'],
+                ['F2', 'C3', 'A3', 'C4'],
+                ['A2', 'E3', 'A3', 'C4'],
+                ['G2', 'D3', 'G3', 'B3']
+            ],
+            lead: [
+                'G5', null, 'C6', null, 'E6', null, 'D6', null,
+                'C6', null, 'A5', null, 'G5', 'A5', 'B5', null
+            ],
+            bass: ['root', null, null, null, 'root', null, 'fifth', null, 'root', null, null, null, 'fifth', null, null, null],
+            accents: [0, 8, 12],
+            arpEvery: 2
+        },
+        frontierDrift: {
+            tempo: 126,
+            bars: 16,
+            color: 'wide',
+            chords: [
+                ['A2', 'E3', 'G3', 'C4'],
+                ['F2', 'C3', 'A3', 'C4'],
+                ['C3', 'G3', 'B3', 'E4'],
+                ['G2', 'D3', 'A3', 'D4']
+            ],
+            lead: [
+                'E5', null, null, 'A5', null, 'C6', null, 'B5',
+                'G5', null, 'E5', null, 'D5', null, null, null
+            ],
+            bass: ['root', null, null, null, 'fifth', null, null, null, 'root', null, null, null, 'fifth', null, null, null],
+            accents: [0, 8, 14],
+            arpEvery: 4
+        },
+        starChart: {
+            tempo: 138,
+            bars: 16,
+            color: 'bright',
+            chords: [
+                ['D3', 'A3', 'D4', 'F#4'],
+                ['B2', 'F#3', 'A3', 'D4'],
+                ['G2', 'D3', 'B3', 'D4'],
+                ['A2', 'E3', 'G3', 'C#4']
+            ],
+            lead: [
+                'A5', null, 'D6', null, 'F#6', null, 'E6', 'D6',
+                'B5', null, 'A5', null, 'F#5', 'A5', null, null
+            ],
+            bass: ['root', null, 'fifth', null, 'root', null, null, null, 'root', null, 'fifth', null, 'root', null, null, null],
+            accents: [0, 6, 8, 14],
+            arpEvery: 2
+        },
         starlanceOverture: {
             tempo: 164,
             bars: 16,
@@ -451,6 +561,7 @@
         this.oneShot = false;
         this.noiseBuffer = null;
         this.tempoMultiplier = 1;
+        this.failedTrackIds = new Set();
     }
 
     EpicMusicEngine.prototype.start = function(presetName, options = {}) {
@@ -473,6 +584,7 @@
         this.currentTrackIndex = 0;
         this.currentStep = 0;
         this.oneShot = Boolean(options.oneShot);
+        this.failedTrackIds.clear();
         this.nextStepTime = this.ctx.currentTime + 0.08;
         this.isPlaying = true;
 
@@ -554,6 +666,40 @@
         this.tempoMultiplier = 1;
     };
 
+    EpicMusicEngine.prototype.scheduleTrackTransition = function(boundaryTime) {
+        const now = this.ctx.currentTime;
+        const fadeStart = Math.max(now, boundaryTime - 0.4);
+        const quietAt = Math.max(fadeStart + 0.03, boundaryTime - 0.04);
+        this.masterGain.gain.cancelScheduledValues(fadeStart);
+        this.masterGain.gain.setValueAtTime(Math.max(SILENCE, this.targetVolume), fadeStart);
+        this.masterGain.gain.exponentialRampToValueAtTime(SILENCE, quietAt);
+        this.masterGain.gain.exponentialRampToValueAtTime(
+            Math.max(SILENCE, this.targetVolume),
+            Math.max(quietAt + 0.05, boundaryTime + 0.75)
+        );
+    };
+
+    EpicMusicEngine.prototype.advanceTrack = function(boundaryTime, failedTrackId = null) {
+        if (failedTrackId) this.failedTrackIds.add(failedTrackId);
+        const available = this.currentTrackIds.filter(id => !this.failedTrackIds.has(id));
+        if (!available.length) {
+            console.warn('Every track in the current music playlist failed; stopping playback.');
+            this.stop(true);
+            return false;
+        }
+        let attempts = 0;
+        do {
+            this.currentTrackIndex = (this.currentTrackIndex + 1) % this.currentTrackIds.length;
+            attempts += 1;
+        } while (
+            attempts < this.currentTrackIds.length
+            && this.failedTrackIds.has(this.currentTrackIds[this.currentTrackIndex])
+        );
+        this.currentStep = 0;
+        this.scheduleTrackTransition(boundaryTime);
+        return true;
+    };
+
     EpicMusicEngine.prototype.scheduler = function(token) {
         if (!this.isPlaying || token !== this.playId) return;
 
@@ -566,22 +712,32 @@
 
         while (this.nextStepTime < this.ctx.currentTime + LOOKAHEAD_SECONDS) {
             const track = tracks[this.currentTrackIds[this.currentTrackIndex]];
+            if (!track) {
+                if (!this.advanceTrack(this.ctx.currentTime + 0.12, this.currentTrackIds[this.currentTrackIndex])) return;
+                this.nextStepTime = this.ctx.currentTime + 0.12;
+                continue;
+            }
             const stepSeconds = 60 / (track.tempo * this.tempoMultiplier) / 4;
-            this.scheduleStep(track, this.currentStep, this.nextStepTime, stepSeconds);
+            try {
+                this.scheduleStep(track, this.currentStep, this.nextStepTime, stepSeconds);
+            } catch (error) {
+                console.warn(`Music track ${this.currentTrackIds[this.currentTrackIndex]} failed; advancing playlist.`, error);
+                if (!this.advanceTrack(this.ctx.currentTime + 0.12, this.currentTrackIds[this.currentTrackIndex])) return;
+                this.nextStepTime = this.ctx.currentTime + 0.12;
+                continue;
+            }
 
             this.currentStep += 1;
             this.nextStepTime += stepSeconds;
 
             if (this.currentStep >= track.bars * STEPS_PER_BAR) {
-                this.currentStep = 0;
-                this.currentTrackIndex += 1;
-                if (this.currentTrackIndex >= this.currentTrackIds.length) {
-                    if (this.oneShot) {
-                        this.stop(true);
-                        return;
-                    }
-                    this.currentTrackIndex = 0;
+                const isFinalOneShotTrack = this.oneShot
+                    && this.currentTrackIndex >= this.currentTrackIds.length - 1;
+                if (isFinalOneShotTrack) {
+                    this.stop(true);
+                    return;
                 }
+                if (!this.advanceTrack(this.nextStepTime)) return;
             }
         }
     };
@@ -591,16 +747,17 @@
         const bar = Math.floor(step / STEPS_PER_BAR);
         const chord = track.chords[bar % track.chords.length];
         const barSeconds = stepSeconds * STEPS_PER_BAR;
-        const intensity = track.color === 'battle' ? 1.2 : 1;
+        const gentle = track.color === 'gentle';
+        const intensity = track.color === 'battle' ? 1.2 : (gentle ? 0.55 : 1);
 
         if (stepInBar === 0) {
             scheduleChord(this, chord, time, barSeconds * 0.72, intensity);
-            if (bar % 4 === 0) {
+            if (!gentle && bar % 4 === 0) {
                 scheduleImpact(this, time);
             }
         }
 
-        if (track.accents.includes(stepInBar)) {
+        if (!gentle && track.accents.includes(stepInBar)) {
             scheduleBrass(this, chord, time, stepSeconds * 1.35, intensity);
         }
 
@@ -609,13 +766,13 @@
             scheduleBass(this, bassNote, time, stepSeconds, track.color);
         }
 
-        if ([0, 6, 8, 14].includes(stepInBar) || (track.color === 'battle' && (stepInBar === 3 || stepInBar === 11))) {
-            scheduleKick(this, time, track.color === 'battle' ? 1.1 : 0.95);
+        if ((!gentle && [0, 6, 8, 14].includes(stepInBar)) || (gentle && [0, 8].includes(stepInBar)) || (track.color === 'battle' && (stepInBar === 3 || stepInBar === 11))) {
+            scheduleKick(this, time, track.color === 'battle' ? 1.1 : (gentle ? 0.5 : 0.95));
         }
-        if (stepInBar === 4 || stepInBar === 12) {
+        if (!gentle && (stepInBar === 4 || stepInBar === 12)) {
             scheduleSnare(this, time);
         }
-        if (track.color === 'battle' || stepInBar % 2 === 0) {
+        if (!gentle && (track.color === 'battle' || stepInBar % 2 === 0)) {
             scheduleHat(this, time, false);
         }
         if (stepInBar === 15 && track.color !== 'dark') {

@@ -47,7 +47,7 @@ Modes default to quick (180 seconds), epic (24 hours), and test (30 seconds, whe
 
 At turn advance the server sends `turnphase::resolving`, freezes new mutations, and shows **Resolving** on the turn control. AI, standing orders, income, battles, and victory are awaited in order. `newturn::` is sent only after authoritative writes finish. Reconnect snapshots include the active phase; failures remain frozen and retry the same phase without duplicating completed income.
 
-The procedural soundtrack follows the authoritative turn duration. Normal tempo holds until the final 20% of the turn, capped to the final 60 seconds for long-form modes, then rises gradually to a modest 12% maximum at expiry. Battle pauses freeze the countdown rather than advancing urgency. Scheduler stalls discard missed beats instead of replaying them as a fast burst, and initial game loading retains one music context to avoid a needless cut/restart.
+The soundtrack uses separate multi-track playlists for the gentle lobby, launch countdown, normal campaign, building, and high-intensity battle contexts. Procedural track boundaries fade between compositions; a failed composition skips to the next healthy track. The MP3 compatibility path likewise advances on track end or asset failure and fades in the replacement. Normal campaign tempo holds until the final 20% of the authoritative turn, capped to the final 60 seconds for long-form modes, then rises gradually to a modest 12% maximum at expiry. Battle pauses freeze the countdown rather than advancing urgency. Scheduler stalls discard missed beats instead of replaying them as a fast burst.
 
 ## 5. Exploration: Every Decision Has A Cost
 

@@ -125,6 +125,18 @@ test.describe('Lobby end-to-end flows', () => {
             password
         });
 
+        await expect.poll(() => page.evaluate(() => window.SoundSystem?.getMusicState?.().context), {
+            timeout: 10000
+        }).toBe('lobby');
+        const contextPlaylists = await page.evaluate(() => {
+            window.SoundSystem.playContextualMusic('launch');
+            const launch = window.SoundSystem.getMusicState();
+            window.SoundSystem.playContextualMusic('lobby');
+            return { launch, lobby: window.SoundSystem.getMusicState() };
+        });
+        expect(contextPlaylists.launch.playlist).toBe('launch');
+        expect(contextPlaylists.lobby.playlist).toBe('lobby');
+
         const gameName = uniqueId('Solo_');
 
         await page.fill('#gameName', gameName);

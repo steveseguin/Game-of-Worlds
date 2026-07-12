@@ -43,3 +43,46 @@ test('scheduler drops missed wall-clock beats instead of replaying a fast backlo
     assert.ok(engine.nextStepTime > engine.ctx.currentTime);
     assert.ok(engine.currentStep < 20, 'a delayed callback must not replay seconds of missed steps');
 });
+
+test('music contexts provide distinct multi-track playlists with gentler lobby pacing', () => {
+    const { playlists, tracks } = EpicMusicEngine;
+    ['lobby', 'launch', 'campaign', 'building', 'battle'].forEach(context => {
+        assert.ok(playlists[context].length >= 2, `${context} should have multiple tracks`);
+        assert.equal(new Set(playlists[context]).size, playlists[context].length);
+    });
+    const averageTempo = context => playlists[context]
+        .reduce((sum, id) => sum + tracks[id].tempo, 0) / playlists[context].length;
+    assert.ok(averageTempo('lobby') < averageTempo('campaign'));
+    assert.ok(averageTempo('campaign') < averageTempo('battle'));
+});
+
+test('a failed procedural track advances to the next healthy track with a fade', () => {
+    const gainEvents = [];
+    const gain = {
+        cancelScheduledValues: time => gainEvents.push(['cancel', time]),
+        setValueAtTime: (value, time) => gainEvents.push(['set', value, time]),
+        exponentialRampToValueAtTime: (value, time) => gainEvents.push(['ramp', value, time])
+    };
+    const engine = Object.create(EpicMusicEngine.prototype);
+    Object.assign(engine, {
+        ctx: { currentTime: 20 },
+        masterGain: { gain },
+        targetVolume: 0.25,
+        isPlaying: true,
+        playId: 8,
+        nextStepTime: 20.05,
+        currentTrackIds: ['missing-track', 'quietOrbit'],
+        currentTrackIndex: 0,
+        currentStep: 0,
+        tempoMultiplier: 1,
+        oneShot: false,
+        failedTrackIds: new Set(),
+        scheduleStep() {}
+    });
+
+    engine.scheduler(8);
+
+    assert.equal(engine.currentTrackIndex, 1);
+    assert.equal(engine.failedTrackIds.has('missing-track'), true);
+    assert.ok(gainEvents.some(event => event[0] === 'ramp'));
+});

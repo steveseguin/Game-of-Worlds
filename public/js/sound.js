@@ -42,12 +42,13 @@ const SoundSystem = (function() {
     
     // Music tracks
     const music = {
-        menu: { playlist: 'campaign', url: 'music/menu-theme.mp3', volume: 0.62 },
-        peace: { playlist: 'campaign', url: 'music/peace-theme.mp3', volume: 0.56 },
-        building: { playlist: 'building', url: 'music/building-theme.mp3', volume: 0.58 },
-        battle: { playlist: 'battle', url: 'music/battle-theme.mp3', volume: 0.68 },
-        victory: { playlist: 'victory', url: 'music/victory-theme.mp3', volume: 0.72, oneShot: true },
-        defeat: { playlist: 'defeat', url: 'music/defeat-theme.mp3', volume: 0.48, oneShot: true }
+        lobby: { playlist: 'lobby', urls: ['music/peace-theme.mp3', 'music/menu-theme.mp3', 'music/building-theme.mp3'], volume: 0.42 },
+        launch: { playlist: 'launch', urls: ['music/menu-theme.mp3', 'music/building-theme.mp3'], volume: 0.58 },
+        peace: { playlist: 'campaign', urls: ['music/peace-theme.mp3', 'music/menu-theme.mp3', 'music/building-theme.mp3'], volume: 0.56 },
+        building: { playlist: 'building', urls: ['music/building-theme.mp3', 'music/peace-theme.mp3'], volume: 0.58 },
+        battle: { playlist: 'battle', urls: ['music/battle-theme.mp3', 'music/building-theme.mp3', 'music/menu-theme.mp3'], volume: 0.68 },
+        victory: { playlist: 'victory', urls: ['music/victory-theme.mp3'], volume: 0.72, oneShot: true },
+        defeat: { playlist: 'defeat', urls: ['music/defeat-theme.mp3'], volume: 0.48, oneShot: true }
     };
     
     // Currently playing music
@@ -58,6 +59,8 @@ const SoundSystem = (function() {
     let audioContextCreationFailed = false;
     let proceduralMusic = null;
     let turnUrgency = { remaining: null, duration: null };
+    let currentAudioTrackIndex = 0;
+    let currentAudioFailures = 0;
     
     // Audio buffer cache
     const audioBuffers = new Map();
@@ -234,7 +237,7 @@ const SoundSystem = (function() {
         pendingMusicName = trackName;
 
         if (engine) {
-            if (currentMusic?.type === 'audio') {
+            if (currentMusic && currentMusic.type !== 'procedural') {
                 stopMusic(false);
             }
 
@@ -260,23 +263,63 @@ const SoundSystem = (function() {
             stopMusic(true);
         }
 
-        currentMusic = new Audio(track.url);
-        currentMusic.loop = !track.oneShot;
-        currentMusic.volume = 0;
+        currentAudioTrackIndex = 0;
+        currentAudioFailures = 0;
+        startAudioPlaylistTrack(trackName, fadeIn);
+    }
+
+    function startAudioPlaylistTrack(trackName, fadeIn = true) {
+        const track = music[trackName];
+        const urls = track?.urls || [];
+        if (!track || !urls.length || !enabled) return;
+        const targetVolume = (track.volume || 0.5) * musicVolume * masterVolume;
+        const audioTrackIndex = currentAudioTrackIndex % urls.length;
+        const element = new Audio(urls[audioTrackIndex]);
+
+        currentMusic = element;
         currentMusicName = trackName;
-        
-        // Fade in
+        element.loop = false;
+        element.volume = 0;
+        element.addEventListener('ended', () => advanceAudioPlaylist(trackName, element, true), { once: true });
+        element.addEventListener('error', () => advanceAudioPlaylist(trackName, element, false), { once: true });
+
         if (fadeIn) {
-            fadeAudio(currentMusic, targetVolume, 2000);
+            fadeAudio(element, targetVolume, 1200);
         } else {
-            currentMusic.volume = targetVolume;
+            element.volume = targetVolume;
         }
-        
-        currentMusic.play().catch(e => {
-            if (e.name !== 'NotAllowedError') {
-                console.error('Error playing music:', e);
+
+        element.play().catch(error => {
+            // Autoplay is recovered by the next user gesture. It is not a bad
+            // asset and should not churn through every fallback track.
+            if (error.name !== 'NotAllowedError') {
+                advanceAudioPlaylist(trackName, element, false);
             }
         });
+    }
+
+    function advanceAudioPlaylist(trackName, finishedElement, fadeIn) {
+        if (currentMusic !== finishedElement || currentMusicName !== trackName || !enabled) return;
+        const track = music[trackName];
+        const urls = track?.urls || [];
+        if (urls.length <= 1 && track?.oneShot) {
+            currentMusic = null;
+            currentMusicName = null;
+            return;
+        }
+        if (fadeIn) {
+            currentAudioFailures = 0;
+        } else {
+            currentAudioFailures += 1;
+            if (currentAudioFailures >= urls.length) {
+                console.warn(`Every audio fallback in the ${trackName} playlist failed; stopping playback.`);
+                currentMusic = null;
+                currentMusicName = null;
+                return;
+            }
+        }
+        currentAudioTrackIndex = (currentAudioTrackIndex + 1) % Math.max(1, urls.length);
+        startAudioPlaylistTrack(trackName, fadeIn);
     }
     
     // Stop music
@@ -420,8 +463,13 @@ const SoundSystem = (function() {
     // Play contextual music based on game state
     function playContextualMusic(context) {
         switch (context) {
+            case 'lobby':
             case 'menu':
-                playMusic('menu');
+                playMusic('lobby');
+                break;
+            case 'launch':
+            case 'start':
+                playMusic('launch');
                 break;
             case 'game':
                 playMusic('peace');
@@ -493,7 +541,15 @@ const SoundSystem = (function() {
         setTurnMusicUrgency,
         toggle,
         setEnabled,
-        enabled: () => enabled
+        enabled: () => enabled,
+        getMusicState: () => ({
+            context: currentMusicName,
+            type: currentMusic?.type || (currentMusic ? 'audio' : null),
+            playlist: currentMusicName ? music[currentMusicName]?.playlist || null : null,
+            trackIndex: currentMusic?.type === 'procedural'
+                ? proceduralMusic?.currentTrackIndex || 0
+                : currentAudioTrackIndex
+        })
     };
 })();
 
