@@ -29,4 +29,11 @@ test('server-oriented legacy modules are not shipped from the public web root', 
     forbiddenPublicModules.forEach(modulePath => {
         assert.equal(fs.existsSync(modulePath), false, `${path.basename(modulePath)} must remain outside public/js`);
     });
+
+    const deploySource = fs.readFileSync(path.join(repoRoot, 'tools', 'deploy.js'), 'utf8');
+    forbiddenPublicModules.forEach(modulePath => {
+        const relativePath = path.relative(repoRoot, modulePath).replace(/\\/g, '/');
+        assert.match(deploySource, new RegExp(relativePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+            `${relativePath} must be explicitly removed from existing deployments`);
+    });
 });

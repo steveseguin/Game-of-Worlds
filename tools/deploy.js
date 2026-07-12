@@ -25,7 +25,10 @@ const REMOTE_ROOT = '/opt/game-of-worlds';
 const DEPLOY_TMP = path.join(REPO, '.deploy-tmp');
 
 const DELETE_FILES = [
-    'public/index.html'
+    'public/index.html',
+    'public/js/events.js',
+    'public/js/game_logic_ext.js',
+    'public/js/mechanics.js'
 ];
 
 function walkFiles(rootDir) {
