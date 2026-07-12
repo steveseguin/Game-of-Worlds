@@ -86,10 +86,13 @@
 
     function playSfx(name) {
         if (!sfxEnabled) return;
+        window.SoundSystem?.ensureMusicContinuity?.();
         const el = audio[name];
         if (el) {
             el.currentTime = 0;
-            el.play().catch(() => {});
+            el.play().catch(() => {}).finally(() => {
+                window.SoundSystem?.ensureMusicContinuity?.();
+            });
         }
     }
 

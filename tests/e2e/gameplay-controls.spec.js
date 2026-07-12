@@ -30,9 +30,9 @@ test.describe('Authoritative gameplay controls', () => {
         }, { timeout: 15000 }).toBeLessThanOrEqual(30);
 
         const tempoBehavior = await page.evaluate(() => ({
-            early: window.SoundSystem.setTurnMusicUrgency(7, 30),
-            threshold: window.SoundSystem.setTurnMusicUrgency(6, 30),
-            urgent: window.SoundSystem.setTurnMusicUrgency(3, 30),
+            early: window.SoundSystem.setTurnMusicUrgency(11, 180),
+            threshold: window.SoundSystem.setTurnMusicUrgency(10, 180),
+            urgent: window.SoundSystem.setTurnMusicUrgency(5, 180),
             final: window.SoundSystem.setTurnMusicUrgency(0, 30)
         }));
         expect(tempoBehavior.early).toBe(1);

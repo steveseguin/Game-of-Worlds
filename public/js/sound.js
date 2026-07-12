@@ -124,6 +124,18 @@ const SoundSystem = (function() {
         }
     }
 
+    function ensureMusicContinuity() {
+        if (!enabled || !currentMusic) return false;
+        const ctx = ensureAudioContext();
+        if (ctx?.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+        if (currentMusic.type === 'procedural' && proceduralMusic && !proceduralMusic.isPlaying) {
+            proceduralMusic.resume();
+        }
+        return true;
+    }
+
     function getProceduralMusic() {
         const ctx = ensureAudioContext();
         if (!ctx || !window.EpicMusicEngine) return null;
@@ -539,6 +551,7 @@ const SoundSystem = (function() {
         setMusicVolume,
         setEffectsVolume,
         setTurnMusicUrgency,
+        ensureMusicContinuity,
         toggle,
         setEnabled,
         enabled: () => enabled,

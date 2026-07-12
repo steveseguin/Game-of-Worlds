@@ -11,9 +11,9 @@
         const duration = Number(turnDurationSeconds);
         if (!Number.isFinite(remaining) || !Number.isFinite(duration) || duration <= 0) return 1;
 
-        // Urgency is a final warning, not the dominant sound of a normal turn.
-        // Start in the last 20%, capped at 30 seconds, with a subtle tempo lift.
-        const urgencyWindow = Math.min(30, duration * 0.2);
+        // Urgency is a final countdown cue, not the dominant sound of a turn.
+        // Even long turns remain musically stable until their final ten seconds.
+        const urgencyWindow = Math.min(10, duration * 0.2);
         if (urgencyWindow <= 0 || remaining >= urgencyWindow) return 1;
         const progress = Math.max(0, Math.min(1, (urgencyWindow - Math.max(0, remaining)) / urgencyWindow));
         return 1 + (MAX_TEMPO_MULTIPLIER - 1) * progress;
@@ -103,7 +103,7 @@
             arpEvery: 2
         },
         frontierDrift: {
-            tempo: 126,
+            tempo: 112,
             bars: 16,
             color: 'wide',
             chords: [
@@ -121,7 +121,7 @@
             arpEvery: 4
         },
         starChart: {
-            tempo: 138,
+            tempo: 120,
             bars: 16,
             color: 'bright',
             chords: [
@@ -136,7 +136,7 @@
             ],
             bass: ['root', null, 'fifth', null, 'root', null, null, null, 'root', null, 'fifth', null, 'root', null, null, null],
             accents: [0, 6, 8, 14],
-            arpEvery: 2
+            arpEvery: 4
         },
         starlanceOverture: {
             tempo: 164,
@@ -179,7 +179,7 @@
             arpEvery: 1
         },
         forgeOfStars: {
-            tempo: 154,
+            tempo: 116,
             bars: 16,
             color: 'industrial',
             chords: [
@@ -196,10 +196,10 @@
             ],
             bass: ['root', null, null, null, 'root', null, 'fifth', null, 'root', null, null, 'fifth', 'root', null, null, null],
             accents: [0, 7, 8, 15],
-            arpEvery: 2
+            arpEvery: 4
         },
         borderMarch: {
-            tempo: 158,
+            tempo: 118,
             bars: 16,
             color: 'wide',
             chords: [
@@ -216,7 +216,7 @@
             ],
             bass: ['root', null, 'fifth', null, 'root', null, null, 'fifth', 'root', null, 'fifth', null, 'root', null, 'fifth', null],
             accents: [0, 4, 8, 12],
-            arpEvery: 2
+            arpEvery: 4
         },
         orbitalSiege: {
             tempo: 176,
@@ -672,7 +672,9 @@
         const quietAt = Math.max(fadeStart + 0.03, boundaryTime - 0.04);
         this.masterGain.gain.cancelScheduledValues(fadeStart);
         this.masterGain.gain.setValueAtTime(Math.max(SILENCE, this.targetVolume), fadeStart);
-        this.masterGain.gain.exponentialRampToValueAtTime(SILENCE, quietAt);
+        // A shallow cross-track breath keeps continuity. The old near-silence
+        // sounded like playback had stopped whenever a playlist advanced.
+        this.masterGain.gain.exponentialRampToValueAtTime(Math.max(SILENCE, this.targetVolume * 0.78), quietAt);
         this.masterGain.gain.exponentialRampToValueAtTime(
             Math.max(SILENCE, this.targetVolume),
             Math.max(quietAt + 0.05, boundaryTime + 0.75)
@@ -772,7 +774,7 @@
         if (!gentle && (stepInBar === 4 || stepInBar === 12)) {
             scheduleSnare(this, time);
         }
-        if (!gentle && (track.color === 'battle' || stepInBar % 2 === 0)) {
+        if (track.color === 'battle' || (!gentle && [2, 6, 10, 14].includes(stepInBar))) {
             scheduleHat(this, time, false);
         }
         if (stepInBar === 15 && track.color !== 'dark') {

@@ -3,19 +3,19 @@ const assert = require('node:assert/strict');
 
 const { EpicMusicEngine, calculateUrgencyTempo } = require('../public/js/epic-music.js');
 
-test('music urgency begins only in the final 20 percent of a quick turn', () => {
+test('music urgency begins only in the final ten seconds of a quick turn', () => {
     assert.equal(calculateUrgencyTempo(120, 180), 1);
-    assert.equal(calculateUrgencyTempo(37, 180), 1);
-    assert.equal(calculateUrgencyTempo(30, 180), 1);
-    assert.ok(calculateUrgencyTempo(20, 180) > 1);
-    assert.ok(calculateUrgencyTempo(10, 180) > calculateUrgencyTempo(30, 180));
+    assert.equal(calculateUrgencyTempo(11, 180), 1);
+    assert.equal(calculateUrgencyTempo(10, 180), 1);
+    assert.ok(calculateUrgencyTempo(9, 180) > 1);
+    assert.ok(calculateUrgencyTempo(5, 180) > calculateUrgencyTempo(10, 180));
     assert.equal(calculateUrgencyTempo(0, 180), 1.06);
 });
 
-test('long turns cap the music urgency window at thirty seconds', () => {
+test('long turns cap the music urgency window at ten seconds', () => {
     assert.equal(calculateUrgencyTempo(61, 86400), 1);
-    assert.equal(calculateUrgencyTempo(30, 86400), 1);
-    assert.ok(calculateUrgencyTempo(20, 86400) > 1);
+    assert.equal(calculateUrgencyTempo(10, 86400), 1);
+    assert.ok(calculateUrgencyTempo(9, 86400) > 1);
     assert.equal(calculateUrgencyTempo(0, 86400), 1.06);
 });
 
@@ -54,6 +54,10 @@ test('music contexts provide distinct multi-track playlists with gentler lobby p
         .reduce((sum, id) => sum + tracks[id].tempo, 0) / playlists[context].length;
     assert.ok(averageTempo('lobby') < averageTempo('campaign'));
     assert.ok(averageTempo('campaign') < averageTempo('battle'));
+    playlists.campaign.forEach(id => {
+        assert.ok(tracks[id].tempo >= 110 && tracks[id].tempo <= 120, `${id} should keep a stable exploration pace`);
+        assert.ok(tracks[id].arpEvery >= 4, `${id} should not chatter on eighth-note arpeggios`);
+    });
 });
 
 test('a failed procedural track advances to the next healthy track with a fade', () => {
@@ -84,5 +88,7 @@ test('a failed procedural track advances to the next healthy track with a fade',
 
     assert.equal(engine.currentTrackIndex, 1);
     assert.equal(engine.failedTrackIds.has('missing-track'), true);
-    assert.ok(gainEvents.some(event => event[0] === 'ramp'));
+    const ramps = gainEvents.filter(event => event[0] === 'ramp').map(event => event[1]);
+    assert.ok(ramps.length > 0);
+    assert.ok(Math.min(...ramps) >= engine.targetVolume * 0.75, 'track changes must not fade close to silence');
 });
