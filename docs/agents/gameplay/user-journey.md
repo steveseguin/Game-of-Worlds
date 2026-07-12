@@ -1,5 +1,7 @@
 # User Journey And Experience Contract
 
+The public, player-facing companion to this implementation map is `/docs/` (`public/docs/index.html`). When gameplay rules, victory conditions, exploration knowledge, construction scope, or turn behavior change, update that field manual alongside this document.
+
 Primary sources: `public/js/login.js`, `public/js/lobby.js`, `public/js/connect.js`, `public/js/build.js`, `server/index.js`, and `server/server.js`.
 
 This is both a flow map and a review checklist. A feature is not healthy merely because its endpoint succeeds: at each moment the player needs a clear next action, truthful state, visible feedback, safe recovery, and protection against an accidental destructive action.

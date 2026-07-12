@@ -803,6 +803,8 @@ img { max-width: 100%; display: block; }
 .hud-foot__brand { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.1em; color: var(--text); margin: 0; }
 .hud-foot__brand span { font-family: var(--font-mono); font-size: 0.7rem; color: var(--cyan-dim); letter-spacing: 0.2em; }
 .hud-foot__credit { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); margin: 0; }
+.hud-foot__guide { margin-left: auto; font-family: var(--font-mono); font-size: 0.76rem; color: var(--cyan-dim); letter-spacing: 0.12em; text-decoration: none; text-transform: uppercase; }
+.hud-foot__guide:hover, .hud-foot__guide:focus-visible { color: var(--cyan); text-decoration: underline; text-underline-offset: 0.3em; }
 .hud-foot__legal { font-family: var(--font-mono); font-size: 0.72rem; color: var(--faint); margin: 1rem 0 0; letter-spacing: 0.1em; }
 
 /* ============================================================
