@@ -1,9 +1,23 @@
 // epic-music.js - original MIDI-inspired tension playlist for the game view.
-(function() {
+(function(root) {
     const STEPS_PER_BAR = 16;
-    const LOOKAHEAD_SECONDS = 0.42;
+    const LOOKAHEAD_SECONDS = 0.65;
     const TICK_MS = 55;
     const SILENCE = 0.0001;
+    const MAX_TEMPO_MULTIPLIER = 1.12;
+
+    function calculateUrgencyTempo(secondsRemaining, turnDurationSeconds) {
+        const remaining = Number(secondsRemaining);
+        const duration = Number(turnDurationSeconds);
+        if (!Number.isFinite(remaining) || !Number.isFinite(duration) || duration <= 0) return 1;
+
+        // Quick turns build tension during their final 20%. Long-form modes do
+        // not spend hours accelerated: their urgency window is capped at 60s.
+        const urgencyWindow = Math.min(60, duration * 0.2);
+        if (urgencyWindow <= 0 || remaining >= urgencyWindow) return 1;
+        const progress = Math.max(0, Math.min(1, (urgencyWindow - Math.max(0, remaining)) / urgencyWindow));
+        return 1 + (MAX_TEMPO_MULTIPLIER - 1) * progress;
+    }
 
     const playlists = {
         campaign: ['ionStormRun', 'orbitalSiege', 'starlanceOverture', 'forgeOfStars'],
@@ -436,6 +450,7 @@
         this.isPlaying = false;
         this.oneShot = false;
         this.noiseBuffer = null;
+        this.tempoMultiplier = 1;
     }
 
     EpicMusicEngine.prototype.start = function(presetName, options = {}) {
@@ -530,12 +545,28 @@
         }
     };
 
+    EpicMusicEngine.prototype.setTurnUrgency = function(secondsRemaining, turnDurationSeconds) {
+        this.tempoMultiplier = calculateUrgencyTempo(secondsRemaining, turnDurationSeconds);
+        return this.tempoMultiplier;
+    };
+
+    EpicMusicEngine.prototype.resetTempo = function() {
+        this.tempoMultiplier = 1;
+    };
+
     EpicMusicEngine.prototype.scheduler = function(token) {
         if (!this.isPlaying || token !== this.playId) return;
 
+        // Do not replay every missed beat after rendering or browser throttling
+        // delays the scheduler. Events scheduled in the past fire together,
+        // causing the audible fast burst that followed some dropouts.
+        if (!Number.isFinite(this.nextStepTime) || this.nextStepTime < this.ctx.currentTime - 0.1) {
+            this.nextStepTime = this.ctx.currentTime + 0.06;
+        }
+
         while (this.nextStepTime < this.ctx.currentTime + LOOKAHEAD_SECONDS) {
             const track = tracks[this.currentTrackIds[this.currentTrackIndex]];
-            const stepSeconds = 60 / track.tempo / 4;
+            const stepSeconds = 60 / (track.tempo * this.tempoMultiplier) / 4;
             this.scheduleStep(track, this.currentStep, this.nextStepTime, stepSeconds);
 
             this.currentStep += 1;
@@ -604,5 +635,9 @@
 
     EpicMusicEngine.playlists = playlists;
     EpicMusicEngine.tracks = tracks;
-    window.EpicMusicEngine = EpicMusicEngine;
-})();
+    EpicMusicEngine.calculateUrgencyTempo = calculateUrgencyTempo;
+    root.EpicMusicEngine = EpicMusicEngine;
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = { EpicMusicEngine, calculateUrgencyTempo };
+    }
+})(typeof window !== 'undefined' ? window : globalThis);

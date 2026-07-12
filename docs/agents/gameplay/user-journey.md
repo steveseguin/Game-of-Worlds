@@ -47,6 +47,8 @@ Modes default to quick (180 seconds), epic (24 hours), and test (30 seconds, whe
 
 At turn advance the server sends `turnphase::resolving`, freezes new mutations, and shows **Resolving** on the turn control. AI, standing orders, income, battles, and victory are awaited in order. `newturn::` is sent only after authoritative writes finish. Reconnect snapshots include the active phase; failures remain frozen and retry the same phase without duplicating completed income.
 
+The procedural soundtrack follows the authoritative turn duration. Normal tempo holds until the final 20% of the turn, capped to the final 60 seconds for long-form modes, then rises gradually to a modest 12% maximum at expiry. Battle pauses freeze the countdown rather than advancing urgency. Scheduler stalls discard missed beats instead of replaying them as a fast burst, and initial game loading retains one music context to avoid a needless cut/restart.
+
 ## 5. Exploration: Every Decision Has A Cost
 
 Unknown sectors create the core risk/reward choice:

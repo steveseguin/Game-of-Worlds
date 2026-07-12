@@ -28,6 +28,17 @@ test.describe('Authoritative gameplay controls', () => {
             return Number.parseInt(text, 10);
         }, { timeout: 15000 }).toBeLessThanOrEqual(30);
 
+        const tempoBehavior = await page.evaluate(() => ({
+            early: window.SoundSystem.setTurnMusicUrgency(7, 30),
+            threshold: window.SoundSystem.setTurnMusicUrgency(6, 30),
+            urgent: window.SoundSystem.setTurnMusicUrgency(3, 30),
+            final: window.SoundSystem.setTurnMusicUrgency(0, 30)
+        }));
+        expect(tempoBehavior.early).toBe(1);
+        expect(tempoBehavior.threshold).toBe(1);
+        expect(tempoBehavior.urgent).toBeGreaterThan(1);
+        expect(tempoBehavior.final).toBeCloseTo(1.12, 5);
+
         const scoutButton = page.locator('.ship-button[data-ship-id="3"]');
         await expect(scoutButton).toBeDisabled({ timeout: 15000 });
         await expect(scoutButton).toHaveAttribute('title', /Spaceport/i);

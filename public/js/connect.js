@@ -48,6 +48,7 @@ let pendingInitialUpdate = false;
 let turnTimer = 180; // 3 minutes per turn
 let turnInterval;
 let turnDeadlineAt = null;
+let turnDurationSeconds = 180;
 let turnFrozen = false; // combined battle-playback and server turn-resolution freeze
 let battleFrozen = false;
 let turnResolutionFrozen = false;
@@ -565,6 +566,10 @@ function renderTurnTimer() {
     }
 }
 
+function updateTurnMusicUrgency() {
+    window.SoundSystem?.setTurnMusicUrgency?.(turnTimer, turnDurationSeconds);
+}
+
 // Update timer display
 function updateTimer() {
     // Battle theater on screen: the turn clock is paused for everyone.
@@ -575,20 +580,24 @@ function updateTimer() {
         ? Math.max(0, Math.ceil((turnDeadlineAt - Date.now()) / 1000))
         : Math.max(0, turnTimer - 1);
     renderTurnTimer();
+    updateTurnMusicUrgency();
 }
 
 function beginTurnCountdown(turnNumber, seconds = 180, deadlineAt = null) {
     currentTurnNumber = Number.parseInt(turnNumber, 10) || currentTurnNumber || 1;
+    const parsedDuration = Number(seconds);
+    turnDurationSeconds = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 180;
     const parsedDeadline = Number(deadlineAt);
     turnDeadlineAt = Number.isFinite(parsedDeadline) && parsedDeadline > Date.now() ? parsedDeadline : null;
     turnTimer = turnDeadlineAt
         ? Math.max(1, Math.ceil((turnDeadlineAt - Date.now()) / 1000))
-        : (Number.isFinite(Number(seconds)) && Number(seconds) > 0 ? Number(seconds) : 180);
+        : turnDurationSeconds;
     setNextTurnButtonLabel('End Turn');
     setNextTurnButtonDisabled(turnFrozen);
     clearInterval(turnInterval);
     renderTurnHeader();
     renderTurnTimer();
+    updateTurnMusicUrgency();
     turnInterval = setInterval(updateTimer, 1000);
 }
 

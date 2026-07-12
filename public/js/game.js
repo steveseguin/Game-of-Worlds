@@ -58,7 +58,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize sound system
     if (window.SoundSystem) {
         SoundSystem.initialize();
-        SoundSystem.playContextualMusic('menu');
+        // This is already the game view. Avoid restarting the soundtrack from
+        // menu music while the initial game snapshot is still loading.
+        SoundSystem.playContextualMusic('game');
     }
     
     // Set up global event handlers

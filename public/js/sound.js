@@ -57,6 +57,7 @@ const SoundSystem = (function() {
     let initialized = false;
     let audioContextCreationFailed = false;
     let proceduralMusic = null;
+    let turnUrgency = { remaining: null, duration: null };
     
     // Audio buffer cache
     const audioBuffers = new Map();
@@ -239,6 +240,11 @@ const SoundSystem = (function() {
 
             currentMusic = { type: 'procedural' };
             currentMusicName = trackName;
+            if (track.oneShot) {
+                engine.resetTempo();
+            } else {
+                engine.setTurnUrgency(turnUrgency.remaining, turnUrgency.duration);
+            }
             engine.start(track.playlist, {
                 volume: targetVolume,
                 fadeIn,
@@ -352,6 +358,20 @@ const SoundSystem = (function() {
                 currentMusic.volume = volume;
             }
         }
+    }
+
+    function setTurnMusicUrgency(secondsRemaining, turnDurationSeconds) {
+        turnUrgency = {
+            remaining: Number(secondsRemaining),
+            duration: Number(turnDurationSeconds)
+        };
+        if (currentMusic?.type === 'procedural' && !music[currentMusicName]?.oneShot) {
+            return getProceduralMusic()?.setTurnUrgency(turnUrgency.remaining, turnUrgency.duration) || 1;
+        }
+        return window.EpicMusicEngine?.calculateUrgencyTempo?.(
+            turnUrgency.remaining,
+            turnUrgency.duration
+        ) || 1;
     }
     
     // Toggle sound on/off
@@ -470,6 +490,7 @@ const SoundSystem = (function() {
         setMasterVolume,
         setMusicVolume,
         setEffectsVolume,
+        setTurnMusicUrgency,
         toggle,
         setEnabled,
         enabled: () => enabled

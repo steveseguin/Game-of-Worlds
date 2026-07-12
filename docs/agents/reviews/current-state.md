@@ -20,6 +20,7 @@ The current gameplay loop is usable end-to-end: authenticate, create/join, choos
 | Turn authority | Server timer plus `activeGames.turnEndsAt`; browser renders epoch deadline and freezes during awaited turn resolution. |
 | Persistence recovery | Started games restore runtime/timers. `games.turn_phase` resumes interrupted resolution; `playersN.last_automation_turn` prevents duplicate automation and `last_income_turn` prevents duplicate recovery income. A normal restarted timer begins a new full cadence because deadline itself is runtime-only. |
 | Battle | Server resolves/persists; clients receive scoped playback or summary; game clock pauses and restarts. |
+| Music/timer | Procedural music keeps normal tempo until the final 20% of a turn (maximum 60-second urgency window), then ramps by at most 12%; delayed scheduler callbacks skip missed beats rather than bursting. |
 | Disconnect | Socket loss does not resign. Current-game snapshot restores lobby/game context. |
 
 Environment variables can override turn intervals and mode multipliers; do not hard-code UI assumptions.
