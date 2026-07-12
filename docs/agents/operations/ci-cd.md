@@ -18,6 +18,8 @@ Primary sources:
 
 ## Server Deploy Flow
 
+Server deploys share one production concurrency group. A newer deploy-branch push cancels a superseded in-progress run so an older job cannot overwrite or falsely reject a newer production commit during exact-SHA verification.
+
 ```mermaid
 flowchart TD
   Trigger[push or workflow_dispatch] --> Checkout[Checkout deploy ref]

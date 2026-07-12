@@ -23,7 +23,9 @@ permissions:
 
 concurrency:
   group: production-server
-  cancel-in-progress: false
+  # Newer production pushes supersede older deploys. Otherwise an older run can
+  # verify after a newer commit is already live and report a false SHA mismatch.
+  cancel-in-progress: true
 
 jobs:
   deploy:
