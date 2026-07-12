@@ -569,6 +569,12 @@ function getGameMapSizeSync(gameId) {
     return { width: 14, height: 8 };
 }
 
+function isSectorWithinGameMap(gameId, sectorId) {
+    if (!isPositiveSafeInteger(sectorId)) return false;
+    const mapSize = getGameMapSizeSync(gameId);
+    return sectorId <= Number(mapSize.width) * Number(mapSize.height);
+}
+
 function rememberGameMapSize(gameId, mapSize) {
     if (!gameState.activeGames[gameId]) {
         gameState.activeGames[gameId] = {};
@@ -3732,6 +3738,9 @@ function buyShip(data, connection) {
                     persistShipPurchase({
                         gameId, playerId, shipType, buildSector, shipData, modifiedShip,
                         spaceportLevel, portId: Number(buildings[0].id), connection
+                    }).catch(error => {
+                        console.error(`Unhandled ship purchase failure in game ${gameId}:`, error);
+                        connection.sendUTF('Error: Ship production is temporarily unavailable; try again');
                     });
                 }
             );
@@ -3740,13 +3749,14 @@ function buyShip(data, connection) {
 }
 
 async function persistShipPurchase({ gameId, playerId, shipType, buildSector, shipData, modifiedShip, spaceportLevel, portId, connection }) {
-    const session = await openTransactionSession();
+    let session = null;
     const productionCost = Math.max(1, Number(shipData.buildSlots) || 1);
     const productionTurn = parseTurnNumber(gameState.turns[gameId], 1);
     const capacity = SPACEPORT_TIERS[spaceportLevel].capacity;
     let spent = false;
     let reserved = false;
     try {
+        session = await openTransactionSession();
         const spendResult = await session.query(
             `UPDATE players${gameId} SET metal = metal - ?, crystal = crystal - ?
              WHERE userid = ? AND metal >= ? AND crystal >= ?`,
@@ -3781,11 +3791,11 @@ async function persistShipPurchase({ gameId, playerId, shipType, buildSector, sh
         updateResources(connection);
         updateSector2(gameId, buildSector);
     } catch (error) {
-        await session.rollback().catch(() => {});
+        if (session) await session.rollback().catch(() => {});
         // Lightweight test adapters and legacy embedders may not expose a
         // transaction-capable pool. Preserve the previous compensation safety
         // for those environments; production MySQL rolls the transaction back.
-        if (!session.transactional) {
+        if (session && !session.transactional) {
             if (reserved) {
                 await session.query(
                     `UPDATE buildings${gameId} SET production_used = GREATEST(0, production_used - ?) WHERE id = ? AND production_turn = ?`,
@@ -3801,7 +3811,7 @@ async function persistShipPurchase({ gameId, playerId, shipType, buildSector, sh
         }
         connection.sendUTF(error.userMessage || 'Error: Failed to create ship; no resources or capacity were consumed');
     } finally {
-        session.release();
+        if (session) session.release();
     }
 }
 
@@ -4037,7 +4047,9 @@ function moveFleetWithCompletion(data, connection, complete) {
         !isPositiveSafeInteger(gameId) ||
         !isPositiveSafeInteger(fromSector) ||
         !isPositiveSafeInteger(toSector) ||
-        !selection
+        !selection ||
+        !isSectorWithinGameMap(gameId, fromSector) ||
+        !isSectorWithinGameMap(gameId, toSector)
     ) {
         connection.sendUTF("Error: Invalid fleet order");
         finish();
@@ -4891,7 +4903,7 @@ function preMoveFleet(data, connection) {
     const gameId = Number(connection.gameid);
     const targetSector = parseSectorToken(parts[1]);
 
-    if (!isPositiveSafeInteger(playerId) || !isPositiveSafeInteger(gameId) || !isPositiveSafeInteger(targetSector)) {
+    if (!isPositiveSafeInteger(playerId) || !isPositiveSafeInteger(gameId) || !isSectorWithinGameMap(gameId, targetSector)) {
         connection.sendUTF("Error: Invalid fleet order");
         return;
     }
@@ -4901,8 +4913,9 @@ function preMoveFleet(data, connection) {
         const sourceSector = parseSectorToken(parts[i]);
         const shipType = parsePositiveDecimalToken(parts[i + 1]);
         const ordinal = parsePositiveDecimalToken(parts[i + 2]);
-        if (!isPositiveSafeInteger(sourceSector) || !SHIP_TYPE_IDS.includes(shipType) || !isPositiveSafeInteger(ordinal)) {
-            continue;
+        if (!isSectorWithinGameMap(gameId, sourceSector) || !SHIP_TYPE_IDS.includes(shipType) || !isPositiveSafeInteger(ordinal)) {
+            connection.sendUTF("Error: Invalid fleet order");
+            return;
         }
 
         const key = `${sourceSector}:${shipType}`;

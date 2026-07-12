@@ -91,6 +91,33 @@ test('ship purchase does not insert after a concurrent balance change', async ()
     assert.equal(queries.some(query => /^INSERT INTO ships1/.test(query.sql)), false);
 });
 
+test('ship purchase reports transaction connection failures without an unhandled rejection', async () => {
+    const connection = makeConnection();
+    server.setDatabase({
+        isMock: true,
+        getConnection(callback) { callback(new Error('pool unavailable')); },
+        query(sql, params, callback) {
+            if (typeof params === 'function') {
+                callback = params;
+                params = [];
+            }
+            if (/^CREATE TABLE IF NOT EXISTS/.test(sql.trim())) return callback(null, { affectedRows: 0 });
+            if (/^SELECT metal, crystal, currentsector, tech, race_id FROM players1/.test(sql)) {
+                return callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '', race_id: 1 }]);
+            }
+            if (/^SELECT b\.id, b\.level/.test(sql)) {
+                return callback(null, [{ id: 2, level: 1, production_turn: 0, production_used: 0 }]);
+            }
+            assert.fail(`unexpected query: ${sql}`);
+        }
+    });
+
+    server.buyShip('//buyship:1', connection);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.deepEqual(connection.sent, ['Error: Failed to create ship; no resources or capacity were consumed']);
+});
+
 test('building purchase does not insert after a concurrent balance change', () => {
     const queries = setScriptedDb((sql, params, callback) => {
         if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) {

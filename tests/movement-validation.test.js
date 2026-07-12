@@ -51,6 +51,15 @@ test('moveFleet rejects partial hexadecimal sector tokens', () => {
     assert.deepEqual(connection.sent, ['Error: Invalid fleet order']);
 });
 
+test('moveFleet rejects an off-map destination before charging or moving ships', () => {
+    setDb({ query() { assert.fail('off-map move should not query the database'); } });
+    const connection = makeConnection();
+
+    server.moveFleet('//move:1:ffff:3:1', connection);
+
+    assert.deepEqual(connection.sent, ['Error: Invalid fleet order']);
+});
+
 test('probeSector rejects sector zero before charging crystal', () => {
     setDb({
         query() {
@@ -74,7 +83,19 @@ test('preMoveFleet rejects malformed triplet tokens before database access', () 
     const connection = makeConnection();
 
     server.preMoveFleet('//sendmmf:2:1:3zz:1', connection);
-    assert.deepEqual(connection.sent, ['Error: No ships selected']);
+    assert.deepEqual(connection.sent, ['Error: Invalid fleet order']);
+});
+
+test('preMoveFleet rejects off-map targets and sources before database access', () => {
+    setDb({ query() { assert.fail('off-map multi-move should not query the database'); } });
+    const targetConnection = makeConnection();
+    const sourceConnection = makeConnection();
+
+    server.preMoveFleet('//sendmmf:ffff:1:3:1', targetConnection);
+    server.preMoveFleet('//sendmmf:2:ffff:3:1', sourceConnection);
+
+    assert.deepEqual(targetConnection.sent, ['Error: Invalid fleet order']);
+    assert.deepEqual(sourceConnection.sent, ['Error: Invalid fleet order']);
 });
 
 test('moveFleet rejects over-requested ship counts before moving a partial fleet', () => {
