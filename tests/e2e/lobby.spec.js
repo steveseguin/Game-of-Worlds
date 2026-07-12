@@ -204,6 +204,14 @@ test.describe('Lobby end-to-end flows', () => {
             contained: true,
             columnsSeparated: true
         });
+        const terranEmblem = page.locator('.race-card.unlocked', { hasText: 'Terran Empire' }).locator('img');
+        await expect(terranEmblem).toHaveAttribute('src', /terran-emblem-v2\.svg$/);
+        await expect.poll(() => terranEmblem.evaluate(image => ({
+            complete: image.complete,
+            width: image.naturalWidth,
+            height: image.naturalHeight
+        }))).toEqual({ complete: true, width: 160, height: 160 });
+        await page.locator('.race-selection-container').screenshot({ path: 'test-results/terran-race-desktop.png' });
 
         const lockedCard = page.locator('.race-card.locked').filter({ hasText: 'Silicon Collective' });
         await lockedCard.click();
@@ -231,6 +239,7 @@ test.describe('Lobby end-to-end flows', () => {
             detailNotSticky: true,
             detailStatsTwoColumns: true
         });
+        await page.locator('.race-selection-container').screenshot({ path: 'test-results/terran-race-mobile.png' });
 
         const terranCard = page.locator('.race-card.unlocked').filter({ hasText: 'Terran Empire' });
         await terranCard.click();

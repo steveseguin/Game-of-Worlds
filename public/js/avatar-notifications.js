@@ -15,7 +15,7 @@ const AvatarNotifications = (function() {
 
     // Race avatar configurations (id matches server race IDs)
     const raceAvatars = {
-        1: { name: 'Terran Empire', color: '#4a90d9', asset: './images/terran-icon.svg' },
+        1: { name: 'Terran Empire', color: '#4a90d9', asset: './images/terran-emblem-v2.svg' },
         2: { name: 'Silicon Collective', color: '#7b68ee', asset: './images/silicon-icon.svg' },
         3: { name: 'Zephyr Swarm', color: '#32cd32', asset: './images/zephyr-icon.svg' },
         4: { name: 'Crystalline Entity', color: '#00ffff', asset: './images/crystalline-icon.svg' },

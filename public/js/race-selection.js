@@ -460,12 +460,12 @@ const RaceSelection = (function() {
 
     function raceIcon(raceId) {
         const icons = {
-            1: 'terran-icon.svg', 2: 'silicon-icon.svg', 3: 'zephyr-icon.svg',
+            1: 'terran-emblem-v2.svg', 2: 'silicon-icon.svg', 3: 'zephyr-icon.svg',
             4: 'crystalline-icon.svg', 5: 'void-icon.svg', 6: 'mechanicus-icon.svg',
             7: 'bioform-icon.svg', 8: 'nomad-icon.svg', 9: 'ancient-icon.svg',
             10: 'quantum-icon.svg', 11: 'titan-icon.svg', 12: 'shadow-icon.svg'
         };
-        return `images/${icons[Number(raceId)] || 'terran-icon.svg'}`;
+        return `images/${icons[Number(raceId)] || 'terran-emblem-v2.svg'}`;
     }
 
     // One-line trade-off hint for the race grid card.

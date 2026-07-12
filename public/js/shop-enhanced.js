@@ -579,7 +579,7 @@ const Shop = (function() {
                 price: '$3.99',
                 description: 'Custom UI skin, avatar frame, and lobby banner.',
                 features: ['Dynamic UI colors', 'Animated banner', 'Unique chat flair'],
-                image: './images/terran-icon.svg'
+                image: './images/terran-emblem-v2.svg'
             },
             {
                 id: 'cosmetic_fleet_trails',
@@ -1704,7 +1704,7 @@ const Shop = (function() {
             },
             cosmetic_empire_theme: {
                 description: 'Custom UI skin, avatar frame, and lobby banner.',
-                image: './images/terran-icon.svg'
+                image: './images/terran-emblem-v2.svg'
             },
             cosmetic_fleet_trails: {
                 description: 'Prismatic fleet trails and warp animation.',

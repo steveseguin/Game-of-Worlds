@@ -76,6 +76,7 @@ import * as THREE from './vendor/three.module.min.js';
         sharedGeo: {},
         selectionRing: null,
         selectedSector: null,
+        pendingFocusSector: null,
         battlePulses: new Map(),
         fleetMoves: [],
         center: new THREE.Vector3(),
@@ -480,7 +481,15 @@ import * as THREE from './vendor/three.module.min.js';
             state.starsBuilt = true;
         }
 
-        state.camTarget.copy(state.center);
+        const requestedFocus = state.pendingFocusSector === null
+            ? null
+            : state.sectors.get(Number(state.pendingFocusSector));
+        if (requestedFocus) {
+            state.camTarget.set(requestedFocus.group.position.x, 0, requestedFocus.group.position.z);
+            state.pendingFocusSector = null;
+        } else {
+            state.camTarget.copy(state.center);
+        }
         fitCamera();
         state.gridBuilt = true;
         return true;
@@ -600,8 +609,13 @@ import * as THREE from './vendor/three.module.min.js';
     }
 
     function focusSector(sectorId) {
-        const entry = state.sectors.get(Number(sectorId));
-        if (!entry) return;
+        const normalizedSectorId = Number(sectorId);
+        const entry = state.sectors.get(normalizedSectorId);
+        if (!entry) {
+            state.pendingFocusSector = normalizedSectorId;
+            return;
+        }
+        state.pendingFocusSector = null;
         state.camTarget.set(entry.group.position.x, 0, entry.group.position.z);
     }
 

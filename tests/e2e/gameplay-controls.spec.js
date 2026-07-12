@@ -51,6 +51,7 @@ test.describe('Authoritative gameplay controls', () => {
         await expect(page.locator('#spaceportProductionStatus')).toContainText('11/12 production', { timeout: 15000 });
         await expect(page.locator('.ship-button[data-ship-id="9"]')).toBeDisabled();
         await expect(page.locator('.ship-button[data-ship-id="9"]')).toHaveAttribute('title', /Military Shipyards/i);
+        await page.screenshot({ path: 'test-results/opening-game-desktop.png', fullPage: false });
 
         await page.reload();
         await dismissFirstRunGuidance(page);
