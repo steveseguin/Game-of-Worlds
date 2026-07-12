@@ -571,8 +571,33 @@ function getGameMapSizeSync(gameId) {
 
 function isSectorWithinGameMap(gameId, sectorId) {
     if (!isPositiveSafeInteger(sectorId)) return false;
-    const mapSize = getGameMapSizeSync(gameId);
+    const active = gameState.activeGames[gameId];
+    // During startup the persisted runtime may not have restored mapSize yet.
+    // Use the largest supported map as the temporary bound so valid sectors in
+    // large games remain usable; normal endpoint queries still verify that the
+    // sectors exist before any movement write occurs.
+    const mapSize = active && active.mapSize && active.mapSize.width && active.mapSize.height
+        ? active.mapSize
+        : calculateMapSize(MAX_LOBBY_PLAYERS);
     return sectorId <= Number(mapSize.width) * Number(mapSize.height);
+}
+
+function validateRestoringMapSectors(gameId, sectorIds, callback) {
+    const active = gameState.activeGames[gameId];
+    if (active && active.mapSize && active.mapSize.width && active.mapSize.height) {
+        callback(sectorIds.every(sectorId => isSectorWithinGameMap(gameId, sectorId)));
+        return;
+    }
+    const unique = [...new Set(sectorIds.map(Number))];
+    db.query(
+        `SELECT sectorid FROM map${gameId} WHERE sectorid IN (${unique.map(() => '?').join(',')})`,
+        unique,
+        (error, rows) => {
+            if (error || !Array.isArray(rows)) return callback(false);
+            const found = new Set(rows.map(row => Number(row.sectorid)));
+            callback(unique.every(sectorId => found.has(sectorId)));
+        }
+    );
 }
 
 function rememberGameMapSize(gameId, mapSize) {
@@ -4056,15 +4081,22 @@ function moveFleetWithCompletion(data, connection, complete) {
         return;
     }
 
-    if (areAdjacentSectors(fromSector, toSector, gameId)) {
-        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, false, finish);
-        return;
-    }
+    validateRestoringMapSectors(gameId, [fromSector, toSector], endpointsValid => {
+        if (!endpointsValid) {
+            connection.sendUTF("Error: Invalid fleet order");
+            finish();
+            return;
+        }
+        if (areAdjacentSectors(fromSector, toSector, gameId)) {
+            moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, false, finish);
+            return;
+        }
 
-    // Paired owned gates bypass normal space. Otherwise every longer order
-    // follows the direct plotted line and encounters crossed sectors in order.
-    checkWarpGateLink(gameId, playerId, fromSector, toSector, linked => {
-        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, linked, finish);
+        // Paired owned gates bypass normal space. Otherwise every longer order
+        // follows the direct plotted line and encounters crossed sectors in order.
+        checkWarpGateLink(gameId, playerId, fromSector, toSector, linked => {
+            moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, linked, finish);
+        });
     });
 }
 
@@ -4934,6 +4966,11 @@ function preMoveFleet(data, connection) {
 
     const totalShips = moveEntries.reduce((sum, entry) => sum + entry.count, 0);
 
+    validateRestoringMapSectors(gameId, [targetSector, ...moveEntries.map(entry => entry.sourceSector)], endpointsValid => {
+    if (!endpointsValid) {
+        connection.sendUTF("Error: Invalid fleet order");
+        return;
+    }
     checkWarpGateSources(gameId, playerId, moveEntries.map(entry => entry.sourceSector), targetSector, warpSources => {
     moveEntries.forEach(entry => { entry.viaWarp = warpSources.has(entry.sourceSector); });
     db.query(
@@ -5100,6 +5137,7 @@ function preMoveFleet(data, connection) {
             );
         }
     );
+    });
     });
 }
 

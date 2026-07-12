@@ -17,6 +17,7 @@ function makeConnection(overrides = {}) {
 }
 
 function setDb(db) {
+    server.gameState.activeGames[1] = { mapSize: { width: 14, height: 8 } };
     server.setDatabase({
         isMock: true,
         query(sql, params, callback) {
@@ -58,6 +59,27 @@ test('moveFleet rejects an off-map destination before charging or moving ships',
     server.moveFleet('//move:1:ffff:3:1', connection);
 
     assert.deepEqual(connection.sent, ['Error: Invalid fleet order']);
+});
+
+test('moveFleet does not reject a supported large-map sector while runtime restoration is pending', async () => {
+    setDb({
+        query(sql, params, callback) {
+            if (typeof params === 'function') {
+                callback = params;
+                params = [];
+            }
+            if (/^SELECT sectorid FROM map1/.test(sql)) return callback(null, [{ sectorid: 1 }, { sectorid: 120 }]);
+            if (/^SELECT sectorid, owner FROM map1/.test(sql)) return callback(null, []);
+            if (/^SELECT crystal, tech FROM players1/.test(sql)) return callback(new Error('startup still restoring'));
+            assert.fail(`unexpected query: ${sql}`);
+        }
+    });
+    delete server.gameState.activeGames[1];
+    const connection = makeConnection();
+
+    await server.moveFleet('//move:1:78:3:1', connection); // hex 0x78 = sector 120
+
+    assert.deepEqual(connection.sent, ['Error: Could not get player data']);
 });
 
 test('probeSector rejects sector zero before charging crystal', () => {
