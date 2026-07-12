@@ -72,8 +72,8 @@ test('ship purchase does not insert after a concurrent balance change', () => {
             callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '', race_id: 1 }]);
             return;
         }
-        if (/^SELECT id FROM buildings1 b/.test(sql)) {
-            callback(null, [{ id: 2 }]);
+        if (/^SELECT b\.id, b\.level/.test(sql)) {
+            callback(null, [{ id: 2, level: 1, production_turn: 0, production_used: 0 }]);
             return;
         }
         if (/^UPDATE players1\s+SET metal = metal -/s.test(sql)) {
@@ -124,9 +124,9 @@ test('ship purchase validates the explicit selected sector instead of the legacy
             callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '', race_id: 1 }]);
             return;
         }
-        if (/^SELECT id FROM buildings1 b/.test(sql)) {
+        if (/^SELECT b\.id, b\.level/.test(sql)) {
             assert.deepEqual(params, [7, 15]);
-            callback(null, [{ id: 2 }]);
+            callback(null, [{ id: 2, level: 1, production_turn: 0, production_used: 0 }]);
             return;
         }
         if (/^UPDATE players1\s+SET metal = metal -/s.test(sql)) {
@@ -173,7 +173,7 @@ test('building purchase validates the explicit selected sector instead of the le
     assert.equal(queries.some(query => query.params?.includes(15)), true);
 });
 
-test('a second Spaceport is rejected before consuming resources or a building slot', () => {
+test('a maximum-tier Spaceport is rejected before consuming resources or a building slot', () => {
     const queries = setScriptedDb((sql, params, callback) => {
         if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) {
             callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '' }]);
@@ -183,9 +183,9 @@ test('a second Spaceport is rejected before consuming resources or a building sl
             callback(null, [{ owner: 7, type: 10 }]);
             return;
         }
-        if (/^SELECT id FROM buildings1 WHERE sectorid = \? AND type = \? LIMIT 1/.test(sql)) {
+        if (/^SELECT id, level FROM buildings1 WHERE sectorid = \? AND type = \? LIMIT 1/.test(sql)) {
             assert.deepEqual(params, [4, 3]);
-            callback(null, [{ id: 91 }]);
+            callback(null, [{ id: 91, level: 4 }]);
             return;
         }
         assert.fail(`unexpected query: ${sql}`);
@@ -194,9 +194,53 @@ test('a second Spaceport is rejected before consuming resources or a building sl
 
     server.buyBuilding('//buybuilding:3:4', connection);
 
-    assert.deepEqual(connection.sent, ['Error: This sector already has a Spaceport']);
+    assert.deepEqual(connection.sent, ['Error: This Spaceport is already at maximum level']);
     assert.equal(queries.some(query => /^UPDATE players1/.test(query.sql)), false);
     assert.equal(queries.some(query => /^SELECT COUNT/.test(query.sql)), false);
+});
+
+test('Spaceport upgrades require research and persist the next local tier', () => {
+    const queries = setScriptedDb((sql, params, callback) => {
+        if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) return callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '19:1' }]);
+        if (/^SELECT owner, type FROM map1/.test(sql)) return callback(null, [{ owner: 7, type: 10 }]);
+        if (/^SELECT id, level FROM buildings1/.test(sql)) return callback(null, [{ id: 91, level: 1 }]);
+        if (/^UPDATE players1 SET metal = metal -/.test(sql)) return callback(null, { affectedRows: 1 });
+        if (/^UPDATE buildings1 SET level =/.test(sql)) return callback(null, { affectedRows: 1 });
+        if (/^SELECT metal, crystal, research FROM players1/.test(sql)) return callback(null, [{ metal: 9649, crystal: 9899, research: 0 }]);
+        if (/^SELECT \* FROM map1/.test(sql)) return callback(null, []);
+        assert.fail(`unexpected query: ${sql}`);
+    });
+    const connection = makeConnection();
+
+    server.buyBuilding('//buybuilding:3:4', connection);
+
+    assert.ok(connection.sent.includes('Success: Upgraded Spaceport to level 2 in sector 4'));
+    assert.ok(queries.some(query => /^UPDATE buildings1 SET level =/.test(query.sql) && Number(query.params[0]) === 2));
+});
+
+test('exhausted local production refunds the ship spend and creates no hull', () => {
+    let refunded = false;
+    const queries = setScriptedDb((sql, params, callback) => {
+        if (/^SELECT metal, crystal, currentsector, tech, race_id FROM players1/.test(sql)) return callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '', race_id: 1 }]);
+        if (/^SELECT b\.id, b\.level/.test(sql)) return callback(null, [{ id: 2, level: 1, production_turn: 1, production_used: 12 }]);
+        if (/^UPDATE players1\s+SET metal = metal -/s.test(sql)) return callback(null, { affectedRows: 1 });
+        if (/^UPDATE buildings1 SET production_turn/.test(sql)) return callback(null, { affectedRows: 0 });
+        if (/^UPDATE buildings1 SET production_used = production_used \+/.test(sql)) return callback(null, { affectedRows: 0 });
+        if (/^UPDATE players1 SET metal = metal \+/.test(sql)) {
+            refunded = true;
+            return callback(null, { affectedRows: 1 });
+        }
+        if (/^SELECT metal, crystal, research FROM players1/.test(sql)) return callback(null, [{ metal: 9999, crystal: 9999, research: 0 }]);
+        assert.fail(`unexpected query: ${sql}`);
+    });
+    server.gameState.turns[1] = 1;
+    const connection = makeConnection();
+
+    server.buyShip('//buyship:1:4', connection);
+
+    assert.equal(refunded, true);
+    assert.equal(queries.some(query => /^INSERT INTO ships1/.test(query.sql)), false);
+    assert.ok(connection.sent.some(message => /lacks 3 production capacity/.test(message)));
 });
 
 test('move option requests return an explicit empty direct-route plan when no ships exist', async () => {
@@ -316,12 +360,24 @@ test('failed ship insertion refunds the guarded resource spend', () => {
             callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '', race_id: 1 }]);
             return;
         }
-        if (/^SELECT id FROM buildings1 b/.test(sql)) {
-            callback(null, [{ id: 2 }]);
+        if (/^SELECT b\.id, b\.level/.test(sql)) {
+            callback(null, [{ id: 2, level: 1, production_turn: 0, production_used: 0 }]);
             return;
         }
         if (/^UPDATE players1\s+SET metal = metal -/s.test(sql)) {
             spendCompleted = true;
+            callback(null, { affectedRows: 1 });
+            return;
+        }
+        if (/^UPDATE buildings1 SET production_turn/.test(sql)) {
+            callback(null, { affectedRows: 1 });
+            return;
+        }
+        if (/^UPDATE buildings1 SET production_used = production_used \+/.test(sql)) {
+            callback(null, { affectedRows: 1 });
+            return;
+        }
+        if (/^UPDATE buildings1 SET production_used = GREATEST/.test(sql)) {
             callback(null, { affectedRows: 1 });
             return;
         }
@@ -346,5 +402,5 @@ test('failed ship insertion refunds the guarded resource spend', () => {
 
     assert.equal(spendCompleted, true);
     assert.equal(refundCompleted, true);
-    assert.ok(connection.sent.includes('Error: Failed to create ship; resources refunded'));
+    assert.ok(connection.sent.includes('Error: Failed to create ship; resources and capacity refunded'));
 });

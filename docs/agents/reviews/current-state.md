@@ -34,9 +34,9 @@ Environment variables can override turn intervals and mode multipliers; do not h
 | AI sandbox | Implemented | UI waits for confirmed seats; functional E2E covers fill-and-start. |
 | Fog/exploration/hazards | Implemented | Four honest intel states: unknown, limited adjacent contact, persisted dated probe memory, and direct live detail. Probe, asteroid, and black-hole mechanics are covered by focused tests/E2E. |
 | Movement/warp | Implemented | Whole-order validation, guarded spend, rollback/refund, visible movement events. |
-| Economy/build/research | Implemented | Guarded balances/state; construction is explicitly sector-local, inventory is visible, unique facilities reject duplicates, and controls mirror server prerequisites and race cost. |
+| Economy/build/research | Implemented | Guarded balances/state; construction is sector-local. Spaceports have four tiers and 12/20/32/48 immediate production capacity per turn; advanced hulls require both empire research and the corresponding local tier. Capacity and resources roll back on failed insertion. |
 | Colonization | Implemented | Terraform and colony-ship checks with conditional ownership claim. |
-| Combat/theater | Implemented | Race/tech/turret resolution, visibility-scoped reports, clock pause, E2E combat paths. |
+| Combat/theater | Implemented | Race/tech/turret resolution, visibility-scoped reports, clock pause, and E2E paths. A surviving attacking victor now captures the sector and infrastructure; captured Spaceports lose one tier. Fully transactional/idempotent battle persistence remains open. |
 | Victory/surrender/cleanup | Implemented | Victory module, explicit resignation, abandonment rules, runtime cleanup tests. |
 | Payments | Optional | Stripe-disabled behavior must remain isolated; production availability depends on secrets/webhook configuration. |
 | Deploy/observability | Implemented | CI, SSH deployment helper, `/health`, `/status`, deploy commit/dirty metadata verifier. |

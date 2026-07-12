@@ -76,7 +76,10 @@ function createGameTables(gameId, callback) {
             id INT AUTO_INCREMENT PRIMARY KEY,
             sectorid INT NOT NULL,
             type INT NOT NULL,
-            owner INT NOT NULL
+            owner INT NOT NULL,
+            level TINYINT NOT NULL DEFAULT 1,
+            production_turn INT NOT NULL DEFAULT 0,
+            production_used INT NOT NULL DEFAULT 0
         )`,
         `CREATE TABLE IF NOT EXISTS wonders${gameId} (
             id INT AUTO_INCREMENT PRIMARY KEY,

@@ -216,10 +216,13 @@ const GameUI = (function() {
         }
         const names = ['Metal Extractor', 'Crystal Refinery', 'Research Academy', 'Spaceport', 'Orbital Turret', 'Warp Gate'];
         const counts = new Map();
+        let spaceportLevel = 0;
         buildings.forEach(item => {
             const type = Number(item?.type);
+            if (type === 3) spaceportLevel = Math.max(spaceportLevel, Number(item?.level) || 1);
             counts.set(type, (counts.get(type) || 0) + (Number(item?.count) || 1));
         });
+        if (spaceportLevel) names[3] = `Spaceport ${spaceportLevel}`;
         const labels = [...counts.entries()].map(([type, count]) => `${names[type] || `Building ${type}`} ×${count}`);
         box.textContent = `Buildings: ${labels.length ? labels.join(', ') : fallback}`;
     }

@@ -13,16 +13,22 @@ const BuildSystem = (() => {
         5: { metal: 200, crystal: 150 }
     };
     const BUILDING_SLOTS = { 1: 1, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6 };
+    const SPACEPORT_TIERS = {
+        1: { capacity: 12 },
+        2: { capacity: 20, research: 1, metal: 350, crystal: 100 },
+        3: { capacity: 32, research: 2, metal: 800, crystal: 250 },
+        4: { capacity: 48, research: 3, metal: 1600, crystal: 500 }
+    };
     const FALLBACK_SHIP_COSTS = {
-        1: { metal: 430, crystal: 0, shipyard: 0 },
-        2: { metal: 780, crystal: 0, shipyard: 1 },
-        3: { metal: 200, crystal: 0, shipyard: 0 },
-        4: { metal: 980, crystal: 120, shipyard: 1 },
-        5: { metal: 1650, crystal: 220, shipyard: 2 },
-        6: { metal: 1000, crystal: 0, shipyard: 0 },
-        7: { metal: 3200, crystal: 450, shipyard: 3 },
-        8: { metal: 1950, crystal: 133, shipyard: 2 },
-        9: { metal: 3000, crystal: 80, shipyard: 3 }
+        1: { metal: 430, crystal: 0, shipyard: 0, production: 3 },
+        2: { metal: 780, crystal: 0, shipyard: 1, production: 5 },
+        3: { metal: 200, crystal: 0, shipyard: 0, production: 1 },
+        4: { metal: 980, crystal: 120, shipyard: 1, production: 8 },
+        5: { metal: 1650, crystal: 220, shipyard: 2, production: 12 },
+        6: { metal: 1000, crystal: 0, shipyard: 0, production: 7 },
+        7: { metal: 3200, crystal: 450, shipyard: 3, production: 24 },
+        8: { metal: 1950, crystal: 133, shipyard: 2, production: 7 },
+        9: { metal: 3000, crystal: 80, shipyard: 3, production: 16 }
     };
     let initialized = false;
 
@@ -82,6 +88,16 @@ const BuildSystem = (() => {
         const usedSlots = counts.reduce((sum, count) => sum + count, 0);
         const techFx = window.TechSystem?.aggregateEffects?.(player?.techLevels || {}) || {};
         const battleFrozen = typeof turnFrozen !== 'undefined' && turnFrozen;
+        const spaceport = Array.isArray(sector?.buildings) ? sector.buildings.find(item => Number(item?.type) === 3) : null;
+        const spaceportLevel = spaceport ? Math.max(1, Number(spaceport.level) || 1) : 0;
+        const portTier = SPACEPORT_TIERS[spaceportLevel] || null;
+        const activeTurn = Number(typeof currentTurnNumber !== 'undefined' ? currentTurnNumber : 0);
+        const productionUsed = spaceport && Number(spaceport.production_turn) === activeTurn ? Math.max(0, Number(spaceport.production_used) || 0) : 0;
+        const productionRemaining = portTier ? Math.max(0, portTier.capacity - productionUsed) : 0;
+        const portStatus = document.getElementById('spaceportProductionStatus');
+        if (portStatus) portStatus.textContent = portTier
+            ? `Spaceport ${spaceportLevel}: ${productionRemaining}/${portTier.capacity} production available this turn`
+            : 'Build a Spaceport to produce ships locally.';
 
         for (let type = 0; type <= 5; type += 1) {
             const button = document.querySelector(`[data-building-id="${type}"]`);
@@ -92,11 +108,28 @@ const BuildSystem = (() => {
             else if (!sector) reason = 'Select one of your sectors first';
             else if (!owned) reason = 'You can only build in a sector you own';
             else if (!slotLimit) reason = 'This sector cannot support buildings';
-            else if ((type === 3 || type === 5) && counts[type] > 0) reason = `This sector already has a ${type === 3 ? 'Spaceport' : 'Warp Gate'}`;
-            else if (usedSlots >= slotLimit) reason = `All ${slotLimit} building slots are occupied`;
+            else if (type === 5 && counts[type] > 0) reason = 'This sector already has a Warp Gate';
+            else if (type === 3 && spaceportLevel >= 4) reason = 'This Spaceport is already at maximum level';
+            else if (type === 3 && spaceportLevel > 0 && Number(techFx.shipyards || 0) < spaceportLevel) reason = `Upgrade requires Military Shipyards Lv${spaceportLevel}`;
+            else if (usedSlots >= slotLimit && !(type === 3 && spaceportLevel > 0)) reason = `All ${slotLimit} building slots are occupied`;
             else if (type === 5 && Number(techFx.orbital || 0) < 1) reason = 'Needs Orbital Engineering Lv1';
+            else if (type === 3 && spaceportLevel > 0 && !hasResources(resources, SPACEPORT_TIERS[spaceportLevel + 1])) reason = 'Not enough resources for this upgrade';
             else if (!hasResources(resources, BUILDING_COSTS[type])) reason = 'Not enough resources';
             setAvailability(button, !reason, reason);
+            if (type === 3 && button) {
+                const costLabel = button.querySelector('small');
+                if (spaceportLevel > 0 && spaceportLevel < 4) {
+                    const next = SPACEPORT_TIERS[spaceportLevel + 1];
+                    button.childNodes[0].textContent = `Upgrade Spaceport ${spaceportLevel + 1} `;
+                    if (costLabel) costLabel.textContent = `${next.metal}M ${next.crystal}C · needs Yard ${next.research}`;
+                } else if (spaceportLevel >= 4) {
+                    button.childNodes[0].textContent = 'Spaceport 4 ';
+                    if (costLabel) costLabel.textContent = 'Maximum tier · 48 production';
+                } else {
+                    button.childNodes[0].textContent = 'Spaceport ';
+                    if (costLabel) costLabel.textContent = '100M 50C · 12 production';
+                }
+            }
         }
 
         const allowed = Array.isArray(access.shipAccess) ? access.shipAccess : null;
@@ -106,6 +139,7 @@ const BuildSystem = (() => {
             const id = Number(button.dataset.shipId);
             const cost = shipCosts[id] || FALLBACK_SHIP_COSTS[id] || {};
             const yardNeeded = Number(cost.shipyard || 0);
+            const productionNeeded = Math.max(1, Number(cost.production) || 1);
             const label = button.querySelector('small');
             if (label) {
                 label.textContent = `${cost.metal || 0}M${cost.crystal ? ` ${cost.crystal}C` : ''}${yardNeeded ? ` · Yard ${yardNeeded}` : ''}`;
@@ -117,7 +151,12 @@ const BuildSystem = (() => {
             else if (counts[3] < 1) reason = 'Build a Spaceport in this sector first';
             else if (allowed && !allowed.includes(id)) reason = `${access.raceName || 'Your race'} cannot build this hull`;
             else if (yardLevel < yardNeeded) reason = `Needs Military Shipyards Lv${yardNeeded}`;
+            else if (spaceportLevel < yardNeeded + 1) reason = `Needs local Spaceport ${yardNeeded + 1}`;
+            else if (productionRemaining < productionNeeded) reason = `Needs ${productionNeeded} production; ${productionRemaining} remains this turn`;
             else if (!hasResources(resources, cost)) reason = 'Not enough resources';
+            if (label && !label.textContent.includes(`${productionNeeded}P`)) {
+                label.append(document.createTextNode(` · ${productionNeeded}P`));
+            }
             setAvailability(button, !reason, reason);
         });
     }

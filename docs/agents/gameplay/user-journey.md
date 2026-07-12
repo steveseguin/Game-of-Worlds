@@ -35,7 +35,7 @@ Review moments: empty/encoded room names, full room, simultaneous last-seat join
 The first useful loop should be legible without trial-and-error:
 
 - The selected homeworld shows ownership, buildings, fleet, yields, and available building slots.
-- Ship controls explain that a Spaceport is required; building one immediately unlocks otherwise legal affordable hulls.
+- Ship controls explain the dual gate: empire Military Shipyards research unlocks hull knowledge, while the selected sector needs a sufficiently advanced local Spaceport and enough production capacity remaining this turn.
 - Advanced/race-forbidden hulls remain disabled with the exact doctrine or Military Shipyards reason.
 - Construction is immediate. There is no client-side queue or weighted ship build capacity.
 - Orders attempted before authenticated synchronization fail visibly instead of throwing or silently disappearing.
@@ -79,7 +79,7 @@ The local/global boundary is part of the experience contract:
 - Buildings, building slots, resource improvements, defenses, Warp Gates, Spaceports, fleets, and newly built ships belong to a specific sector. Spaceports and Warp Gates are unique per sector; duplicate attempts are disabled in the browser and rejected by the server before payment.
 - Metal/crystal/research balances, race doctrine, and researched technologies belong to the empire.
 - The Build tab names the selected destination and sends it with each construction order. A server must re-check ownership and local prerequisites for that destination; it may not trust an earlier UI selection.
-- Today a local Spaceport enables immediate ship construction while empire-wide Military Shipyards research unlocks heavier hull knowledge. A future local yard-tier and build-capacity system is desirable, but is not live until its persistence, queue, refund, AI, and reconnect rules are designed and tested.
+- Spaceports have four local tiers with 12/20/32/48 production per turn. Hull `buildSlots` are their production cost. Construction is immediate and unused capacity does not carry over. Spaceport II-IV require Military Shipyards 1-3 respectively; each advanced hull independently requires the same research depth and a corresponding local tier.
 
 Review moments: last building slot, duplicate fast clicks, race discounts, branch cap, exact-balance spend, failed insert/refund, competing colony claims, newly colonized UI refresh, and victory progress after economy changes.
 

@@ -94,14 +94,14 @@ Building ids:
 | `0` | Metal Extractor | Improves local metal output. |
 | `1` | Crystal Refinery | Improves local crystal output. |
 | `2` | Research Academy | Improves local research output. |
-| `3` | Spaceport | Required for ship construction. |
+| `3` | Spaceport | Unique local facility with four tiers and 12/20/32/48 production per turn. |
 | `4` | Orbital Turret | Adds defensive battle strength when owner defends that sector. |
 | `5` | Warp Gate | Requires Orbital Engineering 1; enables long movement when both endpoints have gates. |
 
 Slot limits depend on sector type. Black holes and empty/non-colonizable hazards should not accept normal buildings.
 The server owns the slot table, includes `buildingSlotLimit` in live sector detail, and shares the same table with the read-only invariant auditor. Client fallback values exist only for compatibility before authoritative detail arrives.
 
-Spaceports and Warp Gates are existence-based local facilities, so each is unique per sector. A duplicate is rejected before spending resources or consuming a slot. Extractors, Refineries, Academies, and Orbital Turrets may be repeated because each row has an additive effect.
+Spaceports and Warp Gates are unique per sector. Reusing the Spaceport construction control upgrades it when research and resources permit; duplicate Warp Gates are rejected. Extractors, Refineries, Academies, and Orbital Turrets may be repeated because each row has an additive effect.
 
 Construction commands include the selected sector token. Ownership, slot capacity, uniqueness, and prerequisites are validated against that explicit destination; the server no longer writes selection changes to `players.currentsector`. Legacy commands may still fall back to that old cursor, but modern UI selection is client-local and cannot race another sector-detail response.
 
@@ -126,12 +126,13 @@ Construction checks:
 - Valid ship id.
 - Race doctrine permits the hull, except colony ships remain generally available.
 - Enough metal/crystal.
-- Spaceport exists in the explicitly selected build sector.
+- A Spaceport of at least `shipyardLevelRequired + 1` exists in the explicitly selected build sector.
+- The Spaceport has enough remaining local production for the hull's `buildSlots` weight.
 - Empire-wide Military Shipyards research is high enough for advanced hulls.
 
 Ship construction is immediate; there is no shipyard queue or weighted build-slot capacity. `techstate::` includes race-adjusted `shipCosts` and shipyard requirements so the browser can explain the same rules the server enforces.
 
-The longer-term shipyard direction is local capacity without discarding the existing research tree: Military Shipyards research represents empire knowledge; a local Spaceport/shipyard tier would determine which known hulls that world can produce and how much simultaneous tonnage it can handle. That queue/tier system is **not implemented yet** and must not be implied by the UI. Introduce it only with persisted per-sector levels, migration/reconnect behavior, queue cancellation/refunds, AI support, and functional tests. Existing Spaceports are uniqueness-based facilities, not implicit levels.
+Military Shipyards research represents empire knowledge; the local Spaceport tier determines which known hulls that world can produce. Tiers I-IV provide 12/20/32/48 production per turn. Ship construction remains immediate, consumes the hull's `buildSlots` value, resets lazily at the next turn, and rolls capacity back if insertion fails. Captured Spaceports lose one tier and reset their production ledger.
 
 ## Combat
 

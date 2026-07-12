@@ -104,6 +104,12 @@ const PROBE_COST_CRYSTAL = 300;
 const INTEL_LEVEL_TERRAIN = 1;
 const INTEL_LEVEL_PROBE = 2;
 const UNIQUE_LOCAL_BUILDINGS = new Set([3, 5]); // Spaceport and Warp Gate have existence-only effects.
+const SPACEPORT_TIERS = Object.freeze({
+    1: Object.freeze({ capacity: 12, research: 0 }),
+    2: Object.freeze({ capacity: 20, research: 1, metal: 350, crystal: 100 }),
+    3: Object.freeze({ capacity: 32, research: 2, metal: 800, crystal: 250 }),
+    4: Object.freeze({ capacity: 48, research: 3, metal: 1600, crystal: 500 })
+});
 // Crystal per ship moved, by hull class (dreadnoughts are expensive to push around).
 const SHIP_MOVE_COST = {};
 Object.values(combatSystem.SHIP_TYPES || {}).forEach(ship => {
@@ -740,7 +746,10 @@ function createGameTables(gameId, callback) {
             id INT AUTO_INCREMENT PRIMARY KEY,
             sectorid INT NOT NULL,
             type INT NOT NULL,
-            owner INT NOT NULL
+            owner INT NOT NULL,
+            level TINYINT NOT NULL DEFAULT 1,
+            production_turn INT NOT NULL DEFAULT 0,
+            production_used INT NOT NULL DEFAULT 0
         )`,
         `CREATE TABLE IF NOT EXISTS ${tables.wonders} (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -800,7 +809,7 @@ function ensurePlayerTableColumns(gameId, callback) {
     let idx = 0;
     const ensureNext = () => {
         if (idx >= requiredColumns.length) {
-            ensureExploredSectorColumns(gameId, callback);
+            ensureBuildingTableColumns(gameId, callback);
             return;
         }
 
@@ -827,6 +836,39 @@ function ensurePlayerTableColumns(gameId, callback) {
     };
 
     ensureNext();
+}
+
+function ensureBuildingTableColumns(gameId, callback) {
+    let table;
+    try {
+        table = gameTables(gameId).buildings;
+    } catch (error) {
+        callback(error);
+        return;
+    }
+    if (db.isMock) {
+        ensureExploredSectorColumns(gameId, callback);
+        return;
+    }
+    const columns = [
+        { name: 'level', sql: `ALTER TABLE ${table} ADD COLUMN level TINYINT NOT NULL DEFAULT 1` },
+        { name: 'production_turn', sql: `ALTER TABLE ${table} ADD COLUMN production_turn INT NOT NULL DEFAULT 0` },
+        { name: 'production_used', sql: `ALTER TABLE ${table} ADD COLUMN production_used INT NOT NULL DEFAULT 0` }
+    ];
+    let index = 0;
+    const next = () => {
+        if (index >= columns.length) return ensureExploredSectorColumns(gameId, callback);
+        const column = columns[index++];
+        db.query(`SHOW COLUMNS FROM ${table} LIKE '${column.name}'`, (showErr, rows) => {
+            if (showErr) return callback(showErr);
+            if (Array.isArray(rows) && rows.length) return next();
+            db.query(column.sql, alterErr => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') return callback(alterErr);
+                next();
+            });
+        });
+    };
+    next();
 }
 
 function ensureExploredSectorColumns(gameId, callback) {
@@ -2768,6 +2810,7 @@ function handleGetTestMapTerrain(request, response, gameId) {
 }
 
 async function resolveBattle(gameId, sectorId, player1, player2) {
+    const tables = gameTables(gameId);
     let attackerId = Number(player1);
     let defenderId = Number(player2);
     if (!Number.isFinite(attackerId) || !Number.isFinite(defenderId) || attackerId === defenderId) {
@@ -2777,7 +2820,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
     try {
         // The sector owner (if either combatant) defends: home turf, home turrets.
         const sectorRows = await queryDb(
-            `SELECT owner, type FROM map${gameId} WHERE sectorid = ?`,
+            `SELECT owner, type FROM ${tables.map} WHERE sectorid = ?`,
             [sectorId]
         ).catch(() => []);
         const sectorOwner = sectorRows && sectorRows[0] ? Number(sectorRows[0].owner) : 0;
@@ -2794,7 +2837,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
             getPlayerBattleProfile(gameId, defenderId),
             sectorOwner === defenderId
                 ? queryDb(
-                    `SELECT id FROM buildings${gameId} WHERE sectorid = ? AND type = 4 AND owner = ?`,
+                    `SELECT id FROM ${tables.buildings} WHERE sectorid = ? AND type = 4 AND owner = ?`,
                     [sectorId, defenderId]
                 ).catch(() => [])
                 : Promise.resolve([])
@@ -2837,7 +2880,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
             if (lostReal > 0) {
                 const loseIds = turretRows.slice(0, lostReal).map(row => row.id).filter(Number.isFinite);
                 if (loseIds.length > 0) {
-                    await queryDb(`DELETE FROM buildings${gameId} WHERE id IN (${loseIds.join(',')})`).catch(() => {});
+                    await queryDb(`DELETE FROM ${tables.buildings} WHERE id IN (${loseIds.join(',')})`).catch(() => {});
                 }
             }
         }
@@ -2849,6 +2892,22 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
             replaceShipsAfterBattle(gameId, sectorId, attackerId, attackerSurvivors),
             replaceShipsAfterBattle(gameId, sectorId, defenderId, defenderSurvivors)
         ]);
+
+        // A surviving attacker that wins controls the sector and its remaining
+        // local infrastructure. Previously the defeated defender retained the
+        // planet indefinitely, leaving the victor unable to use or develop it.
+        if (battleLog.result === 'attackerVictory' && sumShipRows(attackerSurvivors) > 0) {
+            await queryDb(`UPDATE ${tables.map} SET owner = ? WHERE sectorid = ?`, [attackerId, sectorId]);
+            await queryDb(
+                `UPDATE ${tables.buildings}
+                 SET owner = ?,
+                     level = CASE WHEN type = 3 THEN GREATEST(1, level - 1) ELSE level END,
+                     production_turn = CASE WHEN type = 3 THEN 0 ELSE production_turn END,
+                     production_used = CASE WHEN type = 3 THEN 0 ELSE production_used END
+                 WHERE sectorid = ?`,
+                [attackerId, sectorId]
+            );
+        }
 
         updateSector2(gameId, sectorId);
 
@@ -2956,9 +3015,10 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
 }
 
 function getPlayerBattleProfile(gameId, playerId) {
+    const table = gameTables(gameId).players;
     return new Promise(resolve => {
         db.query(
-            `SELECT race_id, tech FROM players${gameId} WHERE userid = ?`,
+            `SELECT race_id, tech FROM ${table} WHERE userid = ?`,
             [playerId],
             (err, rows) => {
                 if (err || !rows || rows.length === 0) {
@@ -2975,9 +3035,10 @@ function getPlayerBattleProfile(gameId, playerId) {
 }
 
 function getPlayerShips(gameId, sectorId, playerId) {
+    const table = gameTables(gameId).ships;
     return new Promise((resolve, reject) => {
         db.query(
-            `SELECT type, COUNT(*) as count FROM ships${gameId} 
+            `SELECT type, COUNT(*) as count FROM ${table}
              WHERE sectorid = ? AND owner = ? 
              GROUP BY type`,
             [sectorId, playerId],
@@ -3015,10 +3076,11 @@ function replaceShipsAfterBattle(gameId, sectorId, playerId, ships) {
 
 function updateShipsAfterBattle(gameId, sectorId, playerId, ships, callback = () => {}) {
     const survivors = normalizeShipRows(ships);
+    const table = gameTables(gameId).ships;
 
     // Remove all ships first
     db.query(
-        `DELETE FROM ships${gameId} WHERE sectorid = ? AND owner = ?`,
+        `DELETE FROM ${table} WHERE sectorid = ? AND owner = ?`,
         [sectorId, playerId],
         (err) => {
             if (err) {
@@ -3043,7 +3105,7 @@ function updateShipsAfterBattle(gameId, sectorId, playerId, ships, callback = ()
             let failed = false;
             inserts.forEach(params => {
                 db.query(
-                    `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
+                    `INSERT INTO ${table} (owner, type, sectorid) VALUES (?, ?, ?)`,
                     params,
                     insertErr => {
                         if (failed) return;
@@ -3199,7 +3261,8 @@ function sendTechState(connection) {
                 shipCosts[ship.id] = {
                     metal: Number(modified.cost.metal) || 0,
                     crystal: Number(modified.cost.crystal) || 0,
-                    shipyard: techSystem.shipyardLevelRequired(ship.id)
+                    shipyard: techSystem.shipyardLevelRequired(ship.id),
+                    production: Math.max(1, Number(ship.buildSlots) || 1)
                 };
             });
 
@@ -3618,7 +3681,7 @@ function buyShip(data, connection) {
             
             // Check if player has spaceport in current sector
             db.query(
-                `SELECT id FROM buildings${gameId} b
+                `SELECT b.id, b.level, b.production_turn, b.production_used FROM buildings${gameId} b
                  JOIN map${gameId} m ON b.sectorid = m.sectorid
                  WHERE m.owner = ? AND b.sectorid = ? AND b.type = 3`,
                 [playerId, buildSector],
@@ -3633,6 +3696,12 @@ function buyShip(data, connection) {
                     const yardsNeeded = techSystem.shipyardLevelRequired(shipType);
                     if (techFx.shipyards < yardsNeeded) {
                         connection.sendUTF(`Error: ${shipData.name} requires Military Shipyards ${yardsNeeded} (Shipyards branch)`);
+                        return;
+                    }
+                    const spaceportLevel = Math.min(4, Math.max(1, Number(buildings[0].level) || 1));
+                    const portLevelNeeded = yardsNeeded + 1;
+                    if (spaceportLevel < portLevelNeeded) {
+                        connection.sendUTF(`Error: ${shipData.name} requires a local Spaceport ${portLevelNeeded}`);
                         return;
                     }
                     
@@ -3650,27 +3719,54 @@ function buyShip(data, connection) {
                                     : "Error: Resources changed; refresh and try again");
                                 return;
                             }
-                            
-                            // Create the ship
+
+                            const productionCost = Math.max(1, Number(shipData.buildSlots) || 1);
+                            const productionTurn = parseTurnNumber(gameState.turns[gameId], 1);
+                            const capacity = SPACEPORT_TIERS[spaceportLevel].capacity;
+                            const portId = Number(buildings[0].id);
+                            const refundResources = message => db.query(
+                                `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
+                                [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId],
+                                () => {
+                                    connection.sendUTF(message);
+                                    updateResources(connection);
+                                }
+                            );
                             db.query(
-                                `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                                [playerId, shipType, buildSector],
-                                (err) => {
-                                    if (err) {
-                                        db.query(
-                                            `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
-                                            [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId],
-                                            () => {
-                                                connection.sendUTF("Error: Failed to create ship; resources refunded");
-                                                updateResources(connection);
-                                            }
-                                        );
+                                `UPDATE buildings${gameId} SET production_turn = ?, production_used = 0 WHERE id = ? AND production_turn <> ?`,
+                                [productionTurn, portId, productionTurn],
+                                normalizeErr => {
+                                    if (normalizeErr) {
+                                        refundResources('Error: Could not reserve local production; resources refunded');
                                         return;
                                     }
-                                    
-                                    connection.sendUTF(`Success: Built ${shipData.name} in sector ${buildSector}`);
-                                    updateResources(connection);
-                                    updateSector2(gameId, buildSector);
+                                    db.query(
+                                        `UPDATE buildings${gameId} SET production_used = production_used + ? WHERE id = ? AND owner = ? AND production_turn = ? AND production_used + ? <= ?`,
+                                        [productionCost, portId, playerId, productionTurn, productionCost, capacity],
+                                        (reserveErr, reserveResult) => {
+                                            if (reserveErr || !reserveResult || Number(reserveResult.affectedRows) !== 1) {
+                                                refundResources(`Error: Spaceport ${spaceportLevel} lacks ${productionCost} production capacity this turn`);
+                                                return;
+                                            }
+                                            db.query(
+                                                `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
+                                                [playerId, shipType, buildSector],
+                                                insertErr => {
+                                                    if (insertErr) {
+                                                        db.query(
+                                                            `UPDATE buildings${gameId} SET production_used = GREATEST(0, production_used - ?) WHERE id = ? AND production_turn = ?`,
+                                                            [productionCost, portId, productionTurn],
+                                                            () => refundResources('Error: Failed to create ship; resources and capacity refunded')
+                                                        );
+                                                        return;
+                                                    }
+                                                    connection.sendUTF(`Success: Built ${shipData.name} in sector ${buildSector} (${productionCost} production)`);
+                                                    updateResources(connection);
+                                                    updateSector2(gameId, buildSector);
+                                                }
+                                            );
+                                        }
+                                    );
                                 }
                             );
                         }
@@ -3819,7 +3915,7 @@ function buyBuilding(data, connection) {
 
                     if (UNIQUE_LOCAL_BUILDINGS.has(buildingType)) {
                         db.query(
-                            `SELECT id FROM buildings${gameId} WHERE sectorid = ? AND type = ? LIMIT 1`,
+                            `SELECT id, level FROM buildings${gameId} WHERE sectorid = ? AND type = ? LIMIT 1`,
                             [buildSector, buildingType],
                             (uniqueErr, rows) => {
                                 if (uniqueErr) {
@@ -3827,6 +3923,57 @@ function buyBuilding(data, connection) {
                                     return;
                                 }
                                 if (rows && rows.length) {
+                                    if (buildingType === 3) {
+                                        const currentLevel = Math.max(1, Number(rows[0].level) || 1);
+                                        const nextLevel = currentLevel + 1;
+                                        const tier = SPACEPORT_TIERS[nextLevel];
+                                        if (!tier) {
+                                            fail('Error: This Spaceport is already at maximum level');
+                                            return;
+                                        }
+                                        const techFx = techSystem.aggregateEffects(techSystem.parseTechLevels(player.tech));
+                                        if (Number(techFx.shipyards) < tier.research) {
+                                            fail(`Error: Spaceport ${nextLevel} requires Military Shipyards ${tier.research}`);
+                                            return;
+                                        }
+                                        if (Number(player.metal) < tier.metal || Number(player.crystal) < tier.crystal) {
+                                            fail('Error: Not enough resources for this Spaceport upgrade');
+                                            return;
+                                        }
+                                        const tables = gameTables(gameId);
+                                        db.query(
+                                            `UPDATE ${tables.players} SET metal = metal - ?, crystal = crystal - ? WHERE userid = ? AND metal >= ? AND crystal >= ?`,
+                                            [tier.metal, tier.crystal, playerId, tier.metal, tier.crystal],
+                                            (spendErr, spendResult) => {
+                                                if (spendErr || !spendResult || Number(spendResult.affectedRows) !== 1) {
+                                                    fail('Error: Resources changed; refresh and try again');
+                                                    return;
+                                                }
+                                                db.query(
+                                                    `UPDATE ${tables.buildings} SET level = ? WHERE id = ? AND owner = ? AND level = ?`,
+                                                    [nextLevel, rows[0].id, playerId, currentLevel],
+                                                    (upgradeErr, upgradeResult) => {
+                                                        if (upgradeErr || !upgradeResult || Number(upgradeResult.affectedRows) !== 1) {
+                                                            db.query(
+                                                                `UPDATE ${tables.players} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
+                                                                [tier.metal, tier.crystal, playerId],
+                                                                () => {
+                                                                    fail('Error: Spaceport changed; resources refunded');
+                                                                    updateResources(connection);
+                                                                }
+                                                            );
+                                                            return;
+                                                        }
+                                                        pendingBuildingPurchases.delete(purchaseKey);
+                                                        connection.sendUTF(`Success: Upgraded Spaceport to level ${nextLevel} in sector ${buildSector}`);
+                                                        updateResources(connection);
+                                                        updateSector2(gameId, buildSector);
+                                                    }
+                                                );
+                                            }
+                                        );
+                                        return;
+                                    }
                                     fail(`Error: This sector already has a ${building.name}`);
                                     return;
                                 }
@@ -4560,7 +4707,7 @@ function sendSectorDetailToPlayer(gameId, sectorId, connection) {
              WHERE sectorid = ? GROUP BY owner, type`,
             [sectorId]
         ).catch(() => []),
-        queryDb(`SELECT type FROM buildings${gameId} WHERE sectorid = ?`, [sectorId]).catch(() => [])
+        queryDb(`SELECT type, level, production_turn, production_used FROM buildings${gameId} WHERE sectorid = ?`, [sectorId]).catch(() => [])
     ]).then(([sectorRows, ships, buildings]) => {
         if (!sectorRows || !sectorRows[0]) return;
         const sector = sectorRows[0];
@@ -4598,7 +4745,7 @@ function updateSector2(gameId, sectorId) {
 
                     // Get buildings in sector
                     db.query(
-                        `SELECT type FROM buildings${gameId} WHERE sectorid = ?`,
+                        `SELECT type, level, production_turn, production_used FROM buildings${gameId} WHERE sectorid = ?`,
                         [sectorId],
                         (err, buildings) => {
                             if (err) buildings = [];
@@ -6844,5 +6991,6 @@ module.exports = {
     isBattlePauseActive,
     pauseTurnTimerForBattle,
     broadcastBattlePause,
+    resolveBattle,
     gameState
 };

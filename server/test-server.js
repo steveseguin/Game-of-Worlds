@@ -147,6 +147,7 @@ async function runMockServerSmoke() {
         const root = await request('/');
         assert.equal(root.statusCode, 200);
         assert.match(root.body, /Game of Worlds|Game of Words/i);
+        assert.match(root.headers['content-security-policy-report-only'] || '', /default-src 'self'/);
 
         const health = await request('/health');
         assert.equal(health.statusCode, 200);

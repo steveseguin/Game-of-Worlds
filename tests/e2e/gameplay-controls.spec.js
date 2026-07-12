@@ -46,6 +46,10 @@ test.describe('Authoritative gameplay controls', () => {
         await expect(page.locator('#bb4')).toBeEnabled();
         await page.locator('#bb4').click();
         await expect(scoutButton).toBeEnabled({ timeout: 15000 });
+        await expect(page.locator('#spaceportProductionStatus')).toContainText('12/12 production', { timeout: 15000 });
+        await expect(scoutButton.locator('small')).toContainText('1P');
+        await scoutButton.click();
+        await expect(page.locator('#spaceportProductionStatus')).toContainText('11/12 production', { timeout: 15000 });
         await expect(page.locator('.ship-button[data-ship-id="9"]')).toBeDisabled();
         await expect(page.locator('.ship-button[data-ship-id="9"]')).toHaveAttribute('title', /Military Shipyards/i);
 

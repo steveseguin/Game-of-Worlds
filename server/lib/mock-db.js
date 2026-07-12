@@ -790,8 +790,60 @@ class MockDatabase {
                 if (/^INSERT INTO `?buildings\d+`?/i.test(normalized)) {
                     const [sectorid, type, owner] = (params || []).map(Number);
                     const id = this._nextBuildingId(gameId);
-                    buildings.push({ id, sectorid, type, owner });
+                    buildings.push({ id, sectorid, type, owner, level: 1, production_turn: 0, production_used: 0 });
                     return this._async(callback, null, { insertId: id, affectedRows: 1 });
+                }
+
+                if (/^UPDATE `?buildings\d+`? SET owner = \?/i.test(normalized) && /WHERE sectorid = \?/i.test(normalized)) {
+                    const [owner, sectorid] = (params || []).map(Number);
+                    let affectedRows = 0;
+                    buildings.forEach(building => {
+                        if (building.sectorid === sectorid) {
+                            building.owner = owner;
+                            if (/level = CASE WHEN type = 3/i.test(normalized) && building.type === 3) {
+                                building.level = Math.max(1, Number(building.level || 1) - 1);
+                                building.production_turn = 0;
+                                building.production_used = 0;
+                            }
+                            affectedRows += 1;
+                        }
+                    });
+                    return this._async(callback, null, { affectedRows });
+                }
+
+                if (/^UPDATE `?buildings\d+`? SET level = \? WHERE id = \? AND owner = \? AND level = \?/i.test(normalized)) {
+                    const [level, id, owner, expectedLevel] = (params || []).map(Number);
+                    const building = buildings.find(row => row.id === id && row.owner === owner && Number(row.level || 1) === expectedLevel);
+                    if (!building) return this._async(callback, null, { affectedRows: 0 });
+                    building.level = level;
+                    return this._async(callback, null, { affectedRows: 1 });
+                }
+
+                if (/^UPDATE `?buildings\d+`? SET production_turn = \?, production_used = 0 WHERE id = \? AND production_turn <> \?/i.test(normalized)) {
+                    const [turn, id, expectedTurn] = (params || []).map(Number);
+                    const building = buildings.find(row => row.id === id && Number(row.production_turn || 0) !== expectedTurn);
+                    if (building) {
+                        building.production_turn = turn;
+                        building.production_used = 0;
+                    }
+                    return this._async(callback, null, { affectedRows: building ? 1 : 0 });
+                }
+
+                if (/^UPDATE `?buildings\d+`? SET production_used = production_used \+ \?/i.test(normalized)) {
+                    const [amount, id, owner, turn, repeatedAmount, capacity] = (params || []).map(Number);
+                    const building = buildings.find(row => row.id === id && row.owner === owner && Number(row.production_turn) === turn);
+                    if (!building || Number(building.production_used || 0) + repeatedAmount > capacity) {
+                        return this._async(callback, null, { affectedRows: 0 });
+                    }
+                    building.production_used = Number(building.production_used || 0) + amount;
+                    return this._async(callback, null, { affectedRows: 1 });
+                }
+
+                if (/^UPDATE `?buildings\d+`? SET production_used = GREATEST\(0, production_used - \?\)/i.test(normalized)) {
+                    const [amount, id, turn] = (params || []).map(Number);
+                    const building = buildings.find(row => row.id === id && Number(row.production_turn) === turn);
+                    if (building) building.production_used = Math.max(0, Number(building.production_used || 0) - amount);
+                    return this._async(callback, null, { affectedRows: building ? 1 : 0 });
                 }
 
                 if (/^SELECT COUNT\(\*\) as count FROM `?buildings\d+`? WHERE sectorid = \?/i.test(normalized)) {
@@ -840,10 +892,10 @@ class MockDatabase {
                     return this._async(callback, null, [{ count }]);
                 }
 
-                if (/^SELECT id FROM `?buildings\d+`? b JOIN/i.test(normalized)) {
+                if (/^SELECT (?:b\.)?id(?:, b\.level, b\.production_turn, b\.production_used)? FROM `?buildings\d+`? b JOIN/i.test(normalized)) {
                     const [owner, sectorid] = (params || []).map(Number);
                     const match = buildings.find(b => b.owner === owner && b.sectorid === sectorid && b.type === 3);
-                    return this._async(callback, null, match ? [{ id: match.id }] : []);
+                    return this._async(callback, null, match ? [{ id: match.id, level: match.level || 1, production_turn: match.production_turn || 0, production_used: match.production_used || 0 }] : []);
                 }
 
                 if (/^SELECT b\.type, COUNT\(\*\) as count FROM `?buildings\d+`?/i.test(normalized)) {
@@ -859,16 +911,21 @@ class MockDatabase {
                     return this._async(callback, null, rows);
                 }
 
-                if (/^SELECT type FROM `?buildings\d+`? WHERE sectorid = \?/i.test(normalized)) {
+                if (/^SELECT type(?:, level, production_turn, production_used)? FROM `?buildings\d+`? WHERE sectorid = \?/i.test(normalized)) {
                     const sectorid = Number(params[0]);
-                    const rows = buildings.filter(b => b.sectorid === sectorid).map(b => ({ type: b.type }));
+                    const rows = buildings.filter(b => b.sectorid === sectorid).map(b => ({
+                        type: b.type,
+                        level: b.level || 1,
+                        production_turn: b.production_turn || 0,
+                        production_used: b.production_used || 0
+                    }));
                     return this._async(callback, null, rows);
                 }
 
-                if (/^SELECT id FROM `?buildings\d+`? WHERE sectorid = \? AND type = \? LIMIT 1/i.test(normalized)) {
+                if (/^SELECT id(?:, level)? FROM `?buildings\d+`? WHERE sectorid = \? AND type = \? LIMIT 1/i.test(normalized)) {
                     const [sectorid, type] = (params || []).map(Number);
                     const row = buildings.find(b => b.sectorid === sectorid && b.type === type);
-                    return this._async(callback, null, row ? [{ id: row.id }] : []);
+                    return this._async(callback, null, row ? [{ id: row.id, level: row.level || 1 }] : []);
                 }
 
                 if (/^SELECT id FROM `?buildings\d+`? WHERE sectorid = \? AND type = (\?|\d+) AND owner = \?/i.test(normalized)) {

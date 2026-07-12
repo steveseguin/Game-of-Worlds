@@ -444,6 +444,9 @@ function createNewGame() {
                                     sectorid INT NOT NULL,
                                     type INT NOT NULL,
                                     owner INT NOT NULL,
+                                    level TINYINT NOT NULL DEFAULT 1,
+                                    production_turn INT NOT NULL DEFAULT 0,
+                                    production_used INT NOT NULL DEFAULT 0,
                                     FOREIGN KEY (owner) REFERENCES users(id)
                                 )
                             `, err => {

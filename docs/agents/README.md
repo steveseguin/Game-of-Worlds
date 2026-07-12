@@ -17,6 +17,7 @@ Primary live runtime files:
 
 ## Index
 
+- [Active Hardening And Production Roadmap](reviews/hardening-roadmap.md)
 - [Code Map](maps/code-map.md)
 - [HTTP API](server/http-api.md)
 - [HTTP Request Flow](server/http-request-flow.md)

@@ -81,7 +81,10 @@ const CONTENT_TYPE_MAP = {
 const SECURITY_HEADERS = {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'same-origin',
-    'X-Frame-Options': 'SAMEORIGIN'
+    'X-Frame-Options': 'SAMEORIGIN',
+    // Observe deployment requirements before enforcing CSP. Inline styles and
+    // legacy templates are intentionally reported while they are migrated.
+    'Content-Security-Policy-Report-Only': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
 };
 const STARTED_AT = new Date().toISOString();
 const DEPLOY_INFO_PATH = path.resolve(__dirname, 'deploy-info.json');
