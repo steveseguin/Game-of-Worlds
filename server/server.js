@@ -27,6 +27,7 @@ const PaymentEndpoints = require('./lib/payment-endpoints');
 const gameInvariants = require('./lib/game-invariants');
 const { TABLE_BASES, gameTables, requireGameId } = require('./lib/game-tables');
 const { formatTurnPhase } = require('./lib/websocket-protocol');
+const { traceDirectRoute, summarizeKnownRoute } = require('./lib/movement/routes');
 
 // Game state (shared with index.js)
 const gameState = {
@@ -3414,12 +3415,12 @@ function revealProbedSector(gameId, playerId, targetSector, connection, knownSec
 
             if (sectorType === 2) {
                 updateResources(connection);
-                connection.sendUTF(`Error: Our probe was destroyed in sector ${targetSector} - there's a BLACK HOLE there!`);
+                connection.sendUTF(`Error: Our probe was destroyed while entering sector ${targetSector}. Telemetry ended before the cause could be identified.`);
                 return;
             }
             if (sectorType === 1 && Number(sectorOwner) !== Number(playerId)) {
                 updateResources(connection);
-                connection.sendUTF(`Error: Our probe was destroyed in sector ${targetSector} - dangerous asteroid field!`);
+                connection.sendUTF(`Error: Our probe was destroyed while entering sector ${targetSector}. Telemetry ended before the cause could be identified.`);
                 return;
             }
 
@@ -3445,7 +3446,7 @@ function revealProbedSector(gameId, playerId, targetSector, connection, knownSec
 
                 if (advantage <= -COUNTERSPY_KILL_ADVANTAGE) {
                     updateResources(connection);
-                    connection.sendUTF(`Error: Our probe was destroyed near sector ${targetSector} - enemy counter-intelligence is jamming the region. (Espionage tech would help.)`);
+                    connection.sendUTF(`Error: Our probe was destroyed while entering sector ${targetSector}. Telemetry ended before the cause could be identified.`);
                     notifyPlayer(Number(sectorOwner), `Counter-intelligence: we DESTROYED an enemy probe over sector ${targetSector}.`);
                     return;
                 }
@@ -3873,14 +3874,10 @@ function moveFleetWithCompletion(data, connection, complete) {
         return;
     }
 
-    // Not adjacent: a warp gate at both ends (on sectors you own) links them.
+    // Paired owned gates bypass normal space. Otherwise every longer order
+    // follows the direct plotted line and encounters crossed sectors in order.
     checkWarpGateLink(gameId, playerId, fromSector, toSector, linked => {
-        if (!linked) {
-            connection.sendUTF("Error: Sectors are not adjacent (warp gates at both ends allow long jumps)");
-            finish();
-            return;
-        }
-        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, true, finish);
+        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, linked, finish);
     });
 }
 
@@ -3907,6 +3904,26 @@ function checkWarpGateLink(gameId, playerId, fromSector, toSector, callback) {
     );
 }
 
+function checkWarpGateSources(gameId, playerId, sourceSectors, targetSector, callback) {
+    const endpoints = [...new Set([targetSector, ...(sourceSectors || [])].map(Number).filter(Number.isSafeInteger))];
+    if (!endpoints.length) return callback(new Set());
+    db.query(
+        `SELECT sectorid, owner FROM map${gameId} WHERE sectorid IN (${endpoints.map(() => '?').join(',')})`,
+        endpoints,
+        (mapErr, mapRows) => {
+            if (mapErr || !Array.isArray(mapRows)) return callback(new Set());
+            const owned = new Set(mapRows.filter(row => Number(row.owner) === Number(playerId)).map(row => Number(row.sectorid)));
+            if (!owned.has(Number(targetSector))) return callback(new Set());
+            db.query(`SELECT sectorid, type FROM buildings${gameId} WHERE owner = ?`, [playerId], (buildingErr, rows) => {
+                if (buildingErr || !Array.isArray(rows)) return callback(new Set());
+                const gates = new Set(rows.filter(row => Number(row.type) === 5).map(row => Number(row.sectorid)));
+                if (!gates.has(Number(targetSector))) return callback(new Set());
+                callback(new Set((sourceSectors || []).map(Number).filter(sectorId => owned.has(sectorId) && gates.has(sectorId))));
+            });
+        }
+    );
+}
+
 function calculateFleetMoveCost(shipTypes, shipCounts, techCsv) {
     const techFx = techSystem.aggregateEffects(techSystem.parseTechLevels(techCsv));
     let rawCost = 0;
@@ -3914,6 +3931,80 @@ function calculateFleetMoveCost(shipTypes, shipCounts, techCsv) {
         rawCost += (SHIP_MOVE_COST[type] || 1) * Math.max(0, shipCounts[index] || 0);
     });
     return Math.max(1, Math.ceil(rawCost * (1 - techFx.moveDiscount)));
+}
+
+function calculateFleetRouteCost(moveEntries, targetSector, techCsv, gameId) {
+    const techFx = techSystem.aggregateEffects(techSystem.parseTechLevels(techCsv));
+    const mapSize = getGameMapSizeSync(gameId);
+    let rawCost = 0;
+    moveEntries.forEach(entry => {
+        const distance = entry.viaWarp ? 1 : Math.max(1, traceDirectRoute(
+            entry.sourceSector,
+            targetSector,
+            mapSize.width,
+            mapSize.height
+        ).length);
+        rawCost += (SHIP_MOVE_COST[entry.shipType] || 1) * entry.count * distance;
+    });
+    return Math.max(1, Math.ceil(rawCost * (1 - techFx.moveDiscount)));
+}
+
+async function applyIntermediateRouteHazards(gameId, playerId, targetSector, routeGroups, connection) {
+    const mapSize = getGameMapSizeSync(gameId);
+    const groups = (routeGroups || []).map(group => ({
+        sourceSector: Number(group.sourceSector),
+        shipIds: (group.shipIds || []).map(Number).filter(Number.isSafeInteger),
+        route: group.viaWarp ? [] : traceDirectRoute(group.sourceSector, targetSector, mapSize.width, mapSize.height).slice(0, -1)
+    }));
+    const routeIds = [...new Set(groups.flatMap(group => group.route))];
+    if (!routeIds.length) return { destroyed: 0, survivors: groups.reduce((n, group) => n + group.shipIds.length, 0) };
+
+    const placeholders = routeIds.map(() => '?').join(',');
+    const rows = await queryDb(
+        `SELECT sectorid, type, owner FROM map${gameId} WHERE sectorid IN (${placeholders})`,
+        routeIds
+    );
+    const sectors = new Map((rows || []).map(row => [Number(row.sectorid), row]));
+    const destroyed = new Set();
+    const reports = [];
+
+    groups.forEach(group => {
+        let active = group.shipIds.filter(id => !destroyed.has(id));
+        for (const sectorId of group.route) {
+            if (!active.length) break;
+            const sector = sectors.get(Number(sectorId));
+            if (!sector) continue;
+            const type = Number(sector.type);
+            if (type === 2) {
+                active.forEach(id => destroyed.add(id));
+                reports.push({ type: 'blackhole', sectorId, count: active.length });
+                markSectorExplored(gameId, playerId, sectorId);
+                active = [];
+                break;
+            }
+            if (type === 1 && Number(sector.owner) !== Number(playerId)) {
+                const losses = active.filter(() => Math.random() > 0.5);
+                losses.forEach(id => destroyed.add(id));
+                if (losses.length) reports.push({ type: 'asteroid', sectorId, count: losses.length });
+                markSectorExplored(gameId, playerId, sectorId);
+                active = active.filter(id => !destroyed.has(id));
+            }
+        }
+    });
+
+    if (destroyed.size) {
+        const ids = [...destroyed];
+        await queryDb(`DELETE FROM ships${gameId} WHERE id IN (${ids.map(() => '?').join(',')}) AND owner = ?`, [...ids, playerId]);
+    }
+    reports.forEach(report => {
+        if (report.type === 'blackhole') {
+            connection.sendUTF(`Error: Fleet contact was lost in sector ${report.sectorId}. A black hole annihilated ${report.count} ship${report.count === 1 ? '' : 's'} on the plotted route.`);
+        } else {
+            connection.sendUTF(`Error: Asteroids in sector ${report.sectorId} destroyed ${report.count} ship${report.count === 1 ? '' : 's'} during transit.`);
+        }
+    });
+    const total = groups.reduce((n, group) => n + group.shipIds.length, 0);
+    return { destroyed: destroyed.size, survivors: Math.max(0, total - destroyed.size) };
 }
 
 function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shipCounts, connection, viaWarpGate, complete = () => {}) {
@@ -3935,7 +4026,13 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
             }
 
             // Movement burns crystal by hull class; propulsion tech discounts it.
-            const moveCost = calculateFleetMoveCost(shipTypes, shipCounts, results[0].tech);
+            const moveCost = viaWarpGate
+                ? calculateFleetMoveCost(shipTypes, shipCounts, results[0].tech)
+                : calculateFleetRouteCost(shipTypes.map((shipType, index) => ({
+                    sourceSector: fromSector,
+                    shipType,
+                    count: shipCounts[index]
+                })), toSector, results[0].tech, gameId);
 
             if (results[0].crystal < moveCost) {
                 connection.sendUTF(`Error: Not enough crystal for movement (need ${moveCost})`);
@@ -4022,8 +4119,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                                     // Everyone with eyes on either sector watches the fleet fly.
                                     broadcastFleetMove(gameId, playerId, fromSector, toSector, totalShips, viaWarpGate);
 
-                                    // HAZARD HANDLING & TERRITORY CONTROL
-                                    applyArrivalEffects(gameId, playerId, toSector, connection, () => {
+                                    const finishArrival = () => applyArrivalEffects(gameId, playerId, toSector, connection, () => {
                                         try {
                                             updateResources(connection);
                                             updateSector2(gameId, fromSector);
@@ -4033,6 +4129,37 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                                             complete();
                                         }
                                     });
+                                    if (viaWarpGate) {
+                                        finishArrival();
+                                    } else {
+                                        applyIntermediateRouteHazards(gameId, playerId, toSector, [{
+                                            sourceSector: fromSector,
+                                            shipIds: selectedIds
+                                        }], connection).then(result => {
+                                            if (result.survivors > 0) finishArrival();
+                                            else {
+                                                updateResources(connection);
+                                                updateSector2(gameId, fromSector);
+                                                updateSector2(gameId, toSector);
+                                                sendVisibleMapState(gameId, connection);
+                                                complete();
+                                            }
+                                        }).catch(() => {
+                                            db.query(
+                                                `UPDATE ships${gameId} SET sectorid = ? WHERE id IN (${selectedIds.map(() => '?').join(',')}) AND owner = ? AND sectorid = ?`,
+                                                [fromSector, ...selectedIds, playerId, toSector],
+                                                () => db.query(
+                                                    `UPDATE players${gameId} SET crystal = crystal + ? WHERE userid = ?`,
+                                                    [moveCost, playerId],
+                                                    () => {
+                                                        connection.sendUTF('Error: Route hazards could not be resolved; movement was rolled back and crystal refunded');
+                                                        updateResources(connection);
+                                                        complete();
+                                                    }
+                                                )
+                                            );
+                                        });
+                                    }
                                 }
                             );
                         }
@@ -4523,9 +4650,8 @@ function surroundShips(data, connection) {
 function sendMultiMoveOptions(connection, gameId, targetSector) {
     const playerId = Number(connection.name);
     const mapSize = getGameMapSizeSync(gameId);
-    const adjacentIds = getAdjacentSectorIds(targetSector, mapSize.width, mapSize.height);
-    const sendEmpty = () => connection.sendUTF(`mmoptions:${formatSectorToken(targetSector)}`);
-    if (!Number.isFinite(playerId) || adjacentIds.length === 0) {
+    const sendEmpty = () => connection.sendUTF(`mmoptionsv2::${JSON.stringify({ target: targetSector, sources: [] })}`);
+    if (!Number.isFinite(playerId)) {
         sendEmpty();
         return;
     }
@@ -4539,46 +4665,47 @@ function sendMultiMoveOptions(connection, gameId, targetSector) {
                 return;
             }
 
-            db.query(
-                `SELECT sectorid, type, COUNT(*) as count FROM ships${gameId} WHERE owner = ? GROUP BY sectorid, type`,
-                [playerId],
-                (shipsErr, shipRows) => {
-                    if (shipsErr || !Array.isArray(shipRows) || shipRows.length === 0) {
-                        sendEmpty();
-                        return;
-                    }
-
-                    const bySector = new Map();
-                    shipRows.forEach(row => {
-                        const sectorId = Number(row.sectorid);
-                        const type = Number(row.type);
-                        const count = Number(row.count) || 0;
-                        if (!adjacentIds.includes(sectorId) || count <= 0 || type < 1 || type > 9) {
-                            return;
-                        }
-
-                        if (!bySector.has(sectorId)) {
-                            bySector.set(sectorId, new Array(9).fill(0));
-                        }
-                        bySector.get(sectorId)[type - 1] += count;
-                    });
-
-                    if (bySector.size === 0) {
-                        sendEmpty();
-                        return;
-                    }
-
-                    const payload = ['mmoptions', formatSectorToken(targetSector)];
-                    Array.from(bySector.entries())
-                        .sort((a, b) => a[0] - b[0])
-                        .forEach(([sectorId, counts]) => {
-                            payload.push(formatSectorToken(sectorId));
-                            counts.forEach(count => payload.push(String(count)));
-                        });
-
-                    connection.sendUTF(payload.join(':'));
-                }
-            );
+            Promise.all([
+                queryDb(`SELECT sectorid, type, COUNT(*) as count FROM ships${gameId} WHERE owner = ? GROUP BY sectorid, type`, [playerId]),
+                queryDb(`SELECT sectorid FROM explored_sectors${gameId} WHERE playerid = ?`, [playerId]).catch(() => []),
+                queryDb(`SELECT * FROM map${gameId}`, []),
+                queryDb(`SELECT sectorid, type FROM buildings${gameId} WHERE owner = ?`, [playerId]).catch(() => []),
+                queryDb(`SELECT tech FROM players${gameId} WHERE userid = ?`, [playerId]).catch(() => [{ tech: '' }])
+            ]).then(([shipRows, exploredRows, mapRows, buildingRows, playerRows]) => {
+                const bySector = new Map();
+                (shipRows || []).forEach(row => {
+                    const sectorId = Number(row.sectorid);
+                    const type = Number(row.type);
+                    const count = Number(row.count) || 0;
+                    if (sectorId === Number(targetSector) || count <= 0 || type < 1 || type > 9) return;
+                    if (!bySector.has(sectorId)) bySector.set(sectorId, new Array(9).fill(0));
+                    bySector.get(sectorId)[type - 1] += count;
+                });
+                const explored = new Set((exploredRows || []).map(row => Number(row.sectorid)));
+                const known = new Map((mapRows || [])
+                    .filter(row => explored.has(Number(row.sectorid)) || Number(row.owner) === playerId)
+                    .map(row => [Number(row.sectorid), row]));
+                const gates = new Set((buildingRows || []).filter(row => Number(row.type) === 5).map(row => Number(row.sectorid)));
+                const targetIsOwned = (mapRows || []).some(row => Number(row.sectorid) === Number(targetSector) && Number(row.owner) === playerId);
+                const moveDiscount = techSystem.aggregateEffects(techSystem.parseTechLevels(playerRows?.[0]?.tech || '')).moveDiscount || 0;
+                const sources = Array.from(bySector.entries()).sort((a, b) => a[0] - b[0]).map(([sectorId, counts]) => {
+                    const viaWarp = targetIsOwned && gates.has(Number(targetSector)) && gates.has(Number(sectorId));
+                    const route = viaWarp ? [Number(targetSector)] : traceDirectRoute(sectorId, targetSector, mapSize.width, mapSize.height);
+                    return {
+                        sector: sectorId,
+                        counts,
+                        distance: route.length,
+                        route,
+                        viaWarp,
+                        unitCosts: counts.map((_count, index) => (SHIP_MOVE_COST[index + 1] || 1) * Math.max(1, route.length) * (1 - moveDiscount)),
+                        known: summarizeKnownRoute(route, known, playerId)
+                    };
+                });
+                connection.sendUTF(`mmoptionsv2::${JSON.stringify({ target: targetSector, sources })}`);
+            }).catch(error => {
+                console.warn(`Unable to build route-aware move options for game ${gameId}:`, error && error.message ? error.message : error);
+                sendEmpty();
+            });
         }
     );
 }
@@ -4617,15 +4744,10 @@ function preMoveFleet(data, connection) {
         return { sourceSector, shipType, count };
     });
 
-    for (const entry of moveEntries) {
-        if (!areAdjacentSectors(entry.sourceSector, targetSector, gameId)) {
-            connection.sendUTF(`Error: Sector ${Number(entry.sourceSector)} is not adjacent to ${Number(targetSector)}`);
-            return;
-        }
-    }
-
     const totalShips = moveEntries.reduce((sum, entry) => sum + entry.count, 0);
 
+    checkWarpGateSources(gameId, playerId, moveEntries.map(entry => entry.sourceSector), targetSector, warpSources => {
+    moveEntries.forEach(entry => { entry.viaWarp = warpSources.has(entry.sourceSector); });
     db.query(
         `SELECT crystal, tech FROM players${gameId} WHERE userid = ?`,
         [playerId],
@@ -4636,11 +4758,7 @@ function preMoveFleet(data, connection) {
             }
 
             const crystals = Number(resourceRows[0].crystal) || 0;
-            const moveCost = calculateFleetMoveCost(
-                moveEntries.map(entry => entry.shipType),
-                moveEntries.map(entry => entry.count),
-                resourceRows[0].tech
-            );
+            const moveCost = calculateFleetRouteCost(moveEntries, targetSector, resourceRows[0].tech, gameId);
             if (crystals < moveCost) {
                 connection.sendUTF(`Error: Not enough crystal for movement (need ${moveCost})`);
                 return;
@@ -4736,11 +4854,15 @@ function preMoveFleet(data, connection) {
 
                                     markSectorExplored(gameId, playerId, targetSector);
                                     moveEntries.forEach(entry => {
-                                        broadcastFleetMove(gameId, playerId, entry.sourceSector, targetSector, entry.count, false);
+                                        broadcastFleetMove(gameId, playerId, entry.sourceSector, targetSector, entry.count, entry.viaWarp);
                                     });
 
-                                    // HAZARD HANDLING & TERRITORY CONTROL
-                                    applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
+                                    const routeGroups = Array.from(touchedSectors).map(sourceSector => ({
+                                        sourceSector,
+                                        viaWarp: warpSources.has(sourceSector),
+                                        shipIds: selectedMoves.filter(move => move.sourceSector === sourceSector).map(move => move.id)
+                                    }));
+                                    const finishArrival = () => applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
                                         updateResources(connection);
                                         touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));
                                         updateSector2(gameId, targetSector);
@@ -4750,6 +4872,31 @@ function preMoveFleet(data, connection) {
                                             }
                                         });
                                     });
+                                    applyIntermediateRouteHazards(gameId, playerId, targetSector, routeGroups, connection)
+                                        .then(result => {
+                                            if (result.survivors > 0) finishArrival();
+                                            else {
+                                                updateResources(connection);
+                                                touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));
+                                                updateSector2(gameId, targetSector);
+                                                sendVisibleMapState(gameId, connection);
+                                            }
+                                        })
+                                        .catch(() => {
+                                            Promise.all(selectedMoves.map(move => queryDb(
+                                                `UPDATE ships${gameId} SET sectorid = ? WHERE id = ? AND owner = ? AND sectorid = ?`,
+                                                [move.sourceSector, move.id, playerId, targetSector]
+                                            ).catch(() => null))).then(() => {
+                                                db.query(
+                                                    `UPDATE players${gameId} SET crystal = crystal + ? WHERE userid = ?`,
+                                                    [moveCost, playerId],
+                                                    () => {
+                                                        connection.sendUTF('Error: Route hazards could not be resolved; movement was rolled back and crystal refunded');
+                                                        updateResources(connection);
+                                                    }
+                                                );
+                                            });
+                                        });
                                     return null;
                                 })
                                 .catch(() => {
@@ -4765,6 +4912,7 @@ function preMoveFleet(data, connection) {
             );
         }
     );
+    });
 }
 
 function updateResources(connection) {
@@ -6351,15 +6499,18 @@ async function nextStepTowards(gameId, current, target, playerId) {
     if (candidates.length === 0) return null;
 
     try {
-        const rows = await queryDb(
-            `SELECT sectorid, type, owner FROM map${gameId} WHERE sectorid IN (${candidates.map(() => '?').join(',')})`,
-            candidates
-        );
+        const [rows, exploredRows] = await Promise.all([
+            queryDb(`SELECT sectorid, type, owner FROM map${gameId} WHERE sectorid IN (${candidates.map(() => '?').join(',')})`, candidates),
+            queryDb(`SELECT sectorid FROM explored_sectors${gameId} WHERE playerid = ?`, [playerId]).catch(() => [])
+        ]);
         const info = new Map((rows || []).map(r => [Number(r.sectorid), r]));
-        // Prefer candidates in order, skipping black holes and unowned asteroid belts.
+        const known = new Set((exploredRows || []).map(row => Number(row.sectorid)));
+        // The AI uses only its own intelligence. Unknown preferred steps remain a
+        // real gamble; known black holes and unsecured belts can be routed around.
         for (const id of candidates) {
             const row = info.get(id);
             if (!row) continue;
+            if (!known.has(id) && Number(row.owner) !== Number(playerId)) return id;
             const type = Number(row.type);
             if (type === 2) continue; // black hole: never
             if (type === 1 && Number(row.owner) !== Number(playerId)) continue; // asteroid: only if secured

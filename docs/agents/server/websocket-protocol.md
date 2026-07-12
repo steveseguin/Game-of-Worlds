@@ -64,7 +64,7 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | --- | --- | --- |
 | `//update` | inline in `handleCommand` | Sends resources, tech, empire, victory, visible sectors. |
 | `//sector:<sectorHex>` | `updateSector` | Requests sector detail if visible; may return `probeonly`. |
-| `//moveoptions:<sectorHex>` | `requestMoveOptions` | Explicitly requests the player's ships in adjacent sectors that are eligible to move to this destination. Returns `mmoptions:` even when none are eligible. |
+| `//moveoptions:<sectorHex>` | `requestMoveOptions` | Requests available ships and direct-route preflight for this destination. Returns `mmoptionsv2::` even when none are eligible. |
 | `//probe:<sectorHex>` | `probeSector` | Costs 300 crystal, reveals or destroys probe on hazards/counter-intel. |
 | `//colonize[:sectorHex]` | `colonizePlanet` | Uses colony ship, validates terraform requirement. |
 | `//buyship:<shipId>[:sectorHex]` | `buyShip` | Builds in the explicit selected sector (legacy clients fall back to `currentsector`); requires resources, a local spaceport, race doctrine, and empire-wide shipyard research. |
@@ -114,6 +114,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `sectorintel::<sectorId>::<json>` | game | Persisted, dated probe memory returned outside current live coverage. |
 | `probeonly:<sectorHex>` | game | Sector is not visible; probing is possible. |
 | `mmoptions:<target>:...` | game | Multi-source move options. |
+| `mmoptionsv2::<json>` | game | Route-aware fleet options; classifies only known hazards and counts unmapped route sectors. |
 | `fleetmove::<from>::<to>::<player>::<count>::<warpFlag>` | game | Fleet movement animation/event. |
 | `battlepause::<freezeMs>::<playbackMs>` | game | Turn timer is paused during battle playback. |
 | `battle::...`, `battlereport::...`, `battle_summary::...` | game | Battle playback and telemetry. |

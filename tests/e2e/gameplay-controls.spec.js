@@ -123,8 +123,11 @@ test.describe('Authoritative gameplay controls', () => {
         await page.locator('#probeSuggestionMove').click();
         await expect(page.locator('#multiMove')).toBeVisible({ timeout: 10000 });
         await expect(page.locator('#sectorofattack')).not.toHaveText('-');
-        await expect(page.locator('#multiMoveEmpty')).toBeVisible();
-        await expect(page.locator('#multiMoveEmpty')).toContainText(/No eligible ships|Checking adjacent sectors/i);
+        await expect(page.locator('#shipsFromNearBy option')).not.toHaveCount(0);
+        const firstMoveOption = await page.locator('#shipsFromNearBy option').first().getAttribute('value');
+        await page.locator('#shipsFromNearBy').selectOption(firstMoveOption);
+        await expect(page.locator('#movePreflightSummary')).toContainText(/route|hazard|unmapped/i);
+        await expect(page.locator('#movePreflightDetail')).toContainText(/ship.*origin.*sector/i);
         await page.locator('#closeMultiMove').click();
 
         await fogTile.click();

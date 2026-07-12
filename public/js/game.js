@@ -132,11 +132,7 @@ function sendallmm() {
         websocket.send("//sendmmf:" + message);
         document.getElementById('multiMove').style.display = 'none';
     };
-    if (window.NotificationSystem?.confirm) {
-        window.NotificationSystem.confirm('Fleet Orders', `Send all ships to sector ${sectorLabel}?`, dispatchAll, null);
-    } else {
-        dispatchAll();
-    }
+    confirmFleetDispatch('all', sectorLabel, dispatchAll);
 }
 
 function sendaamm() {
@@ -173,10 +169,18 @@ function sendaamm() {
         websocket.send("//sendmmf:" + message);
         document.getElementById('multiMove').style.display = 'none';
     };
+    confirmFleetDispatch('attack', sectorLabel, dispatchAttack);
+}
+
+function confirmFleetDispatch(mode, sectorLabel, dispatch) {
+    const preview = window.GameUI?.describeFleetOrder?.(mode) || {};
+    const warning = preview.detail ? ` ${preview.detail}` : '';
+    const title = preview.danger ? 'Fleet Orders — Certain Loss' : 'Fleet Orders';
+    const body = `Send ${mode === 'all' ? 'all ships' : (mode === 'attack' ? 'all attack ships' : 'the selected ships')} to sector ${sectorLabel}?${warning}`;
     if (window.NotificationSystem?.confirm) {
-        window.NotificationSystem.confirm('Fleet Orders', `Send all attack ships to sector ${sectorLabel}?`, dispatchAttack, null);
-    } else {
-        dispatchAttack();
+        window.NotificationSystem.confirm(title, body, dispatch, null);
+    } else if (window.confirm(body)) {
+        dispatch();
     }
 }
 

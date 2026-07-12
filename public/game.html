@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260712d">
+    <link rel="stylesheet" href="css/style.css?v=20260712e">
     <style>
         /* Critical layout fixes & visual polish */
         html, body {
@@ -559,7 +559,7 @@
                 <div>Colony Ships: <span id="fleet-colony">0</span></div>
             </div>
             <div style="margin-top:15px;font-weight:bold;margin-bottom:10px;">Move Fleet</div>
-            <div style="font-size:13px;color:#aaa;">Select a destination, then use Move Ships in its sector panel. Eligible ships must be in an adjacent sector.</div>
+            <div style="font-size:13px;color:#aaa;">Select a destination, then use Move Ships in its sector panel. Fleets travel on a direct plotted line; every crossed sector can affect the journey.</div>
         </div>
 
         <!-- Tech Tab -->
@@ -595,6 +595,18 @@
             <div id="combatAnalyticsPlayers" style="display:grid;gap:8px;"></div>
             <div style="font-weight:bold;margin:12px 0 6px;">Recent Battles</div>
             <div id="combatAnalyticsRecent" style="display:grid;gap:6px;"></div>
+            <details class="operations-detail" id="strategyWatchPanel">
+                <summary>Strategic Watch</summary>
+                <div id="strategyWatch">No urgent strategic concerns.</div>
+            </details>
+            <details class="operations-detail" id="victoryBriefingPanel">
+                <summary>Victory Briefing</summary>
+                <div id="victoryBriefing">Victory data is synchronizing.</div>
+            </details>
+            <details class="operations-detail" id="intelLedgerPanel">
+                <summary>Intelligence Ledger</summary>
+                <div id="intelLedger">Known sectors are synchronizing.</div>
+            </details>
         </div>
     </div>
 
@@ -618,7 +630,12 @@
         </div>
         <div class="multi-move-content" style="display:flex;flex-wrap:wrap;gap:10px;padding:0 15px 15px;">
             <select id="shipsFromNearBy" multiple="yes" style="font-size:110%;min-height:200px;flex:1;min-width:250px;"></select>
-            <div id="multiMoveEmpty" class="multi-move-empty" hidden>No eligible ships are in an adjacent sector.</div>
+            <div id="multiMoveEmpty" class="multi-move-empty" hidden>No eligible ships are available.</div>
+            <details id="movePreflight" class="move-preflight" open>
+                <summary>Route preflight</summary>
+                <div id="movePreflightSummary">Select ships to review their plotted routes.</div>
+                <div id="movePreflightDetail"></div>
+            </details>
             <div class="multi-move-buttons" style="display:flex;flex-direction:column;gap:8px;min-width:100px;">
                 <button id="moveAttackShips" style="padding:12px 15px;">Move Attack Ships</button>
                 <button id="moveAllShips" style="padding:12px 15px;">Move All Ships</button>
@@ -648,7 +665,7 @@
     <!-- Scripts -->
     <script src="js/ui.js?v=20260712d"></script>
     <script src="js/minimap.js?v=20260614b"></script>
-    <script src="js/GUI.js?v=20260712d"></script>
+    <script src="js/GUI.js?v=20260712e"></script>
     <script>
         // Authentication check for static hosting
         (function() {
@@ -678,7 +695,7 @@
     <script src="js/tech.js?v=20260612a"></script>
     <script src="js/notification-system.js?v=20251105"></script>
     <script src="js/avatar-notifications.js?v=20260613a"></script>
-    <script src="js/advisor.js?v=20260611a"></script>
+    <script src="js/advisor.js?v=20260712e"></script>
     <script src="js/media.js?v=20260429a"></script>
     <script src="js/combat-analytics.js?v=20260612a"></script>
     <script src="/config.js?v=20260614b"></script>
@@ -687,9 +704,9 @@
     <script type="module" src="js/galaxy3d.js?v=20260614c"></script>
     <script type="module" src="js/battle3d.js?v=20260614e"></script>
     <script src="js/onboarding.js?v=20260613a"></script>
-    <script src="js/connect.js?v=20260712d"></script>
+    <script src="js/connect.js?v=20260712e"></script>
     <script src="js/tour.js?v=20260712c"></script>
-    <script src="js/game.js?v=20260711a"></script>
+    <script src="js/game.js?v=20260712e"></script>
     <script src="js/loader.js?v=20251105"></script>
     <script>
         (function() {

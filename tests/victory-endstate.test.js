@@ -159,6 +159,26 @@ test('scientific victory follows the canonical tech tree and excludes placeholde
     assert.equal(progress.some(row => row.condition === 'Alliance Victory'), false);
 });
 
+test('scientific victory excludes technologies locked by the selected race', async () => {
+    const db = createMockDatabase();
+    const gameState = { turns: { 1: 12 }, activeGames: {}, gameTimer: {}, clients: [] };
+    await dbQuery(db, 'INSERT INTO users (username, password, salt, email, tempkey) VALUES (?, ?, ?, ?, ?)', ['specialist', '', '', '', '']);
+    await dbQuery(db, 'INSERT INTO games (name, creator, maxplayers, status, mode) VALUES (?, ?, ?, ?, ?)', ['Race Science', 1, 1, 'in-progress', 'quick']);
+    await dbQuery(db, 'INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [1, 2, 300, 300, 100]);
+    await dbQuery(db, 'UPDATE map1 SET type = ?, owner = ? WHERE sectorid = ?', [10, 1, 1]);
+
+    const levels = {};
+    Object.values(techSystem.TECHNOLOGIES).forEach(technology => {
+        if (require('../server/lib/races').getTechLevelCap(2, technology) > 0) levels[technology.id] = 1;
+    });
+    await dbQuery(db, 'UPDATE players1 SET tech = ? WHERE userid = ?', [techSystem.serializeTechLevels(levels), 1]);
+
+    const result = await new Promise(resolve => {
+        victory.VICTORY_CONDITIONS.SCIENTIFIC.check(1, 1, gameState, db, (achieved, progress) => resolve({ achieved, progress }));
+    });
+    assert.deepEqual(result, { achieved: true, progress: 100 });
+});
+
 test('time victory is achievable at the turn cap and resolves ties deterministically', async () => {
     const db = createMockDatabase();
     const gameState = { turns: { 1: 300 }, activeGames: {}, gameTimer: {}, clients: [] };

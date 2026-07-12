@@ -199,7 +199,7 @@ test('a second Spaceport is rejected before consuming resources or a building sl
     assert.equal(queries.some(query => /^SELECT COUNT/.test(query.sql)), false);
 });
 
-test('move option requests return an explicit empty result when no adjacent ships exist', () => {
+test('move option requests return an explicit empty direct-route plan when no ships exist', async () => {
     setScriptedDb((sql, params, callback) => {
         if (/^SELECT owner FROM map1/.test(sql)) {
             callback(null, [{ owner: null }]);
@@ -209,13 +209,31 @@ test('move option requests return an explicit empty result when no adjacent ship
             callback(null, []);
             return;
         }
+        if (/^SELECT sectorid FROM explored_sectors1/.test(sql)) {
+            callback(null, []);
+            return;
+        }
+        if (/^SELECT \* FROM map1/.test(sql)) {
+            callback(null, []);
+            return;
+        }
+        if (/^SELECT sectorid, type FROM buildings1/.test(sql)) {
+            callback(null, []);
+            return;
+        }
+        if (/^SELECT tech FROM players1/.test(sql)) {
+            callback(null, [{ tech: '' }]);
+            return;
+        }
         assert.fail(`unexpected query: ${sql}`);
     });
     const connection = makeConnection();
 
     server.requestMoveOptions('//moveoptions:f', connection);
 
-    assert.deepEqual(connection.sent, ['mmoptions:F']);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.deepEqual(connection.sent, ['mmoptionsv2::{"target":15,"sources":[]}']);
 });
 
 test('simultaneous building orders are serialized before the slot count', () => {

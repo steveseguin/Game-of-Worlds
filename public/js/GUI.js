@@ -492,6 +492,99 @@ const GameUI = (function() {
 		multiMoveDiv.style.display = 'block';
 	}
 
+	function summarizeMoveOptions(options) {
+		const selected = Array.from(options || []);
+		if (!selected.length) return {
+			text: 'Select ships to review their plotted routes.',
+			detail: 'Unmapped sectors remain unknown until a probe or fleet encounters them.',
+			danger: false
+		};
+		const sources = new Map();
+		const crystalCost = Math.max(1, Math.ceil(selected.reduce((sum, option) => sum + (Number(option.dataset.moveCost) || 0), 0)));
+		selected.forEach(option => {
+			const source = Number(option.dataset.source);
+			if (!sources.has(source)) {
+				sources.set(source, {
+					distance: Number(option.dataset.distance) || 1,
+					unknown: Number(option.dataset.unknown) || 0,
+					asteroids: JSON.parse(option.dataset.asteroids || '[]'),
+					blackHoles: JSON.parse(option.dataset.blackHoles || '[]')
+					,viaWarp: option.dataset.viaWarp === '1'
+				});
+			}
+		});
+		const unknown = Math.max(...Array.from(sources.values()).map(source => source.unknown), 0);
+		const distance = Math.max(...Array.from(sources.values()).map(source => source.distance), 1);
+		const asteroids = [...new Set(Array.from(sources.values()).flatMap(source => source.asteroids))];
+		const blackHoles = [...new Set(Array.from(sources.values()).flatMap(source => source.blackHoles))];
+		const warpRoutes = Array.from(sources.values()).filter(source => source.viaWarp).length;
+		let detail = `${selected.length} ship${selected.length === 1 ? '' : 's'} · ${sources.size} origin${sources.size === 1 ? '' : 's'} · up to ${distance} sector${distance === 1 ? '' : 's'} travelled · ${crystalCost} crystal.`;
+		if (warpRoutes) detail += ` ${warpRoutes} route${warpRoutes === 1 ? '' : 's'} will use paired Warp Gates and bypass normal space.`;
+		if (blackHoles.length) detail += ` KNOWN BLACK HOLE: sector ${blackHoles.join(', ')} guarantees destruction.`;
+		if (asteroids.length) detail += ` Known asteroid risk: sector ${asteroids.join(', ')}; every ship rolls its own survival chance.`;
+		if (unknown) detail += ` ${unknown} unmapped route sector${unknown === 1 ? '' : 's'} may conceal hazards.`;
+		return {
+			text: blackHoles.length ? 'Certain loss appears on at least one selected route.' : (asteroids.length ? 'Known collision risk appears on the plotted route.' : (unknown ? 'The plotted route contains unmapped space.' : 'No known unsecured hazard lies on the plotted route.')),
+			detail,
+			danger: blackHoles.length > 0,
+			risk: asteroids.length > 0 || unknown > 0
+		};
+	}
+
+	function renderMovePreflight(options) {
+		const summary = summarizeMoveOptions(options);
+		const summaryEl = document.getElementById('movePreflightSummary');
+		const detailEl = document.getElementById('movePreflightDetail');
+		if (summaryEl) {
+			summaryEl.textContent = summary.text;
+			summaryEl.className = summary.danger ? 'route-danger' : (summary.risk ? 'route-risk' : '');
+		}
+		if (detailEl) detailEl.textContent = summary.detail;
+		return summary;
+	}
+
+	function showFleetMovePlan(plan) {
+		const target = Number(plan?.target);
+		const targetToken = Number.isSafeInteger(target) ? target.toString(16) : '';
+		const sources = Array.isArray(plan?.sources) ? plan.sources : [];
+		const flat = [];
+		sources.forEach(source => {
+			flat.push(Number(source.sector).toString(16), ...(source.counts || []).map(count => String(count || 0)));
+		});
+		showMultiMoveOptions(targetToken, flat.join(':'));
+		const select = document.getElementById('shipsFromNearBy');
+		if (!select) return;
+		const bySource = new Map(sources.map(source => [Number(source.sector), source]));
+		Array.from(select.options).forEach(option => {
+			const sourceId = parseInt(option.value.split(':')[0], 16);
+			const source = bySource.get(sourceId) || {};
+			option.dataset.source = String(sourceId);
+			option.dataset.distance = String(source.distance || 1);
+			option.dataset.unknown = String(source.known?.unknown || 0);
+			option.dataset.asteroids = JSON.stringify(source.known?.asteroids || []);
+			option.dataset.blackHoles = JSON.stringify(source.known?.blackHoles || []);
+			option.dataset.viaWarp = source.viaWarp ? '1' : '0';
+			const shipType = Number(option.value.split(':')[1]);
+			option.dataset.moveCost = String(source.unitCosts?.[shipType - 1] || 1);
+		});
+		select.onchange = () => renderMovePreflight(Array.from(select.selectedOptions));
+		renderMovePreflight([]);
+		const empty = document.getElementById('multiMoveEmpty');
+		if (empty && !select.options.length) empty.textContent = 'No ships are available outside the destination sector.';
+	}
+
+	function describeFleetOrder(mode = 'selected') {
+		const select = document.getElementById('shipsFromNearBy');
+		if (!select) return summarizeMoveOptions([]);
+		let options = Array.from(select.selectedOptions);
+		if (mode === 'all') options = Array.from(select.options);
+		if (mode === 'attack') options = Array.from(select.options).filter(option => {
+			const type = Number(option.value.split(':')[1]);
+			return type !== 3 && type !== 6;
+		});
+		return renderMovePreflight(options);
+	}
+
 	function setIntelState(label, className, summary) {
 		const badge = document.getElementById('sectorIntelState');
 		if (badge) {
@@ -570,6 +663,8 @@ const GameUI = (function() {
 		updateFleetDisplay,
 		updateOwnedSector,
 		showMultiMoveOptions,
+		showFleetMovePlan,
+		describeFleetOrder,
 		showMultiMoveLoading,
 		showSectorSelection,
 		updateSectorContact,

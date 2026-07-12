@@ -114,6 +114,7 @@ Keep this list in sync when touching server sends or client parsers.
 | `sector::` | Sector detail payload. |
 | `probeonly:` | Client may offer probe action for hidden/stale sector. |
 | `mmoptions:` | Multi-source fleet move choices. |
+| `mmoptionsv2::` | Route-aware fleet choices with distance, known hazards, Warp Gate use, and unmapped-sector count. |
 | `fleetmove::` | Movement animation/event. |
 | `battlepause::` | Battle playback freeze budget. |
 | `battle::`, `battle:` | Full battle playback payload. |

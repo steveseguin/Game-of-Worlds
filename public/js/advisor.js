@@ -197,7 +197,7 @@ const Advisor = (function () {
 
     // Pattern-match raw server text → advisor events.
     const OBSERVERS = [
-        { re: /probe was destroyed in sector ([0-9A-F]+)/i, event: 'probeLost', sector: 1 },
+        { re: /probe was destroyed (?:in|while entering) sector ([0-9A-F]+)/i, event: 'probeLost', sector: 1 },
         { re: /BLACK HOLE.*crushed|crushed by the immense gravity/i, event: 'blackHole' },
         { re: /destroyed our entire fleet|lost .* ships to asteroids/i, event: 'asteroidLoss' },
         { re: /avoided being hit/i, event: 'asteroidEscape' },

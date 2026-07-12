@@ -24,6 +24,7 @@ test('probe hazard messages use the target sector id when provided', async () =>
     assert.deepEqual(result, { destroyed: true, hazardType: 'black_hole' });
     assert.equal(messages.length, 1);
     assert.match(messages[0], /sector 1F/i);
+    assert.doesNotMatch(messages[0], /black hole|asteroid/i);
 });
 
 test('probe hazard legacy signature remains supported', async () => {

@@ -124,6 +124,9 @@ td {
     padding: 15px;
     background: rgba(30, 30, 30, 0.8);
     border-radius: 0 4px 4px 4px;
+    max-height: 280px;
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 /* Game board container */
@@ -742,6 +745,26 @@ td {
 }
 
 .multi-move-empty:not([hidden]) { display: grid; }
+
+.move-preflight {
+    flex: 1 0 100%;
+    border: 1px solid rgba(92, 216, 222, 0.24);
+    background: rgba(8, 18, 30, 0.76);
+    padding: 9px 11px;
+    color: #bcd0df;
+    font-size: 12px;
+}
+.move-preflight summary { color: #63d8de; cursor: pointer; font-weight: 700; }
+#movePreflightSummary { margin-top: 7px; color: #e4edf5; }
+#movePreflightDetail { margin-top: 5px; color: #8fa5b6; }
+.move-preflight .route-danger { color: #ff7373; font-weight: 700; }
+.move-preflight .route-risk { color: #ffc267; }
+.operations-detail { margin-top: 10px; border: 1px solid rgba(106, 178, 218, 0.2); background: rgba(7, 14, 25, 0.62); padding: 8px 10px; font-size: 12px; }
+.operations-detail summary { color: #8fcfe5; cursor: pointer; font-weight: 700; }
+.operations-detail ul { margin: 7px 0 0; padding-left: 18px; }
+.operations-detail li { margin: 3px 0; color: #afc0cf; }
+.intel-ledger-row { display: grid; grid-template-columns: 62px 1fr auto; gap: 8px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.intel-ledger-row span:last-child { color: #8096a9; }
 
 /* Reconnection Window */
 #lobbyWindow {

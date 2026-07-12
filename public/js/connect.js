@@ -515,7 +515,9 @@ const GAME_STATE = {
     pendingMoveSector: null,
     mapSectors: {},
     players: {},
-    empire: null
+    empire: null,
+    movePlan: null,
+    victory: null
 };
 window.GAME_STATE = GAME_STATE;
 
@@ -1011,7 +1013,21 @@ function handleWebSocketMessage(message) {
         }
         return;
     }
-    // Multiple move options
+    // Route-aware fleet options. Known hazards are disclosed; unmapped route
+    // sectors remain deliberately unknown.
+    else if (message.indexOf("mmoptionsv2::") === 0) {
+        try {
+            const plan = JSON.parse(message.slice('mmoptionsv2::'.length));
+            GAME_STATE.movePlan = plan;
+            const numericTarget = Number(plan.target);
+            if (GAME_STATE.pendingMoveSector && numericTarget !== GAME_STATE.pendingMoveSector) return;
+            window.GameUI?.showFleetMovePlan?.(plan);
+        } catch (error) {
+            console.warn('Failed to parse fleet route plan', error);
+        }
+        return;
+    }
+    // Legacy multiple move options
     else if (message.indexOf("mmoptions:") === 0) {
         if (window.GameUI && window.GameUI.showMultiMoveOptions) {
             const parts = message.split(':');
@@ -1269,8 +1285,10 @@ function updateSectorInfo(message) {
             status: isMyHomeworld ? 'homeworld' : undefined,
             type: sectorType,
             live: true,
-            seen: true
+            seen: true,
+            lastSeenTurn: currentTurnNumber
         };
+        renderIntelLedger();
 
         if (shouldFocusPanel) {
             GAME_STATE.selectedSectorData = sectorData;
@@ -1379,8 +1397,10 @@ function updateSectorContact(message) {
             type: Number(sector.type),
             owner: sector.owner,
             live: true,
-            seen: true
+            seen: true,
+            lastSeenTurn: currentTurnNumber
         };
+        renderIntelLedger();
         if (Number(GAME_STATE.selectedSector) !== sectorId) return;
         GAME_STATE.selectedSectorData = null;
         window.BuildSystem?.refresh?.();
@@ -1417,6 +1437,15 @@ function updateRememberedSectorIntel(message) {
             intelMemory: data.intelMemory || {},
             intel: data.intel || null
         };
+        GAME_STATE.mapSectors[sectorId] = {
+            ...(GAME_STATE.mapSectors[sectorId] || {}),
+            id: sectorId,
+            type: sectorData.type,
+            seen: true,
+            live: false,
+            intelMemory: sectorData.intelMemory
+        };
+        renderIntelLedger();
         GAME_STATE.selectedSectorData = null;
         window.BuildSystem?.refresh?.();
         window.GameUI?.updateRememberedSectorDisplay?.(sectorData);
@@ -1463,6 +1492,7 @@ function updateResources(message) {
 
     // Update game state with new resources
     GAME_STATE.player.resources = resources;
+    renderStrategicWatch();
 
     // Update UI
     if (window.GameUI && window.GameUI.updateResources) {
@@ -1582,6 +1612,7 @@ function updateMapState(message) {
         }
 
         GAME_STATE.mapSectors[id] = {
+            ...(GAME_STATE.mapSectors[id] || {}),
             id,
             status,
             fleetSize: fleet,
@@ -1599,6 +1630,7 @@ function updateMapState(message) {
             window.GalaxyMap.updateSectorStatus(id, numericStatus, details);
         }
     });
+    renderIntelLedger();
 }
 
 function handleFleetMove(message) {
@@ -2009,6 +2041,7 @@ function updateEmpireSummary(message) {
         if (el) {
             el.textContent = `Income: +${Math.floor(Number(income.metal) || 0)}M +${Math.floor(Number(income.crystal) || 0)}C +${Math.floor(Number(income.research) || 0)}R / turn | Worlds ${Number(data.worlds) || 0} | Sectors ${Number(data.sectors) || 0} | Fleet ${fleetTotal}`;
         }
+        renderStrategicWatch();
     } catch (err) {
         console.warn('Failed to parse empire summary', err);
     }
@@ -2022,6 +2055,7 @@ function updateVictoryProgress(message) {
     try {
         const data = JSON.parse(payload);
         const conditions = data.conditions || {};
+        GAME_STATE.victory = data;
         const order = [
             'Domination Victory',
             'Elimination Victory',
@@ -2051,6 +2085,8 @@ function updateVictoryProgress(message) {
         el.title = Object.entries(conditions)
             .map(([name, detail]) => `${name}: ${detail && detail.description ? detail.description : ''}`)
             .join('\n');
+        renderVictoryBriefing();
+        renderStrategicWatch();
     } catch (err) {
         console.warn('Failed to parse victory progress', err);
     }
@@ -2149,6 +2185,61 @@ function updatePlayerList(message) {
     if (GAME_STATE.selectedSectorData) window.GameUI?.updateSectorDisplay?.(GAME_STATE.selectedSectorData);
 }
 
+function renderVictoryBriefing() {
+    const root = document.getElementById('victoryBriefing');
+    if (!root) return;
+    const entries = Object.entries(GAME_STATE.victory?.conditions || {});
+    if (!entries.length) {
+        root.textContent = 'No active victory conditions were reported.';
+        return;
+    }
+    root.innerHTML = `<ul>${entries.map(([name, detail]) => {
+        const progress = Math.max(0, Math.min(100, Number(detail?.progress) || 0));
+        return `<li><b>${escapeHtml(name.replace(' Victory', ''))}: ${Math.floor(progress)}%</b> — ${escapeHtml(detail?.description || '')}</li>`;
+    }).join('')}</ul>`;
+}
+
+function renderStrategicWatch() {
+    const root = document.getElementById('strategyWatch');
+    if (!root) return;
+    const empire = GAME_STATE.empire || {};
+    const resources = GAME_STATE.player.resources || {};
+    const buildings = empire.buildings || {};
+    const fleetTotal = Object.values(empire.fleet || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    const resourceTotal = ['metal', 'crystal', 'research'].reduce((sum, key) => sum + (Number(resources[key]) || 0), 0);
+    const notes = [];
+    if ((Number(buildings[3]) || 0) === 0) notes.push('No Spaceport is operating anywhere in the empire; replacement ships cannot be built yet.');
+    if ((Number(resources.crystal) || 0) < 300) notes.push('Crystal reserves are below the cost of one probe.');
+    if (resourceTotal >= 5000 && fleetTotal < 5) notes.push('Large reserves are idle while the fleet remains small; consider converting stockpiles into security or expansion.');
+    Object.entries(GAME_STATE.victory?.conditions || {}).forEach(([name, detail]) => {
+        const progress = Number(detail?.progress) || 0;
+        if (progress >= 70 && !detail?.achieved) notes.push(`${name.replace(' Victory', '')} is at ${Math.floor(progress)}%; protect that route to victory.`);
+    });
+    root.innerHTML = notes.length
+        ? `<ul>${notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`
+        : 'No urgent strategic concerns. Expand this panel whenever you want a second opinion.';
+}
+
+function sectorLedgerType(type) {
+    return ({ 0: 'Empty space', 1: 'Asteroid belt', 2: 'Black hole', 3: 'Unstable star', 4: 'Brown dwarf', 5: 'Small moon', 6: 'Micro planet', 7: 'Small planet', 8: 'Medium planet', 9: 'Large planet', 10: 'Homeworld' })[Number(type)] || 'Unclassified';
+}
+
+function renderIntelLedger() {
+    const root = document.getElementById('intelLedger');
+    if (!root) return;
+    const sectors = Object.values(GAME_STATE.mapSectors || {}).filter(sector => sector?.seen).sort((a, b) => Number(a.id) - Number(b.id));
+    if (!sectors.length) {
+        root.textContent = 'No sector intelligence has been recorded.';
+        return;
+    }
+    root.innerHTML = sectors.map(sector => {
+        const lastSeen = Number(sector.intelMemory?.lastSeenTurn ?? sector.lastSeenTurn);
+        const age = Number.isFinite(lastSeen) && Number.isFinite(Number(currentTurnNumber)) ? Math.max(0, Number(currentTurnNumber) - lastSeen) : null;
+        const state = sector.live ? 'live' : (age === null ? 'memory' : `${age} turn${age === 1 ? '' : 's'} old`);
+        return `<div class="intel-ledger-row"><b>S${Number(sector.id)}</b><span>${escapeHtml(sectorLedgerType(sector.type))}</span><span>${escapeHtml(state)}</span></div>`;
+    }).join('');
+}
+
 // Send multiple move fleet command
 function sendmmf() {
     // The hex wire token lives in data-token; the visible text is decimal.
@@ -2176,9 +2267,18 @@ function sendmmf() {
         return;
     }
 
-    // Send command to server
-    websocket.send("//sendmmf:" + message);
-    document.getElementById('multiMove').style.display = 'none';
+    const sectorLabel = sectorEl ? sectorEl.textContent : sectorId;
+    const dispatch = () => {
+        websocket.send("//sendmmf:" + message);
+        document.getElementById('multiMove').style.display = 'none';
+    };
+    const preview = window.GameUI?.describeFleetOrder?.('selected') || {};
+    const body = `Send ${totalShips} selected ship${totalShips === 1 ? '' : 's'} to sector ${sectorLabel}?${preview.detail ? ` ${preview.detail}` : ''}`;
+    if (window.NotificationSystem?.confirm) {
+        window.NotificationSystem.confirm(preview.danger ? 'Fleet Orders — Certain Loss' : 'Fleet Orders', body, dispatch, null);
+    } else if (window.confirm(body)) {
+        dispatch();
+    }
 }
 
 let lastSectorRequest = null;

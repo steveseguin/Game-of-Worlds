@@ -366,6 +366,8 @@ async function moveSelectedShipTypeToSector(page, targetTileId, shipTypeText) {
     await page.selectOption('#shipsFromNearBy', optionValue);
 
     await page.click('#moveSelectedShips');
+    await expect(page.locator('.confirm-modal-overlay')).toBeVisible({ timeout: 5000 });
+    await page.locator('.confirm-modal .btn-confirm').click();
     await expect(page.locator('#multiMove')).toBeHidden({ timeout: 6000 });
     await page.waitForTimeout(120);
 }

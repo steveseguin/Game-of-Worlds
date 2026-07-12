@@ -6,6 +6,7 @@
  */
 
 const techSystem = require('./tech');
+const raceSystem = require('./races');
 
 const DOMINATION_PERCENT = Number(process.env.VICTORY_DOMINATION_PERCENT) || 75;
 const TIME_VICTORY_TURN_LIMIT = Number(process.env.VICTORY_TIME_TURN_LIMIT) || 300;
@@ -18,9 +19,11 @@ const ACTIVE_VICTORY_KEYS = new Set([
     'TIME'
 ]);
 
-function researchedTechProgress(storedTech) {
+function researchedTechProgress(storedTech, raceId = null) {
     const levels = techSystem.parseTechLevels(storedTech || '');
-    const techs = Object.values(techSystem.TECHNOLOGIES);
+    const techs = Object.values(techSystem.TECHNOLOGIES).filter(tech => (
+        raceId === null || raceId === undefined || raceSystem.getTechLevelCap(raceId, tech) > 0
+    ));
     const researched = techs.filter(tech => techSystem.getLevel(levels, tech.id) > 0).length;
     return {
         researched,
@@ -136,10 +139,10 @@ const VICTORY_CONDITIONS = {
     SCIENTIFIC: {
         id: 4,
         name: 'Scientific Victory',
-        description: 'Research all technologies',
+        description: 'Research every technology available to your race',
         check: function(gameId, playerId, gameState, db, callback) {
             db.query(
-                `SELECT tech FROM players${gameId} WHERE userid = ?`,
+                `SELECT tech, race_id FROM players${gameId} WHERE userid = ?`,
                 [playerId],
                 (err, results) => {
                     if (err || results.length === 0) {
@@ -147,7 +150,7 @@ const VICTORY_CONDITIONS = {
                         return;
                     }
 
-                    const progress = researchedTechProgress(results[0].tech);
+                    const progress = researchedTechProgress(results[0].tech, Number(results[0].race_id) || 1);
                     callback(progress.total > 0 && progress.researched >= progress.total, progress.percentage);
                 }
             );

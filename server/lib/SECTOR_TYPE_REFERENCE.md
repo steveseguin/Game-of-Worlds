@@ -109,6 +109,7 @@ Type  | Name                    | Safety | Colonizable | Resources | Implementat
 
 **Current Implementation** (hazards.js):
 - Probe destruction on: `BLACK_HOLE` and `ASTEROID_BELT` types (line 297)
+- A destroyed probe reports the sector where telemetry ended, but not the hidden cause; destruction cannot be used as a free terrain scan.
 - Safe on planets: Types 6-9 and above return safe (line 295)
 - Function: `checkProbeHazard()` returns `{destroyed: true/false}` (line 305)
 - Usage: `probeSector()` uses return to decide whether to reveal (movement/index.js)

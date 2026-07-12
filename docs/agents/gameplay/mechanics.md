@@ -48,20 +48,22 @@ Movement commands:
 - `//move:<fromHex>:<toHex>:<shipTypeCsv>:<countCsv>` for single-source movement; type/count CSVs are positive decimal integers and must line up one-to-one.
 - `//sendmmf:<targetHex>:<sourceHex>:<shipType>:<ordinal>...` through the multi-move UI; every selected ship option adds a source/type/positive-ordinal triplet.
 - `//mmove:<sectorHex>` to ask for source options
-- `//moveoptions:<targetHex>` to explicitly request eligible ships from adjacent sectors; an empty result is still returned and explained in the UI.
+- `//moveoptions:<targetHex>` to request eligible ships across the empire plus a route preflight. The server returns known hazards and an unknown-sector count without leaking unmapped terrain.
 
 Rules:
 
 - Sector tokens are whole hexadecimal, one-based ids. Malformed tokens and sector `0` are rejected before DB/resource writes.
-- Normal movement requires adjacency.
-- Warp movement is allowed when both endpoints have warp gates.
-- Movement costs crystal based on moved ship hull classes and propulsion tech discounts.
+- Normal movement follows a direct sector-center-to-sector-center route. Every crossed sector is resolved in travel order; the route is not automatically bent around obstacles.
+- Paired owned Warp Gates bypass normal-space route hazards.
+- Movement costs crystal based on hull class, plotted route length, and propulsion tech discounts.
 - The server verifies resource balance and the full requested fleet before moving ships.
-- Crystal is conditionally deducted first, then the complete requested fleet is moved. A stale/partial fleet write is rolled back and refunded before `applyArrivalEffects()` resolves hazards or ownership.
+- Crystal is conditionally deducted first, then the complete requested fleet is moved. A stale/partial fleet write is rolled back and refunded before intermediate route hazards and destination arrival resolve.
 - `fleetmove::` broadcasts visible movement animation/event.
 
 Arrival effects:
 
+- Intermediate known or unknown black hole: every affected ship is destroyed before reaching the destination.
+- Intermediate unsecured asteroid: every transiting ship receives its own independent destruction roll; flying through does not secure the belt.
 - Black hole: all entering ships are deleted and the owner receives a destructive narrative error.
 - Unowned asteroid: random losses; survivors secure the belt for future safe transit.
 - Owned asteroid: safe.
@@ -161,7 +163,7 @@ Victory conditions are checked in `server/lib/victory.js`:
 - Domination
 - Elimination: the candidate must own at least one type `6-10` world and every opponent must own none; empty route sectors and secured asteroids do not keep a player alive.
 - Economic
-- Scientific
+- Scientific: research every canonical technology the selected race is permitted to enter; race-locked branches do not make this victory impossible.
 
 Other end paths:
 

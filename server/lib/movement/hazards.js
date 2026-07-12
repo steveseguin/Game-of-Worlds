@@ -235,14 +235,7 @@ function checkProbeHazard(gameId, sectorType, sectorIdOrConnection, connectionOr
     const hazardType = getHazardType(sectorType);
     const sectorToken = utils.formatSectorToken(sectorId || sectorType);
 
-    let msg = '';
-    if (hazardType === 'black_hole') {
-        msg = `Our probe was destroyed in sector ${sectorToken} - there's a BLACK HOLE there!`;
-    } else if (hazardType === 'asteroid_belt') {
-        msg = `Our probe was destroyed in sector ${sectorToken} - dangerous asteroid field!`;
-    } else {
-        msg = `Our probe was destroyed in sector ${sectorToken} - unknown hazard!`;
-    }
+    const msg = `Our probe was destroyed while entering sector ${sectorToken}. Telemetry ended before the cause could be identified.`;
 
     if (connection) {
         connection.sendUTF(`systemalert::${msg}`);
