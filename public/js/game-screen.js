@@ -72,6 +72,7 @@
         const connectionInfo = document.getElementById('connectionInfo');
         const sectorDisplay = document.getElementById('sectordisplay');
         const sectorImage = document.getElementById('sectorimg');
+        const galaxyViewport = document.getElementById('galaxy3d');
         const viewTitle = document.getElementById('viewTitle');
         const avatar = document.getElementById('avatar-notification-system');
         const empireSummary = document.getElementById('empireSummary');
@@ -172,6 +173,16 @@
             setImportant(sectorDisplay, 'max-height', px(sectorMaxHeight));
             setImportant(sectorDisplay, 'overflow-y', 'auto');
             sectorDisplay.style.fontSize = `${clamp(12 * scale, 10.5, 13)}px`;
+        }
+
+        if (galaxyViewport) {
+            const tacticalLeft = shortLandscape || veryNarrow
+                ? 0
+                : Math.min(viewportWidth * 0.36, 10 + clamp(240 * scale, 190, 300) + 22);
+            setImportant(galaxyViewport, 'left', px(tacticalLeft));
+            setImportant(galaxyViewport, 'right', '0');
+            setImportant(galaxyViewport, 'top', '0');
+            setImportant(galaxyViewport, 'bottom', '0');
         }
 
         if (sectorImage) {

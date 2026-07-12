@@ -99,6 +99,13 @@ const AvatarNotifications = (function() {
                 pointer-events: none;
             }
 
+            /* Keep the temporary First Steps checklist and advisor readable.
+               Once onboarding is dismissed, the advisor returns beneath the event stack. */
+            body:has(#onboardingCard) #avatar-notification-system {
+                top: 100px;
+                right: 270px;
+            }
+
             .avatar-container {
                 width: 72px;
                 height: 72px;

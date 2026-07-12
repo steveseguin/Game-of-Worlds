@@ -51,6 +51,21 @@ test.describe('Authoritative gameplay controls', () => {
         await expect(page.locator('#spaceportProductionStatus')).toContainText('11/12 production', { timeout: 15000 });
         await expect(page.locator('.ship-button[data-ship-id="9"]')).toBeDisabled();
         await expect(page.locator('.ship-button[data-ship-id="9"]')).toHaveAttribute('title', /Military Shipyards/i);
+        const openingLayout = await page.evaluate(() => {
+            const galaxy = document.querySelector('#galaxy3d canvas')?.getBoundingClientRect();
+            const onboarding = document.querySelector('#onboardingCard')?.getBoundingClientRect();
+            const advisor = document.querySelector('#avatar-notification-system')?.getBoundingClientRect();
+            const overlaps = (a, b) => Boolean(a && b
+                && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+            return {
+                tacticalViewportClearsCommandPanel: Boolean(galaxy && galaxy.left >= 240),
+                onboardingAdvisorOverlap: overlaps(onboarding, advisor)
+            };
+        });
+        expect(openingLayout).toEqual({
+            tacticalViewportClearsCommandPanel: true,
+            onboardingAdvisorOverlap: false
+        });
         await page.screenshot({ path: 'test-results/opening-game-desktop.png', fullPage: false });
 
         await page.reload();
