@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260614b">
+    <link rel="stylesheet" href="css/style.css?v=20260712c">
     <style>
         /* Critical layout fixes & visual polish */
         html, body {
@@ -416,7 +416,19 @@
 
     <!-- Sector Display Background (legacy fallback when WebGL is unavailable) -->
     <div id="sectorimg" style="z-index:-2;background-repeat:no-repeat;position:fixed;width:calc(100% - 300px);height:calc(100% - 70px);top:70px;left:300px;pointer-events:none;"></div>
-    <div id="sectordisplay" style="position:fixed; top:80px;left:10px;display:block;z-index:50;">
+    <div id="sectordisplay" style="position:fixed; top:80px;left:10px;display:block;z-index:110;">
+        <div class="sector-panel-heading">
+            <div>
+                <div class="sector-panel-eyebrow">Selected Sector</div>
+                <strong id="sectorPanelTitle">Select a sector</strong>
+            </div>
+            <span id="sectorIntelState" class="sector-intel-state unknown">No intel</span>
+        </div>
+        <div id="sectorIntelSummary" class="sector-intel-summary">Choose a tile to inspect its known details and available orders.</div>
+        <div class="sector-context-actions">
+            <button id="sectorMoveShips" class="ghost" type="button" disabled>Move Ships Here</button>
+        </div>
+        <div id="sectorActionPanel" class="sector-action-panel" aria-live="polite"></div>
         <table border="0px">
             <tr><td>Sector ID:</td><td><div style="display:inline-block" id="sectorid">N/A</div></td></tr>
             <tr><td>Owner:</td><td><div style="display:inline-block" id="planetowner">N/A</div></td></tr>
@@ -503,19 +515,20 @@
 
         <!-- Build Tab -->
         <div id="build" class="tab-panel">
-            <div style="font-weight:bold;margin-bottom:10px;">Economy Buildings</div>
+            <div id="buildSectorContext" class="local-order-context">Select an owned sector to construct there.</div>
+            <div style="font-weight:bold;margin-bottom:10px;">Local Economy Buildings</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
                 <button id="bb1" class="building-button" data-building-id="0">Metal Extractor <span id="bbb1">0</span><br><small style="color:#888;">50M 20C</small></button>
                 <button id="bb2" class="building-button" data-building-id="1">Crystal Refinery <span id="bbb2">0</span><br><small style="color:#888;">40M 30C</small></button>
                 <button id="bb3" class="building-button" data-building-id="2">Research Academy <span id="bbb3">0</span><br><small style="color:#888;">60M 40C</small></button>
                 <button id="bb4" class="building-button" data-building-id="3">Spaceport <span id="bbb4">0</span><br><small style="color:#888;">100M 50C</small></button>
             </div>
-            <div style="font-weight:bold;margin-bottom:10px;">Defense & Special</div>
+            <div style="font-weight:bold;margin-bottom:10px;">Local Defense & Special</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
                 <button id="bb5" class="defense-button" data-building-id="4">Orbital Turret <span id="bbb5">0</span><br><small style="color:#ccc;">80M 60C</small></button>
                 <button id="bb6" class="defense-button" data-building-id="5">Warp Gate <span id="bbb6">0</span><br><small style="color:#ccc;">200M 150C</small></button>
             </div>
-            <div style="font-weight:bold;margin-bottom:10px;">Build Ships</div>
+            <div style="font-weight:bold;margin-bottom:10px;">Build Ships at Selected Spaceport</div>
             <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;">
                 <button class="ship-button" data-ship-id="3">Scout<br><small style="color:#888;">200M</small></button>
                 <button class="ship-button" data-ship-id="1">Frigate<br><small style="color:#888;">430M</small></button>
@@ -531,7 +544,7 @@
 
         <!-- Fleet Tab -->
         <div id="fleet" class="tab-panel hidden">
-            <div style="font-weight:bold;margin-bottom:10px;">Fleet in Current Sector</div>
+            <div id="fleetSectorContext" class="local-order-context">Fleet in selected sector</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:13px;">
                 <div>Scouts: <span id="fleet-scouts">0</span></div>
                 <div>Frigates: <span id="fleet-frigates">0</span></div>
@@ -544,7 +557,7 @@
                 <div>Colony Ships: <span id="fleet-colony">0</span></div>
             </div>
             <div style="margin-top:15px;font-weight:bold;margin-bottom:10px;">Move Fleet</div>
-            <div style="font-size:13px;color:#aaa;">Click a sector on the map to move ships there</div>
+            <div style="font-size:13px;color:#aaa;">Select a destination, then use Move Ships in its sector panel. Eligible ships must be in an adjacent sector.</div>
         </div>
 
         <!-- Tech Tab -->
@@ -598,11 +611,12 @@
     <!-- Multi-Move Dialog -->
     <div id="multiMove">
         <div class="multi-move-header" style="padding:15px 15px 10px;">
-            <b>Fleet Move Menu</b><br>
+            <b>Move Ships to Selected Sector</b><br>
             <span style="font-size:13px;">Select ships to move to <i>sector <span id="sectorofattack">-</span></i></span>
         </div>
         <div class="multi-move-content" style="display:flex;flex-wrap:wrap;gap:10px;padding:0 15px 15px;">
             <select id="shipsFromNearBy" multiple="yes" style="font-size:110%;min-height:200px;flex:1;min-width:250px;"></select>
+            <div id="multiMoveEmpty" class="multi-move-empty" hidden>No eligible ships are in an adjacent sector.</div>
             <div class="multi-move-buttons" style="display:flex;flex-direction:column;gap:8px;min-width:100px;">
                 <button id="moveAttackShips" style="padding:12px 15px;">Move Attack Ships</button>
                 <button id="moveAllShips" style="padding:12px 15px;">Move All Ships</button>
@@ -632,7 +646,7 @@
     <!-- Scripts -->
     <script src="js/ui.js?v=20260614d"></script>
     <script src="js/minimap.js?v=20260614b"></script>
-    <script src="js/GUI.js?v=20260614i"></script>
+    <script src="js/GUI.js?v=20260712c"></script>
     <script>
         // Authentication check for static hosting
         (function() {
@@ -671,8 +685,8 @@
     <script type="module" src="js/galaxy3d.js?v=20260614c"></script>
     <script type="module" src="js/battle3d.js?v=20260614e"></script>
     <script src="js/onboarding.js?v=20260613a"></script>
-    <script src="js/connect.js?v=20260711a"></script>
-    <script src="js/tour.js?v=20260613a"></script>
+    <script src="js/connect.js?v=20260712c"></script>
+    <script src="js/tour.js?v=20260712c"></script>
     <script src="js/game.js?v=20260711a"></script>
     <script src="js/loader.js?v=20251105"></script>
     <script>

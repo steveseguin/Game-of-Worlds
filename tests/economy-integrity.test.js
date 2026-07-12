@@ -118,6 +118,80 @@ test('building purchase does not insert after a concurrent balance change', () =
     assert.equal(queries.some(query => /^INSERT INTO buildings1/.test(query.sql)), false);
 });
 
+test('ship purchase validates the explicit selected sector instead of the legacy cursor', () => {
+    const queries = setScriptedDb((sql, params, callback) => {
+        if (/^SELECT metal, crystal, currentsector, tech, race_id FROM players1/.test(sql)) {
+            callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '', race_id: 1 }]);
+            return;
+        }
+        if (/^SELECT id FROM buildings1 b/.test(sql)) {
+            assert.deepEqual(params, [7, 15]);
+            callback(null, [{ id: 2 }]);
+            return;
+        }
+        if (/^UPDATE players1\s+SET metal = metal -/s.test(sql)) {
+            callback(null, { affectedRows: 0 });
+            return;
+        }
+        assert.fail(`unexpected query: ${sql}`);
+    });
+    const connection = makeConnection();
+
+    server.buyShip('//buyship:1:f', connection);
+
+    assert.deepEqual(connection.sent, ['Error: Resources changed; refresh and try again']);
+    assert.equal(queries.some(query => query.params?.includes(15)), true);
+});
+
+test('building purchase validates the explicit selected sector instead of the legacy cursor', () => {
+    const queries = setScriptedDb((sql, params, callback) => {
+        if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) {
+            callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '' }]);
+            return;
+        }
+        if (/^SELECT owner, type FROM map1/.test(sql)) {
+            assert.deepEqual(params, [15]);
+            callback(null, [{ owner: 7, type: 10 }]);
+            return;
+        }
+        if (/^SELECT COUNT\(\*\) as count FROM buildings1/.test(sql)) {
+            assert.deepEqual(params, [15]);
+            callback(null, [{ count: 0 }]);
+            return;
+        }
+        if (/^UPDATE players1\s+SET metal = metal -/s.test(sql)) {
+            callback(null, { affectedRows: 0 });
+            return;
+        }
+        assert.fail(`unexpected query: ${sql}`);
+    });
+    const connection = makeConnection();
+
+    server.buyBuilding('//buybuilding:0:f', connection);
+
+    assert.deepEqual(connection.sent, ['Error: Resources changed; refresh and try again']);
+    assert.equal(queries.some(query => query.params?.includes(15)), true);
+});
+
+test('move option requests return an explicit empty result when no adjacent ships exist', () => {
+    setScriptedDb((sql, params, callback) => {
+        if (/^SELECT owner FROM map1/.test(sql)) {
+            callback(null, [{ owner: null }]);
+            return;
+        }
+        if (/^SELECT sectorid, type, COUNT\(\*\) as count FROM ships1/.test(sql)) {
+            callback(null, []);
+            return;
+        }
+        assert.fail(`unexpected query: ${sql}`);
+    });
+    const connection = makeConnection();
+
+    server.requestMoveOptions('//moveoptions:f', connection);
+
+    assert.deepEqual(connection.sent, ['mmoptions:F']);
+});
+
 test('simultaneous building orders are serialized before the slot count', () => {
     let firstPlayerQuery;
     const queries = setScriptedDb((sql, params, callback) => {

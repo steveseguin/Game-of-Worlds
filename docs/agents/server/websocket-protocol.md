@@ -64,10 +64,11 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | --- | --- | --- |
 | `//update` | inline in `handleCommand` | Sends resources, tech, empire, victory, visible sectors. |
 | `//sector:<sectorHex>` | `updateSector` | Requests sector detail if visible; may return `probeonly`. |
+| `//moveoptions:<sectorHex>` | `requestMoveOptions` | Explicitly requests the player's ships in adjacent sectors that are eligible to move to this destination. Returns `mmoptions:` even when none are eligible. |
 | `//probe:<sectorHex>` | `probeSector` | Costs 300 crystal, reveals or destroys probe on hazards/counter-intel. |
 | `//colonize[:sectorHex]` | `colonizePlanet` | Uses colony ship, validates terraform requirement. |
-| `//buyship:<shipId>` | `buyShip` | Requires resources, spaceport, race doctrine, and shipyard tech. |
-| `//buybuilding:<buildingId>` | `buyBuilding` | Requires ownership, resources, sector slots, and tech for some buildings. |
+| `//buyship:<shipId>[:sectorHex]` | `buyShip` | Builds in the explicit selected sector (legacy clients fall back to `currentsector`); requires resources, a local spaceport, race doctrine, and empire-wide shipyard research. |
+| `//buybuilding:<buildingId>[:sectorHex]` | `buyBuilding` | Builds in the explicit selected sector (legacy clients fall back to `currentsector`); requires ownership, resources, local slots, and tech for some buildings. |
 | `//buytech:<techId>` | `buyTech` | Checks cost, prerequisites, and race branch caps. |
 | `//techstate` | `handleTechStateRequest` | Returns `techstate::` JSON. |
 | `//victoryprogress` | `handleVictoryProgressRequest` | Returns `victoryprogress::` JSON. |

@@ -26,6 +26,19 @@ The intended loop is risk/reward:
 
 Fog-of-war is server-enforced through `canPlayerSeeSector()`, `markSectorExplored()`, `sendVisibleMapState()`, and `updateSector()`.
 
+### Visibility and intel states
+
+The modern map deliberately adds a **one-tile passive sensor ring** around every sector the player owns or occupies with a fleet. This is the complete range rule; distance from the homeworld by itself does nothing.
+
+| UI state | What caused it | What the player can rely on |
+| --- | --- | --- |
+| Unknown/fog | Outside passive sensors and never explored | Sector id only. Probe or move blind. |
+| Sensor contact/live | Owned/occupied sector, or one tile adjacent to one | Current terrain and authoritative sector detail. |
+| Old memory | Previously explored but no longer in sensor range | Terrain memory only; ownership, fleets, buildings, yields, and terraform information may be stale/hidden. |
+| Probe result | Successful probe | Full detail at scan time; it later becomes memory when no live coverage remains. |
+
+Selecting a tile is inspection, not movement. It updates the left **Selected Sector** panel. Unknown and remembered fields must say `Unknown` or `Not currently visible`; they must never silently retain details from the previously selected sector. The unknown-sector panel offers both explicit actions: **Send Probe** and **Move Ships**.
+
 ## Movement And Arrival
 
 Movement commands:
@@ -33,6 +46,7 @@ Movement commands:
 - `//move:<fromHex>:<toHex>:<shipTypeCsv>:<countCsv>` for single-source movement; type/count CSVs are positive decimal integers and must line up one-to-one.
 - `//sendmmf:<targetHex>:<sourceHex>:<shipType>:<ordinal>...` through the multi-move UI; every selected ship option adds a source/type/positive-ordinal triplet.
 - `//mmove:<sectorHex>` to ask for source options
+- `//moveoptions:<targetHex>` to explicitly request eligible ships from adjacent sectors; an empty result is still returned and explained in the UI.
 
 Rules:
 
@@ -83,6 +97,20 @@ Building ids:
 Slot limits depend on sector type. Black holes and empty/non-colonizable hazards should not accept normal buildings.
 The server owns the slot table, includes `buildingSlotLimit` in live sector detail, and shares the same table with the read-only invariant auditor. Client fallback values exist only for compatibility before authoritative detail arrives.
 
+Construction commands include the selected sector token. Ownership, slot capacity, and prerequisites are validated against that explicit destination; the server no longer needs to infer the destination from whichever sector happened to be selected earlier. Legacy clients may still fall back to `players.currentsector`.
+
+### Local versus empire-wide state
+
+| Local to selected sector | Empire-wide |
+| --- | --- |
+| Sector owner and terrain | Metal, crystal, and research balances |
+| Resource/terraform modifiers | Researched technology and race doctrine |
+| Building slots and every building | Technology production/combat multipliers |
+| Orbital defense and Warp Gate endpoint | Victory progress and diplomacy |
+| Ships present and the sector where a new ship appears | Hull knowledge unlocked by Military Shipyards research |
+
+The Build tab always acts on the selected owned sector. Research remains empire-wide. Changing selection must refresh local building/fleet counts and disabled reasons before an order can be sent.
+
 ## Ships
 
 Ship ids are defined in `server/lib/combat.js`. The current UI/server ship families include Scout, Frigate, Destroyer, Cruiser, Battleship, Colony Ship, Dreadnought, Intruder, and Carrier.
@@ -92,10 +120,12 @@ Construction checks:
 - Valid ship id.
 - Race doctrine permits the hull, except colony ships remain generally available.
 - Enough metal/crystal.
-- Spaceport exists in current sector.
-- Shipyard tech is high enough for advanced hulls.
+- Spaceport exists in the explicitly selected build sector.
+- Empire-wide Military Shipyards research is high enough for advanced hulls.
 
 Ship construction is immediate; there is no shipyard queue or weighted build-slot capacity. `techstate::` includes race-adjusted `shipCosts` and shipyard requirements so the browser can explain the same rules the server enforces.
+
+The longer-term shipyard direction is local capacity without discarding the existing research tree: Military Shipyards research represents empire knowledge; a local Spaceport/shipyard tier would determine which known hulls that world can produce and how much simultaneous tonnage it can handle. That queue/tier system is **not implemented yet** and must not be implied by the UI. Introduce it only with persisted per-sector levels, migration/reconnect behavior, queue cancellation/refunds, AI support, and functional tests. Repeated Spaceport rows must not be quietly reinterpreted as levels because that would change slot economics and existing games.
 
 ## Combat
 

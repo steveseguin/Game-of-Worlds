@@ -1,7 +1,7 @@
 const CLIENT_COMMANDS = Object.freeze([
     'start', 'creategame', 'gamelist', 'currentgame', 'leavegame', 'addai',
     'changerace', 'surrender', 'colonize', 'buytech', 'techstate',
-    'victoryprogress', 'probe', 'buyship', 'buybuilding', 'move', 'sector',
+    'victoryprogress', 'probe', 'buyship', 'buybuilding', 'move', 'sector', 'moveoptions',
     'mmove', 'sendmmf', 'update', 'joingame', 'getunlockedraces',
     'standingorders', 'applyorders'
 ]);

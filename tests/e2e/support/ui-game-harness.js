@@ -447,7 +447,12 @@ async function openMoveDialog(page, targetSector) {
     await tile.waitFor({ state: 'visible', timeout: 15000 });
     for (let attempt = 0; attempt < 6; attempt++) {
         await tile.click();
-        await dismissProbeSuggestion(page);
+        const suggestionMove = page.locator('#probeSuggestionMove');
+        if (await suggestionMove.isVisible().catch(() => false)) {
+            await suggestionMove.click();
+        } else {
+            await page.locator('#sectorMoveShips').click();
+        }
         if (await page.locator('#multiMove').isVisible().catch(() => false)) {
             return;
         }

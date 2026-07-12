@@ -58,6 +58,8 @@ Per-game tables are suffixed with the numeric game id:
 
 The client stores local rendering and selection state in `public/js/connect.js`, `GUI.js`, and related game UI modules. Server remains authoritative for resources, sector ownership, ships, buildings, tech, victory, and turns. Sector ownership is broader than world ownership: empty routes and secured asteroids can have `map<gameId>.owner`, but elimination requires the candidate to own at least one sector type `6-10` and every opponent to own none.
 
+`GAME_STATE.selectedSector` is the player's UI target and `selectedSectorData` is only populated from authoritative live detail. A selection placeholder must clear the prior sector's local fields immediately. Building and ship commands carry the selected sector explicitly. `players<gameId>.currentsector` remains a legacy compatibility cursor and must not be treated as physical player position or as the only authority for new local actions.
+
 ## State Transitions
 
 ```mermaid

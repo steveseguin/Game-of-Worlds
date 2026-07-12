@@ -11,6 +11,7 @@ Primary source: `server/server.js` movement functions:
 | Command | Meaning |
 | --- | --- |
 | `//sector:<sectorHex>` | Select/request a sector. If hidden, server returns `probeonly:<sectorHex>`. |
+| `//moveoptions:<targetHex>` | Explicitly request ships in adjacent sectors that can move to the selected destination. |
 | `//mmove:<targetHex>` | Legacy helper that is rewritten to `//sendmmf:<targetHex>` server-side. |
 | `//move:<fromHex>:<toHex>:<shipTypeCsv>:<countCsv>` | Move one fleet stack from one source sector. Type and count CSVs must align. |
 | `//sendmmf:<targetHex>:<sourceHex>:<shipType>:<ordinal>...` | Move selected ships from adjacent source sectors into one target sector. Ship type and ordinal are positive decimal tokens. |
@@ -44,12 +45,13 @@ Key invariant: the single-source path verifies the complete requested fleet, con
 
 ## Multi-Source Flow
 
-1. `//sector:<targetHex>` calls `updateSector()`.
-2. Server sends `mmoptions:<targetHex>:<sourceHex>:<count1>...<count9>...` when adjacent owned ships can reach the target.
-3. Client renders one option per available ship. Each option value is `<sourceHex>:<shipType>:<ordinal>`, where ordinal is the one-based ship number within that source/type option list.
-4. `//sendmmf` sends selected option triplets.
-5. Server counts triplets by source/type, validates all source sectors are adjacent, verifies resources and available ships, then conditionally charges crystal and moves each selected id only from its expected source sector.
-6. If any selected id is stale or fails to move, successful writes are returned to their source sectors and the crystal charge is refunded. Arrival effects run only after every selected ship moves.
+1. Selecting a tile sends `//sector:<targetHex>` for intel only. It does not open movement by itself.
+2. The player chooses **Move Ships** in the selected-sector panel; the client sends `//moveoptions:<targetHex>`.
+3. Server always sends `mmoptions:<targetHex>[:<sourceHex>:<count1>...<count9>...]`. An empty payload is a valid “no adjacent ships” result, not silence.
+4. Client renders one option per available ship. Each option value is `<sourceHex>:<shipType>:<ordinal>`, where ordinal is the one-based ship number within that source/type option list.
+5. `//sendmmf` sends selected option triplets.
+6. Server counts triplets by source/type, validates all source sectors are adjacent, verifies resources and available ships, then conditionally charges crystal and moves each selected id only from its expected source sector.
+7. If any selected id is stale or fails to move, successful writes are returned to their source sectors and the crystal charge is refunded. Arrival effects run only after every selected ship moves.
 
 ## Arrival Effects
 

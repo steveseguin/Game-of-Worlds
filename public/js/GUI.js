@@ -118,6 +118,11 @@ const GameUI = (function() {
     function updateSectorDisplay(sectorData) {
         if (!sectorData) return;
 
+        const title = document.getElementById('sectorPanelTitle');
+        if (title) title.textContent = `Sector ${sectorData.id}`;
+        setIntelState('Live intel', 'live', 'Inside your current one-tile sensor range. Details are live.');
+        updateLocalOrderContext(sectorData.id);
+
         // Update basic sector info
         document.getElementById('sectorid').textContent = `Sector ${sectorData.id || 'N/A'}`;
         document.getElementById('planetowner').textContent = sectorData.owner || 'N/A';
@@ -412,8 +417,85 @@ const GameUI = (function() {
 			}
 		}
 
+		const hasOptions = Boolean(shipList && shipList.options.length);
+		const empty = document.getElementById('multiMoveEmpty');
+		if (empty) {
+			empty.hidden = hasOptions;
+			empty.textContent = hasOptions ? '' : 'No eligible ships are in an adjacent sector. Move a fleet closer, then try again.';
+		}
+		['moveAttackShips', 'moveAllShips', 'moveSelectedShips'].forEach(id => {
+			const button = document.getElementById(id);
+			if (button) button.disabled = !hasOptions;
+		});
+
 		// Show dialog
 		multiMoveDiv.style.display = 'block';
+	}
+
+	function setIntelState(label, className, summary) {
+		const badge = document.getElementById('sectorIntelState');
+		if (badge) {
+			badge.textContent = label;
+			badge.className = `sector-intel-state ${className}`;
+		}
+		const summaryEl = document.getElementById('sectorIntelSummary');
+		if (summaryEl) summaryEl.textContent = summary;
+	}
+
+	function updateLocalOrderContext(sectorId) {
+		const label = sectorId ? `Sector ${sectorId}` : 'no sector selected';
+		const build = document.getElementById('buildSectorContext');
+		if (build) build.textContent = `Construction destination: ${label}. Buildings, defenses, spaceports, and ships are local to this sector.`;
+		const fleet = document.getElementById('fleetSectorContext');
+		if (fleet) fleet.textContent = `Your fleet currently in ${label}`;
+		const move = document.getElementById('sectorMoveShips');
+		if (move) move.disabled = !sectorId;
+	}
+
+	function showSectorSelection(sectorId, knownState) {
+		const title = document.getElementById('sectorPanelTitle');
+		if (title) title.textContent = `Sector ${sectorId}`;
+		updateLocalOrderContext(sectorId);
+		const live = Boolean(knownState?.live);
+		const remembered = Boolean(knownState?.seen && !live);
+		setIntelState(
+			live ? 'Sensor contact' : (remembered ? 'Old memory' : 'Unknown'),
+			live ? 'sensor' : (remembered ? 'memory' : 'unknown'),
+			live
+				? 'Passive sensors reach one tile beyond your territory and fleets. Requesting current details...'
+				: (remembered ? 'Terrain was seen before, but current ownership, fleets, and construction are unknown.' : 'Outside sensor range. Probe it safely, or risk moving an adjacent fleet into the unknown.')
+		);
+		const unknown = remembered ? 'Not currently visible' : 'Unknown';
+		const values = {
+			sectorid: `Sector ${sectorId}`,
+			planetowner: unknown,
+			planettype: knownState?.type === null || knownState?.type === undefined ? unknown : sectorTypeLabel(knownState.type),
+			metalbonus: unknown,
+			crystalbonus: unknown,
+			terraformlvl: unknown,
+			sectorslots: unknown
+		};
+		Object.entries(values).forEach(([id, value]) => {
+			const el = document.getElementById(id);
+			if (el) el.textContent = value;
+		});
+		for (let i = 1; i <= 9; i++) {
+			const ship = document.getElementById(`f${i}`);
+			if (ship) ship.textContent = unknown;
+		}
+	}
+
+	function sectorTypeLabel(type) {
+		return ({ 0: 'Empty Space', 1: 'Asteroid Belt', 2: 'Black Hole', 3: 'Unstable Star', 4: 'Brown Dwarf', 5: 'Small Moon', 6: 'Micro Planet', 7: 'Small Planet', 8: 'Medium Planet', 9: 'Large Planet', 10: 'Homeworld' })[Number(type)] || 'Unknown';
+	}
+
+	function showMultiMoveLoading(targetSector) {
+		showMultiMoveOptions(targetSector, '');
+		const empty = document.getElementById('multiMoveEmpty');
+		if (empty) {
+			empty.hidden = false;
+			empty.textContent = 'Checking adjacent sectors for eligible ships...';
+		}
 	}
 
 	// Return public API
@@ -426,6 +508,8 @@ const GameUI = (function() {
 		updateFleetDisplay,
 		updateOwnedSector,
 		showMultiMoveOptions,
+		showMultiMoveLoading,
+		showSectorSelection,
 		switchTab,
 		toggleFullScreen
 	};

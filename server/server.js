@@ -3517,6 +3517,7 @@ function finishProbeReveal(gameId, playerId, targetSector, sectorRow, connection
 function buyShip(data, connection) {
     const parts = data.split(":");
     const shipType = parseInt(parts[1]);
+    const requestedSector = parts[2] ? parseSectorToken(parts[2]) : null;
     const playerId = connection.name;
     const gameId = connection.gameid;
     
@@ -3544,6 +3545,14 @@ function buyShip(data, connection) {
             }
             
             const player = results[0];
+            const buildSector = isPositiveSafeInteger(requestedSector)
+                ? requestedSector
+                : Number(player.currentsector);
+
+            if (!isPositiveSafeInteger(buildSector)) {
+                connection.sendUTF("Error: Select a valid sector before building a ship");
+                return;
+            }
 
             // Apply race modifiers to ship cost
             const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === player.race_id) || raceSystem.RACE_TYPES.TERRAN;
@@ -3567,7 +3576,7 @@ function buyShip(data, connection) {
                 `SELECT id FROM buildings${gameId} b
                  JOIN map${gameId} m ON b.sectorid = m.sectorid
                  WHERE m.owner = ? AND b.sectorid = ? AND b.type = 3`,
-                [playerId, player.currentsector],
+                [playerId, buildSector],
                 (err, buildings) => {
                     if (err || buildings.length === 0) {
                         connection.sendUTF("Error: Need a spaceport in this sector");
@@ -3600,7 +3609,7 @@ function buyShip(data, connection) {
                             // Create the ship
                             db.query(
                                 `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                                [playerId, shipType, player.currentsector],
+                                [playerId, shipType, buildSector],
                                 (err) => {
                                     if (err) {
                                         db.query(
@@ -3614,9 +3623,9 @@ function buyShip(data, connection) {
                                         return;
                                     }
                                     
-                                    connection.sendUTF(`Success: Built ${shipData.name}`);
+                                    connection.sendUTF(`Success: Built ${shipData.name} in sector ${buildSector}`);
                                     updateResources(connection);
-                                    updateSector2(gameId, player.currentsector);
+                                    updateSector2(gameId, buildSector);
                                 }
                             );
                         }
@@ -3630,6 +3639,7 @@ function buyShip(data, connection) {
 function buyBuilding(data, connection) {
     const parts = data.split(":");
     const buildingType = parseInt(parts[1]);
+    const requestedSector = parts[2] ? parseSectorToken(parts[2]) : null;
     const playerId = connection.name;
     const gameId = connection.gameid;
     
@@ -3670,6 +3680,14 @@ function buyBuilding(data, connection) {
             }
 
             const player = results[0];
+            const buildSector = isPositiveSafeInteger(requestedSector)
+                ? requestedSector
+                : Number(player.currentsector);
+
+            if (!isPositiveSafeInteger(buildSector)) {
+                fail("Error: Select a valid sector before constructing a building");
+                return;
+            }
 
             // Check resources
             if (player.metal < building.metal || player.crystal < building.crystal) {
@@ -3689,7 +3707,7 @@ function buyBuilding(data, connection) {
             // Check if player owns the sector
             db.query(
                 `SELECT owner, type FROM map${gameId} WHERE sectorid = ?`,
-                [player.currentsector],
+                [buildSector],
                 (err, sector) => {
                     if (err || sector.length === 0 || Number(sector[0].owner) !== Number(playerId)) {
                         fail("Error: You don't own this sector");
@@ -3705,7 +3723,7 @@ function buyBuilding(data, connection) {
 
                     db.query(
                         `SELECT COUNT(*) as count FROM buildings${gameId} WHERE sectorid = ?`,
-                        [player.currentsector],
+                        [buildSector],
                         (err, count) => {
                             if (err || count[0].count >= slotLimit) {
                                 fail(`Error: Building limit reached (${slotLimit} slots here)`);
@@ -3729,7 +3747,7 @@ function buyBuilding(data, connection) {
                                     // Create the building
                                     db.query(
                                         `INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`,
-                                        [player.currentsector, buildingType, playerId],
+                                        [buildSector, buildingType, playerId],
                                         (err) => {
                                             if (err) {
                                                 db.query(
@@ -3744,9 +3762,9 @@ function buyBuilding(data, connection) {
                                             }
                                             
                                             pendingBuildingPurchases.delete(purchaseKey);
-                                            connection.sendUTF(`Success: Built ${building.name}`);
+                                            connection.sendUTF(`Success: Built ${building.name} in sector ${buildSector}`);
                                             updateResources(connection);
-                                            updateSector2(gameId, player.currentsector);
+                                            updateSector2(gameId, buildSector);
                                         }
                                     );
                                 }
@@ -4156,15 +4174,24 @@ function updateSector(data, connection) {
                 [sectorId, playerId],
                 () => {
                     updateSector2(gameId, sectorId);
-                    sendMultiMoveOptions(connection, gameId, sectorId);
                 }
             );
             return;
         }
 
         connection.sendUTF(`probeonly:${formatSectorToken(sectorId)}`);
-        sendMultiMoveOptions(connection, gameId, sectorId);
     });
+}
+
+function requestMoveOptions(data, connection) {
+    const parts = typeof data === 'string' ? data.split(':') : [];
+    const targetSector = parseSectorToken(parts[1]);
+    const gameId = Number(connection && connection.gameid);
+    if (!connection || !isPositiveSafeInteger(gameId) || !isPositiveSafeInteger(targetSector)) {
+        connection?.sendUTF?.('Error: Invalid fleet destination');
+        return;
+    }
+    sendMultiMoveOptions(connection, gameId, targetSector);
 }
 
 // --- LIVE visibility (StarCraft rules) -------------------------------------
@@ -4346,7 +4373,9 @@ function sendMultiMoveOptions(connection, gameId, targetSector) {
     const playerId = Number(connection.name);
     const mapSize = getGameMapSizeSync(gameId);
     const adjacentIds = getAdjacentSectorIds(targetSector, mapSize.width, mapSize.height);
+    const sendEmpty = () => connection.sendUTF(`mmoptions:${formatSectorToken(targetSector)}`);
     if (!Number.isFinite(playerId) || adjacentIds.length === 0) {
+        sendEmpty();
         return;
     }
 
@@ -4355,6 +4384,7 @@ function sendMultiMoveOptions(connection, gameId, targetSector) {
         [targetSector],
         (sectorErr, sectorRows) => {
             if (sectorErr || !sectorRows || sectorRows.length === 0) {
+                sendEmpty();
                 return;
             }
 
@@ -4363,6 +4393,7 @@ function sendMultiMoveOptions(connection, gameId, targetSector) {
                 [playerId],
                 (shipsErr, shipRows) => {
                     if (shipsErr || !Array.isArray(shipRows) || shipRows.length === 0) {
+                        sendEmpty();
                         return;
                     }
 
@@ -4382,6 +4413,7 @@ function sendMultiMoveOptions(connection, gameId, targetSector) {
                     });
 
                     if (bySector.size === 0) {
+                        sendEmpty();
                         return;
                     }
 
@@ -6518,6 +6550,7 @@ module.exports = {
     buyBuilding,
     moveFleet,
     updateSector,
+    requestMoveOptions,
     surroundShips,
     preMoveFleet,
     updateResources,

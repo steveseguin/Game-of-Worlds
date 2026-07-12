@@ -13,14 +13,14 @@
             id: 'step-map',
             selector: '#minimapid',
             title: 'Galaxy Map',
-            body: 'Hover a sector to see owner/ships/buildings. Click to select, move fleets, and build on owned worlds.',
+            body: 'Click a sector to inspect its known details. Use Move Ships in the selected-sector panel to choose an adjacent fleet; Build actions apply to the selected owned world.',
             placement: 'left'
         },
         {
             id: 'step-actions',
             selector: '#controlPadGUI',
             title: 'Build & Move',
-            body: 'Use the control pad to build ships/buildings on owned sectors. Moves and colonization happen from selected sectors.',
+            body: 'Buildings, defenses, Spaceports, and ships are local to the selected owned sector. Research and resource balances are empire-wide.',
             placement: 'top'
         },
         {

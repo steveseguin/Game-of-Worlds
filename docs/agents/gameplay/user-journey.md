@@ -58,6 +58,8 @@ Unknown sectors create the core risk/reward choice:
 - Scout known space: adjacency is normal; paired Warp Gates permit long movement.
 - Secure an asteroid: surviving entry claims it, making later transit safe for that owner.
 
+The player always gets a stable left-side **Selected Sector** context without losing the central 3D galaxy view. Selection first clears stale values, then shows one of three honest states: live sensor detail, terrain-only old memory, or unknown fields. Ownership or a fleet grants passive live sensors exactly one tile outward; this is why some nearby tiles are visible without a probe. Outside that ring, the inline warning offers **Send Probe**, **Move Ships**, and **Dismiss**. Movement is requested only after **Move Ships** is chosen, and an empty adjacent fleet produces an explicit explanation rather than no response.
+
 The server enforces fog of war. Hidden detail must not leak through sector, map, tooltip, battle, or empire messages. Stale remembered intel should be distinguishable from live visibility. Movement validates the entire fleet and cost before arrival effects; failed partial writes are rolled back and refunded.
 
 Two simultaneous clicks for the same player/sector probe are coalesced before charging, preventing an accidental duplicate scan. A later intentional probe remains allowed.
@@ -69,6 +71,13 @@ Review moments: malformed/zero sector, unaffordable probe/move, missing ships, s
 Fleets may hold empty routes, secure asteroids, or occupy worlds, but colonizable planets require a colony ship and sufficient terraform capability. An atomic `owner IS NULL` claim prevents two players consuming ships for the same planet.
 
 Income combines base yield, owned sector types/bonuses, buildings, tech, race modifiers, and mode multiplier. Tech purchases enforce cost, prerequisites, and race caps. Ship/building/resource controls are advisory mirrors; guarded server writes remain authoritative and refund on failed dependent inserts.
+
+The local/global boundary is part of the experience contract:
+
+- Buildings, building slots, resource improvements, defenses, Warp Gates, Spaceports, fleets, and newly built ships belong to a specific sector.
+- Metal/crystal/research balances, race doctrine, and researched technologies belong to the empire.
+- The Build tab names the selected destination and sends it with each construction order. A server must re-check ownership and local prerequisites for that destination; it may not trust an earlier UI selection.
+- Today a local Spaceport enables immediate ship construction while empire-wide Military Shipyards research unlocks heavier hull knowledge. A future local yard-tier and build-capacity system is desirable, but is not live until its persistence, queue, refund, AI, and reconnect rules are designed and tested.
 
 Review moments: last building slot, duplicate fast clicks, race discounts, branch cap, exact-balance spend, failed insert/refund, competing colony claims, newly colonized UI refresh, and victory progress after economy changes.
 

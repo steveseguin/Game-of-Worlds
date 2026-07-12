@@ -144,6 +144,7 @@ test.describe('Complete multiplayer UI harness', () => {
             await expectSectorIntelState(hostPage, probeTarget, 'fog');
             await sendProbeForSector(hostPage, probeTarget);
             await expectSectorIntelState(hostPage, probeTarget, /^(live|memory)$/);
+            await focusHomeworld(hostPage);
             await buildBuilding(hostPage, '#bb4'); // Spaceport
             await buildBuilding(hostPage, '#bb2'); // Crystal Refinery
             await researchTech(hostPage, /Metal Extraction/i);
@@ -159,6 +160,7 @@ test.describe('Complete multiplayer UI harness', () => {
             await hostPage.screenshot({ path: testInfo.outputPath('03-first-colony.png'), fullPage: true });
 
             await endTurnsUntilResources([hostPage, guestPage], hostPage, { metal: 1000 }, 30);
+            await focusHomeworld(hostPage);
             await buildShip(hostPage, 6); // Second colony ship
             await marchShip(hostPage, colonizationTargets[1].path.slice(1), 'Colony Ship');
             await focusSector(hostPage, colonizationTargets[1].id);
@@ -167,8 +169,10 @@ test.describe('Complete multiplayer UI harness', () => {
             await hostPage.screenshot({ path: testInfo.outputPath('04-second-colony.png'), fullPage: true });
 
             await endTurnsUntilResources([hostPage, guestPage], hostPage, { metal: 430 }, 20);
+            await focusHomeworld(hostPage);
             await buildShip(hostPage, 1); // Frigate
             await endTurnsUntilResources([hostPage, guestPage], guestPage, { metal: 430 }, 20);
+            await focusHomeworld(guestPage);
             await buildShip(guestPage, 1); // Frigate
 
             await marchShip(hostPage, battlePaths.hostPath, 'Frigate');
@@ -197,6 +201,7 @@ test.describe('Complete multiplayer UI harness', () => {
                     if (await isGameOverVisible(hostPage)) {
                         break;
                     }
+                    await focusHomeworld(hostPage);
                     await buildShip(hostPage, 6);
                     await marchShip(hostPage, colonizationTargets[index].path.slice(1), 'Colony Ship');
                     await focusSector(hostPage, colonizationTargets[index].id);

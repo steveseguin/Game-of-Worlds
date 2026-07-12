@@ -424,7 +424,7 @@ function renderGameOverModal(winnerId, reason) {
     document.body.appendChild(modal);
 }
 
-function renderProbeSuggestionCard(title, body, onProbe) {
+function renderProbeSuggestionCard(title, body, onProbe, onMove) {
     const existing = document.getElementById('probeSuggestionCard');
     if (existing && existing.parentNode) {
         existing.parentNode.removeChild(existing);
@@ -440,17 +440,22 @@ function renderProbeSuggestionCard(title, body, onProbe) {
         <p>${escapeHtml(body)}</p>
         <div class="probe-suggestion-actions">
             <button class="primary" type="button" id="probeSuggestionSend">Send Probe</button>
-            <button class="ghost" type="button" id="probeSuggestionDismiss">Move / Ignore</button>
+            <button class="ghost" type="button" id="probeSuggestionMove">Move Ships</button>
+            <button class="ghost" type="button" id="probeSuggestionDismiss">Dismiss</button>
         </div>
     `;
     const close = () => card.remove();
     card.querySelector('.probe-suggestion-close')?.addEventListener('click', close);
     card.querySelector('#probeSuggestionDismiss')?.addEventListener('click', close);
+    card.querySelector('#probeSuggestionMove')?.addEventListener('click', () => {
+        close();
+        onMove();
+    });
     card.querySelector('#probeSuggestionSend')?.addEventListener('click', () => {
         close();
         onProbe();
     });
-    document.body.appendChild(card);
+    (document.getElementById('sectorActionPanel') || document.body).appendChild(card);
 }
 
 // Render probe intel (spy ladder results) into the sector panel + a notification.
@@ -647,11 +652,46 @@ function buyTech(techId) {
 }
 
 function buyShip(shipId) {
-    sendGameCommand("//buyship:" + shipId);
+    const target = getSelectedSectorToken();
+    if (!target) return notifySectorSelectionRequired('build a ship');
+    sendGameCommand(`//buyship:${shipId}:${target}`);
 }
 
 function buyBuilding(buildingId) {
-    sendGameCommand("//buybuilding:" + buildingId);
+    const target = getSelectedSectorToken();
+    if (!target) return notifySectorSelectionRequired('construct a building');
+    sendGameCommand(`//buybuilding:${buildingId}:${target}`);
+}
+
+function getSelectedSectorToken() {
+    const sectorId = Number(GAME_STATE.selectedSector);
+    return Number.isSafeInteger(sectorId) && sectorId > 0 ? sectorId.toString(16) : null;
+}
+
+function notifySectorSelectionRequired(action) {
+    window.NotificationSystem?.notify?.('Select a sector', `Select an owned sector before you ${action}.`, 'warning', 4000);
+    return false;
+}
+
+function requestMoveOptions(sectorToken) {
+    window.GameUI?.switchTab?.('fleet');
+    window.GameUI?.showMultiMoveLoading?.(sectorToken);
+    sendReadOnlyCommand(`//moveoptions:${sectorToken}`);
+}
+
+function sendReadOnlyCommand(command) {
+    if (!websocket || websocket.readyState !== WebSocket.OPEN || !hasAuthenticated) {
+        window.NotificationSystem?.notify?.('Connection not ready', 'Sector information is not available until synchronization finishes.', 'warning', 4000);
+        return false;
+    }
+    websocket.send(command);
+    return true;
+}
+
+function requestSelectedSectorMove() {
+    const target = getSelectedSectorToken();
+    if (!target) return notifySectorSelectionRequired('move ships');
+    return requestMoveOptions(target);
 }
 
 // Authentication function
@@ -958,8 +998,9 @@ function handleWebSocketMessage(message) {
         const body = staleMemory
             ? 'You only have old memory here. Send a probe to refresh live intel, or move ships there from the fleet menu if you want to risk exploration.'
             : 'Long-range sensors cannot see in. Launch a probe to scan it? (300 Crystal; probes can be lost to hazards or counter-intelligence.)';
-        const sendProbe = () => websocket.send("//probe:" + sectorId);
-        renderProbeSuggestionCard(title, body, sendProbe);
+        const sendProbe = () => sendGameCommand("//probe:" + sectorId);
+        const moveShips = () => requestMoveOptions(sectorId);
+        renderProbeSuggestionCard(title, body, sendProbe, moveShips);
         if (typeof window.NotificationSystem?.notify === 'function') {
             window.NotificationSystem.notify(title, 'Probe scan is optional; fleet movement remains available if ships are nearby.', 'info', 5000);
         }
@@ -1202,9 +1243,12 @@ function updateSectorInfo(message) {
         const playerId = getCookie('userId');
         const numericOwnerId = Number(ownerId);
         const numericPlayerId = Number(playerId);
-        const selectedFromMap = Number(window.GalaxyMap?.getSelectedSector?.() || GAME_STATE.selectedSector || 0);
+        const selectedFromMap = Number(window.GalaxyMap?.getSelectedSector?.() || 0);
+        const selectedFromState = Number(GAME_STATE.selectedSector || 0);
         const isMyHomeworld = sectorType === 10 && numericOwnerId && numericOwnerId === numericPlayerId;
-        const shouldFocusPanel = selectedFromMap === sectorId || (!GAME_STATE.selectedSector && isMyHomeworld);
+        const shouldFocusPanel = selectedFromMap === sectorId
+            || selectedFromState === sectorId
+            || (!selectedFromState && isMyHomeworld);
 
         GAME_STATE.mapSectors[sectorId] = {
             ...(GAME_STATE.mapSectors[sectorId] || {}),
@@ -2068,8 +2112,17 @@ function changeSector(sectorId) {
     lastSectorRequest = sectorId;
     lastSectorTime = now;
 
+    const numericSectorId = parseInt(String(sectorId), 16);
+    if (Number.isSafeInteger(numericSectorId) && numericSectorId > 0) {
+        document.getElementById('probeSuggestionCard')?.remove();
+        GAME_STATE.selectedSector = numericSectorId;
+        GAME_STATE.selectedSectorData = null;
+        window.GameUI?.showSectorSelection?.(numericSectorId, GAME_STATE.mapSectors[numericSectorId] || null);
+        window.BuildSystem?.refresh?.();
+    }
+
     // Request sector information from server
-    websocket.send("//sector:" + sectorId);
+    sendReadOnlyCommand("//sector:" + sectorId);
 }
 
 function getCookie(name) {
@@ -2107,6 +2160,7 @@ window.buyShip = buyShip;
 window.buyBuilding = buyBuilding;
 window.sendmmf = sendmmf;
 window.changeSector = changeSector;
+window.requestSelectedSectorMove = requestSelectedSectorMove;
 window.leaveCurrentGame = leaveCurrentGame;
 window.focusHomeworld = focusHomeworld;
 window.colonizeSelectedSector = colonizeSelectedSector;
@@ -2114,6 +2168,7 @@ window.colonizeSelectedSector = colonizeSelectedSector;
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('homeworldBtn')?.addEventListener('click', focusHomeworld);
     document.getElementById('colonizeBtn')?.addEventListener('click', colonizeSelectedSector);
+    document.getElementById('sectorMoveShips')?.addEventListener('click', requestSelectedSectorMove);
     // Standing orders panel removed - human players manage their empire manually
     // AI players use server-side automation instead
 });

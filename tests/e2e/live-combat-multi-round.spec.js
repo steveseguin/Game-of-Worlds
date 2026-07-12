@@ -338,6 +338,12 @@ async function moveSelectedShipTypeToSector(page, targetTileId, shipTypeText) {
     let opened = false;
     for (let attempt = 0; attempt < 4; attempt++) {
         await tile.click();
+        const suggestionMove = page.locator('#probeSuggestionMove');
+        if (await suggestionMove.isVisible().catch(() => false)) {
+            await suggestionMove.click();
+        } else {
+            await page.locator('#sectorMoveShips').click();
+        }
         try {
             await expect(page.locator('#multiMove')).toBeVisible({ timeout: 2500 });
             opened = true;
@@ -417,6 +423,17 @@ test.describe('Live two-client combat with multiple rounds', () => {
         await joinerPage.waitForURL('**/game.html', { timeout: 20000 });
         await expect(hostPage.locator('#resourceBar')).toBeVisible({ timeout: 20000 });
         await expect(joinerPage.locator('#resourceBar')).toBeVisible({ timeout: 20000 });
+        await Promise.all([hostPage, joinerPage].map(async page => {
+            await page.evaluate(() => {
+                localStorage.setItem('gow-tour-dismissed-v1', '1');
+                window.Tour?.end?.();
+            });
+            const dismiss = page.locator('#tour-skip');
+            if (await dismiss.isVisible().catch(() => false)) {
+                await dismiss.click();
+                await expect(dismiss).toBeHidden({ timeout: 5000 });
+            }
+        }));
 
         await installBattleCounter(hostPage);
         await installBattleCounter(joinerPage);

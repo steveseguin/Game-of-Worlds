@@ -910,6 +910,9 @@ function handleCommand(data, connection) {
         case "sector":
             serverLogic.updateSector(data, connection);
             break;
+        case "moveoptions":
+            serverLogic.requestMoveOptions(data, connection);
+            break;
         case "mmove":
             serverLogic.surroundShips(data, connection);
             break;
