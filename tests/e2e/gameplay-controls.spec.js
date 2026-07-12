@@ -4,7 +4,8 @@ const {
     registerUser,
     createGame,
     startGame,
-    dismissFirstRunGuidance
+    dismissFirstRunGuidance,
+    readTestTerrain
 } = require('./support/ui-game-harness');
 
 test.describe('Authoritative gameplay controls', () => {
@@ -81,18 +82,25 @@ test.describe('Authoritative gameplay controls', () => {
             email: `${username}@example.com`,
             password: 'Secure123!'
         });
-        await createGame(page, uniqueId('sector_ui_game_'), { maxPlayers: '2', mode: 'test' });
+        const gameId = await createGame(page, uniqueId('sector_ui_game_'), { maxPlayers: '2', mode: 'test' });
         await startGame(page, [page]);
         await dismissFirstRunGuidance(page);
 
-        const liveTile = page.locator('[id^="tile"][data-intel="live"]').first();
-        await expect(liveTile).toBeVisible({ timeout: 15000 });
-        await liveTile.click();
-        await expect(page.locator('#sectorIntelState')).toContainText(/Live intel|Sensor contact/i, { timeout: 10000 });
+        const sensorSector = await page.evaluate(() => Number(Object.values(window.GAME_STATE.mapSectors)
+            .find(sector => sector.live && sector.status === 'neutral')?.id || 0));
+        expect(sensorSector).toBeGreaterThan(0);
+        await page.locator(`#tile${sensorSector}`).click();
+        await expect(page.locator('#sectorIntelState')).toHaveText('Sensor contact', { timeout: 10000 });
+        await expect(page.locator('#metalbonus')).toHaveText('Unknown');
+        await expect(page.locator('#sectorBuildings')).toContainText('Outside sensor resolution');
         await expect(page.locator('#sectorPanelTitle')).toContainText(/Sector\s+\d+/);
         await expect(page.locator('#buildSectorContext')).toContainText(/Construction destination: Sector \d+/);
 
-        const fogTile = page.locator('[id^="tile"][data-intel="fog"]').first();
+        const terrain = await readTestTerrain(page, gameId);
+        const fogIds = await page.locator('[id^="tile"][data-intel="fog"]').evaluateAll(nodes => nodes.map(node => Number(node.id.replace('tile', ''))));
+        const probeTarget = terrain.sectors.find(sector => fogIds.includes(Number(sector.sectorid)) && Number(sector.type) >= 6)?.sectorid;
+        expect(Number(probeTarget)).toBeGreaterThan(0);
+        const fogTile = page.locator(`#tile${probeTarget}`);
         await expect(fogTile).toBeVisible({ timeout: 15000 });
         await fogTile.click();
         await expect(page.locator('#sectorIntelState')).toHaveText('Unknown', { timeout: 10000 });
@@ -100,10 +108,35 @@ test.describe('Authoritative gameplay controls', () => {
         await expect(page.locator('#probeSuggestionCard')).toBeVisible();
         await expect(page.locator('#sectorActionPanel #probeSuggestionCard')).toHaveCount(1);
 
+        // A delayed push for a previously selected sector must update map memory
+        // without replacing the command context the player is looking at now.
+        await page.evaluate(({ previousSector }) => {
+            window.handleWebSocketMessage(`sectorcontact::${previousSector}::${JSON.stringify({
+                sector: { sectorid: previousSector, type: 6, owner: null },
+                fleetSize: 0,
+                fleetPresent: false
+            })}`);
+        }, { previousSector: sensorSector });
+        await expect(page.locator('#sectorid')).toHaveText(`Sector ${probeTarget}`);
+        await expect(page.locator('#sectorIntelState')).toHaveText('Unknown');
+
         await page.locator('#probeSuggestionMove').click();
         await expect(page.locator('#multiMove')).toBeVisible({ timeout: 10000 });
         await expect(page.locator('#sectorofattack')).not.toHaveText('-');
         await expect(page.locator('#multiMoveEmpty')).toBeVisible();
         await expect(page.locator('#multiMoveEmpty')).toContainText(/No eligible ships|Checking adjacent sectors/i);
+        await page.locator('#closeMultiMove').click();
+
+        await fogTile.click();
+        await page.locator('#probeSuggestionSend').click();
+        await expect(page.locator('#sectorIntelState')).toHaveText('Probe scan', { timeout: 15000 });
+        await expect(page.locator('#metalbonus')).not.toHaveText('Unknown');
+
+        await page.reload();
+        await dismissFirstRunGuidance(page);
+        await page.locator(`#tile${probeTarget}`).click();
+        await expect(page.locator('#sectorIntelState')).toHaveText('Probe memory', { timeout: 15000 });
+        await expect(page.locator('#sectorIntelSummary')).toContainText(/stored scan results/i);
+        await expect(page.locator('#metalbonus')).not.toHaveText('Unknown');
     });
 });

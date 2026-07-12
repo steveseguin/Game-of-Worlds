@@ -51,14 +51,14 @@ Per-game tables are suffixed with the numeric game id:
 | `map<gameId>` | Sector type, owner, resources, terraform requirement, artifacts. |
 | `ships<gameId>` | Individual ships by owner, type, sector. |
 | `buildings<gameId>` | Buildings by owner, sector, type. |
-| `explored_sectors<gameId>` | Fog-of-war memory per player. |
+| `explored_sectors<gameId>` | Fog memory plus intel tier/source, dated probe JSON, and last-seen turn per player/sector. |
 | `wonders<gameId>` | Victory/achievement structures. |
 
 ## Client State
 
 The client stores local rendering and selection state in `public/js/connect.js`, `GUI.js`, and related game UI modules. Server remains authoritative for resources, sector ownership, ships, buildings, tech, victory, and turns. Sector ownership is broader than world ownership: empty routes and secured asteroids can have `map<gameId>.owner`, but elimination requires the candidate to own at least one sector type `6-10` and every opponent to own none.
 
-`GAME_STATE.selectedSector` is the player's UI target and `selectedSectorData` is only populated from authoritative live detail. A selection placeholder must clear the prior sector's local fields immediately. Building and ship commands carry the selected sector explicitly. `players<gameId>.currentsector` remains a legacy compatibility cursor and must not be treated as physical player position or as the only authority for new local actions.
+`GAME_STATE.selectedSector` is the player's UI target and `selectedSectorData` is only populated from authoritative direct detail. A selection placeholder must clear the prior sector's local fields immediately. Late responses for other sectors are retained for map rendering but cannot replace the selected panel. Building and ship commands carry the selected sector explicitly. `players<gameId>.currentsector` remains a legacy compatibility cursor; selection no longer writes it and it must not be treated as physical player position or as authority for modern local actions.
 
 ## State Transitions
 
@@ -85,7 +85,7 @@ stateDiagram-v2
 - `users.currentgame` and `connection.gameid` should agree after join/reconnect and be cleared on leave/abandon where possible.
 - A game timer should exist for each active started game, except during shutdown or immediate abandonment.
 - Battle playback pauses the turn clock by using `battlePause`; do not advance turns while `isBattlePauseActive(gameId)` is true, and terminal cleanup must clear both the pause timeout and the map entry.
-- Fog-of-war writes to `explored_sectors<gameId>` and should prevent hidden sectors from leaking through `sector::` or `mapstate::`.
+- Fog-of-war writes tiered memory to `explored_sectors<gameId>`. `sector::` is reserved for direct/current full detail, `sectorcontact::` exposes only passive terrain/control/presence, and `sectorintel::` carries an explicitly stale stored probe snapshot.
 - Production `/status.deploy.dirty` should be `false`; a dirty deploy indicates generated/tracked files or wrong checkout state in CI.
 - `activeGames[gameId].turnReady` must be cleared after each processed turn.
 - A turn with `turnResolution` must reject new mutations. `newturn::` is legal only after the persistent phase marker is cleared and awaited side effects finish.

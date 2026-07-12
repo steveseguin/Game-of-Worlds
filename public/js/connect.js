@@ -512,9 +512,12 @@ const GAME_STATE = {
     },
     selectedSector: null,
     selectedSectorData: null,
+    pendingMoveSector: null,
     mapSectors: {},
+    players: {},
     empire: null
 };
+window.GAME_STATE = GAME_STATE;
 
 function setNextTurnButtonLabel(label) {
     const nextTurnText = document.getElementById("nextTurnText");
@@ -674,6 +677,8 @@ function notifySectorSelectionRequired(action) {
 }
 
 function requestMoveOptions(sectorToken) {
+    const numericTarget = parseInt(String(sectorToken), 16);
+    GAME_STATE.pendingMoveSector = Number.isSafeInteger(numericTarget) ? numericTarget : null;
     window.GameUI?.switchTab?.('fleet');
     window.GameUI?.showMultiMoveLoading?.(sectorToken);
     sendReadOnlyCommand(`//moveoptions:${sectorToken}`);
@@ -1011,6 +1016,10 @@ function handleWebSocketMessage(message) {
         if (window.GameUI && window.GameUI.showMultiMoveOptions) {
             const parts = message.split(':');
             const targetSector = parts[1];
+            const numericTarget = parseInt(targetSector, 16);
+            if (GAME_STATE.pendingMoveSector && numericTarget !== GAME_STATE.pendingMoveSector) {
+                return;
+            }
             const shipsData = parts.slice(2).join(':');
             window.GameUI.showMultiMoveOptions(targetSector, shipsData);
         }
@@ -1084,6 +1093,12 @@ function handleWebSocketMessage(message) {
     // Sector information
     else if (message.indexOf("sector::") === 0) {
         updateSectorInfo(message);
+    }
+    else if (message.indexOf("sectorcontact::") === 0) {
+        updateSectorContact(message);
+    }
+    else if (message.indexOf("sectorintel::") === 0) {
+        updateRememberedSectorIntel(message);
     }
     // Generic information
     else if (message.indexOf("info:") === 0) {
@@ -1243,11 +1258,9 @@ function updateSectorInfo(message) {
         const playerId = getCookie('userId');
         const numericOwnerId = Number(ownerId);
         const numericPlayerId = Number(playerId);
-        const selectedFromMap = Number(window.GalaxyMap?.getSelectedSector?.() || 0);
         const selectedFromState = Number(GAME_STATE.selectedSector || 0);
         const isMyHomeworld = sectorType === 10 && numericOwnerId && numericOwnerId === numericPlayerId;
-        const shouldFocusPanel = selectedFromMap === sectorId
-            || selectedFromState === sectorId
+        const shouldFocusPanel = selectedFromState === sectorId
             || (!selectedFromState && isMyHomeworld);
 
         GAME_STATE.mapSectors[sectorId] = {
@@ -1337,6 +1350,7 @@ function updateSectorInfo(message) {
         // Update UI
         if (shouldFocusPanel && window.GameUI && window.GameUI.updateSectorDisplay) {
             window.GameUI.updateSectorDisplay(sectorData);
+            if (data.scannedAt) window.GameUI.markProbeScan?.(data.scanTurn, data.scannedAt);
         }
 
         if (shouldFocusPanel && window.GameUI && window.GameUI.updateBuildings) {
@@ -1349,6 +1363,66 @@ function updateSectorInfo(message) {
         }
     } catch (e) {
         console.error('Error parsing sector data:', e);
+    }
+}
+
+function updateSectorContact(message) {
+    const parts = message.split('::');
+    const sectorId = Number.parseInt(parts[1], 10);
+    if (!Number.isSafeInteger(sectorId) || parts.length < 3) return;
+    try {
+        const data = JSON.parse(parts[2]);
+        const sector = data.sector || {};
+        GAME_STATE.mapSectors[sectorId] = {
+            ...(GAME_STATE.mapSectors[sectorId] || {}),
+            id: sectorId,
+            type: Number(sector.type),
+            owner: sector.owner,
+            live: true,
+            seen: true
+        };
+        if (Number(GAME_STATE.selectedSector) !== sectorId) return;
+        GAME_STATE.selectedSectorData = null;
+        window.BuildSystem?.refresh?.();
+        window.GameUI?.updateSectorContact?.({
+            id: sectorId,
+            type: Number(sector.type),
+            owner: sector.owner,
+            fleetSize: Number(data.fleetSize) || 0,
+            fleetPresent: Boolean(data.fleetPresent)
+        });
+    } catch (error) {
+        console.warn('Failed to parse sensor contact', error);
+    }
+}
+
+function updateRememberedSectorIntel(message) {
+    const parts = message.split('::');
+    const sectorId = Number.parseInt(parts[1], 10);
+    if (!Number.isSafeInteger(sectorId) || parts.length < 3 || Number(GAME_STATE.selectedSector) !== sectorId) return;
+    try {
+        const data = JSON.parse(parts[2]);
+        const rawSector = data.sector || {};
+        const sectorData = {
+            id: sectorId,
+            owner: rawSector.owner ?? null,
+            ownerid: rawSector.owner ?? null,
+            type: Number(rawSector.type ?? rawSector.sectortype ?? 0),
+            metalBonus: Number(rawSector.metalBonus ?? rawSector.metalbonus ?? 100),
+            crystalBonus: Number(rawSector.crystalBonus ?? rawSector.crystalbonus ?? 100),
+            terraformLevel: Number(rawSector.terraformLevel ?? rawSector.terraformlvl ?? 0),
+            buildingSlotLimit: Number(rawSector.buildingSlotLimit) || 0,
+            ships: data.ships || [],
+            buildings: data.buildings || [],
+            intelMemory: data.intelMemory || {},
+            intel: data.intel || null
+        };
+        GAME_STATE.selectedSectorData = null;
+        window.BuildSystem?.refresh?.();
+        window.GameUI?.updateRememberedSectorDisplay?.(sectorData);
+        if (data.intel) renderSectorIntel(sectorId, data.intel);
+    } catch (error) {
+        console.warn('Failed to parse remembered sector intel', error);
     }
 }
 
@@ -2060,12 +2134,19 @@ function updatePlayerList(message) {
     const players = message.split(":");
     for (let i = 1; i < players.length; i++) {
         if (players[i]) {
+            const fields = players[i].split('|');
+            const playerId = Number(fields[0]);
+            const playerName = fields.length > 1 ? decodeURIComponent(fields[1] || '') : players[i];
+            if (Number.isSafeInteger(playerId) && playerId > 0) {
+                GAME_STATE.players[playerId] = { id: playerId, name: playerName || `Player ${playerId}` };
+            }
             const playerNameElement = document.getElementById(`player${i}name`);
             if (playerNameElement) {
-                playerNameElement.textContent = players[i];
+                playerNameElement.textContent = playerName;
             }
         }
     }
+    if (GAME_STATE.selectedSectorData) window.GameUI?.updateSectorDisplay?.(GAME_STATE.selectedSectorData);
 }
 
 // Send multiple move fleet command

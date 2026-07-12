@@ -21,7 +21,7 @@ The intended loop is risk/reward:
 2. If not visible, server replies `probeonly:<sectorHex>`.
 3. `//probe:<sectorHex>` costs 300 crystal.
 4. Probe can be destroyed by black holes, asteroid hazards, or enemy counter-intelligence.
-5. Successful probe marks the sector explored and returns `sector::<id>::<json>`.
+5. Successful probe stores a dated full-intel snapshot and returns `sector::<id>::<json>`.
 6. Moving blind may reveal or punish the fleet through arrival effects.
 
 Fog-of-war is server-enforced through `canPlayerSeeSector()`, `markSectorExplored()`, `sendVisibleMapState()`, and `updateSector()`.
@@ -33,8 +33,10 @@ The modern map deliberately adds a **one-tile passive sensor ring** around every
 | UI state | What caused it | What the player can rely on |
 | --- | --- | --- |
 | Unknown/fog | Outside passive sensors and never explored | Sector id only. Probe or move blind. |
-| Sensor contact/live | Owned/occupied sector, or one tile adjacent to one | Current terrain and authoritative sector detail. |
-| Old memory | Previously explored but no longer in sensor range | Terrain memory only; ownership, fleets, buildings, yields, and terraform information may be stale/hidden. |
+| Direct live detail | Player owns the sector or has a fleet there | Current terrain, owner, yields, terraform requirement, buildings, and fleet composition. |
+| Sensor contact | One tile adjacent (including diagonals) to an owned/occupied sector | Current terrain, controller, and total fleet presence only. Yields, buildings, terraform requirement, and ship composition remain unknown. |
+| Terrain memory | Previously seen without a full probe and no longer in sensor range | Terrain classification only; current control and presence are not implied. |
+| Probe memory | Successful probe, now outside direct coverage | The dated snapshot from scan time. It can be useful, but every mutable field is explicitly stale until observed again. |
 | Probe result | Successful probe | Full detail at scan time; it later becomes memory when no live coverage remains. |
 
 Selecting a tile is inspection, not movement. It updates the left **Selected Sector** panel. Unknown and remembered fields must say `Unknown` or `Not currently visible`; they must never silently retain details from the previously selected sector. The unknown-sector panel offers both explicit actions: **Send Probe** and **Move Ships**.
@@ -97,7 +99,9 @@ Building ids:
 Slot limits depend on sector type. Black holes and empty/non-colonizable hazards should not accept normal buildings.
 The server owns the slot table, includes `buildingSlotLimit` in live sector detail, and shares the same table with the read-only invariant auditor. Client fallback values exist only for compatibility before authoritative detail arrives.
 
-Construction commands include the selected sector token. Ownership, slot capacity, and prerequisites are validated against that explicit destination; the server no longer needs to infer the destination from whichever sector happened to be selected earlier. Legacy clients may still fall back to `players.currentsector`.
+Spaceports and Warp Gates are existence-based local facilities, so each is unique per sector. A duplicate is rejected before spending resources or consuming a slot. Extractors, Refineries, Academies, and Orbital Turrets may be repeated because each row has an additive effect.
+
+Construction commands include the selected sector token. Ownership, slot capacity, uniqueness, and prerequisites are validated against that explicit destination; the server no longer writes selection changes to `players.currentsector`. Legacy commands may still fall back to that old cursor, but modern UI selection is client-local and cannot race another sector-detail response.
 
 ### Local versus empire-wide state
 
@@ -125,7 +129,7 @@ Construction checks:
 
 Ship construction is immediate; there is no shipyard queue or weighted build-slot capacity. `techstate::` includes race-adjusted `shipCosts` and shipyard requirements so the browser can explain the same rules the server enforces.
 
-The longer-term shipyard direction is local capacity without discarding the existing research tree: Military Shipyards research represents empire knowledge; a local Spaceport/shipyard tier would determine which known hulls that world can produce and how much simultaneous tonnage it can handle. That queue/tier system is **not implemented yet** and must not be implied by the UI. Introduce it only with persisted per-sector levels, migration/reconnect behavior, queue cancellation/refunds, AI support, and functional tests. Repeated Spaceport rows must not be quietly reinterpreted as levels because that would change slot economics and existing games.
+The longer-term shipyard direction is local capacity without discarding the existing research tree: Military Shipyards research represents empire knowledge; a local Spaceport/shipyard tier would determine which known hulls that world can produce and how much simultaneous tonnage it can handle. That queue/tier system is **not implemented yet** and must not be implied by the UI. Introduce it only with persisted per-sector levels, migration/reconnect behavior, queue cancellation/refunds, AI support, and functional tests. Existing Spaceports are uniqueness-based facilities, not implicit levels.
 
 ## Combat
 

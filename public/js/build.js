@@ -92,6 +92,7 @@ const BuildSystem = (() => {
             else if (!sector) reason = 'Select one of your sectors first';
             else if (!owned) reason = 'You can only build in a sector you own';
             else if (!slotLimit) reason = 'This sector cannot support buildings';
+            else if ((type === 3 || type === 5) && counts[type] > 0) reason = `This sector already has a ${type === 3 ? 'Spaceport' : 'Warp Gate'}`;
             else if (usedSlots >= slotLimit) reason = `All ${slotLimit} building slots are occupied`;
             else if (type === 5 && Number(techFx.orbital || 0) < 1) reason = 'Needs Orbital Engineering Lv1';
             else if (!hasResources(resources, BUILDING_COSTS[type])) reason = 'Not enough resources';

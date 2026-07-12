@@ -22,7 +22,7 @@ The server creates per-game tables in `createGameTables(gameId)`.
 | `ships<gameId>` | `id`, `owner`, `type`, `sectorid` | One row per ship. Counts are derived by grouped queries. |
 | `buildings<gameId>` | `id`, `sectorid`, `type`, `owner` | One row per building. Slot limits are enforced in code. |
 | `wonders<gameId>` | `id`, `owner`, `type`, `turn_built` | Victory/achievement structure support. |
-| `explored_sectors<gameId>` | `playerid`, `sectorid`, `discovered_at` | Fog-of-war memory. |
+| `explored_sectors<gameId>` | `playerid`, `sectorid`, `discovered_at`, `intel_level`, `intel_source`, `intel_json`, `last_seen_turn` | Fog memory. Successful probes persist a dated detail snapshot; normal exploration can remain terrain-only. Existing per-game tables are migrated on join/reconnect. |
 
 Dynamic table names are assembled through `server/lib/game-tables.js`. Because SQL placeholders cannot bind table names, `requireGameId()`, `gameTable()`, or `gameTables()` must validate every new suffix call site; unknown table bases and injection-shaped ids fail closed.
 
@@ -61,4 +61,4 @@ On process start:
 - `clientMap[userId]` is a latest-socket pointer; an old socket closing must not clear a newer reconnect's entry.
 - A game with `started=1` and non-terminal `status` should have runtime state after server resume.
 - A game with no human players should not keep running forever.
-- `explored_sectors<gameId>` controls what `mapstate::` and `sector::` may reveal.
+- `explored_sectors<gameId>` stores what was learned, but current visibility still controls the live response tier. Remembered probe JSON must be labeled stale and must never authorize construction or other mutations.

@@ -58,7 +58,7 @@ Unknown sectors create the core risk/reward choice:
 - Scout known space: adjacency is normal; paired Warp Gates permit long movement.
 - Secure an asteroid: surviving entry claims it, making later transit safe for that owner.
 
-The player always gets a stable left-side **Selected Sector** context without losing the central 3D galaxy view. Selection first clears stale values, then shows one of three honest states: live sensor detail, terrain-only old memory, or unknown fields. Ownership or a fleet grants passive live sensors exactly one tile outward; this is why some nearby tiles are visible without a probe. Outside that ring, the inline warning offers **Send Probe**, **Move Ships**, and **Dismiss**. Movement is requested only after **Move Ships** is chosen, and an empty adjacent fleet produces an explicit explanation rather than no response.
+The player always gets a stable left-side **Selected Sector** context without losing the central 3D galaxy view. Selection first clears stale values, then shows one of four honest states: direct live detail, limited sensor contact, dated probe memory, or unknown fields. Ownership or a fleet grants passive sensors exactly one tile outward, including diagonals; the map highlights that ring. Passive contact reveals terrain, controller, and total presence, not economic values, buildings, terraform requirements, or ship composition. A successful probe records those specifics as a dated snapshot that survives refresh and is explicitly labeled stale when no longer live. Outside known space, the inline warning offers **Send Probe**, **Move Ships**, and **Dismiss**. Movement is requested only after **Move Ships** is chosen, and an empty adjacent fleet produces an explicit explanation rather than no response.
 
 The server enforces fog of war. Hidden detail must not leak through sector, map, tooltip, battle, or empire messages. Stale remembered intel should be distinguishable from live visibility. Movement validates the entire fleet and cost before arrival effects; failed partial writes are rolled back and refunded.
 
@@ -74,7 +74,7 @@ Income combines base yield, owned sector types/bonuses, buildings, tech, race mo
 
 The local/global boundary is part of the experience contract:
 
-- Buildings, building slots, resource improvements, defenses, Warp Gates, Spaceports, fleets, and newly built ships belong to a specific sector.
+- Buildings, building slots, resource improvements, defenses, Warp Gates, Spaceports, fleets, and newly built ships belong to a specific sector. Spaceports and Warp Gates are unique per sector; duplicate attempts are disabled in the browser and rejected by the server before payment.
 - Metal/crystal/research balances, race doctrine, and researched technologies belong to the empire.
 - The Build tab names the selected destination and sends it with each construction order. A server must re-check ownership and local prerequisites for that destination; it may not trust an earlier UI selection.
 - Today a local Spaceport enables immediate ship construction while empire-wide Military Shipyards research unlocks heavier hull knowledge. A future local yard-tier and build-capacity system is desirable, but is not live until its persistence, queue, refund, AI, and reconnect rules are designed and tested.
@@ -107,7 +107,7 @@ Victory, surrender, no-human abandonment, stale-game cleanup, and solo sandbox e
 - HTTP/integration: auth limits, protected routes/APIs, service health/status, static method behavior, and WebSocket smoke.
 - Multiplayer E2E: create/join/race/start, refresh/reconnect, manual turns, exploration/movement/colonization, construction/research, combat, surrender, and terminal cleanup.
 - Hostile/recovery E2E: access gates, guest upgrade, malformed or rejected actions, safe Lobby/resume, and explicit resignation.
-- Gameplay-controls E2E: authoritative mode clock/reconnect, Spaceport-to-ship progression, advanced hull lock reason, and confirmed AI-seat launch.
+- Gameplay-controls E2E: authoritative mode clock/reconnect, limited passive contact, persisted probe memory, explicit movement choice, Spaceport-to-ship progression, advanced hull lock reason, and confirmed AI-seat launch.
 - Full-game and live-combat E2E: read-only invariant audits after real mutations; the complete harness also confirms terminal runtime cleanup after victory.
 - Turn recovery tests: phase ordering, delayed writes, reconnect during resolution, persistence/income/battle/victory failures, idempotent retry, restart recovery, and battle-pause restart.
 - Test-mode map journeys use `TEST_MAP_SEED` for reproducible hazards/routes; production map generation remains random.

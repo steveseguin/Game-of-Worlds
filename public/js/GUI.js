@@ -125,7 +125,7 @@ const GameUI = (function() {
 
         // Update basic sector info
         document.getElementById('sectorid').textContent = `Sector ${sectorData.id || 'N/A'}`;
-        document.getElementById('planetowner').textContent = sectorData.owner || 'N/A';
+        document.getElementById('planetowner').textContent = ownerLabel(sectorData.owner);
 
         // Set sector type
         let planetType = 'Unknown';
@@ -167,7 +167,8 @@ const GameUI = (function() {
             crystalBonus.innerHTML = `<span style="color:${crystalColor}">${sectorData.crystalBonus}%</span>`;
 
             // Set terraform requirement
-            document.getElementById('terraformlvl').textContent = sectorData.terraformLevel || 0;
+            const empireTerraform = Number(window.TechSystem?.aggregateEffects?.(window.GAME_STATE?.player?.techLevels || {})?.terraform || 0);
+            document.getElementById('terraformlvl').textContent = `${sectorData.terraformLevel || 0} required / ${empireTerraform} available`;
         } else {
             // Non-colonizable sector
             document.getElementById('metalbonus').textContent = 'N/A';
@@ -197,6 +198,65 @@ const GameUI = (function() {
                 : `./images/type${sectorData.type}.jpg`;
             sectorImg.style.backgroundImage = `url(${imagePath})`;
         }
+        renderBuildingInventory(sectorData.buildings);
+        renderFleetSummary(sectorData.ships);
+    }
+
+    function ownerLabel(owner) {
+        if (owner === null || owner === undefined || Number(owner) === 0) return 'Unclaimed';
+        return window.GAME_STATE?.players?.[Number(owner)]?.name || `Player ${owner}`;
+    }
+
+    function renderBuildingInventory(buildings, fallback = 'No buildings detected') {
+        const box = document.getElementById('sectorBuildings');
+        if (!box) return;
+        if (!Array.isArray(buildings)) {
+            box.textContent = `Buildings: ${fallback}`;
+            return;
+        }
+        const names = ['Metal Extractor', 'Crystal Refinery', 'Research Academy', 'Spaceport', 'Orbital Turret', 'Warp Gate'];
+        const counts = new Map();
+        buildings.forEach(item => {
+            const type = Number(item?.type);
+            counts.set(type, (counts.get(type) || 0) + (Number(item?.count) || 1));
+        });
+        const labels = [...counts.entries()].map(([type, count]) => `${names[type] || `Building ${type}`} ×${count}`);
+        box.textContent = `Buildings: ${labels.length ? labels.join(', ') : fallback}`;
+    }
+
+    function renderFleetSummary(ships, fallback = 'No ships detected') {
+        const box = document.getElementById('sectorFleetSummary');
+        if (!box) return;
+        if (!Array.isArray(ships)) {
+            box.textContent = `Fleet: ${fallback}`;
+            return;
+        }
+        const total = ships.reduce((sum, ship) => sum + (Number(ship?.count) || 0), 0);
+        box.textContent = `Fleet: ${total ? `${total} ship${total === 1 ? '' : 's'} detected` : fallback}`;
+    }
+
+    function updateSectorContact(contact) {
+        showSectorSelection(contact.id, { live: true, seen: true, type: contact.type });
+        const owner = document.getElementById('planetowner');
+        if (owner) owner.textContent = ownerLabel(contact.owner);
+        setIntelState('Sensor contact', 'sensor', 'Passive sensors identify terrain, control, and presence. Probe or enter the sector for economic, terraform, building, and fleet-composition detail.');
+        renderBuildingInventory(null, 'Outside sensor resolution');
+        renderFleetSummary(null, contact.fleetPresent ? `${contact.fleetSize} ship${contact.fleetSize === 1 ? '' : 's'} detected; composition unknown` : 'No ships detected');
+    }
+
+    function updateRememberedSectorDisplay(sectorData) {
+        updateSectorDisplay(sectorData);
+        const memory = sectorData.intelMemory || {};
+        const age = memory.lastSeenTurn ? ` Last scanned on turn ${memory.lastSeenTurn}.` : '';
+        setIntelState('Probe memory', 'memory', `These are stored scan results, not live readings.${age} Probe again to refresh ownership, fleets, and construction.`);
+        renderBuildingInventory(sectorData.buildings, 'None recorded in scan');
+        renderFleetSummary(sectorData.ships, 'None recorded in scan');
+        updateFleetDisplay(sectorData.ships);
+    }
+
+    function markProbeScan(turn, scannedAt) {
+        const when = turn ? ` on turn ${turn}` : '';
+        setIntelState('Probe scan', 'live', `Probe scan completed${when}. These readings are current at scan time and will be retained as dated memory.`);
     }
 
     // Update building levels
@@ -483,6 +543,8 @@ const GameUI = (function() {
 			const ship = document.getElementById(`f${i}`);
 			if (ship) ship.textContent = unknown;
 		}
+		renderBuildingInventory(null, unknown);
+		renderFleetSummary(null, unknown);
 	}
 
 	function sectorTypeLabel(type) {
@@ -510,6 +572,9 @@ const GameUI = (function() {
 		showMultiMoveOptions,
 		showMultiMoveLoading,
 		showSectorSelection,
+		updateSectorContact,
+		updateRememberedSectorDisplay,
+		markProbeScan,
 		switchTab,
 		toggleFullScreen
 	};

@@ -186,6 +186,17 @@ td {
     line-height: 1.4;
 }
 
+.sector-local-inventory {
+    margin-top: 6px;
+    padding: 6px 8px;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 7px;
+    background: rgba(255,255,255,.035);
+    color: #cbd5ec;
+    font-size: 11px;
+    line-height: 1.35;
+}
+
 .sector-action-panel:empty { display: none; }
 
 .sector-context-actions {
@@ -241,6 +252,12 @@ td {
 
 .hex-tile svg {
     cursor: pointer;
+}
+
+[data-sensor-neighbor="true"] {
+    stroke: #78dfd2 !important;
+    stroke-width: 3px !important;
+    filter: drop-shadow(0 0 4px rgba(120, 223, 210, .75));
 }
 
 .hex-tile polygon {

@@ -173,6 +173,32 @@ test('building purchase validates the explicit selected sector instead of the le
     assert.equal(queries.some(query => query.params?.includes(15)), true);
 });
 
+test('a second Spaceport is rejected before consuming resources or a building slot', () => {
+    const queries = setScriptedDb((sql, params, callback) => {
+        if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) {
+            callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '' }]);
+            return;
+        }
+        if (/^SELECT owner, type FROM map1/.test(sql)) {
+            callback(null, [{ owner: 7, type: 10 }]);
+            return;
+        }
+        if (/^SELECT id FROM buildings1 WHERE sectorid = \? AND type = \? LIMIT 1/.test(sql)) {
+            assert.deepEqual(params, [4, 3]);
+            callback(null, [{ id: 91 }]);
+            return;
+        }
+        assert.fail(`unexpected query: ${sql}`);
+    });
+    const connection = makeConnection();
+
+    server.buyBuilding('//buybuilding:3:4', connection);
+
+    assert.deepEqual(connection.sent, ['Error: This sector already has a Spaceport']);
+    assert.equal(queries.some(query => /^UPDATE players1/.test(query.sql)), false);
+    assert.equal(queries.some(query => /^SELECT COUNT/.test(query.sql)), false);
+});
+
 test('move option requests return an explicit empty result when no adjacent ships exist', () => {
     setScriptedDb((sql, params, callback) => {
         if (/^SELECT owner FROM map1/.test(sql)) {

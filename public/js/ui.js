@@ -405,6 +405,8 @@ window.GalaxyMap = (function() {
             status: SECTOR_STATUS.UNKNOWN,
             x: xPos,
             y: yPos,
+            gridX,
+            gridY,
             owner: null,
             buildings: [],
             type: null,
@@ -419,6 +421,24 @@ window.GalaxyMap = (function() {
     // Select a sector
     function selectSector(sectorId) {
         state.selectedSector = sectorId;
+        Object.values(state.sectors).forEach(sector => sector.path.removeAttribute('data-sensor-neighbor'));
+        const selected = state.sectors[sectorId];
+        const projectsSensors = selected && [
+            SECTOR_STATUS.OWNED,
+            SECTOR_STATUS.COLONIZED,
+            SECTOR_STATUS.HOMEWORLD,
+            SECTOR_STATUS.WARPGATE,
+            SECTOR_STATUS.FLEET
+        ].includes(selected.status);
+        if (projectsSensors) {
+            Object.values(state.sectors).forEach(sector => {
+                const dx = Math.abs(Number(sector.gridX) - Number(selected.gridX));
+                const dy = Math.abs(Number(sector.gridY) - Number(selected.gridY));
+                if (dx <= 1 && dy <= 1 && dx + dy > 0) {
+                    sector.path.setAttribute('data-sensor-neighbor', 'true');
+                }
+            });
+        }
         changeSector(sectorId.toString(16).toUpperCase());
         hideTooltip();
         g3dCall('setSelected', sectorId);

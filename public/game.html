@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260712c">
+    <link rel="stylesheet" href="css/style.css?v=20260712d">
     <style>
         /* Critical layout fixes & visual polish */
         html, body {
@@ -433,11 +433,13 @@
             <tr><td>Sector ID:</td><td><div style="display:inline-block" id="sectorid">N/A</div></td></tr>
             <tr><td>Owner:</td><td><div style="display:inline-block" id="planetowner">N/A</div></td></tr>
             <tr><td>Sector Type:</td><td><div style="display:inline-block" id="planettype">N/A</div></td></tr>
-            <tr><td>Metal Production:</td><td><div style="display:inline-block" id="metalbonus">N/A</div></td></tr>
-            <tr><td>Crystal Production:</td><td><div style="display:inline-block" id="crystalbonus">N/A</div></td></tr>
+            <tr><td>Metal Richness:</td><td><div style="display:inline-block" id="metalbonus">N/A</div></td></tr>
+            <tr><td>Crystal Richness:</td><td><div style="display:inline-block" id="crystalbonus">N/A</div></td></tr>
             <tr><td>Terraform Req.:</td><td><div style="display:inline-block" id="terraformlvl">N/A</div></td></tr>
             <tr><td>Building Slots:</td><td><div style="display:inline-block" id="sectorslots">N/A</div></td></tr>
         </table>
+        <div id="sectorBuildings" class="sector-local-inventory">Buildings: unknown</div>
+        <div id="sectorFleetSummary" class="sector-local-inventory">Fleet: unknown</div>
         <div id="sectorIntel" style="display:none;max-width:280px;margin-top:8px;background:rgba(38,18,40,0.88);border:1px solid rgba(214,93,177,0.45);border-radius:10px;padding:8px 10px;font-size:12px;color:#e8ecff;line-height:1.5;"></div>
         <br />
         <table border="0px">
@@ -644,9 +646,9 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/ui.js?v=20260614d"></script>
+    <script src="js/ui.js?v=20260712d"></script>
     <script src="js/minimap.js?v=20260614b"></script>
-    <script src="js/GUI.js?v=20260712c"></script>
+    <script src="js/GUI.js?v=20260712d"></script>
     <script>
         // Authentication check for static hosting
         (function() {
@@ -667,10 +669,10 @@
             }
         })();
     </script>
-    <script src="js/build.js?v=20260614i"></script>
+    <script src="js/build.js?v=20260712d"></script>
     <script src="js/battle.js?v=20260614d"></script>
     <script src="js/chat.js?v=20260430a"></script>
-    <script src="js/controlpad.js?v=20260429a"></script>
+    <script src="js/controlpad.js?v=20260712d"></script>
     <script src="js/epic-music.js?v=20260712a"></script>
     <script src="js/sound.js?v=20260712a"></script>
     <script src="js/tech.js?v=20260612a"></script>
@@ -685,7 +687,7 @@
     <script type="module" src="js/galaxy3d.js?v=20260614c"></script>
     <script type="module" src="js/battle3d.js?v=20260614e"></script>
     <script src="js/onboarding.js?v=20260613a"></script>
-    <script src="js/connect.js?v=20260712c"></script>
+    <script src="js/connect.js?v=20260712d"></script>
     <script src="js/tour.js?v=20260712c"></script>
     <script src="js/game.js?v=20260711a"></script>
     <script src="js/loader.js?v=20251105"></script>

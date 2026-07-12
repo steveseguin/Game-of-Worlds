@@ -22,16 +22,6 @@ const ControlPad = (function() {
     
     let currentTab = null;
 	
-	function buyBuilding(buildingId) {
-        // Send building purchase request to server
-        websocket.send("//buybuilding:" + buildingId);
-    }
-    
-    function buyShip(shipId) {
-        // Send ship purchase request to server
-        websocket.send("//buyship:" + shipId);
-    }
-    
     function buyTech(techId) {
         // Send tech purchase request to server
         websocket.send("//buytech:" + techId);
@@ -46,28 +36,6 @@ const ControlPad = (function() {
 			document.getElementById(`t${i}`)?.addEventListener('click', () => buyTech(i));
 		}
 	}
-    
-    function setupShipButtons() {
-        for (let i = 1; i <= 9; i++) {
-            const shipBtn = document.querySelector(`button[onclick="buyShip(${i});"]`);
-            if (shipBtn) {
-                shipBtn.removeAttribute('onclick');
-                shipBtn.addEventListener('click', () => buyShip(i));
-            }
-        }
-    }
-    
-    function setupFleetUI() {
-        // Move ships between lists
-        document.getElementById('moveToShipsTo')?.addEventListener('click', () => moveShips('shipsFrom', 'shipsTo'));
-        document.getElementById('moveToShipsFrom')?.addEventListener('click', () => moveShips('shipsTo', 'shipsFrom'));
-        
-        // Send fleet button
-        document.getElementById('sendFleetBtn')?.addEventListener('click', popupSelectDestination);
-        
-        // Colonize button
-        document.getElementById('colonizeBtn')?.addEventListener('click', () => websocket.send('//colonize'));
-    }
     
     function switchTab(tabName) {
         if (currentTab === tabName) return;
@@ -92,29 +60,6 @@ const ControlPad = (function() {
         document.getElementById(tabName + 'tab')?.classList.add('active');
         
         currentTab = tabName;
-    }
-    
-    function moveShips(fromId, toId) {
-        const fromSelect = document.getElementById(fromId);
-        const toSelect = document.getElementById(toId);
-        
-        if (!fromSelect || !toSelect) return;
-        
-        const selectedOptions = Array.from(fromSelect.selectedOptions);
-        
-        selectedOptions.forEach(option => {
-            const newOption = document.createElement('option');
-            newOption.value = option.value;
-            newOption.text = option.text;
-            toSelect.add(newOption);
-        });
-        
-        // Remove selected options from source
-        for (let i = fromSelect.options.length - 1; i >= 0; i--) {
-            if (fromSelect.options[i].selected) {
-                fromSelect.remove(i);
-            }
-        }
     }
     
     return {

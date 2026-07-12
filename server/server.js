@@ -100,6 +100,9 @@ const DEFAULT_STANDING_ORDERS = {
 const SCOUT_SHIP_ID = combatSystem.SHIP_TYPES?.SCOUT?.id || 3;
 const COLONY_SHIP_ID = combatSystem.SHIP_TYPES?.COLONY_SHIP?.id || 6;
 const PROBE_COST_CRYSTAL = 300;
+const INTEL_LEVEL_TERRAIN = 1;
+const INTEL_LEVEL_PROBE = 2;
+const UNIQUE_LOCAL_BUILDINGS = new Set([3, 5]); // Spaceport and Warp Gate have existence-only effects.
 // Crystal per ship moved, by hull class (dreadnoughts are expensive to push around).
 const SHIP_MOVE_COST = {};
 Object.values(combatSystem.SHIP_TYPES || {}).forEach(ship => {
@@ -748,6 +751,10 @@ function createGameTables(gameId, callback) {
             playerid INT NOT NULL,
             sectorid INT NOT NULL,
             discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            intel_level TINYINT DEFAULT 1,
+            intel_source VARCHAR(16) DEFAULT 'exploration',
+            intel_json LONGTEXT DEFAULT NULL,
+            last_seen_turn INT DEFAULT 0,
             PRIMARY KEY (playerid, sectorid)
         )`
     ];
@@ -792,7 +799,7 @@ function ensurePlayerTableColumns(gameId, callback) {
     let idx = 0;
     const ensureNext = () => {
         if (idx >= requiredColumns.length) {
-            callback(null);
+            ensureExploredSectorColumns(gameId, callback);
             return;
         }
 
@@ -819,6 +826,40 @@ function ensurePlayerTableColumns(gameId, callback) {
     };
 
     ensureNext();
+}
+
+function ensureExploredSectorColumns(gameId, callback) {
+    let table;
+    try {
+        table = gameTables(gameId).explored_sectors;
+    } catch (error) {
+        callback(error);
+        return;
+    }
+    if (db.isMock) {
+        callback(null);
+        return;
+    }
+    const columns = [
+        { name: 'intel_level', sql: `ALTER TABLE ${table} ADD COLUMN intel_level TINYINT DEFAULT 1` },
+        { name: 'intel_source', sql: `ALTER TABLE ${table} ADD COLUMN intel_source VARCHAR(16) DEFAULT 'exploration'` },
+        { name: 'intel_json', sql: `ALTER TABLE ${table} ADD COLUMN intel_json LONGTEXT DEFAULT NULL` },
+        { name: 'last_seen_turn', sql: `ALTER TABLE ${table} ADD COLUMN last_seen_turn INT DEFAULT 0` }
+    ];
+    let index = 0;
+    const next = () => {
+        if (index >= columns.length) return callback(null);
+        const column = columns[index++];
+        db.query(`SHOW COLUMNS FROM ${table} LIKE '${column.name}'`, (showErr, rows) => {
+            if (showErr) return callback(showErr);
+            if (Array.isArray(rows) && rows.length) return next();
+            db.query(column.sql, alterErr => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') return callback(alterErr);
+                next();
+            });
+        });
+    };
+    next();
 }
 
 function clearBattlePauseRuntime(gameId) {
@@ -3459,10 +3500,13 @@ function finishProbeReveal(gameId, playerId, targetSector, sectorRow, connection
             };
 
             const sendProbe = () => {
-                updateResources(connection);
-                connection.sendUTF(`sector::${targetSector}::${JSON.stringify(probeData)}`);
-                updateSector2(gameId, targetSector);
-                sendVisibleMapState(gameId, connection);
+                probeData.scannedAt = new Date().toISOString();
+                probeData.scanTurn = parseTurnNumber(gameState.turns[gameId], 1);
+                saveSectorIntel(gameId, playerId, targetSector, probeData, () => {
+                    updateResources(connection);
+                    connection.sendUTF(`sector::${targetSector}::${JSON.stringify(probeData)}`);
+                    sendVisibleMapState(gameId, connection);
+                });
             };
 
             // Probing an enemy sector with inferior spy tech gets you a degraded scan.
@@ -3721,7 +3765,7 @@ function buyBuilding(data, connection) {
                         return;
                     }
 
-                    db.query(
+                    const checkCapacityAndBuy = () => db.query(
                         `SELECT COUNT(*) as count FROM buildings${gameId} WHERE sectorid = ?`,
                         [buildSector],
                         (err, count) => {
@@ -3771,6 +3815,26 @@ function buyBuilding(data, connection) {
                             );
                         }
                     );
+
+                    if (UNIQUE_LOCAL_BUILDINGS.has(buildingType)) {
+                        db.query(
+                            `SELECT id FROM buildings${gameId} WHERE sectorid = ? AND type = ? LIMIT 1`,
+                            [buildSector, buildingType],
+                            (uniqueErr, rows) => {
+                                if (uniqueErr) {
+                                    fail('Error: Could not verify local building prerequisites');
+                                    return;
+                                }
+                                if (rows && rows.length) {
+                                    fail(`Error: This sector already has a ${building.name}`);
+                                    return;
+                                }
+                                checkCapacityAndBuy();
+                            }
+                        );
+                        return;
+                    }
+                    checkCapacityAndBuy();
                 }
             );
         }
@@ -4169,17 +4233,13 @@ function updateSector(data, connection) {
 
     canPlayerSeeSector(gameId, playerId, sectorId, (canSee) => {
         if (canSee) {
-            db.query(
-                `UPDATE players${gameId} SET currentsector = ? WHERE userid = ?`,
-                [sectorId, playerId],
-                () => {
-                    updateSector2(gameId, sectorId);
-                }
-            );
+            sendSectorDetailToPlayer(gameId, sectorId, connection);
             return;
         }
 
-        connection.sendUTF(`probeonly:${formatSectorToken(sectorId)}`);
+        sendRememberedSectorIntel(gameId, playerId, sectorId, connection, () => {
+            connection.sendUTF(`probeonly:${formatSectorToken(sectorId)}`);
+        });
     });
 }
 
@@ -4295,10 +4355,100 @@ function markSectorExplored(gameId, playerId, sectorId) {
     );
 }
 
+function saveSectorIntel(gameId, playerId, sectorId, snapshot, callback = () => {}) {
+    const turn = parseTurnNumber(gameState.turns[gameId], 1);
+    let json;
+    try {
+        json = JSON.stringify(snapshot);
+    } catch (_error) {
+        callback();
+        return;
+    }
+    db.query(
+        `INSERT INTO explored_sectors${gameId}
+            (playerid, sectorid, intel_level, intel_source, intel_json, last_seen_turn)
+         VALUES (?, ?, ?, 'probe', ?, ?)
+         ON DUPLICATE KEY UPDATE
+            intel_level = GREATEST(intel_level, VALUES(intel_level)),
+            intel_source = 'probe',
+            intel_json = VALUES(intel_json),
+            last_seen_turn = VALUES(last_seen_turn)`,
+        [playerId, sectorId, INTEL_LEVEL_PROBE, json, turn],
+        err => {
+            if (err) console.warn(`Unable to persist probe intel for sector ${sectorId}:`, err.message || err);
+            callback();
+        }
+    );
+}
+
+function sendRememberedSectorIntel(gameId, playerId, sectorId, connection, done = () => {}) {
+    db.query(
+        `SELECT intel_level, intel_source, intel_json, last_seen_turn
+         FROM explored_sectors${gameId} WHERE playerid = ? AND sectorid = ? LIMIT 1`,
+        [playerId, sectorId],
+        (err, rows) => {
+            if (!err && rows && rows[0] && Number(rows[0].intel_level) >= INTEL_LEVEL_PROBE && rows[0].intel_json) {
+                try {
+                    const payload = JSON.parse(rows[0].intel_json);
+                    payload.intelMemory = {
+                        source: rows[0].intel_source || 'probe',
+                        lastSeenTurn: Number(rows[0].last_seen_turn) || null,
+                        scannedAt: payload.scannedAt || null
+                    };
+                    connection.sendUTF(`sectorintel::${sectorId}::${JSON.stringify(payload)}`);
+                } catch (_error) {
+                    // Corrupt optional memory must not prevent probing or blind movement.
+                }
+            }
+            done();
+        }
+    );
+}
+
 function withSectorRules(sector) {
     const row = sector && typeof sector === 'object' ? sector : {};
     const sectorType = Number(row.type ?? row.sectortype) || 0;
     return { ...row, buildingSlotLimit: BUILDING_SLOTS_BY_TYPE[sectorType] || 0 };
+}
+
+function buildSectorContact(sector, ships) {
+    const rows = Array.isArray(ships) ? ships : [];
+    return {
+        sector: {
+            sectorid: Number(sector.sectorid),
+            type: Number(sector.type ?? sector.sectortype) || 0,
+            owner: sector.owner === null || sector.owner === undefined ? null : Number(sector.owner)
+        },
+        fleetSize: rows.reduce((sum, row) => sum + (Number(row.count) || 0), 0),
+        fleetPresent: rows.length > 0
+    };
+}
+
+function sendSectorDetailToPlayer(gameId, sectorId, connection) {
+    const playerId = Number(connection && connection.name);
+    Promise.all([
+        queryDb(`SELECT * FROM map${gameId} WHERE sectorid = ?`, [sectorId]),
+        queryDb(
+            `SELECT owner, type, COUNT(*) as count FROM ships${gameId}
+             WHERE sectorid = ? GROUP BY owner, type`,
+            [sectorId]
+        ).catch(() => []),
+        queryDb(`SELECT type FROM buildings${gameId} WHERE sectorid = ?`, [sectorId]).catch(() => [])
+    ]).then(([sectorRows, ships, buildings]) => {
+        if (!sectorRows || !sectorRows[0]) return;
+        const sector = sectorRows[0];
+        const directlyPresent = Number(sector.owner) === playerId
+            || (ships || []).some(row => Number(row.owner) === playerId);
+        if (directlyPresent) {
+            connection.sendUTF(`sector::${sectorId}::${JSON.stringify({
+                sector: withSectorRules(sector),
+                ships,
+                buildings
+            })}`);
+            return;
+        }
+        connection.sendUTF(`sectorcontact::${sectorId}::${JSON.stringify(buildSectorContact(sector, ships))}`);
+    }).catch(() => connection.sendUTF('Error: Sector detail is temporarily unavailable'));
 }
 
 function updateSector2(gameId, sectorId) {
@@ -4332,22 +4482,23 @@ function updateSector2(gameId, sectorId) {
                                 buildings: buildings
                             };
                             const message = `sector::${sectorId}::${JSON.stringify(sectorData)}`;
-                            const ownerId = Number(sector[0].owner) || 0;
+                            const contactMessage = `sectorcontact::${sectorId}::${JSON.stringify(buildSectorContact(sector[0], ships))}`;
+                            const directPlayers = new Set(
+                                [Number(sector[0].owner), ...(ships || []).map(row => Number(row.owner))]
+                                    .filter(id => Number.isSafeInteger(id) && id > 0)
+                            );
 
-                            // One audience computation, then fan out (scales to large lobbies).
+                            // Full local detail goes only to owners/occupants. Adjacent
+                            // passive sensors receive classification/presence, not economic intel.
                             computeSectorAudience(gameId, [sectorId]).then(audience => {
                                 gameState.clients.forEach(client => {
                                     if (Number(client.gameid) !== Number(gameId)) return;
                                     const playerId = Number(client.name);
-                                    if (audience.has(playerId)) {
+                                    if (directPlayers.has(playerId)) {
                                         client.sendUTF(message);
                                         return;
                                     }
-                                    if (ownerId && ownerId !== playerId) {
-                                        getSpyVisionTargets(gameId, playerId).then(targets => {
-                                            if (targets.has(ownerId)) client.sendUTF(message);
-                                        }).catch(() => {});
-                                    }
+                                    if (audience.has(playerId)) client.sendUTF(contactMessage);
                                 });
                             }).catch(() => {});
                         }
@@ -4776,67 +4927,18 @@ function sendVisibleMapState(gameId, connection) {
 function updateAllSectors(gameId, connection) {
     sendVisibleMapState(gameId, connection);
 
-    // Send visible sector data to reconnecting player
+    // Send one focused local detail payload. The map snapshot already contains
+    // every visible sector; querying every sector again caused N+1 reconnect load
+    // and out-of-order UI messages.
     const playerId = Number(connection.name);
     db.query(
-        `SELECT currentsector FROM players${gameId} WHERE userid = ? LIMIT 1`,
+        `SELECT homeworld FROM players${gameId} WHERE userid = ? LIMIT 1`,
         [playerId],
         (currentErr, currentRows) => {
             if (!currentErr && Array.isArray(currentRows) && currentRows.length > 0) {
-                const currentSector = parsePositiveInt(currentRows[0].currentsector, 0);
-                if (currentSector > 0) {
-                    updateSector2(gameId, currentSector);
-                }
+                const homeworld = parsePositiveInt(currentRows[0].homeworld, 0);
+                if (homeworld > 0) sendSectorDetailToPlayer(gameId, homeworld, connection);
             }
-        }
-    );
-
-    db.query(
-        `SELECT sectorid FROM map${gameId}`,
-        (err, sectors) => {
-            if (err) return;
-
-            sectors.forEach(sector => {
-                canPlayerSeeSector(gameId, playerId, sector.sectorid, (canSee) => {
-                    if (canSee) {
-                        // Get and send sector data directly to this connection
-                        db.query(
-                            `SELECT * FROM map${gameId} WHERE sectorid = ?`,
-                            [sector.sectorid],
-                            (err, sectorData) => {
-                                if (err || !sectorData.length) return;
-
-                                db.query(
-                                    `SELECT owner, type, COUNT(*) as count
-                                     FROM ships${gameId}
-                                     WHERE sectorid = ?
-                                     GROUP BY owner, type`,
-                                    [sector.sectorid],
-                                    (err, ships) => {
-                                        if (err) ships = [];
-
-                                        db.query(
-                                            `SELECT type FROM buildings${gameId} WHERE sectorid = ?`,
-                                            [sector.sectorid],
-                                            (err, buildings) => {
-                                                if (err) buildings = [];
-
-                                                const data = {
-                                                    sector: withSectorRules(sectorData[0]),
-                                                    ships: ships,
-                                                    buildings: buildings
-                                                };
-
-                                                connection.sendUTF(`sector::${sector.sectorid}::${JSON.stringify(data)}`);
-                                            }
-                                        );
-                                    }
-                                );
-                            }
-                        );
-                    }
-                });
-            });
         }
     );
 }

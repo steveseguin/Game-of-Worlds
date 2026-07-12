@@ -1,6 +1,6 @@
 # Current App And Service State
 
-Last code review update: 2026-07-11. Runtime status must still be verified through production `/health` and `/status` after every release.
+Last code review update: 2026-07-12. Runtime status must still be verified through production `/health` and `/status` after every release.
 
 Production verification on 2026-07-11 reported service `ok`, database `connected`, and a clean checkout. The exact deployed revision is intentionally read from `/status.deploy.commit` after each release rather than copied here. Stripe webhook setup is explicitly deferred while gameplay readiness is the priority; core gameplay does not depend on it.
 
@@ -32,9 +32,9 @@ Environment variables can override turn intervals and mode multipliers; do not h
 | Login/register/guest/upgrade | Implemented | HTTP validation/rate limits plus E2E guest upgrade/access-gate coverage. |
 | Lobby and capacity | Implemented | In-process seat reservations prevent concurrent overfill/start overlap. |
 | AI sandbox | Implemented | UI waits for confirmed seats; functional E2E covers fill-and-start. |
-| Fog/exploration/hazards | Implemented | Server visibility; probe, asteroid, and black-hole mechanics covered by focused tests/E2E. |
+| Fog/exploration/hazards | Implemented | Four honest intel states: unknown, limited adjacent contact, persisted dated probe memory, and direct live detail. Probe, asteroid, and black-hole mechanics are covered by focused tests/E2E. |
 | Movement/warp | Implemented | Whole-order validation, guarded spend, rollback/refund, visible movement events. |
-| Economy/build/research | Implemented | Guarded balances/state; construction controls mirror server prerequisites and race cost. |
+| Economy/build/research | Implemented | Guarded balances/state; construction is explicitly sector-local, inventory is visible, unique facilities reject duplicates, and controls mirror server prerequisites and race cost. |
 | Colonization | Implemented | Terraform and colony-ship checks with conditional ownership claim. |
 | Combat/theater | Implemented | Race/tech/turret resolution, visibility-scoped reports, clock pause, E2E combat paths. |
 | Victory/surrender/cleanup | Implemented | Victory module, explicit resignation, abandonment rules, runtime cleanup tests. |

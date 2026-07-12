@@ -88,6 +88,10 @@ function createGameTables(gameId, callback) {
             playerid INT NOT NULL,
             sectorid INT NOT NULL,
             discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            intel_level TINYINT DEFAULT 1,
+            intel_source VARCHAR(16) DEFAULT 'exploration',
+            intel_json LONGTEXT DEFAULT NULL,
+            last_seen_turn INT DEFAULT 0,
             PRIMARY KEY (playerid, sectorid)
         )`
     ];

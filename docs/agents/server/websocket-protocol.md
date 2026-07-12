@@ -109,7 +109,9 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `victoryprogress::<json>` | game | Victory progress. |
 | `mapconfig::<width>::<height>` | game | Map dimensions. |
 | `mapstate::<csv>` | game | Visible map snapshot. |
-| `sector::<sectorId>::<json>` | game | Sector detail. |
+| `sector::<sectorId>::<json>` | game | Full authoritative detail for a sector the player owns, occupies, or has just successfully probed. |
+| `sectorcontact::<sectorId>::<json>` | game | Passive one-tile sensor contact: terrain, controller, and total presence only. |
+| `sectorintel::<sectorId>::<json>` | game | Persisted, dated probe memory returned outside current live coverage. |
 | `probeonly:<sectorHex>` | game | Sector is not visible; probing is possible. |
 | `mmoptions:<target>:...` | game | Multi-source move options. |
 | `fleetmove::<from>::<to>::<player>::<count>::<warpFlag>` | game | Fleet movement animation/event. |

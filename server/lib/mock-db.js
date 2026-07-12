@@ -865,6 +865,12 @@ class MockDatabase {
                     return this._async(callback, null, rows);
                 }
 
+                if (/^SELECT id FROM `?buildings\d+`? WHERE sectorid = \? AND type = \? LIMIT 1/i.test(normalized)) {
+                    const [sectorid, type] = (params || []).map(Number);
+                    const row = buildings.find(b => b.sectorid === sectorid && b.type === type);
+                    return this._async(callback, null, row ? [{ id: row.id }] : []);
+                }
+
                 if (/^SELECT id FROM `?buildings\d+`? WHERE sectorid = \? AND type = (\?|\d+) AND owner = \?/i.test(normalized)) {
                     const literalType = normalized.match(/type = (\d+)/i);
                     const values = (params || []).map(Number);
@@ -1426,8 +1432,33 @@ class MockDatabase {
 
                 if (/^INSERT IGNORE INTO `?explored_sectors\d+`? \(playerid, sectorid\) VALUES \(\?, \?\)/i.test(normalized)) {
                     const [playerId, sectorId] = params.map(Number);
-                    explored.set(`${playerId}:${sectorId}`, { playerid: playerId, sectorid: sectorId });
+                    const key = `${playerId}:${sectorId}`;
+                    if (!explored.has(key)) {
+                        explored.set(key, { playerid: playerId, sectorid: sectorId, intel_level: 1, intel_source: 'exploration', intel_json: null, last_seen_turn: 0 });
+                        return this._async(callback, null, { affectedRows: 1 });
+                    }
+                    return this._async(callback, null, { affectedRows: 0 });
+                }
+
+                if (/^INSERT INTO `?explored_sectors\d+`?[\s\S]*intel_level[\s\S]*ON DUPLICATE KEY UPDATE/i.test(normalized)) {
+                    const [playerIdRaw, sectorIdRaw, levelRaw, json, turnRaw] = params;
+                    const playerId = Number(playerIdRaw);
+                    const sectorId = Number(sectorIdRaw);
+                    explored.set(`${playerId}:${sectorId}`, {
+                        playerid: playerId,
+                        sectorid: sectorId,
+                        intel_level: Number(levelRaw) || 1,
+                        intel_source: 'probe',
+                        intel_json: json,
+                        last_seen_turn: Number(turnRaw) || 0
+                    });
                     return this._async(callback, null, { affectedRows: 1 });
+                }
+
+                if (/^SELECT intel_level, intel_source, intel_json, last_seen_turn FROM `?explored_sectors\d+`? WHERE playerid = \? AND sectorid = \? LIMIT 1/i.test(normalized)) {
+                    const [playerId, sectorId] = params.map(Number);
+                    const row = explored.get(`${playerId}:${sectorId}`);
+                    return this._async(callback, null, row ? [{ ...row }] : []);
                 }
 
                 if (/^SELECT sectorid FROM `?explored_sectors\d+`? WHERE playerid = \? AND sectorid = \?/i.test(normalized)) {
