@@ -962,7 +962,7 @@ function loadRaceSelectionScript(callback) {
     }
 
     const script = document.createElement('script');
-    script.src = 'js/race-selection.js?v=20260614h';
+    script.src = 'js/race-selection.js?v=20260712a';
     script.onload = () => {
         requestUnlockedRaces();
         callback();

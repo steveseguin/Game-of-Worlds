@@ -383,15 +383,31 @@ const RaceSelection = (function() {
         const container = document.createElement('div');
         container.className = 'race-selection-container';
         container.innerHTML = `
-            <h2>Select Your Race</h2>
-            <div class="race-grid">
-                ${unlockedRaces.map(race => createRaceCard(race)).join('')}
-            </div>
-            <div class="race-detail-panel">
-                <div class="race-detail-content"></div>
-                <div class="race-confirm-bar">
-                    <button class="race-confirm-btn" id="confirmRaceBtn">Confirm Selection</button>
+            <header class="race-selector-header">
+                <div>
+                    <div class="race-selector-eyebrow">Faction database // command authorization</div>
+                    <h2>Select Your Race</h2>
+                    <p>Choose an empire doctrine. Strengths are powerful; restrictions are permanent for this match.</p>
                 </div>
+                <div class="race-selector-count"><strong>${unlockedRaces.filter(race => race.unlocked).length}</strong><span>available</span></div>
+            </header>
+            <div class="race-selection-main">
+                <section class="race-grid-shell" aria-label="Race roster">
+                    <div class="race-grid-heading">
+                        <span>Faction roster</span>
+                        <small>Select a dossier to inspect</small>
+                    </div>
+                    <div class="race-grid">
+                        ${unlockedRaces.map(race => createRaceCard(race)).join('')}
+                    </div>
+                </section>
+                <aside class="race-detail-panel" aria-live="polite">
+                    <div class="race-detail-content"></div>
+                    <div class="race-confirm-bar">
+                        <div class="race-confirm-note"><span></span> Selection locks when you confirm</div>
+                        <button class="race-confirm-btn" id="confirmRaceBtn">Confirm Selection</button>
+                    </div>
+                </aside>
             </div>
         `;
 
@@ -425,24 +441,31 @@ const RaceSelection = (function() {
     
     function createRaceCard(race) {
         const isLocked = !race.unlocked;
-        const lockBadge = isLocked ? `<div style="position:absolute;top:10px;right:12px;font-size:18px;">🔒</div>` : '';
         return `
-            <div id="race-${race.id}" class="race-card ${isLocked ? 'locked' : 'unlocked'}" data-race-id="${race.id}">
-                ${lockBadge}
-                <h3 style="color:${race.color || '#60d8ff'}">${race.name}</h3>
+            <button type="button" id="race-${race.id}" class="race-card ${isLocked ? 'locked' : 'unlocked'}" data-race-id="${race.id}" aria-pressed="false">
+                <span class="race-card-header">
+                    <img src="${raceIcon(race.id)}" alt="" aria-hidden="true">
+                    <span class="race-card-title">
+                        <span class="race-card-index">Faction ${String(race.id).padStart(2, '0')}</span>
+                        <h3 style="color:${race.color || '#60d8ff'}">${race.name}</h3>
+                    </span>
+                    <span class="race-card-status ${isLocked ? 'is-locked' : 'is-ready'}">${isLocked ? 'Locked' : 'Ready'}</span>
+                </span>
                 <p>${race.description}</p>
-                <div class="race-special"><strong>Signature:</strong> ${race.specialAbility}</div>
-                <div class="race-bonuses">
-                    <span>Metal: ${formatBonus(race.bonuses.metalProduction)}</span>
-                    <span>Crystal: ${formatBonus(race.bonuses.crystalProduction)}</span>
-                    <span>Research: ${formatBonus(race.bonuses.researchSpeed)}</span>
-                    <span>Ship Cost: ${formatBonus(race.bonuses.shipCost)}</span>
-                    <span>Attack: ${formatBonus(race.bonuses.shipAttack)}</span>
-                    <span>Defense: ${formatBonus(race.bonuses.shipDefense)}</span>
-                </div>
-                <div class="race-doctrine">${compactDoctrine(race)}</div>
-            </div>
+                <span class="race-special"><strong>Signature</strong>${race.specialAbility}</span>
+                <span class="race-doctrine">${compactDoctrine(race)}</span>
+            </button>
         `;
+    }
+
+    function raceIcon(raceId) {
+        const icons = {
+            1: 'terran-icon.svg', 2: 'silicon-icon.svg', 3: 'zephyr-icon.svg',
+            4: 'crystalline-icon.svg', 5: 'void-icon.svg', 6: 'mechanicus-icon.svg',
+            7: 'bioform-icon.svg', 8: 'nomad-icon.svg', 9: 'ancient-icon.svg',
+            10: 'quantum-icon.svg', 11: 'titan-icon.svg', 12: 'shadow-icon.svg'
+        };
+        return `images/${icons[Number(raceId)] || 'terran-icon.svg'}`;
     }
 
     // One-line trade-off hint for the race grid card.
@@ -526,8 +549,15 @@ const RaceSelection = (function() {
         selectedRace = race.unlocked ? raceId : null;
 
         document.querySelectorAll('.race-card').forEach(card => {
-            card.classList.toggle('active', card.dataset.raceId === String(raceId) && race.unlocked);
+            const active = card.dataset.raceId === String(raceId) && race.unlocked;
+            card.classList.toggle('active', active);
+            card.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
+
+        const container = modalRef?.querySelector('.race-selection-container');
+        if (container) {
+            container.style.setProperty('--race-accent', race.color || '#60d8ff');
+        }
 
         renderRaceDetails(race);
     }
@@ -554,20 +584,24 @@ const RaceSelection = (function() {
         const locked = !race.unlocked;
         detailPane.innerHTML = `
             <div class="race-detail-header">
-                <h3 style="color:${race.color || '#60d8ff'}">${race.name}</h3>
+                <img src="${raceIcon(race.id)}" alt="" aria-hidden="true">
+                <div>
+                    <span class="race-detail-kicker">Selected dossier // ${locked ? 'restricted' : 'command ready'}</span>
+                    <h3 style="color:${race.color || '#60d8ff'}">${race.name}</h3>
+                </div>
             </div>
             <div class="race-detail-description">${race.description}</div>
             <div class="race-detail-special">
-                <strong>Signature Ability</strong><br>
-                ${race.specialAbility}
+                <strong>Signature Ability</strong>
+                <span>${race.specialAbility}</span>
             </div>
             <div class="race-detail-grid">
-                <div class="race-detail-stat"><span>Metal Production</span><strong>${stripTags(formatBonus(race.bonuses.metalProduction))}</strong></div>
-                <div class="race-detail-stat"><span>Crystal Production</span><strong>${stripTags(formatBonus(race.bonuses.crystalProduction))}</strong></div>
-                <div class="race-detail-stat"><span>Research Speed</span><strong>${stripTags(formatBonus(race.bonuses.researchSpeed))}</strong></div>
-                <div class="race-detail-stat"><span>Ship Cost</span><strong>${stripTags(formatBonus(race.bonuses.shipCost))}</strong></div>
-                <div class="race-detail-stat"><span>Fleet Attack</span><strong>${stripTags(formatBonus(race.bonuses.shipAttack))}</strong></div>
-                <div class="race-detail-stat"><span>Fleet Defense</span><strong>${stripTags(formatBonus(race.bonuses.shipDefense))}</strong></div>
+                ${detailStat('Metal Production', race.bonuses.metalProduction)}
+                ${detailStat('Crystal Production', race.bonuses.crystalProduction)}
+                ${detailStat('Research Speed', race.bonuses.researchSpeed)}
+                ${detailStat('Ship Cost', race.bonuses.shipCost, true)}
+                ${detailStat('Fleet Attack', race.bonuses.shipAttack)}
+                ${detailStat('Fleet Defense', race.bonuses.shipDefense)}
             </div>
             ${renderDoctrine(race)}
             ${locked ? `<div class="race-locked-note">${getUnlockText(race)}</div>` : ''}
@@ -583,6 +617,14 @@ const RaceSelection = (function() {
         if (confirmButton) {
             confirmButton.disabled = locked;
         }
+    }
+
+    function detailStat(label, value, inverse = false) {
+        const percent = typeof value === 'number' ? Math.round((value - 1) * 100) : null;
+        const positive = percent === null ? false : inverse ? percent < 0 : percent > 0;
+        const negative = percent === null ? false : inverse ? percent > 0 : percent < 0;
+        const tone = positive ? 'positive' : negative ? 'negative' : 'neutral';
+        return `<div class="race-detail-stat" data-tone="${tone}"><span>${label}</span><strong>${stripTags(formatBonus(value))}</strong></div>`;
     }
 
     function stripTags(html) {

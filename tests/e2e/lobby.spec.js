@@ -155,6 +155,92 @@ test.describe('Lobby end-to-end flows', () => {
         await expect(page.locator('#resourceBar')).toBeVisible();
     });
 
+    test('race selector keeps dossiers readable without overlap at desktop and mobile sizes', async ({ page }) => {
+        const username = uniqueId('race_ui_');
+        const password = 'Secure123!';
+        await registerUser(page, {
+            username,
+            email: `${username}@example.com`,
+            password
+        });
+
+        await page.fill('#gameName', uniqueId('Race_UI_'));
+        await page.selectOption('#maxPlayers', '2');
+        await page.click('#createGameBtn');
+
+        const modal = page.locator('#raceSelectionModal');
+        await expect(modal).toBeVisible({ timeout: 20000 });
+        await expect(page.locator('.race-card')).toHaveCount(12);
+        await expect(page.locator('.race-card.active')).toHaveCount(1);
+
+        const desktopLayout = await page.evaluate(() => {
+            const cards = [...document.querySelectorAll('.race-card')];
+            const rects = cards.map(card => card.getBoundingClientRect());
+            const overlaps = [];
+            for (let i = 0; i < rects.length; i++) {
+                for (let j = i + 1; j < rects.length; j++) {
+                    const a = rects[i];
+                    const b = rects[j];
+                    if (Math.min(a.right, b.right) > Math.max(a.left, b.left)
+                        && Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top)) {
+                        overlaps.push([i, j]);
+                    }
+                }
+            }
+            const container = document.querySelector('.race-selection-container').getBoundingClientRect();
+            const grid = document.querySelector('.race-grid-shell').getBoundingClientRect();
+            const detail = document.querySelector('.race-detail-panel').getBoundingClientRect();
+            return {
+                overlaps,
+                clippedCards: cards.filter(card => card.scrollHeight > card.clientHeight + 1).length,
+                contained: container.left >= 0 && container.top >= 0
+                    && container.right <= innerWidth && container.bottom <= innerHeight,
+                columnsSeparated: grid.right <= detail.left
+            };
+        });
+        expect(desktopLayout).toEqual({
+            overlaps: [],
+            clippedCards: 0,
+            contained: true,
+            columnsSeparated: true
+        });
+
+        const lockedCard = page.locator('.race-card.locked').filter({ hasText: 'Silicon Collective' });
+        await lockedCard.click();
+        await expect(page.locator('.race-detail-header')).toContainText('Silicon Collective');
+        await expect(page.locator('#confirmRaceBtn')).toBeDisabled();
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        const mobileLayout = await page.evaluate(() => {
+            const grid = document.querySelector('.race-grid');
+            const shell = document.querySelector('.race-grid-shell').getBoundingClientRect();
+            const detail = document.querySelector('.race-detail-panel').getBoundingClientRect();
+            const styles = getComputedStyle(grid);
+            return {
+                horizontalRoster: styles.overflowX === 'auto',
+                noNestedVerticalRoster: styles.overflowY === 'hidden',
+                detailBelowRoster: shell.bottom <= detail.top,
+                detailNotSticky: getComputedStyle(document.querySelector('.race-detail-panel')).position !== 'sticky',
+                detailStatsTwoColumns: getComputedStyle(document.querySelector('.race-detail-grid')).gridTemplateColumns.split(' ').length === 2
+            };
+        });
+        expect(mobileLayout).toEqual({
+            horizontalRoster: true,
+            noNestedVerticalRoster: true,
+            detailBelowRoster: true,
+            detailNotSticky: true,
+            detailStatsTwoColumns: true
+        });
+
+        const terranCard = page.locator('.race-card.unlocked').filter({ hasText: 'Terran Empire' });
+        await terranCard.click();
+        await expect(page.locator('#confirmRaceBtn')).toBeEnabled();
+        await page.locator('#confirmRaceBtn').click();
+        await expect(page.locator('.waiting-view')).toBeVisible({ timeout: 15000 });
+        await page.getByRole('button', { name: 'Leave Game' }).click();
+        await expect(page.locator('#createGameBtn')).toBeVisible({ timeout: 15000 });
+    });
+
     test('host and joiner can start a full game', async ({ browser }) => {
         const hostContext = await browser.newContext();
         const hostPage = await hostContext.newPage();
