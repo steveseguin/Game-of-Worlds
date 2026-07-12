@@ -12,6 +12,8 @@ This document describes the live server sequence for one active game turn. It is
 | `gameState.battlePause[gameId]` | `pauseTurnTimerForBattle()` | Clear on completed or abandoned games; do not leave a paused terminal game behind. |
 | `gameState.turns[gameId]` | `processTurnUnchecked()` and resume/start paths | Delete when a game is completed or abandoned. |
 | `gameState.activeGames[gameId]` | lobby/start/resume/gameplay helpers | Delete when a game is completed or abandoned. |
+| `activeGames[gameId].turnResolution` | `processTurn()` | Freeze orders until success; retain failed phase for retry/reconnect. |
+| `games.turn_phase` / `turn_phase_turn` | awaited turn pipeline | Clear before `newturn::`; use on startup to resume an interrupted phase. |
 
 ## Turn Entry Points
 
@@ -43,18 +45,18 @@ Failures that mean the game should end call `abandonGame()`. Abandonment stops r
 
 Current sequence:
 
-1. Increment `gameState.turns[gameId]`.
-2. Persist `games.turn`.
+1. Atomically persist the next `games.turn` and the `automation` phase marker.
+2. Set runtime resolution state and broadcast `turnphase::resolving`.
 3. Clear manual readiness flags.
-4. Trigger AI actions.
-5. Apply standing orders.
-6. Schedule income/resource writes per player.
-7. Schedule battle resolution for conflict sectors.
-8. Schedule victory checks.
-9. Broadcast `newturn::<turn>`.
-10. Record/publish the next `turnclock::` deadline.
+4. Reserve `last_automation_turn`, then trigger eligible AI actions.
+5. Apply eligible standing orders under the same at-most-once reservation.
+6. Await income/resource writes per player; each guarded write records `last_income_turn`.
+7. Persist `battles`, then await conflict resolution.
+8. Persist `victory`, then await victory checks and end-game bookkeeping.
+9. Clear the persisted phase marker.
+10. Broadcast `newturn::<turn>` and publish the next `turnclock::` deadline.
 
-Important: steps 4 through 8 are callback/promise-driven and are not a single awaited transaction. This means resource, combat, and victory side effects can land after `newturn::` has already been sent. Do not change victory/resource timing without focused tests.
+On a phase failure, no `newturn::` is emitted. Runtime retains the failed phase, clients remain frozen, and the server retries from that phase. Startup reconstructs the same retry from `games.turn_phase`; guarded income prevents duplicate payouts, while the automation reservation prevents duplicate AI/standing-order spending. A crash after automation reservation may skip unfinished automation for that player for one turn. AI mutations and standing orders are awaited before income begins.
 
 ## Battle Resolution
 
@@ -102,5 +104,6 @@ When a winner is found, the caller sends `gameover::<winnerId>::<condition>` bef
 
 - Any new terminal path must clear `gameTimer`, `battlePause`, `turns`, and `activeGames`.
 - Any new turn-side effect should state whether it is awaited before `newturn::`.
+- Any retryable phase mutation must be idempotent or guarded by a per-turn marker.
 - If battle resolution changes, check both the `battlepause::` timing contract and combat telemetry.
 - If victory timing changes, add tests that prove whether same-turn income/combat victories are expected.

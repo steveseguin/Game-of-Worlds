@@ -5,6 +5,7 @@
  */
 
 const BUILDING_SLOTS_BY_TYPE = Object.freeze({ 1: 1, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6 });
+const { gameTables, requireGameId } = require('./game-tables');
 
 function numericId(value) {
     const parsed = Number(value);
@@ -40,6 +41,18 @@ function evaluateGameState(snapshot, runtime = {}) {
             if (!Number.isFinite(amount) || amount < 0) {
                 addIssue(errors, 'INVALID_RESOURCE', `${resource} must be a finite non-negative value`, {
                     playerId, resource, value: player[resource]
+                });
+            }
+        });
+        [
+            ['last_automation_turn', 'INVALID_AUTOMATION_TURN'],
+            ['last_income_turn', 'INVALID_INCOME_TURN']
+        ].forEach(([field, code]) => {
+            if (player[field] === undefined || player[field] === null) return;
+            const markerTurn = Number(player[field]);
+            if (!Number.isSafeInteger(markerTurn) || markerTurn < 0) {
+                addIssue(errors, code, `${field} must be a non-negative integer`, {
+                    playerId, value: player[field]
                 });
             }
         });
@@ -150,6 +163,28 @@ function evaluateGameState(snapshot, runtime = {}) {
     if (started && (!Number.isSafeInteger(persistedTurn) || persistedTurn < 1)) {
         addIssue(errors, 'INVALID_GAME_TURN', 'Started game has an invalid persisted turn', { value: game.turn });
     }
+    players.forEach(player => {
+        [
+            ['last_automation_turn', 'AUTOMATION_TURN_AHEAD', 'automationTurn'],
+            ['last_income_turn', 'INCOME_TURN_AHEAD', 'incomeTurn']
+        ].forEach(([field, code, contextKey]) => {
+            const markerTurn = Number(player[field]);
+            if (Number.isSafeInteger(markerTurn) && Number.isSafeInteger(persistedTurn) && markerTurn > persistedTurn) {
+                addIssue(errors, code, `Player ${field} marker is ahead of the persisted game turn`, {
+                    playerId: numericId(player.userid), [contextKey]: markerTurn, persistedTurn
+                });
+            }
+        });
+    });
+    const persistedPhase = game.turn_phase === null || game.turn_phase === undefined
+        ? ''
+        : String(game.turn_phase).toLowerCase();
+    if (persistedPhase && !['automation', 'income', 'battles', 'victory'].includes(persistedPhase)) {
+        addIssue(errors, 'INVALID_TURN_PHASE', 'Persisted turn phase is not recognized', { phase: game.turn_phase });
+    }
+    if (runtime.turnResolution && !persistedPhase) {
+        addIssue(warnings, 'RUNTIME_PHASE_WITHOUT_PERSISTENCE', 'Runtime is resolving a turn without a persisted phase marker');
+    }
     if (runtime.turn !== undefined && Number.isSafeInteger(persistedTurn) && Number(runtime.turn) !== persistedTurn) {
         addIssue(warnings, 'RUNTIME_TURN_MISMATCH', 'Runtime and persisted turn differ', {
             runtimeTurn: Number(runtime.turn), persistedTurn
@@ -187,14 +222,19 @@ function query(db, sql, params = []) {
 }
 
 async function auditGameState(db, gameId, runtime = {}) {
-    const parsedGameId = numericId(gameId);
-    if (!parsedGameId) throw new Error('Invalid game id');
+    let parsedGameId;
+    try {
+        parsedGameId = requireGameId(gameId);
+    } catch (_error) {
+        throw new Error('Invalid game id');
+    }
+    const tables = gameTables(parsedGameId);
     const [games, players, sectors, ships, buildings] = await Promise.all([
         query(db, 'SELECT * FROM games WHERE id = ? LIMIT 1', [parsedGameId]),
-        query(db, `SELECT * FROM players${parsedGameId}`),
-        query(db, `SELECT * FROM map${parsedGameId}`),
-        query(db, `SELECT * FROM ships${parsedGameId}`),
-        query(db, `SELECT * FROM buildings${parsedGameId}`)
+        query(db, `SELECT * FROM ${tables.players}`),
+        query(db, `SELECT * FROM ${tables.map}`),
+        query(db, `SELECT * FROM ${tables.ships}`),
+        query(db, `SELECT * FROM ${tables.buildings}`)
     ]);
     if (!games[0]) throw new Error('Game not found');
     return evaluateGameState({ game: games[0], players, sectors, ships, buildings }, runtime);

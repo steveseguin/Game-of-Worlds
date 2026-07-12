@@ -29,6 +29,7 @@ const url = require('url');
 const serverLogic = require('./server');
 const { createMockDatabase } = require('./lib/mock-db');
 const security = require('./lib/security');
+const { FROZEN_GAMEPLAY_COMMANDS } = require('./lib/websocket-protocol');
 
 // Use shared game state from server.js
 const { gameState } = serverLogic;
@@ -136,7 +137,8 @@ function buildStatusPayload() {
             clients: clients.length,
             activeGames: countKeys(activeGames),
             timers: countKeys(gameTimer),
-            trackedTurns: countKeys(turns)
+            trackedTurns: countKeys(turns),
+            resolvingTurns: Object.values(activeGames).filter(game => Boolean(game && game.turnResolution)).length
         },
         deploy: readDeployInfo()
     };
@@ -845,12 +847,13 @@ wsServer.on('request', request => {
 // Handle commands from clients
 function handleCommand(data, connection) {
     const command = data.split(":")[0].substring(2);
-    const frozenCommands = new Set([
-        'start', 'colonize', 'buytech', 'probe', 'buyship', 'buybuilding',
-        'move', 'sendmmf', 'applyorders'
-    ]);
+    const frozenCommands = new Set(FROZEN_GAMEPLAY_COMMANDS);
     if (connection.gameid && frozenCommands.has(command) && serverLogic.isBattlePauseActive(connection.gameid)) {
         connection.sendUTF('Error: Battle in progress; orders are temporarily frozen');
+        return;
+    }
+    if (connection.gameid && frozenCommands.has(command) && serverLogic.isTurnProcessing(connection.gameid)) {
+        connection.sendUTF('Error: Turn resolution in progress; orders will resume when the new turn is ready');
         return;
     }
     serverLogic.markPlayerGameActivity(connection);

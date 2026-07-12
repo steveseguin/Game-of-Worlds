@@ -45,7 +45,7 @@ Modes default to quick (180 seconds), epic (24 hours), and test (30 seconds, whe
 
 **End Turn** reuses `//start` in active games. It marks the human ready and shows `turnready::<ready>::<humans>`. The turn advances only when every current human is ready or the server clock expires. Removing a player must also remove their readiness entry.
 
-At turn advance the player should receive updated resources/map/empire state and a digest. Current implementation starts several AI, income, battle, and victory side effects asynchronously, so `newturn::` may precede some follow-up state messages; see the risk register before changing sequencing.
+At turn advance the server sends `turnphase::resolving`, freezes new mutations, and shows **Resolving** on the turn control. AI, standing orders, income, battles, and victory are awaited in order. `newturn::` is sent only after authoritative writes finish. Reconnect snapshots include the active phase; failures remain frozen and retry the same phase without duplicating completed income.
 
 ## 5. Exploration: Every Decision Has A Cost
 
@@ -98,5 +98,7 @@ Victory, surrender, no-human abandonment, stale-game cleanup, and solo sandbox e
 - Hostile/recovery E2E: access gates, guest upgrade, malformed or rejected actions, safe Lobby/resume, and explicit resignation.
 - Gameplay-controls E2E: authoritative mode clock/reconnect, Spaceport-to-ship progression, advanced hull lock reason, and confirmed AI-seat launch.
 - Full-game and live-combat E2E: read-only invariant audits after real mutations; the complete harness also confirms terminal runtime cleanup after victory.
+- Turn recovery tests: phase ordering, delayed writes, reconnect during resolution, persistence/income/battle/victory failures, idempotent retry, restart recovery, and battle-pause restart.
+- Test-mode map journeys use `TEST_MAP_SEED` for reproducible hazards/routes; production map generation remains random.
 
 When a user-facing rule changes, prefer a browser journey that proves the state before action, feedback during it, authoritative result afterward, and refresh/reconnect recovery—not only a direct handler unit test.

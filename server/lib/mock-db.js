@@ -244,6 +244,8 @@ class MockDatabase {
                     min_level: Number(values.min_level || 0),
                     started: 0,
                     turn: 0,
+                    turn_phase: null,
+                    turn_phase_turn: null,
                     mapwidth: 14,
                     mapheight: 8,
                     winner: null,
@@ -333,6 +335,27 @@ class MockDatabase {
                 return this._async(callback, null, { affectedRows: game ? 1 : 0 });
             }
 
+            if (/^UPDATE games SET turn = \?, turn_phase = \?, turn_phase_turn = \? WHERE id = \?/i.test(normalized)) {
+                const [turn, phase, phaseTurn, gameId] = params;
+                const game = this._games.get(Number(gameId));
+                if (game) {
+                    game.turn = Number(turn) || game.turn || 1;
+                    game.turn_phase = phase || null;
+                    game.turn_phase_turn = Number(phaseTurn) || null;
+                }
+                return this._async(callback, null, { affectedRows: game ? 1 : 0 });
+            }
+
+            if (/^UPDATE games SET turn_phase = \?, turn_phase_turn = \? WHERE id = \?/i.test(normalized)) {
+                const [phase, phaseTurn, gameId] = params;
+                const game = this._games.get(Number(gameId));
+                if (game) {
+                    game.turn_phase = phase || null;
+                    game.turn_phase_turn = phaseTurn === null || phaseTurn === undefined ? null : Number(phaseTurn);
+                }
+                return this._async(callback, null, { affectedRows: game ? 1 : 0 });
+            }
+
             if (/^UPDATE games SET status = \? WHERE id = \?/i.test(normalized)) {
                 const [status, gameId] = params;
                 const game = this._games.get(Number(gameId));
@@ -364,7 +387,7 @@ class MockDatabase {
                 return this._async(callback, null, { affectedRows: game ? 1 : 0 });
             }
 
-            if (/^SELECT id, creator, maxplayers, started, turn, mode, status, mapwidth, mapheight FROM games WHERE started = 1/i.test(normalized)) {
+            if (/^SELECT id, creator, maxplayers, started, turn, mode, status, mapwidth, mapheight(?:, turn_phase, turn_phase_turn)? FROM games WHERE started = 1/i.test(normalized)) {
                 const rows = Array.from(this._games.values())
                     .filter(game => game.started === 1 && game.status !== 'completed' && game.status !== 'abandoned')
                     .map(game => ({ ...game }));
@@ -447,7 +470,9 @@ class MockDatabase {
                     joined_at: new Date(),
                     alliance_id: null,
                     homeworld: null,
-                    currentsector: null
+                    currentsector: null,
+                    last_automation_turn: 0,
+                    last_income_turn: 0
                 });
                 return this._async(callback, null, { affectedRows: 1 });
             }
@@ -505,6 +530,12 @@ class MockDatabase {
                         return;
                     }
 
+                    const ltMatch = cond.match(/([a-z_]+) < \?/i);
+                    if (ltMatch) {
+                        conditionalChecks.push({ field: ltMatch[1], op: '<', value: Number(whereParams[whereParamIdx++]) });
+                        return;
+                    }
+
                     const eqMatch = cond.match(/([a-z_]+) = \?/i);
                     if (eqMatch) {
                         conditionalChecks.push({ field: eqMatch[1], op: '=', value: whereParams[whereParamIdx++] });
@@ -528,6 +559,9 @@ class MockDatabase {
                         return this._async(callback, null, { affectedRows: 0 });
                     }
                     if (check.op === '>' && fieldValue <= check.value) {
+                        return this._async(callback, null, { affectedRows: 0 });
+                    }
+                    if (check.op === '<' && fieldValue >= check.value) {
                         return this._async(callback, null, { affectedRows: 0 });
                     }
                     if (check.op === '=' && String(player[check.field] ?? '') !== String(check.value ?? '')) {
@@ -649,6 +683,18 @@ class MockDatabase {
                             return a.userid - b.userid;
                         })
                         .map(player => ({ userid: player.userid, is_ai: player.is_ai || 0 }))
+                    : [];
+                return this._async(callback, null, rows);
+            }
+
+            if (/^SELECT userid, last_automation_turn FROM `?players\d+`?/i.test(normalized)) {
+                const { gameId } = this._extractPlayerTable(normalized);
+                const players = this._playerTables.get(gameId);
+                const rows = players
+                    ? Array.from(players.values()).map(player => ({
+                        userid: player.userid,
+                        last_automation_turn: Number(player.last_automation_turn) || 0
+                    }))
                     : [];
                 return this._async(callback, null, rows);
             }
@@ -1428,6 +1474,22 @@ class MockDatabase {
             }
 
             if (/^ALTER TABLE `?players\d+`? ADD COLUMN ai_strategy/i.test(normalized)) {
+                return this._async(callback, null, { affectedRows: 0 });
+            }
+
+            if (/^SHOW COLUMNS FROM `?players\d+`? LIKE 'last_income_turn'/i.test(normalized)) {
+                return this._async(callback, null, []);
+            }
+
+            if (/^SHOW COLUMNS FROM `?players\d+`? LIKE 'last_automation_turn'/i.test(normalized)) {
+                return this._async(callback, null, []);
+            }
+
+            if (/^ALTER TABLE `?players\d+`? ADD COLUMN last_automation_turn/i.test(normalized)) {
+                return this._async(callback, null, { affectedRows: 0 });
+            }
+
+            if (/^ALTER TABLE `?players\d+`? ADD COLUMN last_income_turn/i.test(normalized)) {
                 return this._async(callback, null, { affectedRows: 0 });
             }
 

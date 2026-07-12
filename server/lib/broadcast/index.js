@@ -3,6 +3,8 @@
 // Handles sending messages to players and broadcasts within games
 // ============================================================================
 
+const { gameTables } = require('../game-tables');
+
 let gameState = null;
 
 function setGameState(gs) {
@@ -28,9 +30,15 @@ function broadcastToGame(gameId, message) {
 function broadcastPlayerList(gameId) {
     const db = global.db;
     if (!db) return;
+    let playersTable;
+    try {
+        playersTable = gameTables(gameId).players;
+    } catch (_error) {
+        return;
+    }
 
     db.query(
-        `SELECT userid, race_id FROM players${gameId} ORDER BY userid`,
+        `SELECT userid, race_id FROM ${playersTable} ORDER BY userid`,
         (err, players) => {
             if (err || !players) return;
 

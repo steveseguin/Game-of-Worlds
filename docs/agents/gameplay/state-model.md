@@ -23,7 +23,7 @@ const gameState = {
 | `clientMap` | Auth layer | User id -> current connection. |
 | `gameTimer` | Turn engine | Game id -> interval handle. |
 | `turns` | Turn engine | Game id -> current turn number. |
-| `activeGames` | Lobby/turn engine | Runtime metadata: mode, status, creator, AI profiles, standing orders, readiness, map size, and authoritative `turnEndsAt`. |
+| `activeGames` | Lobby/turn engine | Runtime metadata: mode, status, creator, AI profiles, standing orders, readiness, map size, authoritative `turnEndsAt`, and current/failed `turnResolution`. |
 | `battlePause` | Combat/turn engine | Game id -> pause timer while battle playback is shown. Must be cleared on completed or abandoned games. |
 
 Runtime state is reconstructed on process start by `resumeActiveGamesFromDatabase()`, which loads started games and restarts turn timers when human players remain.
@@ -40,14 +40,14 @@ Core global tables:
 | --- | --- |
 | `users` | Account, guest identity, tempKey, current game. |
 | `user_stats` | Progression and unlock stats. |
-| `games` | Lobby/game row, creator, max players, status, started flag, mode, map size, turn. |
+| `games` | Lobby/game row, creator, max players, status, started flag, mode, map size, turn, and recoverable turn-phase marker. |
 | payment tables | Premium purchases, transactions, subscriptions, crystal balance. |
 
 Per-game tables are suffixed with the numeric game id:
 
 | Table Pattern | Purpose |
 | --- | --- |
-| `players<gameId>` | Player resources, race, tech CSV, homeworld/current sector, AI flags. |
+| `players<gameId>` | Player resources, race, tech CSV, homeworld/current sector, AI flags, at-most-once `last_automation_turn`, and idempotent `last_income_turn`. |
 | `map<gameId>` | Sector type, owner, resources, terraform requirement, artifacts. |
 | `ships<gameId>` | Individual ships by owner, type, sector. |
 | `buildings<gameId>` | Buildings by owner, sector, type. |
@@ -86,6 +86,7 @@ stateDiagram-v2
 - Fog-of-war writes to `explored_sectors<gameId>` and should prevent hidden sectors from leaking through `sector::` or `mapstate::`.
 - Production `/status.deploy.dirty` should be `false`; a dirty deploy indicates generated/tracked files or wrong checkout state in CI.
 - `activeGames[gameId].turnReady` must be cleared after each processed turn.
+- A turn with `turnResolution` must reject new mutations. `newturn::` is legal only after the persistent phase marker is cleared and awaited side effects finish.
 - `activeGames[gameId].lastHumanActivityTurn` should advance when humans send authenticated game commands, otherwise stale-game abandonment can fire too aggressively.
 - The browser clock is a projection of `activeGames[gameId].turnEndsAt`; reconnect snapshots and `turnclock::` must not fall back to a hard-coded quick-game duration.
 - A terminal game must not retain `activeGames`, a turn timer, or a battle pause. The test-only invariant audit checks these alongside persisted ownership, resources, and references.

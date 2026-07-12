@@ -5,6 +5,8 @@
  * AI players can build, research, expand, and engage in combat.
  */
 
+const { requireGameId } = require('./game-tables');
+
 const AI_DIFFICULTIES = {
     EASY: {
         id: 1,
@@ -100,7 +102,7 @@ const AI_STRATEGIES = {
 class AIPlayer {
     constructor(playerId, gameId, difficulty = AI_DIFFICULTIES.MEDIUM, strategy = AI_STRATEGIES.BALANCED) {
         this.playerId = playerId;
-        this.gameId = gameId;
+        this.gameId = requireGameId(gameId);
         this.difficulty = difficulty;
         this.strategy = strategy;
         this.memory = {

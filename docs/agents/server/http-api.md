@@ -34,7 +34,8 @@ Status payload shape:
     "clients": 0,
     "activeGames": 0,
     "timers": 0,
-    "trackedTurns": 0
+    "trackedTurns": 0,
+    "resolvingTurns": 0
   },
   "deploy": {
     "source": "github-actions",

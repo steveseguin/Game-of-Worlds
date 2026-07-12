@@ -138,6 +138,17 @@ async function startGame(connection) {
     await waitFor(connection, message => message === 'startgame::');
 }
 
+async function createStartedSolo(db, username, name) {
+    server.setDatabase(db);
+    const hostId = await createGuest(username);
+    const host = createConnection(hostId);
+    attach(host);
+    const gameId = await createJoinedGame(host, { name });
+    await startGame(host);
+    host.messages.length = 0;
+    return { hostId, host, gameId };
+}
+
 test('started games resume turn timers from persisted state', async () => {
     const db = createMockDatabase();
     server.setDatabase(db);
@@ -477,6 +488,321 @@ test('turn processing pauses instead of advancing runtime when persistence is un
         server.processTurn(1);
         await delay(25);
         assert.equal(server.gameState.turns[1], 9);
+    } finally {
+        resetGameState();
+    }
+});
+
+test('new turn waits for authoritative income writes and reconnect exposes the resolving phase', async () => {
+    const db = createMockDatabase();
+    resetGameState();
+
+    try {
+        const { hostId, host, gameId } = await createStartedSolo(db, 'sequencedTurn', 'Sequenced Turn');
+        let incomeWriteWaiting = false;
+        let incomeWriteCompleted = false;
+        const delayedDb = {
+            isOffline: false,
+            isMock: true,
+            query(sql, params, callback) {
+                const cb = typeof params === 'function' ? params : callback;
+                const values = typeof params === 'function' ? [] : params;
+                if (/^UPDATE players\d+ SET metal = metal \+ \?, crystal = crystal \+ \?, research = research \+ \?, last_income_turn = \?/i.test(sql.replace(/\s+/g, ' ').trim())) {
+                    incomeWriteWaiting = true;
+                    db.query(sql, values, (err, result) => {
+                        setTimeout(() => {
+                            incomeWriteCompleted = true;
+                            cb(err, result);
+                        }, 80);
+                    });
+                    return;
+                }
+                db.query(sql, values, cb);
+            }
+        };
+        server.setDatabase(delayedDb);
+
+        const turnPromise = server.processTurn(gameId);
+        await waitUntil(() => incomeWriteWaiting);
+        assert.equal(server.isTurnProcessing(gameId), true);
+        assert.equal(host.messages.some(message => message === 'newturn::2'), false);
+
+        const reconnect = createConnection(hostId);
+        reconnect.gameid = gameId;
+        server.handleCurrentGame(reconnect);
+        const snapshotMessage = await waitFor(reconnect, message => message.startsWith('currentgame::'));
+        const snapshot = JSON.parse(snapshotMessage.replace('currentgame::', ''));
+        assert.equal(snapshot.turn, 2);
+        assert.equal(snapshot.turnResolution.phase, 'income');
+
+        await turnPromise;
+        assert.equal(incomeWriteCompleted, true);
+        assert.equal(host.messages.some(message => message === 'newturn::2'), true);
+        assert.equal(server.isTurnProcessing(gameId), false);
+    } finally {
+        resetGameState();
+    }
+});
+
+test('failed income phase emits no new turn and retries the same turn idempotently', async () => {
+    const db = createMockDatabase();
+    resetGameState();
+
+    try {
+        const { hostId, host, gameId } = await createStartedSolo(db, 'retryIncome', 'Retry Income');
+        const before = (await dbQuery(db, `SELECT * FROM players${gameId} WHERE userid = ?`, [hostId]))[0];
+        let failedOnce = false;
+        server.setDatabase({
+            isOffline: false,
+            isMock: true,
+            query(sql, params, callback) {
+                const cb = typeof params === 'function' ? params : callback;
+                const values = typeof params === 'function' ? [] : params;
+                if (!failedOnce && /^UPDATE players\d+ SET metal = metal \+ \?, crystal = crystal \+ \?, research = research \+ \?, last_income_turn = \?/i.test(sql.replace(/\s+/g, ' ').trim())) {
+                    failedOnce = true;
+                    process.nextTick(() => cb(new Error('simulated income outage')));
+                    return;
+                }
+                db.query(sql, values, cb);
+            }
+        });
+
+        assert.equal(await server.processTurn(gameId), false);
+        assert.equal(host.messages.some(message => message === 'newturn::2'), false);
+        assert.equal(server.gameState.turns[gameId], 2);
+        assert.equal(server.gameState.activeGames[gameId].turnResolution.phase, 'failed');
+        assert.equal(server.gameState.activeGames[gameId].turnResolution.failedPhase, 'income');
+
+        server.setDatabase(db);
+        assert.equal(await server.processTurn(gameId), true);
+        const after = (await dbQuery(db, `SELECT * FROM players${gameId} WHERE userid = ?`, [hostId]))[0];
+        assert.equal(server.gameState.turns[gameId], 2, 'retry must not increment the turn again');
+        assert.equal(after.last_income_turn, 2);
+        assert.ok(after.metal > before.metal);
+        assert.equal(host.messages.filter(message => message === 'newturn::2').length, 1);
+    } finally {
+        resetGameState();
+    }
+});
+
+test('turn persistence failure leaves runtime and clients on the prior turn', async () => {
+    const db = createMockDatabase();
+    resetGameState();
+
+    try {
+        const { host, gameId } = await createStartedSolo(db, 'persistTurn', 'Persist Turn');
+        server.setDatabase({
+            isOffline: false,
+            isMock: true,
+            query(sql, params, callback) {
+                const cb = typeof params === 'function' ? params : callback;
+                const values = typeof params === 'function' ? [] : params;
+                if (/^UPDATE games SET turn = \?, turn_phase = \?, turn_phase_turn = \? WHERE id = \?/i.test(sql.replace(/\s+/g, ' ').trim())) {
+                    process.nextTick(() => cb(new Error('simulated turn persistence failure')));
+                    return;
+                }
+                db.query(sql, values, cb);
+            }
+        });
+
+        assert.equal(await server.processTurn(gameId), false);
+        assert.equal(server.gameState.turns[gameId], 1);
+        assert.equal(db.games.find(game => game.id === gameId).turn, 1);
+        assert.equal(host.messages.some(message => message === 'newturn::2'), false);
+    } finally {
+        resetGameState();
+    }
+});
+
+test('runtime restart during battle pause resumes from persisted state without a stuck freeze', async () => {
+    const db = createMockDatabase();
+    resetGameState();
+
+    try {
+        const { host, gameId } = await createStartedSolo(db, 'battleRestart', 'Battle Restart');
+        server.pauseTurnTimerForBattle(gameId, 10000);
+        assert.equal(server.isBattlePauseActive(gameId), true);
+
+        const pause = server.gameState.battlePause[gameId];
+        if (pause?.timer) clearTimeout(pause.timer);
+        delete server.gameState.battlePause[gameId];
+        if (server.gameState.gameTimer[gameId]) clearInterval(server.gameState.gameTimer[gameId]);
+        delete server.gameState.gameTimer[gameId];
+        delete server.gameState.turns[gameId];
+        delete server.gameState.activeGames[gameId];
+
+        assert.equal(await server.resumeActiveGamesFromDatabase(), 1);
+        assert.equal(server.isBattlePauseActive(gameId), false);
+        assert.ok(server.gameState.gameTimer[gameId]);
+        host.messages.length = 0;
+        assert.equal(await server.processTurn(gameId), true);
+        assert.equal(host.messages.some(message => message === 'newturn::2'), true);
+    } finally {
+        resetGameState();
+    }
+});
+
+test('runtime restart resumes a persisted failed income phase without advancing or double-paying', async () => {
+    const db = createMockDatabase();
+    resetGameState();
+
+    try {
+        const { hostId, host, gameId } = await createStartedSolo(db, 'restartIncome', 'Restart Income');
+        let failedOnce = false;
+        server.setDatabase({
+            isOffline: false,
+            isMock: true,
+            query(sql, params, callback) {
+                const cb = typeof params === 'function' ? params : callback;
+                const values = typeof params === 'function' ? [] : params;
+                if (!failedOnce && /^UPDATE players\d+ SET metal = metal \+ \?, crystal = crystal \+ \?, research = research \+ \?, last_income_turn = \?/i.test(sql.replace(/\s+/g, ' ').trim())) {
+                    failedOnce = true;
+                    process.nextTick(() => cb(new Error('simulated crash boundary')));
+                    return;
+                }
+                db.query(sql, values, cb);
+            }
+        });
+        assert.equal(await server.processTurn(gameId), false);
+        assert.equal(db.games.find(game => game.id === gameId).turn_phase, 'income');
+
+        if (server.gameState.gameTimer[gameId]) clearInterval(server.gameState.gameTimer[gameId]);
+        delete server.gameState.gameTimer[gameId];
+        delete server.gameState.turns[gameId];
+        delete server.gameState.activeGames[gameId];
+        host.messages.length = 0;
+        server.setDatabase(db);
+
+        assert.equal(await server.resumeActiveGamesFromDatabase(), 1);
+        await waitFor(host, message => message === 'newturn::2');
+        const player = (await dbQuery(db, `SELECT * FROM players${gameId} WHERE userid = ?`, [hostId]))[0];
+        const game = db.games.find(row => row.id === gameId);
+        assert.equal(game.turn, 2);
+        assert.equal(game.turn_phase, null);
+        assert.equal(player.last_automation_turn, 2);
+        assert.equal(player.last_income_turn, 2);
+        assert.equal(host.messages.filter(message => message === 'newturn::2').length, 1);
+    } finally {
+        resetGameState();
+    }
+});
+
+test('turn phases preserve automation, income, battle, victory, then broadcast order', async () => {
+    const db = createMockDatabase();
+    resetGameState();
+
+    try {
+        const { host, gameId } = await createStartedSolo(db, 'phaseOrder', 'Phase Order');
+        const events = [];
+        const originalSend = host.sendUTF.bind(host);
+        host.sendUTF = message => {
+            if (message === 'newturn::2') events.push('broadcast');
+            originalSend(message);
+        };
+        server.setDatabase({
+            isOffline: false,
+            isMock: true,
+            query(sql, params, callback) {
+                const cb = typeof params === 'function' ? params : callback;
+                const values = typeof params === 'function' ? [] : params;
+                const normalized = sql.replace(/\s+/g, ' ').trim();
+                if (/^SELECT userid, is_ai, ai_difficulty, ai_strategy FROM players\d+ WHERE is_ai = 1/i.test(normalized)) events.push('ai');
+                else if (/^SELECT userid FROM players\d+$/i.test(normalized)) events.push('standing');
+                else if (/^UPDATE players\d+ SET metal = metal \+ \?, crystal = crystal \+ \?, research = research \+ \?, last_income_turn = \?/i.test(normalized)) events.push('income');
+                else if (/^SELECT sectorid, GROUP_CONCAT/i.test(normalized)) events.push('battles');
+                else if (/^SELECT userid FROM players\d+ ORDER BY userid ASC/i.test(normalized)) events.push('victory');
+                db.query(sql, values, cb);
+            }
+        });
+
+        assert.equal(await server.processTurn(gameId), true);
+        const first = name => events.indexOf(name);
+        assert.ok(first('ai') < first('standing'));
+        assert.ok(first('standing') < first('income'));
+        assert.ok(first('income') < first('battles'));
+        assert.ok(first('battles') < first('victory'));
+        assert.ok(first('victory') < first('broadcast'));
+    } finally {
+        resetGameState();
+    }
+});
+
+test('battle query failure resumes at battle phase without duplicating income', async () => {
+    const db = createMockDatabase();
+    resetGameState();
+
+    try {
+        const { hostId, host, gameId } = await createStartedSolo(db, 'retryBattle', 'Retry Battle');
+        let failedOnce = false;
+        server.setDatabase({
+            isOffline: false,
+            isMock: true,
+            query(sql, params, callback) {
+                const cb = typeof params === 'function' ? params : callback;
+                const values = typeof params === 'function' ? [] : params;
+                if (!failedOnce && /^SELECT sectorid, GROUP_CONCAT/i.test(sql.replace(/\s+/g, ' ').trim())) {
+                    failedOnce = true;
+                    process.nextTick(() => cb(new Error('simulated battle read outage')));
+                    return;
+                }
+                db.query(sql, values, cb);
+            }
+        });
+
+        assert.equal(await server.processTurn(gameId), false);
+        const afterFailed = (await dbQuery(db, `SELECT * FROM players${gameId} WHERE userid = ?`, [hostId]))[0];
+        assert.equal(afterFailed.last_automation_turn, 2);
+        assert.equal(afterFailed.last_income_turn, 2);
+        assert.equal(host.messages.some(message => message === 'newturn::2'), false);
+        assert.equal(server.gameState.activeGames[gameId].turnResolution.failedPhase, 'battles');
+
+        server.setDatabase(db);
+        assert.equal(await server.processTurn(gameId), true);
+        const afterRetry = (await dbQuery(db, `SELECT * FROM players${gameId} WHERE userid = ?`, [hostId]))[0];
+        assert.equal(afterRetry.metal, afterFailed.metal);
+        assert.equal(afterRetry.crystal, afterFailed.crystal);
+        assert.equal(afterRetry.research, afterFailed.research);
+        assert.equal(afterRetry.last_automation_turn, 2);
+        assert.equal(host.messages.filter(message => message === 'newturn::2').length, 1);
+    } finally {
+        resetGameState();
+    }
+});
+
+test('victory read failure resumes at victory phase without replaying earlier phases', async () => {
+    const db = createMockDatabase();
+    resetGameState();
+
+    try {
+        const { hostId, host, gameId } = await createStartedSolo(db, 'retryVictory', 'Retry Victory');
+        let failedOnce = false;
+        server.setDatabase({
+            isOffline: false,
+            isMock: true,
+            query(sql, params, callback) {
+                const cb = typeof params === 'function' ? params : callback;
+                const values = typeof params === 'function' ? [] : params;
+                if (!failedOnce && /^SELECT userid FROM players\d+ ORDER BY userid ASC/i.test(sql.replace(/\s+/g, ' ').trim())) {
+                    failedOnce = true;
+                    process.nextTick(() => cb(new Error('simulated victory read outage')));
+                    return;
+                }
+                db.query(sql, values, cb);
+            }
+        });
+
+        assert.equal(await server.processTurn(gameId), false);
+        const afterFailed = (await dbQuery(db, `SELECT * FROM players${gameId} WHERE userid = ?`, [hostId]))[0];
+        assert.equal(server.gameState.activeGames[gameId].turnResolution.failedPhase, 'victory');
+        assert.equal(host.messages.some(message => message === 'newturn::2'), false);
+
+        server.setDatabase(db);
+        assert.equal(await server.processTurn(gameId), true);
+        const afterRetry = (await dbQuery(db, `SELECT * FROM players${gameId} WHERE userid = ?`, [hostId]))[0];
+        assert.equal(afterRetry.metal, afterFailed.metal);
+        assert.equal(afterRetry.crystal, afterFailed.crystal);
+        assert.equal(afterRetry.research, afterFailed.research);
+        assert.equal(host.messages.filter(message => message === 'newturn::2').length, 1);
     } finally {
         resetGameState();
     }

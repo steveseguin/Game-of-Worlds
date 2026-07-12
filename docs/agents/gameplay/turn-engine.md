@@ -28,7 +28,7 @@ flowchart TD
 
 It also records `activeGames[gameId].turnEndsAt` and publishes `turnclock::<turn>::<endsAt>::<durationSeconds>`. The client counts down from the epoch deadline instead of decrementing an assumed 180-second value, so epic/test games, background tabs, reconnects, and battle-clock restarts show server time.
 
-`processingTurns` coalesces a timer tick and an all-humans-ready trigger that arrive while the same turn validation is in flight. If the player table cannot be read, the turn pauses instead of incrementing runtime state without persistence.
+`processingTurns` coalesces a timer tick and an all-humans-ready trigger for the whole resolution window. If the player table cannot be read, the turn pauses instead of incrementing runtime state without persistence. Mutating commands are rejected while resolution is active, and clients render the `turnphase::` freeze instead of offering orders against a half-resolved turn.
 
 ## Process Turn
 
@@ -40,13 +40,14 @@ High-level turn flow:
 4. Clear manual "done early" readiness flags.
 5. Trigger AI actions.
 6. Apply standing orders.
-7. Start async income calculations and resource writes for each player.
-8. Process battles.
-9. Check victory.
-10. Broadcast `newturn::<turn>`.
-11. Publish the next authoritative `turnclock::` deadline.
+7. Await income calculations and guarded resource writes for every player.
+8. Await all detected battle resolutions.
+9. Await victory checks and terminal bookkeeping when a winner exists.
+10. Clear the persisted resolution marker.
+11. Broadcast `newturn::<turn>` only for a still-active game.
+12. Publish the next authoritative `turnclock::` deadline.
 
-Important implementation detail: AI, standing orders, income writes, battle resolution, and victory checks are callback/promise-driven and are not one awaited transaction. `newturn::` can be sent before some side effects finish. In most gameplay this is acceptable because clients receive follow-up resource/map/battle messages, but economic-victory/resource/combat timing should be tested carefully if changed.
+`games.turn_phase` and `games.turn_phase_turn` record recoverable phase boundaries. `playersN.last_automation_turn` reserves each player's automation before it runs, preventing AI or standing orders from spending twice after a restart. This is intentionally at-most-once: a hard crash after reservation can skip the rest of that player's automation for one turn, which is safer than duplicating purchases or moves. `playersN.last_income_turn` makes income idempotent, so an income retry or process restart cannot pay the same player twice. A failed phase sends `turnphase::failed`, keeps orders frozen, and retries the recorded phase. Completed phases are not replayed during an in-process retry.
 
 ## Manual End Turn
 
@@ -120,3 +121,4 @@ Important arrival rules:
 - Client parser missing a new server message prefix.
 - Battle pause failing to resume the timer.
 - Economic/resource victory timing changing because income writes are asynchronous.
+- A hard process loss in the middle of one battle's multi-query survivor replacement is still not a database transaction; the persisted phase lets startup revisit conflicts, but this is not equivalent to atomic combat persistence.

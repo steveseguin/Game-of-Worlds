@@ -100,6 +100,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `startgame::` | game | Switch to active game UI. |
 | `turnready::<ready>::<humans>` | game | Manual end-turn readiness count. |
 | `newturn::<turn>` | game | Turn advanced. |
+| `turnphase::<resolving|failed|idle>::<turn>::<phase>` | game | Authoritative turn-resolution freeze/status; mutating orders remain blocked until resolution finishes. |
 | `turnclock::<turn>::<endsAtEpochMs>::<durationSeconds>` | game | Authoritative turn deadline/cadence; sent on start, turn advance, and clock restart. |
 | `resources::<metal>::<crystal>::<research>` | game | Player resources. |
 | `techstate::<json>` | game | Tech tree, race access, race-adjusted ship costs, and shipyard requirements. |

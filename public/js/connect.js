@@ -48,7 +48,9 @@ let pendingInitialUpdate = false;
 let turnTimer = 180; // 3 minutes per turn
 let turnInterval;
 let turnDeadlineAt = null;
-let turnFrozen = false; // true while a battle theater is playing (clock paused for everyone)
+let turnFrozen = false; // combined battle-playback and server turn-resolution freeze
+let battleFrozen = false;
+let turnResolutionFrozen = false;
 let battleFreezeTimer = null;
 let currentTurnNumber = null;
 let currentGameModeLabel = 'Quick Match';
@@ -142,21 +144,17 @@ const MESSAGE_HANDLERS = {
         const now = Date.now();
         const base = (window.__battleFreezeUntil && window.__battleFreezeUntil > now) ? window.__battleFreezeUntil : now;
         window.__battleFreezeUntil = Math.min(base + freezeMs, now + 26000);
-        turnFrozen = true;
-        if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
-        setNextTurnButtonDisabled(true);
-        setNextTurnButtonLabel('Battle');
+        battleFrozen = true;
+        refreshTurnFreezeUi();
         const el = document.getElementById('turnRedFlashWhenLow');
         if (el) { el.textContent = 'BATTLE'; el.style.color = '#ff8a6a'; }
         clearTimeout(battleFreezeTimer);
         battleFreezeTimer = setTimeout(() => {
-            turnFrozen = false;
+            battleFrozen = false;
             window.__battlePauseMs = 0;
             window.__battleFreezeUntil = 0;
-            setNextTurnButtonDisabled(false);
-            setNextTurnButtonLabel('End Turn');
+            refreshTurnFreezeUi();
             renderTurnTimer();
-            if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
         }, Math.max(1, window.__battleFreezeUntil - now));
     },
     battleSummary(payload) {
@@ -545,6 +543,13 @@ function setGameModeLabel(mode) {
     renderTurnHeader();
 }
 
+function refreshTurnFreezeUi() {
+    turnFrozen = battleFrozen || turnResolutionFrozen;
+    setNextTurnButtonDisabled(turnFrozen);
+    setNextTurnButtonLabel(battleFrozen ? 'Battle' : (turnResolutionFrozen ? 'Resolving' : 'End Turn'));
+    if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
+}
+
 function renderTurnTimer() {
     const timerEl = document.getElementById("turnRedFlashWhenLow");
     if (!timerEl) {
@@ -590,7 +595,13 @@ function beginTurnCountdown(turnNumber, seconds = 180, deadlineAt = null) {
 // Game action functions
 function sendGameCommand(command) {
     if (turnFrozen) {
-        window.NotificationSystem?.notify?.('Battle in progress', 'Orders resume after combat playback.', 'info', 3000);
+        const resolving = turnResolutionFrozen && !battleFrozen;
+        window.NotificationSystem?.notify?.(
+            resolving ? 'Turn resolving' : 'Battle in progress',
+            resolving ? 'Orders resume when the server finishes the new turn.' : 'Orders resume after combat playback.',
+            'info',
+            3000
+        );
         return false;
     }
     if (!websocket || websocket.readyState !== WebSocket.OPEN || !hasAuthenticated) {
@@ -609,7 +620,13 @@ function sendGameCommand(command) {
 function nextTurn() {
     if (turnFrozen) {
         if (window.NotificationSystem?.notify) {
-            window.NotificationSystem.notify('Battle in progress', 'Orders resume when combat playback finishes.', 'info', 3000);
+            const resolving = turnResolutionFrozen && !battleFrozen;
+            window.NotificationSystem.notify(
+                resolving ? 'Turn resolving' : 'Battle in progress',
+                resolving ? 'Orders resume when the server finishes the new turn.' : 'Orders resume when combat playback finishes.',
+                'info',
+                3000
+            );
         }
         return;
     }
@@ -715,6 +732,7 @@ function isAuthSuccessMessage(message) {
         message.indexOf("techstate::") === 0 ||
         message.indexOf("empire::") === 0 ||
         message.indexOf("victoryprogress::") === 0 ||
+        message.indexOf("turnphase::") === 0 ||
         message.indexOf("sector::") === 0 ||
         message.indexOf("pl:") === 0 ||
         message.indexOf("gamelist::") === 0 ||
@@ -832,10 +850,12 @@ function handleWebSocketMessage(message) {
                         snapshot.turnSeconds || 180,
                         snapshot.turnEndsAt
                     );
+                    turnResolutionFrozen = Boolean(snapshot.turnResolution?.phase);
                     if (Number(snapshot.battlePauseUntil) > Date.now()) {
                         const remaining = Number(snapshot.battlePauseUntil) - Date.now();
                         MESSAGE_HANDLERS.battlePause(`${remaining}::${remaining}`);
                     }
+                    refreshTurnFreezeUi();
                 } else {
                     setNextTurnButtonLabel('Start Game');
                     currentTurnNumber = null;
@@ -948,7 +968,9 @@ function handleWebSocketMessage(message) {
     // New turn
     else if (message.indexOf("newturn::") === 0) {
         const turnNumber = message.split("::")[1];
+        turnResolutionFrozen = false;
         beginTurnCountdown(turnNumber);
+        refreshTurnFreezeUi();
         if (window.MediaManager?.playSfx) {
             window.MediaManager.playSfx('notification');
         }
@@ -957,6 +979,20 @@ function handleWebSocketMessage(message) {
         if (websocket && websocket.readyState === WebSocket.OPEN) {
             websocket.send("//victoryprogress");
         }
+    }
+    else if (message.indexOf("turnphase::") === 0) {
+        const [, state] = message.split("::");
+        turnResolutionFrozen = state === 'resolving' || state === 'failed';
+        refreshTurnFreezeUi();
+        if (state === 'failed') {
+            window.NotificationSystem?.notify?.(
+                'Turn delayed',
+                'The server could not finish this turn safely. It will retry without applying completed income twice.',
+                'warning',
+                5000
+            );
+        }
+        return;
     }
     else if (message.indexOf("turnclock::") === 0) {
         const [, turnNumber, deadlineAt, durationSeconds] = message.split("::");

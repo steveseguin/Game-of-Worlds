@@ -336,9 +336,26 @@ function canColonizeSector(sector, terraformLevel) {
  * @param {number} width - Map width in sectors
  * @param {number} height - Map height in sectors
  * @param {number} playerCount - Number of players
+ * @param {Function} random - Optional random source; production defaults to Math.random
  * @return {Array} - Map data
  */
-function generateGameMap(width, height, playerCount) {
+function createSeededRandom(seed) {
+    let hash = 2166136261;
+    for (const character of String(seed)) {
+        hash ^= character.charCodeAt(0);
+        hash = Math.imul(hash, 16777619);
+    }
+    let state = hash >>> 0;
+    return function seededRandom() {
+        state += 0x6D2B79F5;
+        let value = state;
+        value = Math.imul(value ^ (value >>> 15), value | 1);
+        value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+        return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function generateGameMap(width, height, playerCount, random = Math.random) {
     const sectors = [];
     let sectorId = 1;
     
@@ -347,7 +364,7 @@ function generateGameMap(width, height, playerCount) {
         for (let x = 0; x < width; x++) {
             // Determine sector type based on weighted probability
             let sectorType;
-            const roll = Math.random();
+            const roll = random();
             
             if (roll < 0.05) {
                 // 5% chance of black hole
@@ -382,8 +399,8 @@ function generateGameMap(width, height, playerCount) {
             }
             
             // Generate mineral and crystal bonuses
-            const metalBonus = Math.floor(Math.random() * 200 + 50); // 50-250%
-            const crystalBonus = Math.floor(Math.random() * 200 + 50); // 50-250%
+            const metalBonus = Math.floor(random() * 200 + 50); // 50-250%
+            const crystalBonus = Math.floor(random() * 200 + 50); // 50-250%
             
             // Terraform requirement scales with planet size: micro worlds are
             // easy starters, large worlds demand real terraforming investment.
@@ -392,13 +409,13 @@ function generateGameMap(width, height, playerCount) {
                 const tier = sectorType - SECTOR_TYPES.MICRO_PLANET.id; // 0..3
                 const ranges = [[0, 1], [0, 2], [1, 3], [2, 5]];
                 const [minReq, maxReq] = ranges[tier] || [0, 2];
-                terraformLevel = minReq + Math.floor(Math.random() * (maxReq - minReq + 1));
+                terraformLevel = minReq + Math.floor(random() * (maxReq - minReq + 1));
             }
             
             // Artifact chance (25% chance on planets)
             let artifact = 0;
-            if (sectorType >= SECTOR_TYPES.MICRO_PLANET.id && Math.random() < 0.25) {
-                artifact = Math.floor(Math.random() * 5) + 1;
+            if (sectorType >= SECTOR_TYPES.MICRO_PLANET.id && random() < 0.25) {
+                artifact = Math.floor(random() * 5) + 1;
             }
             
             // Create sector object
@@ -719,6 +736,7 @@ module.exports = {
     canColonizeSector,
     generateGameMap,
     generateMap: generateGameMap, // Alias for compatibility
+    createSeededRandom,
     areSectorsAdjacent,
     getAdjacentSectors,
     calculateMovementCost,

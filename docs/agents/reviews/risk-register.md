@@ -46,20 +46,23 @@ This file records review findings that matter for future work. Keep entries conc
 | Persistence outage turn drift | A failed player-table read previously allowed turn processing to continue. | Turn advancement now pauses on the read error instead of incrementing runtime without authoritative player state. |
 | Silent state corruption | There was no non-mutating whole-game consistency oracle for functional journeys. | Added a read-only invariant evaluator and test-only member endpoint covering resources, references, ownership, types, capacity, turn state, and terminal runtime cleanup. |
 | Shared tech drift | Server/client tech files depended on a comment telling contributors to update both. | Unit coverage now requires normalized files to remain byte-for-byte identical. |
+| Turn sequencing | `newturn::` could outrun AI, standing orders, income, battle, and victory callbacks. | Resolution now awaits phases in the established order, freezes mutations through `turnphase::`, and broadcasts only after authoritative writes complete. |
+| Turn failure/restart recovery | A failed or interrupted turn could skip remaining work or replay automation/income. | Persisted phase markers resume the failed phase; `last_automation_turn` makes automation at-most-once and `last_income_turn` makes payout retry idempotent; failure/reconnect/restart tests cover boundaries. A crash immediately after automation reservation may skip the unfinished automation for that player rather than replay it. |
+| Dynamic table construction | Per-game table suffixes lacked one fail-closed constructor. | Added validated table helpers, migrated creation/drop/turn/audit/AI/sync/broadcast boundaries, and injection-shaped-id tests. |
+| WebSocket contract drift | Dispatch commands, browser prefixes, and protocol docs could diverge silently. | Added shared registries plus contract tests against server dispatch, browser parsing, and documentation. |
 
 ## Active Risks To Revisit
 
 | Area | Risk | Why It Matters | Suggested Next Move |
 | --- | --- | --- | --- |
 | `server/server.js` size | Main engine is a large monolith. | Small changes can accidentally affect unrelated gameplay paths. | Extract one bounded area at a time only when tests cover the behavior. |
-| Dynamic table names | Per-game SQL tables use `players${gameId}`, `map${gameId}`, etc. | SQL placeholders cannot protect table names, so game ids must stay server-validated integers. | Add helper for validated table names before future persistence work. |
-| WebSocket protocol | String prefixes and delimiter parsing are duplicated client/server. | New messages can silently fail if only one parser is updated. | Maintain `docs/agents/server/websocket-protocol.md` and add tests for new prefixes. |
+| Legacy dynamic table call sites | Some older internal SQL still interpolates server-derived game ids directly. | SQL placeholders cannot protect table names, and future call paths could weaken the origin assumption. | Migrate a bounded module to `game-tables.js` whenever that module is otherwise changed. |
 | Auth cookies | Protected pages and JSON APIs check `userId` and `tempKey` cookies directly. | It works with current model, but tempKey is bearer-style and not an HTTP-only signed session cookie. | Consider signed session cookies once gameplay flow stabilizes. |
 | Legacy docs | Several root deployment docs predate current CI/CD. | Contributors and agents may follow stale deployment instructions. | Gradually archive or rewrite old deployment docs to point at `docs/agents/operations/ci-cd.md`. |
-| Tech definitions | Tech tree is duplicated in `server/lib/tech.js` and `public/js/tech.js`. | Divergence can create client/server disagreement. | Add a sync check or generate the client copy from server definitions. |
+| Tech definitions | Tech tree is duplicated in `server/lib/tech.js` and `public/js/tech.js`. | Divergence can create client/server disagreement. | Byte-sync tests now fail on drift; eventually generate the client copy when packaging changes are safe. |
 | Payment surface | Payment endpoints are present but optional. | Stripe config gaps should not break non-payment gameplay. | Keep payment tests isolated and ensure `503` behavior remains explicit when disabled. |
 | Production Stripe webhook | Production has `STRIPE_SECRET_KEY` but currently reports missing `STRIPE_WEBHOOK_SECRET`. | Incoming payment events cannot be signature-verified, so webhook-driven fulfillment is not production-ready even though gameplay is unaffected. | Configure the matching endpoint signing secret, restart, and confirm the startup warning is gone with a signed webhook test. |
-| Turn sequencing | Income writes, standing orders, AI, battle, and victory are mixed callback/async flows in `processTurnUnchecked()`. | Economic-victory and combat-victory timing can be hard to reason about, and broad refactors risk regressions. | Add focused turn sequencing tests before changing this order; eventually make turn processing explicitly awaited. |
+| Mid-battle process loss | Ship/turret survivor replacement spans multiple queries inside a persisted `battles` phase. | Startup can revisit the conflict, but a hard kill between survivor writes is not fully atomic. | Add a per-battle transaction/idempotency record before attempting broader combat persistence changes. |
 
 ## Review Checklist For Gameplay Changes
 

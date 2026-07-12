@@ -5,10 +5,10 @@ const { evaluateGameState } = require('../server/lib/game-invariants');
 
 function validSnapshot() {
     return {
-        game: { id: 1, started: 1, status: 'in-progress', turn: 4 },
+        game: { id: 1, started: 1, status: 'in-progress', turn: 4, turn_phase: null, turn_phase_turn: null },
         players: [
-            { userid: 7, metal: 100, crystal: 80, research: 40, homeworld: 1, currentsector: 2 },
-            { userid: 8, metal: 50, crystal: 40, research: 20, homeworld: 3, currentsector: 3 }
+            { userid: 7, metal: 100, crystal: 80, research: 40, homeworld: 1, currentsector: 2, last_automation_turn: 4, last_income_turn: 4 },
+            { userid: 8, metal: 50, crystal: 40, research: 20, homeworld: 3, currentsector: 3, last_automation_turn: 3, last_income_turn: 3 }
         ],
         sectors: [
             { sectorid: 1, type: 10, owner: 7 },
@@ -38,6 +38,9 @@ test('valid persisted game state satisfies all hard invariants', () => {
 test('audit reports resource, reference, ownership, type, and capacity corruption together', () => {
     const snapshot = validSnapshot();
     snapshot.players[0].metal = -1;
+    snapshot.players[0].last_automation_turn = 5;
+    snapshot.players[0].last_income_turn = 5;
+    snapshot.game.turn_phase = 'unknown';
     snapshot.players[0].currentsector = 999;
     snapshot.sectors[1].owner = 99;
     snapshot.ships.push({ id: 3, owner: 99, type: 12, sectorid: 999 });
@@ -51,6 +54,9 @@ test('audit reports resource, reference, ownership, type, and capacity corruptio
     assert.equal(result.ok, false);
     [
         'INVALID_RESOURCE',
+        'AUTOMATION_TURN_AHEAD',
+        'INCOME_TURN_AHEAD',
+        'INVALID_TURN_PHASE',
         'INVALID_PLAYER_SECTOR',
         'ORPHAN_SECTOR_OWNER',
         'ORPHAN_SHIP_OWNER',

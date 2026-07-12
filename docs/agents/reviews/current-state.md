@@ -2,7 +2,7 @@
 
 Last code review update: 2026-07-11. Runtime status must still be verified through production `/health` and `/status` after every release.
 
-Production verification on 2026-07-11 reported service `ok`, database `connected`, a clean checkout, and deployed app commit `1a4fb415c4ee`. Startup also warned that `STRIPE_SECRET_KEY` is configured while `STRIPE_WEBHOOK_SECRET` is missing; core gameplay is healthy, but verified Stripe webhook handling is not production-ready until that secret is supplied.
+Production verification on 2026-07-11 reported service `ok`, database `connected`, and a clean checkout. The exact deployed revision is intentionally read from `/status.deploy.commit` after each release rather than copied here. Stripe webhook setup is explicitly deferred while gameplay readiness is the priority; core gameplay does not depend on it.
 
 ## Product Shape
 
@@ -17,8 +17,8 @@ The current gameplay loop is usable end-to-end: authenticate, create/join, choos
 | Quick | 3-minute default turn cadence. |
 | Epic | 24-hour default cadence, larger income multiplier, automation defaults. |
 | Test | 30-second default cadence and smaller map when enabled; intended for functional verification. |
-| Turn authority | Server timer plus `activeGames.turnEndsAt`; browser renders epoch deadline. |
-| Persistence recovery | Started games restore runtime/timers from `games` plus per-game tables after process restart. A restarted timer begins a new full cadence because deadline itself is runtime-only. |
+| Turn authority | Server timer plus `activeGames.turnEndsAt`; browser renders epoch deadline and freezes during awaited turn resolution. |
+| Persistence recovery | Started games restore runtime/timers. `games.turn_phase` resumes interrupted resolution; `playersN.last_automation_turn` prevents duplicate automation and `last_income_turn` prevents duplicate recovery income. A normal restarted timer begins a new full cadence because deadline itself is runtime-only. |
 | Battle | Server resolves/persists; clients receive scoped playback or summary; game clock pauses and restarts. |
 | Disconnect | Socket loss does not resign. Current-game snapshot restores lobby/game context. |
 
@@ -50,13 +50,15 @@ Environment variables can override turn intervals and mode multipliers; do not h
 - `tests/e2e/hostile-workflows.spec.js`: route/auth gates, guest upgrade, safe active-game navigation/resume, explicit resignation.
 - `tests/game-invariants.test.js`: deliberately corrupts resources, references, ownership, types, capacity, and terminal runtime to prove detection.
 - `tests/shared-rules-sync.test.js`: prevents server/client technology drift and accidental activation of the stale client combat simulator.
+- `tests/websocket-protocol-contract.test.js`: keeps registered commands, browser message prefixes, dispatch, and protocol documentation synchronized.
+- `tests/game-tables.test.js`: proves dynamic table names reject invalid ids and unknown bases.
 
 ## Known Material Risks
 
-1. Turn resolution mixes callbacks and promises; `newturn::` can precede income/combat/victory side effects.
-2. Dynamic per-game table names demand validated numeric ids everywhere.
+1. A hard process loss during one battle's multi-query survivor replacement is not yet a single database transaction.
+2. Older dynamic-table call sites still rely on server-derived ids; new and migrated critical paths use the validated table helper.
 3. The monolithic `server/server.js` increases cross-feature regression risk.
-4. Server/client tech definitions are duplicated.
+4. Server/client tech definitions remain duplicated, with byte-sync coverage preventing drift.
 5. TempKey cookies remain bearer-style rather than HTTP-only signed sessions.
 
 The canonical detail and suggested next work live in [risk-register.md](risk-register.md).

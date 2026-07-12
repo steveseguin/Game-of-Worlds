@@ -213,6 +213,8 @@ connection.connect(err => {
                         winner INT DEFAULT NULL,
                         mode VARCHAR(16) DEFAULT 'quick',
                         status VARCHAR(32) DEFAULT 'waiting',
+                        turn_phase VARCHAR(16) DEFAULT NULL,
+                        turn_phase_turn INT DEFAULT NULL,
                         registered_only TINYINT DEFAULT 0,
                         min_level INT DEFAULT 0,
                         created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

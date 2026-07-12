@@ -25,6 +25,8 @@ const diplomacySystem = require('./lib/diplomacy');
 const { PaymentManager } = require('./lib/payments');
 const PaymentEndpoints = require('./lib/payment-endpoints');
 const gameInvariants = require('./lib/game-invariants');
+const { TABLE_BASES, gameTables, requireGameId } = require('./lib/game-tables');
+const { formatTurnPhase } = require('./lib/websocket-protocol');
 
 // Game state (shared with index.js)
 const gameState = {
@@ -46,6 +48,7 @@ let paymentEndpoints = null;
 let hasEnsuredGameModeColumn = false;
 let hasEnsuredUserGuestColumns = false;
 let hasEnsuredGameAccessColumns = false;
+let turnSchemaReady = Promise.resolve();
 // Pending human/AI joins are not visible in playersN yet. Track them in-process
 // so concurrent callbacks cannot all claim the final lobby seat or race game start.
 const lobbySeatReservations = new Map();
@@ -54,6 +57,7 @@ const pendingBuildingPurchases = new Set();
 const initializingGames = new Set();
 const processingTurns = new Set();
 const pendingProbeRequests = new Set();
+const turnRetryTimers = new Map();
 
 // Expose game state for other modules that rely on it
 global.gameState = gameState;
@@ -117,16 +121,7 @@ const JSON_BODY_LIMIT_BYTES = 16 * 1024;
 // Shared by construction enforcement and the read-only invariant auditor.
 const BUILDING_SLOTS_BY_TYPE = gameInvariants.BUILDING_SLOTS_BY_TYPE;
 const STARTING_BUILDINGS = Object.freeze([0, 4]); // Metal Extractor + Orbital Turret, matching the PHP start.
-const GAME_TABLE_SUFFIXES = [
-    'map',
-    'players',
-    'ships',
-    'buildings',
-    'diplomacy',
-    'wonders',
-    'explored_sectors',
-    'game_snapshots'
-];
+const GAME_TABLE_SUFFIXES = TABLE_BASES;
 const GAME_STATUS_ABANDONED = 'abandoned';
 const GAME_STATUS_COMPLETED = 'completed';
 const SOLO_SANDBOX_MAX_TURNS = Number(process.env.SOLO_SANDBOX_MAX_TURNS) || 300;
@@ -220,6 +215,35 @@ function ensureGameAccessColumns() {
     ], 'games');
 }
 
+function ensureTurnResolutionColumns() {
+    if (!db || db.isOffline || db.isMock || typeof db.query !== 'function') {
+        return Promise.resolve();
+    }
+    const columns = [
+        { name: 'turn_phase', sql: 'ALTER TABLE games ADD COLUMN turn_phase VARCHAR(16) DEFAULT NULL' },
+        { name: 'turn_phase_turn', sql: 'ALTER TABLE games ADD COLUMN turn_phase_turn INT DEFAULT NULL' }
+    ];
+    return columns.reduce((promise, column) => promise.then(() => new Promise(resolve => {
+        db.query(`SHOW COLUMNS FROM games LIKE '${column.name}'`, (showErr, rows) => {
+            if (showErr) {
+                console.warn(`Unable to verify games.${column.name} column:`, showErr.message || showErr);
+                resolve();
+                return;
+            }
+            if (Array.isArray(rows) && rows.length > 0) {
+                resolve();
+                return;
+            }
+            db.query(column.sql, alterErr => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                    console.warn(`Unable to ensure games.${column.name} column:`, alterErr.message || alterErr);
+                }
+                resolve();
+            });
+        });
+    })), Promise.resolve());
+}
+
 // Set the database connection
 function setDatabase(database) {
     db = database;
@@ -237,6 +261,7 @@ function setDatabase(database) {
     ensureGamesModeColumn();
     ensureUserGuestColumns();
     ensureGameAccessColumns();
+    turnSchemaReady = ensureTurnResolutionColumns();
 }
 
 // Authentication functions
@@ -584,6 +609,17 @@ function restoreStartedGameRuntime(game, options = {}) {
         state.lastHumanActivityAt = Date.now();
     }
 
+    const persistedPhase = String(game.turn_phase || '').toLowerCase();
+    if (!state.turnResolution && ['automation', 'income', 'battles', 'victory'].includes(persistedPhase)) {
+        state.turnResolution = {
+            turn: parseTurnNumber(game.turn_phase_turn || game.turn, gameState.turns[gameId]),
+            phase: 'failed',
+            failedPhase: persistedPhase,
+            startedAt: Date.now(),
+            recovered: true
+        };
+    }
+
     if (options.restartTimer || !gameState.gameTimer[gameId]) {
         startTurnTimer(gameId);
     }
@@ -654,8 +690,15 @@ function safeDecodeURIComponent(value, fallback = '') {
 }
 
 function createGameTables(gameId, callback) {
+    let tables;
+    try {
+        tables = gameTables(gameId);
+    } catch (error) {
+        callback(error);
+        return;
+    }
     const statements = [
-        `CREATE TABLE IF NOT EXISTS map${gameId} (
+        `CREATE TABLE IF NOT EXISTS ${tables.map} (
             sectorid INT PRIMARY KEY,
             x INT NOT NULL,
             y INT NOT NULL,
@@ -666,7 +709,7 @@ function createGameTables(gameId, callback) {
             terraformlvl INT DEFAULT 0,
             artifact INT DEFAULT 0
         )`,
-        `CREATE TABLE IF NOT EXISTS players${gameId} (
+        `CREATE TABLE IF NOT EXISTS ${tables.players} (
             userid INT PRIMARY KEY,
             race_id INT DEFAULT 1,
             is_ai TINYINT DEFAULT 0,
@@ -679,27 +722,29 @@ function createGameTables(gameId, callback) {
             research INT DEFAULT 50,
             tech VARCHAR(255) DEFAULT '',
             homeworld INT DEFAULT NULL,
-            currentsector INT DEFAULT NULL
+            currentsector INT DEFAULT NULL,
+            last_automation_turn INT DEFAULT 0,
+            last_income_turn INT DEFAULT 0
         )`,
-        `CREATE TABLE IF NOT EXISTS ships${gameId} (
+        `CREATE TABLE IF NOT EXISTS ${tables.ships} (
             id INT AUTO_INCREMENT PRIMARY KEY,
             owner INT NOT NULL,
             type INT NOT NULL,
             sectorid INT NOT NULL
         )`,
-        `CREATE TABLE IF NOT EXISTS buildings${gameId} (
+        `CREATE TABLE IF NOT EXISTS ${tables.buildings} (
             id INT AUTO_INCREMENT PRIMARY KEY,
             sectorid INT NOT NULL,
             type INT NOT NULL,
             owner INT NOT NULL
         )`,
-        `CREATE TABLE IF NOT EXISTS wonders${gameId} (
+        `CREATE TABLE IF NOT EXISTS ${tables.wonders} (
             id INT AUTO_INCREMENT PRIMARY KEY,
             owner INT NOT NULL,
             type VARCHAR(64) NOT NULL,
             turn_built INT DEFAULT 0
         )`,
-        `CREATE TABLE IF NOT EXISTS explored_sectors${gameId} (
+        `CREATE TABLE IF NOT EXISTS ${tables.explored_sectors} (
             playerid INT NOT NULL,
             sectorid INT NOT NULL,
             discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -728,11 +773,20 @@ function createGameTables(gameId, callback) {
 }
 
 function ensurePlayerTableColumns(gameId, callback) {
+    let playersTable;
+    try {
+        playersTable = gameTables(gameId).players;
+    } catch (error) {
+        callback(error);
+        return;
+    }
     const requiredColumns = [
-        { name: 'joined_at', sql: `ALTER TABLE players${gameId} ADD COLUMN joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` },
-        { name: 'is_ai', sql: `ALTER TABLE players${gameId} ADD COLUMN is_ai TINYINT DEFAULT 0` },
-        { name: 'ai_difficulty', sql: `ALTER TABLE players${gameId} ADD COLUMN ai_difficulty VARCHAR(16) DEFAULT 'medium'` },
-        { name: 'ai_strategy', sql: `ALTER TABLE players${gameId} ADD COLUMN ai_strategy VARCHAR(16) DEFAULT 'balanced'` }
+        { name: 'joined_at', sql: `ALTER TABLE ${playersTable} ADD COLUMN joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` },
+        { name: 'is_ai', sql: `ALTER TABLE ${playersTable} ADD COLUMN is_ai TINYINT DEFAULT 0` },
+        { name: 'ai_difficulty', sql: `ALTER TABLE ${playersTable} ADD COLUMN ai_difficulty VARCHAR(16) DEFAULT 'medium'` },
+        { name: 'ai_strategy', sql: `ALTER TABLE ${playersTable} ADD COLUMN ai_strategy VARCHAR(16) DEFAULT 'balanced'` },
+        { name: 'last_automation_turn', sql: `ALTER TABLE ${playersTable} ADD COLUMN last_automation_turn INT DEFAULT 0` },
+        { name: 'last_income_turn', sql: `ALTER TABLE ${playersTable} ADD COLUMN last_income_turn INT DEFAULT 0` }
     ];
 
     let idx = 0;
@@ -743,7 +797,7 @@ function ensurePlayerTableColumns(gameId, callback) {
         }
 
         const column = requiredColumns[idx++];
-        db.query(`SHOW COLUMNS FROM players${gameId} LIKE '${column.name}'`, (showErr, rows) => {
+        db.query(`SHOW COLUMNS FROM ${playersTable} LIKE '${column.name}'`, (showErr, rows) => {
             if (showErr) {
                 callback(showErr);
                 return;
@@ -778,6 +832,11 @@ function clearBattlePauseRuntime(gameId) {
 }
 
 function stopGameRuntime(gameId) {
+    const retryTimer = turnRetryTimers.get(Number(gameId));
+    if (retryTimer) {
+        clearTimeout(retryTimer);
+        turnRetryTimers.delete(Number(gameId));
+    }
     if (gameState.gameTimer[gameId]) {
         clearInterval(gameState.gameTimer[gameId]);
         delete gameState.gameTimer[gameId];
@@ -788,13 +847,20 @@ function stopGameRuntime(gameId) {
 }
 
 function dropGameTables(gameId, callback) {
+    let tables;
+    try {
+        tables = gameTables(gameId);
+    } catch (_error) {
+        if (callback) callback();
+        return;
+    }
     let index = 0;
     const next = () => {
         if (index >= GAME_TABLE_SUFFIXES.length) {
             if (callback) callback();
             return;
         }
-        const tableName = `${GAME_TABLE_SUFFIXES[index++]}${gameId}`;
+        const tableName = tables[GAME_TABLE_SUFFIXES[index++]];
         db.query(`DROP TABLE IF EXISTS ${tableName}`, () => next());
     };
     next();
@@ -849,7 +915,14 @@ function removePlayerEmpire(gameId, playerId, callback) {
 }
 
 function getGamePlayers(gameId, callback) {
-    db.query(`SELECT userid, is_ai FROM players${gameId}`, (err, rows) => {
+    let playersTable;
+    try {
+        playersTable = gameTables(gameId).players;
+    } catch (error) {
+        callback(error, []);
+        return;
+    }
+    db.query(`SELECT userid, is_ai FROM ${playersTable}`, (err, rows) => {
         if (err) {
             callback(err, []);
             return;
@@ -1537,7 +1610,11 @@ async function initializeGame(gameId, connection, game = {}) {
         const startingResources = getStartingResources(mode);
 
         // Create and persist the game map before players can interact with sectors.
-        const generatedMap = mapSystem.generateMap(mapSize.width, mapSize.height, playerRows.length);
+        const testMapSeed = mode === 'test' ? String(process.env.TEST_MAP_SEED || '') : '';
+        const mapRandom = testMapSeed
+            ? mapSystem.createSeededRandom(`${testMapSeed}:${mapSize.width}:${mapSize.height}:${playerRows.length}`)
+            : Math.random;
+        const generatedMap = mapSystem.generateMap(mapSize.width, mapSize.height, playerRows.length, mapRandom);
         const map = Array.isArray(generatedMap)
             ? generatedMap
             : (generatedMap && Array.isArray(generatedMap.sectors) ? generatedMap.sectors : []);
@@ -1770,11 +1847,12 @@ const SECTOR_YIELDS = {
 const BASE_INCOME = { metal: 5, crystal: 5, research: 5 };
 
 async function computeTurnIncome(gameId, playerId) {
+    const tables = gameTables(gameId);
     const income = { ...BASE_INCOME };
 
     // Economy tech scales empire-wide output.
     const techRows = await queryDb(
-        `SELECT tech FROM players${gameId} WHERE userid = ? LIMIT 1`,
+        `SELECT tech FROM ${tables.players} WHERE userid = ? LIMIT 1`,
         [playerId]
     ).catch(() => []);
     const techFx = techSystem.aggregateEffects(
@@ -1784,19 +1862,19 @@ async function computeTurnIncome(gameId, playerId) {
     let sectors = [];
     try {
         sectors = await queryDb(
-            `SELECT sectorid, type, metalbonus, crystalbonus FROM map${gameId} WHERE owner = ?`,
+            `SELECT sectorid, type, metalbonus, crystalbonus FROM ${tables.map} WHERE owner = ?`,
             [playerId]
         );
     } catch (err) {
         // Older games lack bonus columns; fall back to flat yields.
         sectors = await queryDb(
-            `SELECT sectorid, type FROM map${gameId} WHERE owner = ?`,
+            `SELECT sectorid, type FROM ${tables.map} WHERE owner = ?`,
             [playerId]
         ).catch(() => []);
     }
 
     const buildingRows = await queryDb(
-        `SELECT sectorid, type, COUNT(*) as count FROM buildings${gameId} WHERE owner = ? GROUP BY sectorid, type`,
+        `SELECT sectorid, type, COUNT(*) as count FROM ${tables.buildings} WHERE owner = ? GROUP BY sectorid, type`,
         [playerId]
     ).catch(() => []);
     const buildingsBySector = new Map();
@@ -1827,50 +1905,210 @@ async function computeTurnIncome(gameId, playerId) {
     return income;
 }
 
-function processTurn(gameId) {
+function isTurnProcessing(gameId) {
+    const numericGameId = Number(gameId);
+    return Number.isSafeInteger(numericGameId) && (
+        processingTurns.has(numericGameId)
+        || Boolean(gameState.activeGames[numericGameId]?.turnResolution)
+    );
+}
+
+function shouldProcessTurnAsync(gameId) {
+    return new Promise(resolve => shouldProcessTurn(gameId, resolve));
+}
+
+async function processTurn(gameId) {
     // Hold the turn while a battle is playing out for everyone.
     if (isBattlePauseActive(gameId)) {
         return;
     }
-    const numericGameId = Number(gameId);
-    if (!Number.isSafeInteger(numericGameId) || numericGameId <= 0 || processingTurns.has(numericGameId)) {
-        return;
+    let numericGameId;
+    try {
+        numericGameId = requireGameId(gameId);
+    } catch (_error) {
+        return false;
+    }
+    if (processingTurns.has(numericGameId)) {
+        return false;
+    }
+    if (turnRetryTimers.has(numericGameId)) {
+        clearTimeout(turnRetryTimers.get(numericGameId));
+        turnRetryTimers.delete(numericGameId);
     }
     processingTurns.add(numericGameId);
     try {
-        shouldProcessTurn(gameId, shouldContinue => {
-            if (!shouldContinue) {
-                processingTurns.delete(numericGameId);
-                return;
-            }
-            try {
-                processTurnUnchecked(gameId);
-            } finally {
-                // This lock closes the timer/manual-ready race around validation and
-                // turn scheduling. Individual economy writes retain their existing
-                // asynchronous behavior and guarded mutation rules.
-                processingTurns.delete(numericGameId);
-            }
-        });
+        const shouldContinue = await shouldProcessTurnAsync(numericGameId);
+        if (!shouldContinue) {
+            return false;
+        }
+        const failedResolution = gameState.activeGames[numericGameId]?.turnResolution;
+        await processTurnUnchecked(
+            numericGameId,
+            failedResolution?.phase === 'failed' ? failedResolution : null
+        );
+        return true;
     } catch (error) {
+        const state = gameState.activeGames[numericGameId];
+        if (state && state.turnResolution) {
+            state.turnResolution = {
+                ...state.turnResolution,
+                failedPhase: state.turnResolution.phase,
+                phase: 'failed',
+                failedAt: Date.now()
+            };
+        }
+        broadcastToGame(numericGameId, formatTurnPhase('failed', gameState.turns[numericGameId], 'retry'));
+        console.error(`Turn resolution failed for game ${numericGameId}:`, error.message || error);
+        if (state?.turnResolution && !turnRetryTimers.has(numericGameId)) {
+            const retryTimer = setTimeout(() => {
+                turnRetryTimers.delete(numericGameId);
+                if (gameState.activeGames[numericGameId]) {
+                    processTurn(numericGameId);
+                }
+            }, 1000);
+            if (typeof retryTimer.unref === 'function') retryTimer.unref();
+            turnRetryTimers.set(numericGameId, retryTimer);
+        }
+        return false;
+    } finally {
         processingTurns.delete(numericGameId);
-        throw error;
     }
 }
 
-function processTurnUnchecked(gameId) {
-    gameState.turns[gameId] = parseTurnNumber(gameState.turns[gameId], 0) + 1;
-    queryDb('UPDATE games SET turn = ? WHERE id = ?', [gameState.turns[gameId], gameId])
-        .catch(err => console.warn(`Unable to persist turn ${gameState.turns[gameId]} for game ${gameId}:`, err.message || err));
+async function setTurnResolutionPhase(gameId, turn, phase, persist = true) {
+    if (persist) {
+        await queryDb(
+            'UPDATE games SET turn_phase = ?, turn_phase_turn = ? WHERE id = ?',
+            [phase, turn, gameId]
+        );
+    }
+    const state = ensureActiveGameState(gameId);
+    state.turnResolution = {
+        ...(state.turnResolution || {}),
+        turn,
+        phase,
+        startedAt: state.turnResolution?.startedAt || Date.now(),
+        updatedAt: Date.now()
+    };
+}
+
+async function processTurnIncome(gameId, modeMultiplier, turn) {
+    const tables = gameTables(gameId);
+    const players = await queryDb(`SELECT * FROM ${tables.players}`);
+    const failures = [];
+
+    await Promise.all((players || []).map(async player => {
+        try {
+            const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === player.race_id) || raceSystem.RACE_TYPES.TERRAN;
+            const income = await computeTurnIncome(gameId, player.userid);
+            const metalGen = Math.floor(income.metal * race.bonuses.metalProduction * modeMultiplier);
+            const crystalGen = Math.floor(income.crystal * race.bonuses.crystalProduction * modeMultiplier);
+            const researchGen = Math.floor(income.research * race.bonuses.researchSpeed * modeMultiplier);
+
+            const updateResult = await queryDb(
+                `UPDATE ${tables.players} SET
+                 metal = metal + ?, crystal = crystal + ?, research = research + ?, last_income_turn = ?
+                 WHERE userid = ? AND last_income_turn < ?`,
+                [metalGen, crystalGen, researchGen, turn, player.userid, turn]
+            );
+            if (!updateResult || Number(updateResult.affectedRows) !== 1) {
+                if (Number(player.last_income_turn || 0) >= Number(turn)) return;
+                throw new Error('Income write did not update the player row');
+            }
+            await queryDb(
+                `UPDATE user_stats SET total_crystal_earned = total_crystal_earned + ? WHERE user_id = ?`,
+                [crystalGen, player.userid]
+            ).catch(err => console.warn(`Lifetime crystal stats failed for player ${player.userid}:`, err.message || err));
+
+            gameState.clients.forEach(client => {
+                if (Number(client.gameid) === Number(gameId) && Number(client.name) === Number(player.userid)) {
+                    updateResources(client);
+                    sendTechState(client);
+                    sendEmpireSummary(client);
+                    sendVictoryProgress(client);
+                    sendVisibleMapState(gameId, client);
+                }
+            });
+            if (race.id === 6) autoRepairShips(gameId, player.userid);
+            else if (race.id === 7) evolveShips(gameId, player.userid);
+        } catch (error) {
+            failures.push({ playerId: Number(player.userid), error });
+        }
+    }));
+
+    failures.forEach(failure => {
+        console.warn(`Income processing failed for player ${failure.playerId} in game ${gameId}:`, failure.error.message || failure.error);
+    });
+    if (failures.length > 0) {
+        throw new AggregateError(failures.map(failure => failure.error), `Income phase incomplete for game ${gameId}`);
+    }
+    return { players: (players || []).length, failures };
+}
+
+async function processTurnAutomation(gameId, turn) {
+    const { players } = gameTables(gameId);
+    const rows = await queryDb(`SELECT userid, last_automation_turn FROM ${players}`);
+    const eligible = new Set();
+    await Promise.all((rows || []).map(async player => {
+        if (Number(player.last_automation_turn || 0) >= Number(turn)) return;
+        const result = await queryDb(
+            `UPDATE ${players} SET last_automation_turn = ? WHERE userid = ? AND last_automation_turn < ?`,
+            [turn, player.userid, turn]
+        );
+        if (!result || Number(result.affectedRows) !== 1) {
+            throw new Error(`Unable to reserve automation turn for player ${player.userid}`);
+        }
+        eligible.add(Number(player.userid));
+    }));
+    await triggerAiTurn(gameId, eligible);
+    await applyStandingOrdersForGame(gameId, eligible);
+}
+
+function checkVictoryForTurn(gameId) {
+    return new Promise((resolve, reject) => {
+        victorySystem.checkAllPlayersForVictory(gameId, gameState, db, (err, winner) => {
+            if (err) reject(err);
+            else resolve(winner || null);
+        });
+    });
+}
+
+function endGameForTurn(gameId, winner) {
+    return new Promise(resolve => {
+        victorySystem.endGame(gameId, winner.playerId, winner.condition, gameState, db, endErr => {
+            if (endErr) console.error(`Game ${gameId} end bookkeeping failed:`, endErr.message || endErr);
+            resolve();
+        });
+    });
+}
+
+async function processTurnUnchecked(gameId, failedResolution = null) {
+    const resuming = Boolean(failedResolution);
+    const previousTurn = parseTurnNumber(gameState.turns[gameId], 1);
+    const nextTurn = resuming ? parseTurnNumber(failedResolution.turn, previousTurn) : previousTurn + 1;
+    const resumePhase = resuming ? failedResolution.failedPhase : 'automation';
+    if (!resuming) {
+        await queryDb(
+            'UPDATE games SET turn = ?, turn_phase = ?, turn_phase_turn = ? WHERE id = ?',
+            [nextTurn, 'automation', nextTurn, gameId]
+        );
+        gameState.turns[gameId] = nextTurn;
+    }
+    await setTurnResolutionPhase(gameId, nextTurn, resumePhase, resuming);
+    broadcastToGame(gameId, formatTurnPhase('resolving', nextTurn, resumePhase));
 
     // New turn: clear "done early" flags.
-    if (gameState.activeGames[gameId] && gameState.activeGames[gameId].turnReady) {
+    if (!resuming && gameState.activeGames[gameId] && gameState.activeGames[gameId].turnReady) {
         gameState.activeGames[gameId].turnReady.clear();
     }
 
-    // Let AI opponents act, then run any player standing orders.
-    triggerAiTurn(gameId);
-    applyStandingOrdersForGame(gameId);
+    // Preserve the established phase order, but do not let later phases or the
+    // final new-turn signal outrun authoritative writes from earlier phases.
+    const phaseOrder = ['automation', 'income', 'battles', 'victory'];
+    const resumeIndex = Math.max(0, phaseOrder.indexOf(resumePhase));
+    if (resumeIndex <= phaseOrder.indexOf('automation')) {
+        await processTurnAutomation(gameId, nextTurn);
+    }
 
     const activeState = gameState.activeGames[gameId] || {};
     const mode = normalizeMode(activeState.mode);
@@ -1878,100 +2116,56 @@ function processTurnUnchecked(gameId) {
         ? TEST_RESOURCE_MULTIPLIER
         : (mode === 'epic' ? EPIC_RESOURCE_MULTIPLIER : 1);
 
-    // Process resource generation with race modifiers
-    db.query(`SELECT * FROM players${gameId}`, (err, players) => {
-        if (err) return;
+    if (resumeIndex <= phaseOrder.indexOf('income')) {
+        await setTurnResolutionPhase(gameId, nextTurn, 'income');
+        await processTurnIncome(gameId, modeMultiplier, nextTurn);
+    }
 
-        players.forEach(player => {
-            // Get race modifiers
-            const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === player.race_id) || raceSystem.RACE_TYPES.TERRAN;
+    if (resumeIndex <= phaseOrder.indexOf('battles')) {
+        await setTurnResolutionPhase(gameId, nextTurn, 'battles');
+        await processBattles(gameId);
+    }
 
-            computeTurnIncome(gameId, player.userid).then(income => {
-                const metalGen = Math.floor(income.metal * race.bonuses.metalProduction * modeMultiplier);
-                const crystalGen = Math.floor(income.crystal * race.bonuses.crystalProduction * modeMultiplier);
-                const researchGen = Math.floor(income.research * race.bonuses.researchSpeed * modeMultiplier);
-
-                // Update resources and stats
-                db.query(
-                    `UPDATE players${gameId} SET
-                     metal = metal + ?,
-                     crystal = crystal + ?,
-                     research = research + ?
-                     WHERE userid = ?`,
-                    [metalGen, crystalGen, researchGen, player.userid],
-                    () => {
-                        gameState.clients.forEach(client => {
-                            if (Number(client.gameid) === Number(gameId) && Number(client.name) === Number(player.userid)) {
-                                updateResources(client);
-                                sendTechState(client);
-                                sendEmpireSummary(client);
-                                sendVictoryProgress(client);
-                                sendVisibleMapState(gameId, client);
-                            }
-                        });
-                    }
-                );
-
-                // Update lifetime crystal earned for unlock tracking
-                db.query(
-                    `UPDATE user_stats SET
-                     total_crystal_earned = total_crystal_earned + ?
-                     WHERE user_id = ?`,
-                    [crystalGen, player.userid]
-                );
-
-                // Handle special race abilities
-                if (race.id === 6) { // Mechanicus auto-repair
-                    autoRepairShips(gameId, player.userid);
-                } else if (race.id === 7) { // Bioform evolution
-                    evolveShips(gameId, player.userid);
-                }
-            }).catch(incomeErr => {
-                console.warn(`Income calculation failed for player ${player.userid} in game ${gameId}:`, incomeErr.message || incomeErr);
-            });
-        });
-    });
-
-    // Process battles
-    processBattles(gameId);
-    
-    // Check victory conditions
-    victorySystem.checkAllPlayersForVictory(gameId, gameState, db, (err, winner) => {
-        if (err || !winner) return;
-        // Broadcast first so a bookkeeping failure can't swallow the result.
+    await setTurnResolutionPhase(gameId, nextTurn, 'victory');
+    const winner = await checkVictoryForTurn(gameId);
+    if (winner) {
+        await queryDb(
+            'UPDATE games SET turn_phase = ?, turn_phase_turn = ? WHERE id = ?',
+            [null, null, gameId]
+        );
         broadcastToGame(gameId, `gameover::${winner.playerId}::${winner.condition}`);
-        victorySystem.endGame(gameId, winner.playerId, winner.condition, gameState, db, (endErr) => {
-            if (endErr) {
-                console.error(`Game ${gameId} end bookkeeping failed:`, endErr.message || endErr);
-            }
-        });
-    });
-    
-    // Notify players of new turn
-    broadcastToGame(gameId, `newturn::${gameState.turns[gameId]}`);
+        await endGameForTurn(gameId, winner);
+        return;
+    }
+
+    const activeAfterResolution = gameState.activeGames[gameId];
+    if (!activeAfterResolution || activeAfterResolution.status === 'completed') {
+        return;
+    }
+    await queryDb(
+        'UPDATE games SET turn_phase = ?, turn_phase_turn = ? WHERE id = ?',
+        [null, null, gameId]
+    );
+    delete activeAfterResolution.turnResolution;
+    broadcastToGame(gameId, `newturn::${nextTurn}`);
     const modeDuration = TURN_SPEEDS_MS[normalizeMode(activeState.mode)] || TURN_SPEEDS_MS.quick;
     activeState.turnEndsAt = Date.now() + modeDuration;
     broadcastTurnClock(gameId);
 }
 
-function processBattles(gameId) {
+async function processBattles(gameId) {
+    const tables = gameTables(gameId);
     // Find sectors with ships from multiple players
-    db.query(
+    const conflicts = await queryDb(
         `SELECT sectorid, GROUP_CONCAT(DISTINCT owner) as owners 
-         FROM ships${gameId} 
+         FROM ${tables.ships}
          GROUP BY sectorid 
-         HAVING COUNT(DISTINCT owner) > 1`,
-        [gameId],
-        (err, conflicts) => {
-            if (err || !conflicts) return;
-            
-            conflicts.forEach(conflict => {
-                const owners = conflict.owners.split(',');
-                // Process battle between owners[0] and owners[1]
-                resolveBattle(gameId, conflict.sectorid, owners[0], owners[1]);
-            });
-        }
+         HAVING COUNT(DISTINCT owner) > 1`
     );
+    await Promise.all((conflicts || []).map(conflict => {
+        const owners = String(conflict.owners || '').split(',');
+        return resolveBattle(gameId, conflict.sectorid, owners[0], owners[1]);
+    }));
 }
 
 function normalizeShipRows(rows) {
@@ -2485,7 +2679,8 @@ function handleGetGameInvariants(request, response, gameId) {
         turn: gameState.turns[parsedGameId],
         active: Boolean(gameState.activeGames[parsedGameId]),
         hasTimer: Boolean(gameState.gameTimer[parsedGameId]),
-        battlePaused: isBattlePauseActive(parsedGameId)
+        battlePaused: isBattlePauseActive(parsedGameId),
+        turnResolution: gameState.activeGames[parsedGameId]?.turnResolution || null
     })
         .then(result => {
             response.writeHead(result.ok ? 200 : 409, headers);
@@ -3565,6 +3760,13 @@ function buyBuilding(data, connection) {
 }
 
 function moveFleet(data, connection) {
+    return new Promise(resolve => moveFleetWithCompletion(data, connection, resolve));
+}
+
+function moveFleetWithCompletion(data, connection, complete) {
+    const finish = () => {
+        try { complete(); } catch (_error) { /* completion is best-effort */ }
+    };
     const parts = typeof data === 'string' ? data.split(":") : [];
     const fromSector = parseSectorToken(parts[1]);
     const toSector = parseSectorToken(parts[2]);
@@ -3580,11 +3782,12 @@ function moveFleet(data, connection) {
         !selection
     ) {
         connection.sendUTF("Error: Invalid fleet order");
+        finish();
         return;
     }
 
     if (areAdjacentSectors(fromSector, toSector, gameId)) {
-        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, false);
+        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, false, finish);
         return;
     }
 
@@ -3592,9 +3795,10 @@ function moveFleet(data, connection) {
     checkWarpGateLink(gameId, playerId, fromSector, toSector, linked => {
         if (!linked) {
             connection.sendUTF("Error: Sectors are not adjacent (warp gates at both ends allow long jumps)");
+            finish();
             return;
         }
-        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, true);
+        moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, true, finish);
     });
 }
 
@@ -3630,10 +3834,11 @@ function calculateFleetMoveCost(shipTypes, shipCounts, techCsv) {
     return Math.max(1, Math.ceil(rawCost * (1 - techFx.moveDiscount)));
 }
 
-function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shipCounts, connection, viaWarpGate) {
+function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shipCounts, connection, viaWarpGate, complete = () => {}) {
     const totalShips = shipCounts.reduce((a, b) => a + b, 0);
     if (!isPositiveSafeInteger(totalShips)) {
         connection.sendUTF("Error: No ships selected");
+        complete();
         return;
     }
 
@@ -3643,6 +3848,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
         (err, results) => {
             if (err || results.length === 0) {
                 connection.sendUTF("Error: Could not get player data");
+                complete();
                 return;
             }
 
@@ -3651,6 +3857,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
 
             if (results[0].crystal < moveCost) {
                 connection.sendUTF(`Error: Not enough crystal for movement (need ${moveCost})`);
+                complete();
                 return;
             }
 
@@ -3660,6 +3867,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                 (shipErr, ships) => {
                     if (shipErr || !Array.isArray(ships)) {
                         connection.sendUTF("Error: Could not verify fleet");
+                        complete();
                         return;
                     }
 
@@ -3681,6 +3889,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                         const candidates = available.get(type) || [];
                         if (candidates.length < count) {
                             connection.sendUTF(`Error: Not enough ships in sector ${Number(fromSector)}`);
+                            complete();
                             return;
                         }
                         candidates.slice(0, count).forEach(id => selectedIds.push(id));
@@ -3688,6 +3897,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
 
                     if (selectedIds.length !== totalShips) {
                         connection.sendUTF("Error: Could not verify fleet");
+                        complete();
                         return;
                     }
 
@@ -3701,6 +3911,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                                 connection.sendUTF(deductErr
                                     ? "Error: Failed to charge movement"
                                     : `Error: Not enough crystal for movement (need ${moveCost})`);
+                                complete();
                                 return;
                             }
 
@@ -3717,6 +3928,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                                             () => {
                                                 connection.sendUTF("Error: Fleet changed before movement; crystal refunded");
                                                 updateResources(connection);
+                                                complete();
                                             }
                                         );
                                         return;
@@ -3730,10 +3942,14 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
 
                                     // HAZARD HANDLING & TERRITORY CONTROL
                                     applyArrivalEffects(gameId, playerId, toSector, connection, () => {
-                                        updateResources(connection);
-                                        updateSector2(gameId, fromSector);
-                                        updateSector2(gameId, toSector);
-                                        sendVisibleMapState(gameId, connection);
+                                        try {
+                                            updateResources(connection);
+                                            updateSector2(gameId, fromSector);
+                                            updateSector2(gameId, toSector);
+                                            sendVisibleMapState(gameId, connection);
+                                        } finally {
+                                            complete();
+                                        }
                                     });
                                 }
                             );
@@ -4893,6 +5109,13 @@ function sendCurrentGameSnapshot(connection, callback) {
                         turnSeconds: isStarted
                             ? Math.max(1, Math.ceil(((Number(active.turnEndsAt) || Date.now()) - Date.now()) / 1000))
                             : 0,
+                        turnResolution: isStarted && active.turnResolution
+                            ? {
+                                turn: Number(active.turnResolution.turn) || null,
+                                phase: active.turnResolution.phase || null,
+                                startedAt: Number(active.turnResolution.startedAt) || null
+                            }
+                            : null,
                         battlePauseUntil: isStarted && isBattlePauseActive(currentGameId)
                             ? Number(gameState.battlePause[currentGameId].until)
                             : null,
@@ -5616,26 +5839,48 @@ async function resumeActiveGamesFromDatabase() {
         return 0;
     }
 
-    const games = await queryDb(
-        `SELECT id, creator, maxplayers, started, turn, mode, status, mapwidth, mapheight
-         FROM games
-         WHERE started = 1 AND (status IS NULL OR status NOT IN ('completed', 'abandoned'))`
-    );
+    await turnSchemaReady;
+    let games;
+    try {
+        games = await queryDb(
+            `SELECT id, creator, maxplayers, started, turn, mode, status, mapwidth, mapheight, turn_phase, turn_phase_turn
+             FROM games
+             WHERE started = 1 AND (status IS NULL OR status NOT IN ('completed', 'abandoned'))`
+        );
+    } catch (error) {
+        if (error && error.code !== 'ER_BAD_FIELD_ERROR') throw error;
+        games = await queryDb(
+            `SELECT id, creator, maxplayers, started, turn, mode, status, mapwidth, mapheight
+             FROM games
+             WHERE started = 1 AND (status IS NULL OR status NOT IN ('completed', 'abandoned'))`
+        );
+    }
     const rows = Array.isArray(games) ? games : [];
 
     const resumed = await Promise.all(rows.map(game => new Promise(resolve => {
         const gameId = Number(game.id);
-        getGamePlayers(gameId, (playersErr, players) => {
-            if (playersErr || players.length === 0 || !hasHumanPlayers(players)) {
-                const reason = playersErr || players.length === 0
-                    ? 'No players remain'
-                    : 'No human players remain';
-                abandonGame(gameId, reason, () => resolve(false));
+        ensurePlayerTableColumns(gameId, columnErr => {
+            if (columnErr) {
+                console.error(`Unable to prepare player table for resumed game ${gameId}:`, columnErr.message || columnErr);
+                resolve(false);
                 return;
             }
+            getGamePlayers(gameId, (playersErr, players) => {
+                if (playersErr || players.length === 0 || !hasHumanPlayers(players)) {
+                    const reason = playersErr || players.length === 0
+                        ? 'No players remain'
+                        : 'No human players remain';
+                    abandonGame(gameId, reason, () => resolve(false));
+                    return;
+                }
 
-            restoreStartedGameRuntime(game, { restartTimer: true });
-            resolve(true);
+                const state = restoreStartedGameRuntime(game, { restartTimer: true });
+                if (state?.turnResolution?.recovered) {
+                    processTurn(gameId).then(() => resolve(true));
+                    return;
+                }
+                resolve(true);
+            });
         });
     })));
 
@@ -5841,24 +6086,25 @@ function hydrateStandingOrdersDefaults(gameId, mode) {
     });
 }
 
-function applyStandingOrdersForGame(gameId) {
-    db.query(`SELECT userid FROM players${gameId}`, (err, rows) => {
-        if (err || !Array.isArray(rows)) {
-            return;
+async function applyStandingOrdersForGame(gameId, eligiblePlayerIds = null) {
+    const { players } = gameTables(gameId);
+    const rows = await queryDb(`SELECT userid FROM ${players}`);
+    const eligibleRows = eligiblePlayerIds instanceof Set
+        ? (rows || []).filter(row => eligiblePlayerIds.has(Number(row.userid)))
+        : (rows || []);
+    await Promise.all(eligibleRows.map(async row => {
+        try {
+            const summary = await applyStandingOrdersForPlayer(gameId, row.userid);
+            if (!Array.isArray(summary) || summary.length === 0) return;
+            const client = gameState.clientMap[String(row.userid)] || gameState.clientMap[row.userid];
+            if (client && Number(client.gameid) === Number(gameId)) {
+                summary.forEach(line => client.sendUTF(`systemalert::${line}`));
+                updateResources(client);
+            }
+        } catch (error) {
+            console.warn(`Standing orders tick failed for player ${row.userid} in game ${gameId}:`, error.message || error);
         }
-        rows.forEach(row => {
-            applyStandingOrdersForPlayer(gameId, row.userid).then(summary => {
-                if (!Array.isArray(summary) || summary.length === 0) return;
-                const client = gameState.clientMap[String(row.userid)] || gameState.clientMap[row.userid];
-                if (client && Number(client.gameid) === Number(gameId)) {
-                    summary.forEach(line => client.sendUTF(`systemalert::${line}`));
-                    updateResources(client);
-                }
-            }).catch(err2 => {
-                console.warn(`Standing orders tick failed for player ${row.userid} in game ${gameId}:`, err2.message || err2);
-            });
-        });
-    });
+    }));
 }
 
 function handleStandingOrders(data, connection) {
@@ -5909,6 +6155,32 @@ function connectionStub(playerId, gameId) {
         gameid: gameId,
         sendUTF() {}
     };
+}
+
+function runAiMutation(gameId, playerId, invoke) {
+    return new Promise((resolve, reject) => {
+        let promiseBacked = false;
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            resolve();
+        };
+        const stub = connectionStub(playerId, gameId);
+        stub.sendUTF = message => {
+            if (promiseBacked) return;
+            if (/^(?:Success|Error):/.test(String(message || ''))) finish();
+        };
+        try {
+            const result = invoke(stub);
+            if (result && typeof result.then === 'function') {
+                promiseBacked = true;
+                result.then(finish, reject);
+            }
+        } catch (error) {
+            reject(error);
+        }
+    });
 }
 
 function sectorXY(gameId, sectorId) {
@@ -5993,27 +6265,28 @@ function hydrateAiPlayers(gameId) {
     );
 }
 
-function triggerAiTurn(gameId) {
-    db.query(
-        `SELECT userid, is_ai, ai_difficulty, ai_strategy FROM players${gameId} WHERE is_ai = 1`,
-        (err, rows) => {
-            if (err || !Array.isArray(rows)) {
-                return;
-            }
-            rows.filter(row => Number(row.is_ai) === 1).forEach(row => {
-                trackAiProfile(gameId, row.userid, row.ai_difficulty, row.ai_strategy);
-                runAiActions(gameId, row.userid, row.ai_difficulty, row.ai_strategy)
-                    .catch(aiErr => console.warn(`AI turn failed for player ${row.userid} in game ${gameId}:`, aiErr.message || aiErr));
-            });
-        }
+async function triggerAiTurn(gameId, eligiblePlayerIds = null) {
+    const { players } = gameTables(gameId);
+    const rows = await queryDb(
+        `SELECT userid, is_ai, ai_difficulty, ai_strategy FROM ${players} WHERE is_ai = 1`
     );
+    const eligibleRows = (rows || []).filter(row =>
+        Number(row.is_ai) === 1
+        && (!(eligiblePlayerIds instanceof Set) || eligiblePlayerIds.has(Number(row.userid)))
+    );
+    await Promise.all(eligibleRows.map(async row => {
+        trackAiProfile(gameId, row.userid, row.ai_difficulty, row.ai_strategy);
+        try {
+            await runAiActions(gameId, row.userid, row.ai_difficulty, row.ai_strategy);
+        } catch (error) {
+            console.warn(`AI turn failed for player ${row.userid} in game ${gameId}:`, error.message || error);
+        }
+    }));
 }
 
 async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 'balanced') {
     const strat = (strategy || 'balanced').toLowerCase();
     const aggressiveness = strat === 'aggressive' ? 1.2 : strat === 'chill' ? 0.6 : 1.0;
-    const stub = connectionStub(playerId, gameId);
-
     const rows = await queryDb(
         `SELECT userid, homeworld, currentsector, metal, crystal, research FROM players${gameId} WHERE userid = ? LIMIT 1`,
         [playerId]
@@ -6038,13 +6311,13 @@ async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 
 
     // Economy & infrastructure: spaceport first (ships unlock everything else).
     if (!hasSpaceport && player.metal >= BUILDING_COSTS[3].metal && player.crystal >= BUILDING_COSTS[3].crystal) {
-        buyBuilding('//buybuilding:3', stub);
+        await runAiMutation(gameId, playerId, stub => buyBuilding('//buybuilding:3', stub));
     } else {
         if (!buildingCounts[0] && player.metal >= BUILDING_COSTS[0].metal && player.crystal >= BUILDING_COSTS[0].crystal) {
-            buyBuilding('//buybuilding:0', stub);
+            await runAiMutation(gameId, playerId, stub => buyBuilding('//buybuilding:0', stub));
         }
         if (!buildingCounts[1] && player.metal >= BUILDING_COSTS[1].metal && player.crystal >= BUILDING_COSTS[1].crystal) {
-            buyBuilding('//buybuilding:1', stub);
+            await runAiMutation(gameId, playerId, stub => buyBuilding('//buybuilding:1', stub));
         }
     }
 
@@ -6069,18 +6342,18 @@ async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 
         );
         const colonyCount = (colonyRows && colonyRows[0] && colonyRows[0].count) || 0;
         if (colonyCount === 0 && budget >= colonyCost.metal + 400) {
-            buyShip(`//buyship:${COLONY_SHIP_ID}`, stub);
+            await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${COLONY_SHIP_ID}`, stub));
             budget -= colonyCost.metal;
         }
         if (!shipCounts[SCOUT_SHIP_ID] && budget >= scoutCost.metal + 200) {
-            buyShip(`//buyship:${SCOUT_SHIP_ID}`, stub);
+            await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${SCOUT_SHIP_ID}`, stub));
             budget -= scoutCost.metal;
         }
         if (budget >= destroyerCost.metal * (2 - aggressiveness)) {
-            buyShip(`//buyship:${combatSystem.SHIP_TYPES.DESTROYER.id}`, stub);
+            await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${combatSystem.SHIP_TYPES.DESTROYER.id}`, stub));
             budget -= destroyerCost.metal;
         } else if (budget >= frigateCost.metal * (2 - aggressiveness)) {
-            buyShip(`//buyship:${combatSystem.SHIP_TYPES.FRIGATE.id}`, stub);
+            await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${combatSystem.SHIP_TYPES.FRIGATE.id}`, stub));
             budget -= frigateCost.metal;
         }
     }
@@ -6128,14 +6401,15 @@ async function handleAiExpansion(gameId, playerId, homeSector) {
 
     if (current === target.sector) {
         // Standing on the prize: plant the flag.
-        colonizePlanet(connectionStub(playerId, gameId), `//colonize:${formatSectorToken(current)}`);
+        await runAiMutation(gameId, playerId, stub => colonizePlanet(stub, `//colonize:${formatSectorToken(current)}`));
         return;
     }
 
     const step = await nextStepTowards(gameId, current, target.sector, playerId);
     if (!step) return;
     // moveFleet speaks the client wire protocol: sector tokens are hex.
-    moveFleet(`//move:${formatSectorToken(current)}:${formatSectorToken(step)}:${COLONY_SHIP_ID}:1`, connectionStub(playerId, gameId));
+    await runAiMutation(gameId, playerId, stub =>
+        moveFleet(`//move:${formatSectorToken(current)}:${formatSectorToken(step)}:${COLONY_SHIP_ID}:1`, stub));
 }
 
 async function handleAiHarass(gameId, playerId, homeSector) {
@@ -6174,7 +6448,8 @@ async function handleAiHarass(gameId, playerId, homeSector) {
 
     const step = await nextStepTowards(gameId, bestStack.sector, target.sector, playerId);
     if (!step) return;
-    moveFleet(`//move:${formatSectorToken(bestStack.sector)}:${formatSectorToken(step)}:${bestStack.type}:${bestStack.count}`, connectionStub(playerId, gameId));
+    await runAiMutation(gameId, playerId, stub =>
+        moveFleet(`//move:${formatSectorToken(bestStack.sector)}:${formatSectorToken(step)}:${bestStack.type}:${bestStack.count}`, stub));
 }
 
 async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
@@ -6211,7 +6486,7 @@ async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
     }
 
     if (pick) {
-        buyTech(`//buytech:${pick.id}`, connectionStub(playerId, gameId));
+        await runAiMutation(gameId, playerId, stub => buyTech(`//buytech:${pick.id}`, stub));
     }
 }
 
@@ -6279,6 +6554,7 @@ module.exports = {
     applyStandingOrdersForPlayer,
     triggerAiTurn,
     computeBattlePlaybackMs,
+    isTurnProcessing,
     isBattlePauseActive,
     pauseTurnTimerForBattle,
     broadcastBattlePause,

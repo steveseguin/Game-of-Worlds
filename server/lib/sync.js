@@ -6,10 +6,11 @@
  */
 
 const crypto = require('crypto');
+const { requireGameId } = require('./game-tables');
 
 class GameStateSync {
     constructor(gameId, db) {
-        this.gameId = gameId;
+        this.gameId = requireGameId(gameId);
         this.db = db;
         this.stateVersion = 0;
         this.stateHash = null;

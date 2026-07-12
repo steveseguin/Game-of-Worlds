@@ -139,6 +139,7 @@ async function main() {
         ENABLE_TEST_GAME_MODE: '1',
         TEST_MAP_WIDTH: '8',
         TEST_MAP_HEIGHT: '5',
+        TEST_MAP_SEED: process.env.TEST_MAP_SEED || 'game-of-worlds-e2e-v1',
         TEST_RESOURCE_MULTIPLIER: '20',
         TURN_INTERVAL_TEST_MS: '30000',
         VICTORY_DOMINATION_PERCENT: '20',
