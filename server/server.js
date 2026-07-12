@@ -1631,10 +1631,11 @@ function queryDb(sql, params = []) {
     });
 }
 
-async function openInitializationSession() {
+async function openTransactionSession() {
     if (!db || typeof db.getConnection !== 'function') {
         return {
             query: queryDb,
+            transactional: false,
             commit: async () => {},
             rollback: async () => {},
             release: () => {}
@@ -1658,6 +1659,7 @@ async function openInitializationSession() {
     let transactionOpen = true;
     return {
         query: run,
+        transactional: true,
         commit: async () => {
             await invoke('commit');
             transactionOpen = false;
@@ -1670,6 +1672,8 @@ async function openInitializationSession() {
         release: () => connection.release()
     };
 }
+
+const openInitializationSession = openTransactionSession;
 
 async function initializeGame(gameId, connection, game = {}) {
     const numericGameId = Number(gameId);
@@ -2817,6 +2821,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
         return;
     }
 
+    let persistence = null;
     try {
         // The sector owner (if either combatant) defends: home turf, home turrets.
         const sectorRows = await queryDb(
@@ -2870,6 +2875,8 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
             { ...defenderTech, shields: defenderShields }
         );
 
+        persistence = await openTransactionSession();
+
         // Persist turret losses (effective count back to real building rows).
         if (turretCount > 0) {
             const survivingEffective = Number(battleLog.final && battleLog.final.orbitalTurrets) || 0;
@@ -2880,7 +2887,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
             if (lostReal > 0) {
                 const loseIds = turretRows.slice(0, lostReal).map(row => row.id).filter(Number.isFinite);
                 if (loseIds.length > 0) {
-                    await queryDb(`DELETE FROM ${tables.buildings} WHERE id IN (${loseIds.join(',')})`).catch(() => {});
+                    await persistence.query(`DELETE FROM ${tables.buildings} WHERE id IN (${loseIds.join(',')})`);
                 }
             }
         }
@@ -2888,17 +2895,15 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
         const attackerSurvivors = finalFleetToRows(battleLog.final && battleLog.final.attackers);
         const defenderSurvivors = finalFleetToRows(battleLog.final && battleLog.final.defenders);
 
-        await Promise.all([
-            replaceShipsAfterBattle(gameId, sectorId, attackerId, attackerSurvivors),
-            replaceShipsAfterBattle(gameId, sectorId, defenderId, defenderSurvivors)
-        ]);
+        await replaceShipsWithQuery(persistence.query, tables.ships, sectorId, attackerId, attackerSurvivors);
+        await replaceShipsWithQuery(persistence.query, tables.ships, sectorId, defenderId, defenderSurvivors);
 
         // A surviving attacker that wins controls the sector and its remaining
         // local infrastructure. Previously the defeated defender retained the
         // planet indefinitely, leaving the victor unable to use or develop it.
         if (battleLog.result === 'attackerVictory' && sumShipRows(attackerSurvivors) > 0) {
-            await queryDb(`UPDATE ${tables.map} SET owner = ? WHERE sectorid = ?`, [attackerId, sectorId]);
-            await queryDb(
+            await persistence.query(`UPDATE ${tables.map} SET owner = ? WHERE sectorid = ?`, [attackerId, sectorId]);
+            await persistence.query(
                 `UPDATE ${tables.buildings}
                  SET owner = ?,
                      level = CASE WHEN type = 3 THEN GREATEST(1, level - 1) ELSE level END,
@@ -2908,6 +2913,8 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
                 [attackerId, sectorId]
             );
         }
+
+        await persistence.commit();
 
         updateSector2(gameId, sectorId);
 
@@ -3010,7 +3017,24 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
             }
         });
     } catch (error) {
+        if (persistence) await persistence.rollback().catch(() => {});
         console.error(`Error resolving battle in game ${gameId}, sector ${sectorId}:`, error);
+        throw error;
+    } finally {
+        if (persistence) persistence.release();
+    }
+}
+
+async function replaceShipsWithQuery(runQuery, table, sectorId, playerId, ships) {
+    await runQuery(`DELETE FROM ${table} WHERE sectorid = ? AND owner = ?`, [sectorId, playerId]);
+    const survivors = normalizeShipRows(ships);
+    for (const ship of survivors) {
+        for (let i = 0; i < Math.floor(ship.count); i++) {
+            await runQuery(
+                `INSERT INTO ${table} (owner, type, sectorid) VALUES (?, ?, ?)`,
+                [playerId, ship.type, sectorId]
+            );
+        }
     }
 }
 
@@ -3705,76 +3729,80 @@ function buyShip(data, connection) {
                         return;
                     }
                     
-                    // Buy the ship with race-modified costs
-                    db.query(
-                        `UPDATE players${gameId}
-                         SET metal = metal - ?, crystal = crystal - ?
-                         WHERE userid = ? AND metal >= ? AND crystal >= ?`,
-                        [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId,
-                            modifiedShip.cost.metal, modifiedShip.cost.crystal],
-                        (err, spendResult) => {
-                            if (err || !spendResult || Number(spendResult.affectedRows) !== 1) {
-                                connection.sendUTF(err
-                                    ? "Error: Failed to deduct resources"
-                                    : "Error: Resources changed; refresh and try again");
-                                return;
-                            }
-
-                            const productionCost = Math.max(1, Number(shipData.buildSlots) || 1);
-                            const productionTurn = parseTurnNumber(gameState.turns[gameId], 1);
-                            const capacity = SPACEPORT_TIERS[spaceportLevel].capacity;
-                            const portId = Number(buildings[0].id);
-                            const refundResources = message => db.query(
-                                `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
-                                [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId],
-                                () => {
-                                    connection.sendUTF(message);
-                                    updateResources(connection);
-                                }
-                            );
-                            db.query(
-                                `UPDATE buildings${gameId} SET production_turn = ?, production_used = 0 WHERE id = ? AND production_turn <> ?`,
-                                [productionTurn, portId, productionTurn],
-                                normalizeErr => {
-                                    if (normalizeErr) {
-                                        refundResources('Error: Could not reserve local production; resources refunded');
-                                        return;
-                                    }
-                                    db.query(
-                                        `UPDATE buildings${gameId} SET production_used = production_used + ? WHERE id = ? AND owner = ? AND production_turn = ? AND production_used + ? <= ?`,
-                                        [productionCost, portId, playerId, productionTurn, productionCost, capacity],
-                                        (reserveErr, reserveResult) => {
-                                            if (reserveErr || !reserveResult || Number(reserveResult.affectedRows) !== 1) {
-                                                refundResources(`Error: Spaceport ${spaceportLevel} lacks ${productionCost} production capacity this turn`);
-                                                return;
-                                            }
-                                            db.query(
-                                                `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                                                [playerId, shipType, buildSector],
-                                                insertErr => {
-                                                    if (insertErr) {
-                                                        db.query(
-                                                            `UPDATE buildings${gameId} SET production_used = GREATEST(0, production_used - ?) WHERE id = ? AND production_turn = ?`,
-                                                            [productionCost, portId, productionTurn],
-                                                            () => refundResources('Error: Failed to create ship; resources and capacity refunded')
-                                                        );
-                                                        return;
-                                                    }
-                                                    connection.sendUTF(`Success: Built ${shipData.name} in sector ${buildSector} (${productionCost} production)`);
-                                                    updateResources(connection);
-                                                    updateSector2(gameId, buildSector);
-                                                }
-                                            );
-                                        }
-                                    );
-                                }
-                            );
-                        }
-                    );
+                    persistShipPurchase({
+                        gameId, playerId, shipType, buildSector, shipData, modifiedShip,
+                        spaceportLevel, portId: Number(buildings[0].id), connection
+                    });
                 }
             );
         }
     );
+}
+
+async function persistShipPurchase({ gameId, playerId, shipType, buildSector, shipData, modifiedShip, spaceportLevel, portId, connection }) {
+    const session = await openTransactionSession();
+    const productionCost = Math.max(1, Number(shipData.buildSlots) || 1);
+    const productionTurn = parseTurnNumber(gameState.turns[gameId], 1);
+    const capacity = SPACEPORT_TIERS[spaceportLevel].capacity;
+    let spent = false;
+    let reserved = false;
+    try {
+        const spendResult = await session.query(
+            `UPDATE players${gameId} SET metal = metal - ?, crystal = crystal - ?
+             WHERE userid = ? AND metal >= ? AND crystal >= ?`,
+            [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId,
+                modifiedShip.cost.metal, modifiedShip.cost.crystal]
+        );
+        if (!spendResult || Number(spendResult.affectedRows) !== 1) {
+            throw Object.assign(new Error('Resources changed; refresh and try again'), { userMessage: 'Error: Resources changed; refresh and try again' });
+        }
+        spent = true;
+        await session.query(
+            `UPDATE buildings${gameId} SET production_turn = ?, production_used = 0 WHERE id = ? AND production_turn <> ?`,
+            [productionTurn, portId, productionTurn]
+        );
+        const reserveResult = await session.query(
+            `UPDATE buildings${gameId} SET production_used = production_used + ?
+             WHERE id = ? AND owner = ? AND production_turn = ? AND production_used + ? <= ?`,
+            [productionCost, portId, playerId, productionTurn, productionCost, capacity]
+        );
+        if (!reserveResult || Number(reserveResult.affectedRows) !== 1) {
+            throw Object.assign(new Error('Production capacity exhausted'), {
+                userMessage: `Error: Spaceport ${spaceportLevel} lacks ${productionCost} production capacity this turn`
+            });
+        }
+        reserved = true;
+        await session.query(
+            `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
+            [playerId, shipType, buildSector]
+        );
+        await session.commit();
+        connection.sendUTF(`Success: Built ${shipData.name} in sector ${buildSector} (${productionCost} production)`);
+        updateResources(connection);
+        updateSector2(gameId, buildSector);
+    } catch (error) {
+        await session.rollback().catch(() => {});
+        // Lightweight test adapters and legacy embedders may not expose a
+        // transaction-capable pool. Preserve the previous compensation safety
+        // for those environments; production MySQL rolls the transaction back.
+        if (!session.transactional) {
+            if (reserved) {
+                await session.query(
+                    `UPDATE buildings${gameId} SET production_used = GREATEST(0, production_used - ?) WHERE id = ? AND production_turn = ?`,
+                    [productionCost, portId, productionTurn]
+                ).catch(() => {});
+            }
+            if (spent) {
+                await session.query(
+                    `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
+                    [modifiedShip.cost.metal, modifiedShip.cost.crystal, playerId]
+                ).catch(() => {});
+            }
+        }
+        connection.sendUTF(error.userMessage || 'Error: Failed to create ship; no resources or capacity were consumed');
+    } finally {
+        session.release();
+    }
 }
 
 function buyBuilding(data, connection) {
@@ -6720,7 +6748,7 @@ async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 
     const strat = (strategy || 'balanced').toLowerCase();
     const aggressiveness = strat === 'aggressive' ? 1.2 : strat === 'chill' ? 0.6 : 1.0;
     const rows = await queryDb(
-        `SELECT userid, homeworld, currentsector, metal, crystal, research FROM players${gameId} WHERE userid = ? LIMIT 1`,
+        `SELECT userid, homeworld, currentsector, metal, crystal, research, tech FROM players${gameId} WHERE userid = ? LIMIT 1`,
         [playerId]
     );
     if (!rows || rows.length === 0) return;
@@ -6754,6 +6782,20 @@ async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 
     }
 
     if (hasSpaceport) {
+        const portRows = await queryDb(
+            `SELECT type, level, production_turn, production_used FROM buildings${gameId} WHERE sectorid = ?`,
+            [homeworld]
+        );
+        const localPort = (portRows || []).find(row => Number(row.type) === 3);
+        const portLevel = Math.min(4, Math.max(1, Number(localPort && localPort.level) || 1));
+        const shipyards = techSystem.aggregateEffects(techSystem.parseTechLevels(player.tech)).shipyards;
+        const nextPortTier = SPACEPORT_TIERS[portLevel + 1];
+        // A local port may advance only as far as the empire's Shipyards
+        // research. buyBuilding performs the authoritative balance checks.
+        if (nextPortTier && shipyards >= nextPortTier.research) {
+            await runAiMutation(gameId, playerId, stub => buyBuilding('//buybuilding:3', stub));
+        }
+
         const scoutCost = combatSystem.SHIP_TYPES.SCOUT.cost;
         const frigateCost = combatSystem.SHIP_TYPES.FRIGATE.cost;
         const destroyerCost = combatSystem.SHIP_TYPES.DESTROYER.cost;

@@ -23,9 +23,10 @@ permissions:
 
 concurrency:
   group: production-server
-  # Newer production pushes supersede older deploys. Otherwise an older run can
-  # verify after a newer commit is already live and report a false SHA mismatch.
-  cancel-in-progress: true
+  # Deploys upload into the live application directory. Let an active deploy
+  # finish so cancellation cannot leave client and server files at different
+  # revisions; the queued run will deploy and verify the newest revision next.
+  cancel-in-progress: false
 
 jobs:
   deploy:

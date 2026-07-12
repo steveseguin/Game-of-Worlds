@@ -64,7 +64,7 @@ test('duplicate in-flight probe requests cannot charge the same scan twice', () 
     assert.deepEqual(first.sent, ['Error: Invalid sector']);
 });
 
-test('ship purchase does not insert after a concurrent balance change', () => {
+test('ship purchase does not insert after a concurrent balance change', async () => {
     const scout = Object.values(combat.SHIP_TYPES).find(ship => ship.id === 1);
     assert.ok(scout, 'expected scout ship definition');
     const queries = setScriptedDb((sql, params, callback) => {
@@ -85,6 +85,7 @@ test('ship purchase does not insert after a concurrent balance change', () => {
     const connection = makeConnection();
 
     server.buyShip(`//buyship:${scout.id}`, connection);
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.deepEqual(connection.sent, ['Error: Resources changed; refresh and try again']);
     assert.equal(queries.some(query => /^INSERT INTO ships1/.test(query.sql)), false);
@@ -118,7 +119,7 @@ test('building purchase does not insert after a concurrent balance change', () =
     assert.equal(queries.some(query => /^INSERT INTO buildings1/.test(query.sql)), false);
 });
 
-test('ship purchase validates the explicit selected sector instead of the legacy cursor', () => {
+test('ship purchase validates the explicit selected sector instead of the legacy cursor', async () => {
     const queries = setScriptedDb((sql, params, callback) => {
         if (/^SELECT metal, crystal, currentsector, tech, race_id FROM players1/.test(sql)) {
             callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '', race_id: 1 }]);
@@ -138,6 +139,7 @@ test('ship purchase validates the explicit selected sector instead of the legacy
     const connection = makeConnection();
 
     server.buyShip('//buyship:1:f', connection);
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.deepEqual(connection.sent, ['Error: Resources changed; refresh and try again']);
     assert.equal(queries.some(query => query.params?.includes(15)), true);
@@ -218,7 +220,7 @@ test('Spaceport upgrades require research and persist the next local tier', () =
     assert.ok(queries.some(query => /^UPDATE buildings1 SET level =/.test(query.sql) && Number(query.params[0]) === 2));
 });
 
-test('exhausted local production refunds the ship spend and creates no hull', () => {
+test('exhausted local production refunds the ship spend and creates no hull', async () => {
     let refunded = false;
     const queries = setScriptedDb((sql, params, callback) => {
         if (/^SELECT metal, crystal, currentsector, tech, race_id FROM players1/.test(sql)) return callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '', race_id: 1 }]);
@@ -237,6 +239,7 @@ test('exhausted local production refunds the ship spend and creates no hull', ()
     const connection = makeConnection();
 
     server.buyShip('//buyship:1:4', connection);
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(refunded, true);
     assert.equal(queries.some(query => /^INSERT INTO ships1/.test(query.sql)), false);
@@ -352,7 +355,7 @@ test('losing a simultaneous colonization claim preserves the colony ship', () =>
     assert.equal(queries.some(query => /^DELETE FROM ships1/.test(query.sql)), false);
 });
 
-test('failed ship insertion refunds the guarded resource spend', () => {
+test('failed ship insertion refunds the guarded resource spend', async () => {
     let spendCompleted = false;
     let refundCompleted = false;
     setScriptedDb((sql, params, callback) => {
@@ -399,8 +402,9 @@ test('failed ship insertion refunds the guarded resource spend', () => {
     const connection = makeConnection();
 
     server.buyShip('//buyship:1', connection);
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(spendCompleted, true);
     assert.equal(refundCompleted, true);
-    assert.ok(connection.sent.includes('Error: Failed to create ship; resources and capacity refunded'));
+    assert.ok(connection.sent.includes('Error: Failed to create ship; no resources or capacity were consumed'));
 });
