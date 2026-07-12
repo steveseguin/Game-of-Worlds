@@ -16,11 +16,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
     <title>Game of Worlds — Access Terminal</title>
+    <style>
+        /* First-paint auth palette: prevents native white controls while auth.css loads. */
+        html { color-scheme: dark; background: #070a10; }
+        body { margin: 0; background: #070a10; color: #dce6f5; }
+        input, button { color-scheme: dark; font: inherit; }
+        input {
+            box-sizing: border-box;
+            color: #f2f7ff;
+            background: #172235;
+            border: 2px solid #687b96;
+        }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/auth.css?v=20260614a">
+    <link rel="stylesheet" href="css/auth.css?v=20260712a">
 </head>
 <body class="auth-body">
     <header class="auth-topbar">
