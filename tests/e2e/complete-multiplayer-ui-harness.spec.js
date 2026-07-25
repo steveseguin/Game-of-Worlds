@@ -201,6 +201,16 @@ test.describe('Complete multiplayer UI harness', () => {
                     if (await isGameOverVisible(hostPage)) {
                         break;
                     }
+                    // A colony ship needs 7 of the spaceport's 12 production, and
+                    // production only refreshes on a turn boundary. When the treasury
+                    // already holds 1000 metal the wait above ends no turns at all, so
+                    // the previous iteration's colony ship has already spent the budget
+                    // and the button stays disabled — "Needs 7 production; 5 remains this
+                    // turn". End one turn so the yard is clear before ordering the hull.
+                    await endTurnAll([hostPage, guestPage], 1);
+                    if (await isGameOverVisible(hostPage)) {
+                        break;
+                    }
                     await focusHomeworld(hostPage);
                     await buildShip(hostPage, 6);
                     await marchShip(hostPage, colonizationTargets[index].path.slice(1), 'Colony Ship');
