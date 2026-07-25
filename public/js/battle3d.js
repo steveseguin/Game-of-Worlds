@@ -22,6 +22,9 @@
  * caller falls back to the 2D BattleSystem.
  */
 import * as THREE from './vendor/three.module.min.js';
+// Same generator the galaxy map uses, so the world a battle is fought over looks
+// like the world on the map. See planet-texture.js for why the jpgs are unusable.
+import { PLANET_STYLES, getPlanetTexture } from './planet-texture.js?v=20260725a';
 
 (function () {
     // --- Ship roster -------------------------------------------------------
@@ -418,38 +421,24 @@ import * as THREE from './vendor/three.module.min.js';
 
     // The defender's world, dropped in behind their line as a dramatic backdrop.
     // It's huge and offset so only a curved limb fills the lower-defender background.
-    const PLANET_TEXTURES = {
-        6: 'images/planet2.jpg', 7: 'images/planet4.jpg',
-        8: 'images/planet6.jpg', 9: 'images/planet8.jpg', 10: 'images/planet10.jpg'
-    };
-    const planetTexCache = {}; // load each planet texture once, reuse across battles
-    function applyPlanetTexture(mat, url) {
-        if (planetTexCache[url]) {
-            mat.map = planetTexCache[url];
-            mat.color.set(0xffffff);
-            mat.needsUpdate = true;
-            return;
-        }
-        new THREE.TextureLoader().load(url, tex => {
-            if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
-            planetTexCache[url] = tex;
-            mat.map = tex;
-            mat.color.set(0xffffff);
-            mat.needsUpdate = true;
-        }, undefined, () => { /* texture missing: keep the base color */ });
-    }
-    function buildPlanet(planetType) {
+    function buildPlanet(planetType, sectorId) {
         if (!(planetType >= 6 && planetType <= 10)) return null;
         const group = new THREE.Group();
-        // Base tint per world type so it still reads as a planet before the texture
-        // streams in (homeworld = warm/gold, the rest cooler).
-        const baseColor = { 6: 0x8a6b4a, 7: 0x4a6a8a, 8: 0x3f8a6a, 9: 0x7a5a8a, 10: 0xc9a24a }[planetType] || 0x5a6a88;
-        const mat = stdMat(baseColor, { metalness: 0.04, roughness: 1.0, envMapIntensity: 0.12 });
-        applyPlanetTexture(mat, PLANET_TEXTURES[planetType] || 'images/planet2.jpg');
+        // The battle backdrop used to load images/planetN.jpg — photographs of real
+        // planets, i.e. a lit disc on a black square. Wrapped equirectangularly the
+        // black surround becomes most of the globe, so the world the fleets were
+        // fighting over rendered as a mostly-black smear that looked nothing like the
+        // same world on the galaxy map. Both views now paint from one generator.
+        const mat = stdMat(0xffffff, { metalness: 0.04, roughness: 1.0, envMapIntensity: 0.12 });
+        mat.map = getPlanetTexture(planetType, sectorId);
+        mat.needsUpdate = true;
         const planet = new THREE.Mesh(geo(new THREE.SphereGeometry(1, 56, 56)), mat);
         group.add(planet);
-        // Soft atmospheric rim (homeworld glows warmer).
-        const atmoColor = planetType === 10 ? 0xffd98a : 0x8fc0ff;
+        // Soft atmospheric rim, keyed to the same palette the map uses for this world.
+        const style = PLANET_STYLES[planetType];
+        const atmoColor = style && style.atmo
+            ? (style.atmo[0] << 16) | (style.atmo[1] << 8) | style.atmo[2]
+            : (planetType === 10 ? 0xffd98a : 0x8fc0ff);
         const atmo = new THREE.Mesh(
             geo(new THREE.SphereGeometry(1.05, 56, 56)),
             track(new THREE.MeshBasicMaterial({
@@ -972,7 +961,7 @@ import * as THREE from './vendor/three.module.min.js';
 
         // Drop the defender's world into the background (huge, low, behind their
         // line) so it reads as "the planet they're defending."
-        const planetGroup = buildPlanet((entry.options && entry.options.planetType) || 0);
+        const planetGroup = buildPlanet((entry.options && entry.options.planetType) || 0, (entry.options && entry.options.sectorId) || 0);
         if (planetGroup) {
             const d = frame.dist;
             planetGroup.position.set(
