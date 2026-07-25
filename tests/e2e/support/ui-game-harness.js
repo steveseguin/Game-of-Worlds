@@ -7,7 +7,12 @@ function uniqueId(prefix) {
 }
 
 function parseNumber(text) {
-    const match = String(text || '').match(/-?\d+/);
+    // Treasury figures are rendered with grouped thousands ("26,180"). Matching the
+    // first run of digits reads that as 26 — which is how a game holding 53,000 metal
+    // reported 53 and a wait-for-1000 loop ran out of turns while the player was rich.
+    // Strip the separators (including the thin/no-break spaces some locales use) first.
+    const cleaned = String(text || '').replace(/[,   ]/g, '');
+    const match = cleaned.match(/-?\d+/);
     return match ? Number.parseInt(match[0], 10) : 0;
 }
 
@@ -367,8 +372,21 @@ async function endTurnsUntilResources(pages, page, minimums, maxTurns = 25) {
 async function buildBuilding(page, selector) {
     await focusHomeworld(page);
     await page.click('#buildtab');
-    await page.click(selector);
+    const button = page.locator(selector);
+    await expect(button).toBeVisible({ timeout: 10000 });
+    // A disabled build button means the thing is already there — the starter loadout now
+    // includes a spaceport, so #bb4 reads "Upgrade Spaceport 2" and waits on Military
+    // Shipyards — or a prerequisite is missing. page.click() would sit on Playwright's
+    // enabled-actionability check with no action timeout configured, i.e. for the whole
+    // 600s test budget, and then report nothing but a context-close error. That is
+    // exactly how this spec burned ten minutes per run. Same shape as the #minLevel
+    // hang: never interact unconditionally with a control the UI has disabled.
+    if (!(await button.isEnabled())) {
+        return false;
+    }
+    await button.click();
     await page.waitForTimeout(500);
+    return true;
 }
 
 async function buildShip(page, shipId) {
@@ -396,9 +414,15 @@ async function researchTech(page, nameOrRegex) {
 
 async function readEmpireSummary(page) {
     const text = await page.locator('#empireSummary').textContent();
-    const worlds = String(text || '').match(/Worlds\s+(\d+)/i);
-    const sectors = String(text || '').match(/Sectors\s+(\d+)/i);
-    const fleet = String(text || '').match(/Fleet\s+(\d+)/i);
+    // The panel reads "Empire: 1 world - 1 sector - 2 ships": the count comes BEFORE the
+    // noun and the noun is singularised. These patterns used to be /Worlds\s+(\d+)/,
+    // which silently matched nothing after that rewrite, so every reading came back 0 and
+    // the first colonisation assertion failed with "expected >= 2, received 0" — a
+    // parser fault dressed up as a gameplay failure. Accept either number and both
+    // singular and plural.
+    const worlds = String(text || '').match(/(\d+)\s+worlds?\b/i);
+    const sectors = String(text || '').match(/(\d+)\s+sectors?\b/i);
+    const fleet = String(text || '').match(/(\d+)\s+ships?\b/i);
     return {
         text: text || '',
         worlds: worlds ? Number.parseInt(worlds[1], 10) : 0,
@@ -725,7 +749,11 @@ async function waitForBattleResolution(page, timeout = 15000) {
 
 async function closeBattleOverlay(page) {
     if (await page.locator('#battleTheater.on').isVisible().catch(() => false)) {
-        await page.locator('#battleTheater.on #b3dSkip').click({ timeout: 3000 });
+        // Skip tears the theater down, so the button can be detached while the click is
+        // still being dispatched. Playwright then reports "performing click action" ->
+        // timeout even though the skip did land. The assertion that matters is the one
+        // below: the theater actually closed. Judge on that, not on the click resolving.
+        await page.locator('#battleTheater.on #b3dSkip').click({ timeout: 3000 }).catch(() => {});
         await expect.poll(async () => page.locator('#battleTheater').evaluate(el => el.classList.contains('on')).catch(() => false), {
             timeout: 8000,
             intervals: [100, 250, 500]
