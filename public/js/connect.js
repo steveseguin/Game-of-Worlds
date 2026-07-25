@@ -828,6 +828,16 @@ function markAuthenticatedFromMessage(message) {
 
     awaitingAuth = false;
     hasAuthenticated = true;
+    // The session is live again, so take down the reconnect panel. onclose raises it,
+    // and until now the ONLY thing that lowered it was the startgame:: handler — which
+    // fires once, when the match begins. A socket that blipped mid-game reconnected
+    // silently underneath a full-screen "THE CONNECTION WAS LOST / please refresh the
+    // page" notice, over a board that was live and taking orders. Observed on production
+    // at turn 44: readyState OPEN, status "Connected", overlay still displayed.
+    const reconnectPanel = document.getElementById('lobbyWindow');
+    if (reconnectPanel) {
+        reconnectPanel.style.display = 'none';
+    }
     flushAuthenticatedCommands();
 }
 
