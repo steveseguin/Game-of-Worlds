@@ -54,8 +54,12 @@
             minimapWidth = clamp(viewportWidth - controlWidth - 18, 180, minimapWidth);
         }
         const minimapHeight = minimapWidth * (356 / 500);
-        const minimapBottom = stackBottomPanels ? chatHeight + controlHeight + 8 : 0;
-        const bottomReserved = stackBottomPanels
+        // Provisional: recomputed below from the control pad's MEASURED height, because
+        // the narrow-screen media queries override it with their own !important rules
+        // and the two used to disagree by ~70px — enough to bury the sector panel.
+        let measuredControlHeight = controlHeight;
+        let minimapBottom = stackBottomPanels ? chatHeight + controlHeight + 8 : 0;
+        let bottomReserved = stackBottomPanels
             ? chatHeight + controlHeight + minimapHeight + 18
             : chatHeight + controlHeight + 12;
         const turnWidth = clamp(300 * scale, veryNarrow ? 112 : 190, 330);
@@ -84,21 +88,44 @@
             setImportant(chatContainer, 'padding', `${px(Math.max(4, 5 * scale))} ${px(Math.max(8, 10 * scale))}`);
         }
 
-        if (chatFeed) {
-            setImportant(chatFeed, 'width', px(controlWidth));
-            setImportant(chatFeed, 'bottom', px(chatHeight + controlHeight + 8));
-            setImportant(chatFeed, 'max-height', px(Math.max(96, controlHeight * 0.42)));
-            setImportant(chatFeed, 'font-size', `${clamp(12 * scale, 11, 14)}px`);
-        }
-
+        // Opt-in: the player can hand the build pad's screen space back to the map.
+        // Because bottomReserved is derived from the MEASURED pad height, collapsing it
+        // automatically re-expands the sector panel and the 3D view's safe area.
+        const controlPadCollapsed = document.body.classList.contains('controlpad-collapsed');
         if (controlPad) {
+            setImportant(controlPad, 'display', controlPadCollapsed ? 'none' : 'block');
             setImportant(controlPad, 'width', px(controlWidth));
             setImportant(controlPad, 'height', px(controlHeight));
             setImportant(controlPad, 'bottom', px(chatHeight));
             controlPad.style.fontSize = `${clamp(13 * scale, 11, 15)}px`;
+            // Trust the rendered box, not the request: media queries can win.
+            measuredControlHeight = controlPadCollapsed
+                ? 0
+                : Math.max(controlHeight, controlPad.getBoundingClientRect().height);
+            minimapBottom = stackBottomPanels ? chatHeight + measuredControlHeight + 8 : 0;
+            bottomReserved = stackBottomPanels
+                ? chatHeight + measuredControlHeight + minimapHeight + 18
+                : chatHeight + measuredControlHeight + 12;
+        }
+
+        if (chatFeed) {
+            setImportant(chatFeed, 'width', px(controlWidth));
+            setImportant(chatFeed, 'bottom', px(chatHeight + measuredControlHeight + 8));
+            setImportant(chatFeed, 'max-height', px(Math.max(96, measuredControlHeight * 0.42)));
+            setImportant(chatFeed, 'font-size', `${clamp(12 * scale, 11, 14)}px`);
+        }
+
+        // On a short phone screen the stacked minimap, build pad and chat leave no room
+        // for the status column, so panels start printing over each other. The minimap
+        // duplicates the main 3D view, which is already full-screen there — drop it.
+        const hideMinimap = stackBottomPanels && viewportHeight < 720;
+        if (hideMinimap) {
+            bottomReserved -= minimapHeight + 6;
+            minimapBottom = chatHeight + measuredControlHeight + 8;
         }
 
         if (minimap) {
+            setImportant(minimap, 'display', hideMinimap ? 'none' : 'block');
             setImportant(minimap, 'width', px(minimapWidth));
             setImportant(minimap, 'height', px(minimapHeight));
             setImportant(minimap, 'right', stackBottomPanels ? '8px' : '0');
@@ -107,29 +134,17 @@
 
         if (mapLegend) {
             const legendWidth = clamp(220 * scale, 150, 260);
+            const legendRight = stackBottomPanels ? 8 : Math.min(370, minimapWidth * 0.72);
+            // The legend sits above the minimap on the right. On a narrow window the
+            // build pad reaches across and they collide, so drop the legend rather
+            // than print two panels on top of each other.
+            const legendRoom = viewportWidth - controlWidth - legendRight - legendWidth - 16;
             setImportant(mapLegend, 'width', px(legendWidth));
-            setImportant(mapLegend, 'right', stackBottomPanels ? '8px' : '370px');
+            setImportant(mapLegend, 'right', px(legendRight));
             setImportant(mapLegend, 'bottom', px(minimapBottom + minimapHeight + 8));
-            setImportant(mapLegend, 'display', shortLandscape || veryNarrow ? 'none' : 'block');
+            setImportant(mapLegend, 'display',
+                (shortLandscape || veryNarrow || legendRoom < 0) ? 'none' : 'block');
             mapLegend.style.fontSize = `${clamp(11 * scale, 9.5, 12)}px`;
-        }
-
-        if (resourceBar) {
-            const resourceWidth = veryNarrow
-                ? Math.max(140, viewportWidth - turnWidth - 8)
-                : Math.min(500 * scale, viewportWidth - turnWidth - 24);
-            setImportant(resourceBar, 'width', px(Math.min(viewportWidth, Math.max(140, resourceWidth))));
-            resourceBar.style.fontSize = `${clamp(13 * scale, 10.5, 14)}px`;
-        }
-
-        if (empireSummary) {
-            const summaryWidth = veryNarrow
-                ? Math.max(150, viewportWidth - 16)
-                : Math.min(500 * scale, viewportWidth - turnWidth - 24);
-            setImportant(empireSummary, 'width', px(Math.max(150, summaryWidth)));
-            setImportant(empireSummary, 'top', px(veryNarrow ? turnHeight + 78 : 42 * scale));
-            setImportant(empireSummary, 'left', '10px');
-            empireSummary.style.fontSize = `${clamp(12 * scale, 10, 13)}px`;
         }
 
         if (turnBar) {
@@ -138,36 +153,129 @@
             turnBar.style.fontSize = `${clamp(13 * scale, 10.5, 14)}px`;
         }
 
+        const resourceWidth = veryNarrow
+            ? Math.max(140, viewportWidth - turnWidth - 8)
+            : Math.min(viewportWidth, Math.max(140, Math.min(500 * scale, viewportWidth - turnWidth - 24)));
+
+        let utilityWidth = 0;
+        let utilityRowBottom = 0;
         if (utilityButtons && turnBar) {
-            setImportant(utilityButtons, 'right', veryNarrow ? '8px' : px(turnWidth + 10));
-            setImportant(utilityButtons, 'top', veryNarrow ? px(turnHeight + 6) : px(8));
+            utilityWidth = utilityButtons.getBoundingClientRect().width;
+            // These sit left of the turn clock on the top row. On a narrow window that
+            // row also carries the resource bar, and the two used to overlap — drop the
+            // buttons onto their own row below the clock instead.
+            const topRowFits = viewportWidth - turnWidth - 10 - utilityWidth >= resourceWidth + 8;
+            const stackUtility = veryNarrow || !topRowFits;
+            setImportant(utilityButtons, 'right', stackUtility ? '8px' : px(turnWidth + 10));
+            setImportant(utilityButtons, 'top', stackUtility ? px(turnHeight + 6) : px(8));
+            if (stackUtility) {
+                utilityWidth = 0; // no longer competing for the top row
+                utilityRowBottom = turnHeight + 6 + utilityButtons.getBoundingClientRect().height + 6;
+            }
         }
 
+        // ---- Top-left status column -------------------------------------------------
+        // Resources, connection, empire income, victory progress and the sector panel
+        // are stacked by MEASURING each block rather than by hard-coded tops. Fixed
+        // offsets drifted apart from the scaled font sizes and left these panels
+        // printing over each other at common laptop resolutions.
+        let columnTop = veryNarrow ? turnHeight + 8 : 0;
+        let columnRight = 0;
+        const trackColumn = el => {
+            const box = el.getBoundingClientRect();
+            columnTop += box.height + 4;
+            columnRight = Math.max(columnRight, box.right);
+        };
+
+        if (resourceBar) {
+            setImportant(resourceBar, 'width', px(resourceWidth));
+            setImportant(resourceBar, 'top', px(columnTop));
+            resourceBar.style.fontSize = `${clamp(13 * scale, 10.5, 14)}px`;
+            trackColumn(resourceBar);
+            // When the utility buttons had to drop onto their own row, the rest of the
+            // column has to clear them or the connection bar runs underneath.
+            columnTop = Math.max(columnTop, utilityRowBottom);
+        }
+
+        let inlineInfoBottom = 0;
         if (connectionInfo) {
             setImportant(connectionInfo, 'position', 'fixed');
-            if (veryNarrow) {
-                setImportant(connectionInfo, 'left', '8px');
-                setImportant(connectionInfo, 'top', px(turnHeight + 42));
-                setImportant(connectionInfo, 'max-width', px(viewportWidth - 16));
-            } else if (viewportWidth < 1000) {
-                setImportant(connectionInfo, 'left', '8px');
-                setImportant(connectionInfo, 'top', px(44));
-                setImportant(connectionInfo, 'max-width', px(viewportWidth - 16));
+            // Inline beside the resource bar only when there is genuinely room between
+            // it and the utility buttons; otherwise it becomes the next row of the
+            // left column instead of sliding underneath the buttons.
+            const inlineLeft = Math.min(550 * scale, viewportWidth - 720);
+            const rightGuard = turnWidth + 10 + utilityWidth + 16;
+            const inlineRoom = viewportWidth - rightGuard - inlineLeft;
+            // The stylesheet pins both left and right on this bar, which stretches it
+            // across the viewport. Release the right edge so it shrink-wraps its
+            // content and the column can measure its true width.
+            setImportant(connectionInfo, 'right', 'auto');
+            if (!veryNarrow && viewportWidth >= 1000 && inlineRoom >= 240) {
+                setImportant(connectionInfo, 'left', px(inlineLeft));
+                setImportant(connectionInfo, 'top', '8px');
+                setImportant(connectionInfo, 'max-width', px(inlineRoom));
+                inlineInfoBottom = 8 + connectionInfo.getBoundingClientRect().height;
             } else {
-                setImportant(connectionInfo, 'left', px(Math.min(550 * scale, viewportWidth - 720)));
-                setImportant(connectionInfo, 'top', px(8));
-                setImportant(connectionInfo, 'max-width', px(Math.max(260, viewportWidth - 860)));
+                // Only run the full width once this row is clear of the turn clock,
+                // which is pinned top-right and overlaps the first column rows.
+                const clearsTurnBar = columnTop >= turnHeight + 4;
+                const stackedMax = clearsTurnBar
+                    ? viewportWidth - 20
+                    : viewportWidth - turnWidth - 24;
+                setImportant(connectionInfo, 'left', '10px');
+                setImportant(connectionInfo, 'top', px(columnTop));
+                setImportant(connectionInfo, 'max-width', px(Math.max(150, stackedMax)));
+                trackColumn(connectionInfo);
             }
             connectionInfo.style.fontSize = `${clamp(13 * scale, 11, 14)}px`;
         }
 
+        if (empireSummary) {
+            const summaryWidth = veryNarrow
+                ? Math.max(150, viewportWidth - 16)
+                : Math.min(500 * scale, viewportWidth - turnWidth - 24);
+            setImportant(empireSummary, 'width', px(Math.max(150, summaryWidth)));
+            setImportant(empireSummary, 'top', px(columnTop));
+            setImportant(empireSummary, 'left', '10px');
+            empireSummary.style.fontSize = `${clamp(12 * scale, 10, 13)}px`;
+            trackColumn(empireSummary);
+        }
+
+        const victoryProgress = document.getElementById('victoryProgress');
+        if (victoryProgress) {
+            // On a short window the column runs into the build pad. Income is the line
+            // a commander acts on every turn; victory percentages are a status read and
+            // have their own panel, so they yield first.
+            const victoryRoom = viewportHeight - columnTop - bottomReserved - 12;
+            if (victoryRoom < 34) {
+                setImportant(victoryProgress, 'display', 'none');
+            } else {
+                setImportant(victoryProgress, 'display', 'block');
+                const victoryWidth = veryNarrow
+                    ? Math.max(150, viewportWidth - 16)
+                    : Math.min(560 * scale, viewportWidth - turnWidth - 24);
+                setImportant(victoryProgress, 'width', px(Math.max(150, victoryWidth)));
+                setImportant(victoryProgress, 'top', px(columnTop));
+                setImportant(victoryProgress, 'left', '10px');
+                victoryProgress.style.fontSize = `${clamp(12 * scale, 10, 13)}px`;
+                trackColumn(victoryProgress);
+                columnTop += 2;
+            }
+        }
+
+        const statusColumnBottom = columnTop;
+        const sectorTop = Math.max(topReserved, statusColumnBottom);
         if (sectorDisplay) {
             const sectorMaxWidth = veryNarrow ? Math.max(132, viewportWidth * 0.48) : 300;
             const sectorMinWidth = Math.min(veryNarrow ? 150 : 190, sectorMaxWidth);
             const sectorWidth = clamp(240 * scale, sectorMinWidth, sectorMaxWidth);
-            const sectorMaxHeight = Math.max(64, viewportHeight - topReserved - bottomReserved - 12);
-            setImportant(sectorDisplay, 'display', shortLandscape ? 'none' : 'block');
-            setImportant(sectorDisplay, 'top', px(topReserved));
+            // Below a usable height this panel cannot be shown without printing over
+            // the build pad. The Build tab still names the selected sector, so hiding
+            // it costs the player nothing they cannot see elsewhere.
+            const sectorRoom = viewportHeight - sectorTop - bottomReserved - 12;
+            const sectorMaxHeight = Math.max(64, sectorRoom);
+            setImportant(sectorDisplay, 'display', (shortLandscape || sectorRoom < 90) ? 'none' : 'block');
+            setImportant(sectorDisplay, 'top', px(sectorTop));
             setImportant(sectorDisplay, 'left', px(10));
             setImportant(sectorDisplay, 'width', px(sectorWidth));
             setImportant(sectorDisplay, 'max-height', px(sectorMaxHeight));
@@ -183,6 +291,23 @@
             setImportant(galaxyViewport, 'right', '0');
             setImportant(galaxyViewport, 'top', '0');
             setImportant(galaxyViewport, 'bottom', '0');
+
+            // Tell the 3D view which parts of its own canvas the HUD covers, so a
+            // focused sector is framed in the clear band instead of behind the build
+            // pad or the minimap. Insets are relative to the viewport's own box.
+            const safeArea = stackBottomPanels
+                ? { left: 0, right: 0, top: topReserved, bottom: bottomReserved }
+                : {
+                    left: Math.max(0, controlWidth - tacticalLeft),
+                    right: minimapWidth,
+                    top: Math.max(statusColumnBottom, turnHeight + 8),
+                    bottom: chatHeight + measuredControlHeight
+                };
+            const applySafeArea = () => window.Galaxy3D?.setSafeArea?.(safeArea);
+            applySafeArea();
+            // galaxy3d.js is an ES module, so on first paint it may not have registered
+            // yet; retry once the module announces itself.
+            document.addEventListener('galaxy3d-ready', applySafeArea, { once: true });
         }
 
         if (sectorImage) {
@@ -196,11 +321,27 @@
         }
 
         if (viewTitle) {
-            const sidePad = veryNarrow ? 84 : 330 * scale;
-            setImportant(viewTitle, 'display', shortLandscape ? 'none' : 'block');
-            setImportant(viewTitle, 'left', px(Math.min(sidePad, viewportWidth * 0.28)));
-            setImportant(viewTitle, 'right', px(Math.min(sidePad, viewportWidth * 0.28)));
-            setImportant(viewTitle, 'top', px(veryNarrow ? Math.max(126, turnHeight + 78) : 50 * scale));
+            // Must clear the whole left status column and the turn clock on the right,
+            // otherwise "GALAXY MAP" is printed straight through the victory line.
+            const needLeft = veryNarrow ? 84 : Math.max(330 * scale, controlWidth + 16, columnRight + 16);
+            // Right side holds the turn clock AND the utility buttons parked beside it.
+            const rightClear = veryNarrow ? 84 : turnWidth + 10 + utilityWidth + 16;
+            // Decorative: drop it rather than let it print over the status column. The
+            // test is against the clearance actually required, not a capped version of
+            // it, or the title just slides back under the panels it was dodging.
+            const titleRoom = viewportWidth - needLeft - rightClear;
+            const leftClear = needLeft;
+            // Phone widths need every row for the status column; the title is a label,
+            // not information, so it is the first thing to go.
+            setImportant(viewTitle, 'display',
+                (shortLandscape || veryNarrow || titleRoom < 150) ? 'none' : 'block');
+            setImportant(viewTitle, 'left', px(leftClear));
+            setImportant(viewTitle, 'right', px(rightClear));
+            // Sit clear of the connection bar when that bar shares the top row; on a
+            // short window the two bands were only five pixels apart.
+            setImportant(viewTitle, 'top', px(veryNarrow
+                ? Math.max(126, turnHeight + 78)
+                : Math.max(50 * scale, inlineInfoBottom + 6)));
             viewTitle.style.transform = 'none';
             viewTitle.style.fontSize = `${clamp(14 * scale, 12, 16)}px`;
         }
@@ -225,10 +366,10 @@
     }
 
     function restoreTitle() {
-        const selectedSector = window.GalaxyMap?.getSelectedSector?.();
-        if (selectedSector) {
-            const label = Number(selectedSector).toString(16).toUpperCase();
-            setTitle(`Sector ${label}`, `Sector ${label} - Game of Worlds`);
+        // Human-facing sector numbers are decimal everywhere; only the wire uses hex.
+        const selectedSector = Number(window.GalaxyMap?.getSelectedSector?.());
+        if (Number.isFinite(selectedSector) && selectedSector > 0) {
+            setTitle(`Sector ${selectedSector}`, `Sector ${selectedSector} - Game of Worlds`);
             return;
         }
         setTitle('Galaxy Map');
@@ -287,8 +428,31 @@
         toggleAudioMuted
     };
 
+    function wireControlPadToggle() {
+        const button = document.getElementById('controlPadToggle');
+        if (!button) return;
+        let collapsed = false;
+        try { collapsed = localStorage.getItem('gow-controlpad') === 'hidden'; } catch (_) {}
+        const apply = () => {
+            document.body.classList.toggle('controlpad-collapsed', collapsed);
+            button.textContent = collapsed ? 'Show panel' : 'Hide panel';
+            button.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+            button.title = collapsed
+                ? 'Show the command panel'
+                : 'Hide the command panel and enlarge the map';
+            applyResponsiveLayout();
+        };
+        button.addEventListener('click', () => {
+            collapsed = !collapsed;
+            try { localStorage.setItem('gow-controlpad', collapsed ? 'hidden' : 'shown'); } catch (_) {}
+            apply();
+        });
+        apply();
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         applyResponsiveLayout();
+        wireControlPadToggle();
         setTitle('Galaxy Map');
         initializeAudioButton();
     });

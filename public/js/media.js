@@ -7,6 +7,16 @@
         explosion: 'sounds/explosion.mp3',
         shipDestroyed: 'sounds/ship-destroyed.mp3',
         warp: 'sounds/warp-jump.mp3',
+        // These shipped as files and were referenced by callers, but were never
+        // registered here — so every call to them was a silent no-op.
+        error: 'sounds/error.mp3',
+        success: 'sounds/success.mp3',
+        buildComplete: 'sounds/build-complete.mp3',
+        researchComplete: 'sounds/research-complete.mp3',
+        shipLaunch: 'sounds/ship-launch.mp3',
+        laserFire: 'sounds/laser-fire.mp3',
+        missileLaunch: 'sounds/missile-launch.mp3',
+        shieldHit: 'sounds/shield-hit.mp3',
         battleAmbient: 'sounds/battle-ambient.mp3',
         spaceAmbient: 'sounds/space-ambient.mp3',
         victory: 'music/victory-theme.mp3',
@@ -37,6 +47,11 @@
                 el.volume = 0.35;
             } else if (key === 'victory' || key === 'defeat') {
                 el.volume = 0.8;
+            } else if (key === 'error' || key === 'success' || key === 'buildComplete'
+                       || key === 'researchComplete' || key === 'shipLaunch') {
+                // Order acknowledgements fire on almost every click; keep them under
+                // the combat effects so they read as confirmation, not drama.
+                el.volume = 0.38;
             } else {
                 el.volume = 0.6;
             }

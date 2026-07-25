@@ -60,6 +60,38 @@ const BuildSystem = (() => {
         return counts;
     }
 
+    /**
+     * Render a cost as coloured figures that match the treasury bar: warm = metal,
+     * blue = crystal. The old "430M 120C" shorthand was never defined anywhere in the
+     * UI, and neither were "Yard 2" or "7P".
+     */
+    function renderCost(label, { metal = 0, crystal = 0, shipyard = 0, production = 0, suffix = '' } = {}) {
+        if (!label) return;
+        label.textContent = '';
+        const chip = (value, cls, title) => {
+            const span = document.createElement('span');
+            span.className = cls;
+            span.textContent = Number(value).toLocaleString('en-US');
+            span.title = title;
+            label.append(span);
+        };
+        chip(metal, 'cost-metal', 'Metal');
+        if (crystal) {
+            label.append(document.createTextNode(' '));
+            chip(crystal, 'cost-crystal', 'Crystal');
+        }
+        const notes = [];
+        if (shipyard) notes.push(`Shipyards ${shipyard}`);
+        if (production) notes.push(`${production} prod`);
+        if (suffix) notes.push(suffix);
+        if (notes.length) {
+            const note = document.createElement('span');
+            note.className = 'cost-note';
+            note.textContent = ` · ${notes.join(' · ')}`;
+            label.append(note);
+        }
+    }
+
     function setAvailability(button, enabled, reason) {
         if (!button) return;
         button.disabled = !enabled;
@@ -71,6 +103,79 @@ const BuildSystem = (() => {
     function hasResources(resources, cost) {
         return Number(resources?.metal) >= Number(cost?.metal || 0)
             && Number(resources?.crystal) >= Number(cost?.crystal || 0);
+    }
+
+    /**
+     * Answer "can I settle THIS world?" against the selected sector instead of
+     * reciting four static rules and leaving the player to check them by hand.
+     */
+    function refreshColonizeChecklist(sector, player, techFx, myId, battleFrozen) {
+        const list = document.getElementById('colonizeChecklist');
+        const context = document.getElementById('colonizeSectorContext');
+        const button = document.getElementById('colonizeBtn');
+        if (!list) return;
+
+        const mark = (name, state, text) => {
+            const item = list.querySelector(`[data-req="${name}"]`);
+            if (!item) return;
+            item.classList.toggle('is-met', state === true);
+            item.classList.toggle('is-blocked', state === false);
+            const glyph = item.querySelector('.req-mark');
+            // Written from here rather than via CSS ::before, which needed a font-size
+            // hack that collapsed the mark's box and printed it over the label.
+            if (glyph) glyph.textContent = state === true ? '✓' : state === false ? '✗' : '•';
+            const label = item.querySelector('.req-text');
+            if (label && text) label.textContent = text;
+        };
+
+        if (!sector) {
+            if (context) context.textContent = 'Select a sector to check whether you can settle it.';
+            ['planet', 'ship', 'terraform', 'unclaimed'].forEach(name => mark(name, null));
+            setAvailability(button, false, 'Select a sector first');
+            return;
+        }
+
+        const type = Number(sector.type);
+        const isPlanet = type >= 6 && type <= 9;
+        const owner = Number(sector.owner ?? sector.ownerid) || 0;
+        const unclaimed = owner === 0;
+        const colonyShips = Array.isArray(sector.ships)
+            ? sector.ships.filter(s => Number(s.type) === 6 && Number(s.owner) === myId)
+                .reduce((sum, s) => sum + (Number(s.count) || 1), 0)
+            : 0;
+        const required = Number(sector.terraformLevel) || 0;
+        const have = Number(techFx.terraform || 0);
+        // Terraform requirement is only legible once we have live intel on the sector.
+        const terraformKnown = isPlanet && (unclaimed ? colonyShips > 0 || owner === myId : true);
+
+        if (context) {
+            context.textContent = isPlanet
+                ? `Sector ${sector.id}: ${unclaimed ? 'unclaimed world' : (owner === myId ? 'already yours' : 'held by a rival')}.`
+                : `Sector ${sector.id} has no planet to settle.`;
+        }
+
+        mark('planet', isPlanet, isPlanet
+            ? 'The sector contains a planet'
+            : 'The sector must contain a planet');
+        mark('ship', colonyShips > 0, colonyShips > 0
+            ? `Colony Ship in position (${colonyShips})`
+            : 'A Colony Ship must be in the sector');
+        mark('terraform', terraformKnown ? have >= required : null, terraformKnown
+            ? (have >= required
+                ? `Terraforming ${have} meets the requirement of ${required}`
+                : `Needs Terraforming ${required} — you have ${have}`)
+            : "Your Terraforming must meet the world's requirement");
+        mark('unclaimed', unclaimed, unclaimed
+            ? 'Nobody owns this sector'
+            : 'Nobody else can already own it');
+
+        let reason = '';
+        if (battleFrozen) reason = 'Orders are frozen during battle playback';
+        else if (!isPlanet) reason = 'There is no planet here to settle';
+        else if (!unclaimed) reason = owner === myId ? 'You already own this world' : 'A rival holds this world';
+        else if (colonyShips < 1) reason = 'Move a Colony Ship here first';
+        else if (have < required) reason = `Needs Terraforming ${required}`;
+        setAvailability(button, !reason, reason);
     }
 
     function refresh() {
@@ -104,7 +209,10 @@ const BuildSystem = (() => {
         for (let type = 0; type <= 5; type += 1) {
             const button = document.querySelector(`[data-building-id="${type}"]`);
             const count = document.getElementById(`bbb${type + 1}`);
-            if (count) count.textContent = String(counts[type]);
+            // A bare trailing number read as either "level 1" or "building #1". Say
+            // which: these are counts, so use a multiplier, and hide it at zero rather
+            // than labelling every unbuilt structure with a "0".
+            if (count) count.textContent = counts[type] > 0 ? `×${counts[type]}` : '';
             let reason = '';
             if (battleFrozen) reason = 'Orders are frozen during battle playback';
             else if (!sector) reason = 'Select one of your sectors first';
@@ -120,19 +228,31 @@ const BuildSystem = (() => {
             setAvailability(button, !reason, reason);
             if (type === 3 && button) {
                 const costLabel = button.querySelector('small');
+                // The spaceport is the one structure with tiers rather than a count, so
+                // it says "Lv N" where the others say "×N".
                 if (spaceportLevel > 0 && spaceportLevel < 4) {
                     const next = SPACEPORT_TIERS[spaceportLevel + 1];
-                    button.childNodes[0].textContent = `🚀 Upgrade Spaceport ${spaceportLevel + 1} `;
-                    if (costLabel) costLabel.textContent = `${next.metal}M ${next.crystal}C · needs Yard ${next.research}`;
+                    button.childNodes[0].textContent = `🚀 Upgrade Spaceport to Lv ${spaceportLevel + 1} `;
+                    if (count) count.textContent = '';
+                    renderCost(costLabel, {
+                        metal: next.metal,
+                        crystal: next.crystal,
+                        shipyard: next.research,
+                        suffix: `${next.capacity} prod/turn`
+                    });
                 } else if (spaceportLevel >= 4) {
-                    button.childNodes[0].textContent = '🚀 Spaceport 4 ';
-                    if (costLabel) costLabel.textContent = 'Maximum tier · 48 production';
+                    button.childNodes[0].textContent = '🚀 Spaceport Lv 4 ';
+                    if (count) count.textContent = '';
+                    if (costLabel) costLabel.textContent = 'Maximum tier · 48 prod/turn';
                 } else {
                     button.childNodes[0].textContent = '🚀 Spaceport ';
-                    if (costLabel) costLabel.textContent = '100M 50C · 12 production';
+                    if (count) count.textContent = '';
+                    renderCost(costLabel, { metal: 100, crystal: 50, suffix: '12 prod/turn' });
                 }
             }
         }
+
+        refreshColonizeChecklist(sector, player, techFx, myId, battleFrozen);
 
         const allowed = Array.isArray(access.shipAccess) ? access.shipAccess : null;
         const shipCosts = access.shipCosts || FALLBACK_SHIP_COSTS;
@@ -142,10 +262,12 @@ const BuildSystem = (() => {
             const cost = shipCosts[id] || FALLBACK_SHIP_COSTS[id] || {};
             const yardNeeded = Number(cost.shipyard || 0);
             const productionNeeded = Math.max(1, Number(cost.production) || 1);
-            const label = button.querySelector('small');
-            if (label) {
-                label.textContent = `${cost.metal || 0}M${cost.crystal ? ` ${cost.crystal}C` : ''}${yardNeeded ? ` · Yard ${yardNeeded}` : ''}`;
-            }
+            renderCost(button.querySelector('small'), {
+                metal: cost.metal || 0,
+                crystal: cost.crystal || 0,
+                shipyard: yardNeeded,
+                production: productionNeeded
+            });
             let reason = '';
             if (battleFrozen) reason = 'Orders are frozen during battle playback';
             else if (!sector) reason = 'Select one of your sectors first';
@@ -156,9 +278,6 @@ const BuildSystem = (() => {
             else if (spaceportLevel < yardNeeded + 1) reason = `Needs local Spaceport ${yardNeeded + 1}`;
             else if (productionRemaining < productionNeeded) reason = `Needs ${productionNeeded} production; ${productionRemaining} remains this turn`;
             else if (!hasResources(resources, cost)) reason = 'Not enough resources';
-            if (label && !label.textContent.includes(`${productionNeeded}P`)) {
-                label.append(document.createTextNode(` · ${productionNeeded}P`));
-            }
             setAvailability(button, !reason, reason);
         });
     }

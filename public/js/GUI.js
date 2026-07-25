@@ -92,11 +92,17 @@ const GameUI = (function() {
         switchTab(state.selectedTab);
     }
 
-    // Update resource display
+    // Update the treasury figures. Grouped thousands, because four- and five-digit
+    // stockpiles are the norm by mid-game and "12480" does not read at a glance.
     function updateResources(metal, crystal, research) {
-        document.getElementById('metalresource').textContent = ` ${metal} Metal,`;
-        document.getElementById('crystalresource').textContent = ` ${crystal} Crystal,`;
-        document.getElementById('researchresource').textContent = ` ${research} Research`;
+        const format = value => Math.floor(Number(value) || 0).toLocaleString('en-US');
+        const write = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = format(value);
+        };
+        write('metalresource', metal);
+        write('crystalresource', crystal);
+        write('researchresource', research);
     }
 
     // Toggle fullscreen
@@ -281,7 +287,11 @@ const GameUI = (function() {
                     case 6: level = buildings.warpgate; break;
                 }
 
-                currentLevel.textContent = level || '0';
+                // Same convention BuildSystem.refresh uses, or whichever ran last wins
+                // and the chip flips between "×2" and "2". Nothing at zero: an unbuilt
+                // structure does not need labelling with a 0.
+                const built = Number(level) || 0;
+                currentLevel.textContent = built > 0 && i !== 4 ? `×${built}` : '';
             }
 
             // Next level
@@ -393,12 +403,28 @@ const GameUI = (function() {
             'fleet-colony': counts[6]
         };
 
+        // Nine rows of zeroes told the player nothing and buried the one hull they
+        // actually had. Hide empty classes and surface a total instead.
+        let present = 0;
         Object.entries(fields).forEach(([id, value]) => {
             const element = document.getElementById(id);
-            if (element) {
-                element.textContent = String(value || 0);
-            }
+            if (!element) return;
+            const count = Number(value) || 0;
+            element.textContent = String(count);
+            const row = element.parentElement;
+            if (row) row.style.display = count > 0 ? '' : 'none';
+            present += count;
         });
+        const empty = document.getElementById('fleetEmptyState');
+        if (empty) {
+            empty.style.display = present > 0 ? 'none' : 'block';
+        }
+        const total = document.getElementById('fleetTotal');
+        if (total) {
+            total.textContent = present > 0
+                ? `${present} ship${present === 1 ? '' : 's'} here`
+                : '';
+        }
     }
 
 	// Update owned sector display on minimap

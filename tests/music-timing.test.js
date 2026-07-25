@@ -3,19 +3,31 @@ const assert = require('node:assert/strict');
 
 const { EpicMusicEngine, calculateUrgencyTempo } = require('../public/js/epic-music.js');
 
-test('music urgency begins only in the final ten seconds of a quick turn', () => {
+test('music urgency stays silent until the final thirty seconds of a quick turn', () => {
     assert.equal(calculateUrgencyTempo(120, 180), 1);
-    assert.equal(calculateUrgencyTempo(11, 180), 1);
-    assert.equal(calculateUrgencyTempo(10, 180), 1);
-    assert.ok(calculateUrgencyTempo(9, 180) > 1);
-    assert.ok(calculateUrgencyTempo(5, 180) > calculateUrgencyTempo(10, 180));
+    assert.equal(calculateUrgencyTempo(31, 180), 1);
+    assert.equal(calculateUrgencyTempo(30, 180), 1);
+    assert.ok(calculateUrgencyTempo(29, 180) > 1);
+    assert.ok(calculateUrgencyTempo(5, 180) > calculateUrgencyTempo(20, 180));
     assert.equal(calculateUrgencyTempo(0, 180), 1.06);
 });
 
-test('long turns cap the music urgency window at ten seconds', () => {
+test('urgency builds gently — no tension while there is nothing to be tense about', () => {
+    // The point of the window is a build, not a mood the music sits in. The opening
+    // two thirds of it must stay under a quarter of the total lift, so the player
+    // only feels it once the clock genuinely matters.
+    const lift = seconds => calculateUrgencyTempo(seconds, 180) - 1;
+    const total = lift(0);
+    assert.ok(lift(25) < total * 0.05, 'five seconds into the window should be imperceptible');
+    assert.ok(lift(20) < total * 0.2, 'a third of the way in should still be subtle');
+    assert.ok(lift(10) > total * 0.35, 'the last ten seconds should carry the build');
+    assert.ok(lift(2) > total * 0.8, 'the final breath should be near the ceiling');
+});
+
+test('long turns cap the music urgency window at thirty seconds', () => {
     assert.equal(calculateUrgencyTempo(61, 86400), 1);
-    assert.equal(calculateUrgencyTempo(10, 86400), 1);
-    assert.ok(calculateUrgencyTempo(9, 86400) > 1);
+    assert.equal(calculateUrgencyTempo(30, 86400), 1);
+    assert.ok(calculateUrgencyTempo(29, 86400) > 1);
     assert.equal(calculateUrgencyTempo(0, 86400), 1.06);
 });
 

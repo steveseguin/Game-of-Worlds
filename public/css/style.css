@@ -224,7 +224,8 @@ td {
 .local-order-context {
     margin-bottom: 10px;
     padding: 7px 9px;
-    border-left: 3px solid #42d8c8;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
     background: rgba(66,216,200,.08);
     color: #cceeea;
     font-size: 11px;
@@ -1068,3 +1069,19 @@ td {
         max-height: calc(60vh - 60px);
     }
 }
+
+/* Keyboard focus, shared by the game screen and the lobby — the two pages that use
+   this stylesheet and the only two that had no focus indication at all. The auth,
+   landing and race-selection sheets already carry their own. Focus rings are the
+   sanctioned accent use; :focus-visible keeps them off mouse clicks. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+    outline: 2px solid #7fd3ff;
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+button:focus:not(:focus-visible) { outline: none; }

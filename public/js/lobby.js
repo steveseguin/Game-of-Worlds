@@ -52,6 +52,18 @@ let inviteGameId = null;
 let currentGameStatus = 'waiting';
 let currentGameStarted = false;
 const AI_DIFFICULTY_OPTIONS = ['chill', 'medium', 'aggressive'];
+// The waiting-room panel is re-rendered wholesale on every player-list update, which
+// rebuilt these selects and snapped them back to the first option. Adding three
+// aggressive opponents meant re-picking the difficulty three times. Remember the
+// choice here and mark it selected when the panel redraws. Defaults to a real match
+// rather than the alphabetically-first "chill".
+let aiChoice = { difficulty: 'medium', strategy: 'balanced' };
+document.addEventListener('change', event => {
+    const el = event.target;
+    if (!el || !el.id) return;
+    if (el.id === 'aiDifficulty') aiChoice.difficulty = el.value;
+    if (el.id === 'aiStrategy') aiChoice.strategy = el.value;
+});
 const AI_STRATEGY_OPTIONS = ['balanced', 'aggressive', 'economic'];
 const GAME_MODE_OPTIONS = [
     { value: 'quick', label: 'Quick (fast turns)' },
@@ -683,12 +695,12 @@ function renderWaitingView() {
                 <div class="ai-section-row">
                     <label>Difficulty
                         <select id="aiDifficulty" ${isLobbyReady ? '' : 'disabled'}>
-                            ${AI_DIFFICULTY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
+                            ${AI_DIFFICULTY_OPTIONS.map(opt => `<option value="${opt}"${opt === aiChoice.difficulty ? ' selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
                         </select>
                     </label>
                     <label>Strategy
                         <select id="aiStrategy" ${isLobbyReady ? '' : 'disabled'}>
-                            ${AI_STRATEGY_OPTIONS.map(opt => `<option value="${opt}">${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
+                            ${AI_STRATEGY_OPTIONS.map(opt => `<option value="${opt}"${opt === aiChoice.strategy ? ' selected' : ''}>${opt.charAt(0).toUpperCase() + opt.slice(1)}</option>`).join('')}
                         </select>
                     </label>
                     <button class="ghost" onclick="addAiPlayer()" ${isLobbyReady ? '' : 'disabled title="Waiting for lobby authentication"'}>Add AI Opponent</button>
@@ -1183,8 +1195,9 @@ function addAiPlayer() {
     }
     const diffSel = document.getElementById('aiDifficulty');
     const stratSel = document.getElementById('aiStrategy');
-    const diff = diffSel ? diffSel.value : 'medium';
-    const strat = stratSel ? stratSel.value : 'balanced';
+    const diff = diffSel ? diffSel.value : aiChoice.difficulty;
+    const strat = stratSel ? stratSel.value : aiChoice.strategy;
+    aiChoice = { difficulty: diff, strategy: strat };
     websocket.send(`//addai:${diff}:${strat}`);
     showToast(`Adding AI (${diff}/${strat})…`, 'info');
 }

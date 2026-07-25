@@ -108,7 +108,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `empire::<json>` | game | Owned sectors/buildings/fleets summary. |
 | `victoryprogress::<json>` | game | Victory progress. |
 | `mapconfig::<width>::<height>` | game | Map dimensions. |
-| `mapstate::<csv>` | game | Visible map snapshot. |
+| `mapstate::<csv>` | game | Visible map snapshot. Each entry is `id:status:fleet:type:vis:flags`; `vis` 1=live/0=memory; `flags` bitmask HOMEWORLD=1, TURRET=2, COLONY_SHIP=4, WARPGATE=8, ENEMY_FLEET=16, PROBE_LOSS=32. |
 | `sector::<sectorId>::<json>` | game | Full authoritative detail for a sector the player owns, occupies, or has just successfully probed. |
 | `sectorcontact::<sectorId>::<json>` | game | Passive one-tile sensor contact: terrain, controller, and total presence only. |
 | `sectorintel::<sectorId>::<json>` | game | Persisted, dated probe memory returned outside current live coverage. |

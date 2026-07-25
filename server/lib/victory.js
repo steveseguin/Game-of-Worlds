@@ -10,6 +10,30 @@ const raceSystem = require('./races');
 
 const DOMINATION_PERCENT = Number(process.env.VICTORY_DOMINATION_PERCENT) || 75;
 const TIME_VICTORY_TURN_LIMIT = Number(process.env.VICTORY_TIME_TURN_LIMIT) || 300;
+// A flat 300-turn limit ignores how long a turn actually lasts. At Quick's three
+// minutes that is fifteen hours for a mode the lobby sells as "one sitting"; at Epic's
+// twenty-four hours it is over two years. The only guaranteed way a match ends has to
+// scale with its own cadence.
+// Sized against expansion rate, not just wall-clock. A colony ship is 1000 metal and
+// 7 of a Tier-1 spaceport's 12 production; modelling that against observed income
+// (~60 metal/turn for one developed world, ~52 more per world after) reaches roughly
+// 14 worlds by turn 60 and 43 by turn 90. Domination wants ~45 of ~60 colonisable
+// worlds, so a limit under about 80 turns quietly deletes conquest as a victory path
+// and every match ends on score. 300 was the opposite problem — the map saturates
+// around turn 90 and the remaining 210 turns decide nothing.
+const TIME_VICTORY_TURNS_BY_MODE = Object.freeze({
+    quick: Number(process.env.VICTORY_TIME_TURNS_QUICK) || 90,   // conquest live at the wire
+    epic: Number(process.env.VICTORY_TIME_TURNS_EPIC) || 120,    // ~4 months at a turn a day
+    test: Number(process.env.VICTORY_TIME_TURNS_TEST) || 40
+});
+
+function timeVictoryTurnLimit(gameId, gameState) {
+    if (process.env.VICTORY_TIME_TURN_LIMIT) return TIME_VICTORY_TURN_LIMIT;
+    const mode = gameState && gameState.activeGames && gameState.activeGames[gameId]
+        ? gameState.activeGames[gameId].mode
+        : null;
+    return TIME_VICTORY_TURNS_BY_MODE[mode] || TIME_VICTORY_TURN_LIMIT;
+}
 
 const ACTIVE_VICTORY_KEYS = new Set([
     'DOMINATION',
@@ -60,7 +84,12 @@ const VICTORY_CONDITIONS = {
                     
                     const { total, owned } = results[0];
                     const percentage = total > 0 ? (owned / total) * 100 : 0;
-                    callback(percentage >= DOMINATION_PERCENT, percentage);
+                    // Progress is reported towards the threshold, not as a raw share
+                    // of the map, so the bar does not understate how close a win is.
+                    callback(percentage >= DOMINATION_PERCENT,
+                        DOMINATION_PERCENT > 0
+                            ? Math.min(100, (percentage / DOMINATION_PERCENT) * 100)
+                            : 0);
                 }
             );
         }
@@ -234,9 +263,10 @@ const VICTORY_CONDITIONS = {
         description: `Have the highest score after ${TIME_VICTORY_TURN_LIMIT} turns`,
         check: function(gameId, playerId, gameState, db, callback) {
             const currentTurn = gameState.turns[gameId] || 0;
-            
-            if (currentTurn < TIME_VICTORY_TURN_LIMIT) {
-                callback(false, (currentTurn / TIME_VICTORY_TURN_LIMIT) * 100);
+            const limit = timeVictoryTurnLimit(gameId, gameState);
+
+            if (currentTurn < limit) {
+                callback(false, (currentTurn / limit) * 100);
                 return;
             }
             
@@ -539,6 +569,8 @@ function getVictoryProgress(gameId, playerId, gameState, db, callback) {
 
 module.exports = {
     VICTORY_CONDITIONS,
+    TIME_VICTORY_TURNS_BY_MODE,
+    timeVictoryTurnLimit,
     checkVictoryConditions,
     checkAllPlayersForVictory,
     endGame,

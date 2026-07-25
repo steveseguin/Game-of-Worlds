@@ -5,18 +5,25 @@
     const TICK_MS = 55;
     const SILENCE = 0.0001;
     const MAX_TEMPO_MULTIPLIER = 1.06;
+    // How long before the turn ends the music may start tightening.
+    const URGENCY_WINDOW_SECONDS = 30;
 
     function calculateUrgencyTempo(secondsRemaining, turnDurationSeconds) {
         const remaining = Number(secondsRemaining);
         const duration = Number(turnDurationSeconds);
         if (!Number.isFinite(remaining) || !Number.isFinite(duration) || duration <= 0) return 1;
 
-        // Urgency is a final countdown cue, not the dominant sound of a turn.
-        // Even long turns remain musically stable until their final ten seconds.
-        const urgencyWindow = Math.min(10, duration * 0.2);
+        // Urgency should be a slow build into the closing seconds, never a mood the
+        // music sits in. The window opens at thirty seconds so the tightening is
+        // perceptible as a build rather than a twitch, but a quadratic ease keeps the
+        // first two-thirds of that window essentially inaudible — no urgency while
+        // there is nothing to be urgent about. The ceiling is unchanged.
+        // Short turns keep their proportional window so a 30s test turn does not
+        // spend its entire length in countdown.
+        const urgencyWindow = Math.min(URGENCY_WINDOW_SECONDS, duration * 0.2);
         if (urgencyWindow <= 0 || remaining >= urgencyWindow) return 1;
-        const progress = Math.max(0, Math.min(1, (urgencyWindow - Math.max(0, remaining)) / urgencyWindow));
-        return 1 + (MAX_TEMPO_MULTIPLIER - 1) * progress;
+        const linear = Math.max(0, Math.min(1, (urgencyWindow - Math.max(0, remaining)) / urgencyWindow));
+        return 1 + (MAX_TEMPO_MULTIPLIER - 1) * (linear * linear);
     }
 
     const playlists = {

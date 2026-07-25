@@ -129,7 +129,11 @@ async function createGame(page, gameName, { maxPlayers = '2', mode = 'quick', re
     await page.selectOption('#maxPlayers', String(maxPlayers));
     await page.selectOption('#gameMode', mode);
     await page.locator('#registeredOnly').setChecked(Boolean(registeredOnly));
-    await page.selectOption('#minLevel', String(minLevel));
+    // The minimum-level gate only applies to registered-only rooms, so the lobby
+    // disables it otherwise. Setting it unconditionally hangs the whole suite.
+    if (await page.locator('#minLevel').isEnabled()) {
+        await page.selectOption('#minLevel', String(minLevel));
+    }
     await page.click('#createGameBtn');
     await chooseFirstAvailableRace(page);
     await waitForMatchLobby(page);

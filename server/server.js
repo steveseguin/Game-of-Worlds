@@ -2185,6 +2185,66 @@ async function processTurnAutomation(gameId, turn) {
     await applyStandingOrdersForGame(gameId, eligible);
 }
 
+/**
+ * Tell a player when they are out.
+ *
+ * Losing your last world and your last ship leaves you with no legal move: nothing to
+ * build from, nothing to move, nothing to colonise with. The game used to just leave
+ * you sitting there watching the turn clock, with no message and no way to tell that
+ * it was over. Detect it, close the game out for that player, and let the survivors
+ * know who fell.
+ */
+async function notifyEliminatedPlayers(gameId) {
+    const tables = gameTables(gameId);
+    const state = ensureActiveGameState(gameId);
+    if (!state.eliminatedPlayers) state.eliminatedPlayers = new Set();
+
+    const [players, sectors, shipRows] = await Promise.all([
+        queryDb(`SELECT userid, is_ai FROM ${tables.players}`),
+        queryDb(`SELECT * FROM ${tables.map}`),
+        queryDb(`SELECT sectorid, owner, type, COUNT(*) as count FROM ${tables.ships} GROUP BY sectorid, owner, type`)
+            .catch(() => [])
+    ]);
+    if (!Array.isArray(players) || players.length === 0 || !Array.isArray(sectors) || sectors.length === 0) {
+        return;
+    }
+
+    const holdings = new Map();
+    sectors.forEach(sector => {
+        const owner = Number(sector.owner);
+        if (!Number.isFinite(owner) || owner <= 0) return;
+        holdings.set(owner, (holdings.get(owner) || 0) + 1);
+    });
+    const fleets = new Map();
+    (shipRows || []).forEach(row => {
+        const owner = Number(row.owner);
+        if (!Number.isFinite(owner) || owner <= 0) return;
+        fleets.set(owner, (fleets.get(owner) || 0) + (Number(row.count) || 0));
+    });
+
+    players.forEach(player => {
+        const playerId = Number(player.userid);
+        if (!Number.isFinite(playerId)) return;
+        if (state.eliminatedPlayers.has(playerId)) return;
+        if ((holdings.get(playerId) || 0) > 0 || (fleets.get(playerId) || 0) > 0) return;
+
+        state.eliminatedPlayers.add(playerId);
+        if (Number(player.is_ai) === 1) return; // nobody to tell
+
+        gameState.clients.forEach(client => {
+            if (Number(client.gameid) !== Number(gameId)) return;
+            if (Number(client.name) === playerId) {
+                client.sendUTF(`gameover::::${encodeURIComponent(
+                    'Your last world and your last ship are gone. Your empire has fallen.')}`);
+                client.gameid = null;
+            } else {
+                client.sendUTF(`systemalert::A rival empire has been wiped out of the galaxy.`);
+            }
+        });
+        db.query('UPDATE users SET currentgame = NULL WHERE id = ?', [playerId], () => {});
+    });
+}
+
 function checkVictoryForTurn(gameId) {
     return new Promise((resolve, reject) => {
         victorySystem.checkAllPlayersForVictory(gameId, gameState, db, (err, winner) => {
@@ -2248,6 +2308,8 @@ async function processTurnUnchecked(gameId, failedResolution = null) {
     }
 
     await setTurnResolutionPhase(gameId, nextTurn, 'victory');
+    await notifyEliminatedPlayers(gameId).catch(error =>
+        console.warn(`Elimination sweep failed for game ${gameId}:`, error.message || error));
     const winner = await checkVictoryForTurn(gameId);
     if (winner) {
         await queryDb(
@@ -3528,19 +3590,36 @@ function probeSector(data, connection) {
     );
 }
 
+/**
+ * The probe is gone and we still do not know what killed it — asteroid field, black
+ * hole or an enemy counter-intel net all read the same from here. Bank the location
+ * so the map can warn the commander, and say so plainly.
+ */
+function loseProbe(gameId, playerId, targetSector, connection) {
+    const repeat = getProbeLosses(gameId, playerId).has(Number(targetSector));
+    recordProbeLoss(gameId, playerId, targetSector);
+    const epilogue = repeat
+        ? 'That is another probe lost to the same sector.'
+        : `Sector ${targetSector} is now flagged probe-hostile on your map.`;
+    updateResources(connection);
+    connection.sendUTF(
+        `Error: Our probe was destroyed while entering sector ${targetSector}. `
+        + `Telemetry ended before the cause could be identified. ${epilogue}`
+    );
+    sendVisibleMapState(gameId, connection);
+}
+
 function revealProbedSector(gameId, playerId, targetSector, connection, knownSectorRows = null) {
     const processSector = sector => {
             const sectorType = Number(sector[0].type);
             const sectorOwner = sector[0].owner;
 
             if (sectorType === 2) {
-                updateResources(connection);
-                connection.sendUTF(`Error: Our probe was destroyed while entering sector ${targetSector}. Telemetry ended before the cause could be identified.`);
+                loseProbe(gameId, playerId, targetSector, connection);
                 return;
             }
             if (sectorType === 1 && Number(sectorOwner) !== Number(playerId)) {
-                updateResources(connection);
-                connection.sendUTF(`Error: Our probe was destroyed while entering sector ${targetSector}. Telemetry ended before the cause could be identified.`);
+                loseProbe(gameId, playerId, targetSector, connection);
                 return;
             }
 
@@ -3565,8 +3644,7 @@ function revealProbedSector(gameId, playerId, targetSector, connection, knownSec
                 }
 
                 if (advantage <= -COUNTERSPY_KILL_ADVANTAGE) {
-                    updateResources(connection);
-                    connection.sendUTF(`Error: Our probe was destroyed while entering sector ${targetSector}. Telemetry ended before the cause could be identified.`);
+                    loseProbe(gameId, playerId, targetSector, connection);
                     notifyPlayer(Number(sectorOwner), `Counter-intelligence: we DESTROYED an enemy probe over sector ${targetSector}.`);
                     return;
                 }
@@ -5202,6 +5280,7 @@ const MAP_FLAG_TURRET = 2;
 const MAP_FLAG_COLONY_SHIP = 4;
 const MAP_FLAG_WARPGATE = 8;
 const MAP_FLAG_ENEMY_FLEET = 16;
+const MAP_FLAG_PROBE_LOSS = 32;
 
 function sendVisibleMapState(gameId, connection) {
     const playerId = Number(connection.name);
@@ -5273,16 +5352,26 @@ function sendVisibleMapState(gameId, connection) {
 
         const entries = [];
         const newlySeen = [];
+        const probeLosses = getProbeLosses(gameId, playerId);
         sectors.forEach(sector => {
             const sectorId = Number(sector.sectorid);
             const sectorType = Number(sector.type ?? sector.sectortype) || 0;
             const isLive = live.has(sectorId);
             const isExplored = explored.has(sectorId);
-            if (!isLive && !isExplored) return; // still under fog
+            const lostProbe = probeLosses.has(sectorId);
+            if (!isLive && !isExplored) {
+                // Still fogged, but a probe died here: mark the danger, not its cause.
+                // Terrain stays 0 (unknown) so black holes keep their teeth.
+                if (lostProbe) {
+                    entries.push(`${sectorId}:hazard:0:0:0:${MAP_FLAG_PROBE_LOSS}`);
+                }
+                return;
+            }
 
             if (!isLive) {
                 // Dim memory: terrain only, no fleets, no ownership.
-                entries.push(`${sectorId}:${sectorMemoryStatus(sectorType)}:0:${sectorType}:0:0`);
+                const memoryFlags = lostProbe ? MAP_FLAG_PROBE_LOSS : 0;
+                entries.push(`${sectorId}:${sectorMemoryStatus(sectorType)}:0:${sectorType}:0:${memoryFlags}`);
                 return;
             }
 
@@ -5297,6 +5386,7 @@ function sendVisibleMapState(gameId, connection) {
             if (myColonyShips.has(sectorId)) flags |= MAP_FLAG_COLONY_SHIP;
             if (warpgateSectors.has(sectorId)) flags |= MAP_FLAG_WARPGATE;
             if (theirs > 0) flags |= MAP_FLAG_ENEMY_FLEET;
+            if (lostProbe) flags |= MAP_FLAG_PROBE_LOSS;
             const fleetShown = mine > 0 ? mine : theirs;
             entries.push(`${sectorId}:${status}:${fleetShown}:${sectorType}:1:${flags}`);
         });
@@ -5816,6 +5906,22 @@ function createAiUser(callback) {
     );
 }
 
+/**
+ * Give each AI its own faction. Every AI used to join as Terran Empire, so a game
+ * billed on twelve doctrines played out as a mirror match. Prefers a race nobody in
+ * the lobby has taken; once they are all spoken for it reuses one at random.
+ */
+function pickAiRace(takenRaceIds = []) {
+    const taken = new Set((takenRaceIds || []).map(Number).filter(Number.isFinite));
+    const roster = Object.values(raceSystem.RACE_TYPES || {})
+        .map(race => Number(race && race.id))
+        .filter(id => Number.isFinite(id) && id > 0);
+    if (roster.length === 0) return 1;
+    const available = roster.filter(id => !taken.has(id));
+    const pool = available.length > 0 ? available : roster;
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
 function deleteAiUser(userId, callback) {
     db.query('DELETE FROM user_stats WHERE user_id = ?', [userId], () => {
         db.query('DELETE FROM users WHERE id = ?', [userId], () => {
@@ -5886,9 +5992,15 @@ function handleAddAi(data, connection) {
                     return;
                 }
 
+                db.query(`SELECT race_id FROM players${gameId}`, (raceErr, raceRows) => {
+                const takenRaces = raceErr || !Array.isArray(raceRows)
+                    ? []
+                    : raceRows.map(row => Number(row.race_id)).filter(Number.isFinite);
+                const aiRace = pickAiRace(takenRaces);
+
                 db.query(
                     `INSERT INTO players${gameId} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [aiUser.id, 1, 100, 100, 50, 1, aiDifficulty, aiStrategy],
+                    [aiUser.id, aiRace, 100, 100, 50, 1, aiDifficulty, aiStrategy],
                     insertErr => {
                         if (insertErr) {
                             deleteAiUser(aiUser.id, () => {
@@ -5919,6 +6031,7 @@ function handleAddAi(data, connection) {
                         );
                     }
                 );
+                });
             });
         });
     });
@@ -6429,7 +6542,31 @@ function ensureActiveGameState(gameId) {
     if (!state.turnReady) {
         state.turnReady = new Set();
     }
+    if (!state.probeLosses) {
+        state.probeLosses = new Map();
+    }
     return state;
+}
+
+// A probe that never reports back still teaches you something: that sector eats
+// probes. We remember WHERE without disclosing WHY, so the bluff between an asteroid
+// field, a black hole and an enemy counter-intel net survives — but a commander is
+// never tricked into paying 300 crystal twice for the same silence.
+function recordProbeLoss(gameId, playerId, sectorId) {
+    const id = Number(sectorId);
+    const player = Number(playerId);
+    if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(player)) return;
+    const state = ensureActiveGameState(Number(gameId));
+    if (!state.probeLosses.has(player)) {
+        state.probeLosses.set(player, new Set());
+    }
+    state.probeLosses.get(player).add(id);
+}
+
+function getProbeLosses(gameId, playerId) {
+    const state = gameState.activeGames[Number(gameId)];
+    if (!state || !state.probeLosses) return new Set();
+    return state.probeLosses.get(Number(playerId)) || new Set();
 }
 
 function markPlayerGameActivity(connection) {
@@ -6678,19 +6815,37 @@ function connectionStub(playerId, gameId) {
     };
 }
 
+/**
+ * Run one AI order and report whether it stuck. The outcome matters: purchases are
+ * rejected for reasons the AI cannot see up front (yard capacity, race doctrine,
+ * a rival spending first), and an AI that assumes success just stops building.
+ * Resolves with { ok, message }.
+ */
 function runAiMutation(gameId, playerId, invoke) {
     return new Promise((resolve, reject) => {
         let promiseBacked = false;
         let settled = false;
+        let outcome = null;
         const finish = () => {
             if (settled) return;
             settled = true;
-            resolve();
+            resolve(outcome || { ok: false, message: '' });
         };
         const stub = connectionStub(playerId, gameId);
         stub.sendUTF = message => {
+            const text = String(message || '');
+            const verdict = /^(Success|Error):/.exec(text);
+            // AI_TRACE=1 prints every order an AI issues and how it landed. Every AI
+            // purchase funnels through here, so this is the one place that can show
+            // where an empire's income actually goes.
+            if (verdict && process.env.AI_TRACE) {
+                console.log(`[ai ${playerId}] ${text.slice(0, 90)}`);
+            }
+            if (verdict && !outcome) {
+                outcome = { ok: verdict[1] === 'Success', message: text };
+            }
             if (promiseBacked) return;
-            if (/^(?:Success|Error):/.test(String(message || ''))) finish();
+            if (verdict) finish();
         };
         try {
             const result = invoke(stub);
@@ -6808,11 +6963,30 @@ async function triggerAiTurn(gameId, eligiblePlayerIds = null) {
     }));
 }
 
+// How hard an AI plays. Difficulty was previously stored, shown in the lobby and
+// passed around without ever changing behaviour; these knobs are what it now buys.
+const AI_DIFFICULTY_PROFILES = Object.freeze({
+    chill: Object.freeze({ shipsPerTurn: 1, metalReserve: 600, harass: false }),
+    medium: Object.freeze({ shipsPerTurn: 2, metalReserve: 300, harass: false }),
+    aggressive: Object.freeze({ shipsPerTurn: 4, metalReserve: 120, harass: true })
+});
+
+function aiDifficultyProfile(difficulty) {
+    return AI_DIFFICULTY_PROFILES[normalizeAiDifficulty(difficulty)] || AI_DIFFICULTY_PROFILES.medium;
+}
+
+// Heaviest hull first: the AI trades up as its shipyards and spaceport allow.
+const AI_WARSHIP_PREFERENCE = Object.freeze(
+    ['DREADNOUGHT', 'CARRIER', 'BATTLESHIP', 'INTRUDER', 'CRUISER', 'DESTROYER', 'FRIGATE']
+        .map(key => combatSystem.SHIP_TYPES[key])
+        .filter(Boolean)
+);
+
 async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 'balanced') {
     const strat = (strategy || 'balanced').toLowerCase();
-    const aggressiveness = strat === 'aggressive' ? 1.2 : strat === 'chill' ? 0.6 : 1.0;
+    const profile = aiDifficultyProfile(difficulty);
     const rows = await queryDb(
-        `SELECT userid, homeworld, currentsector, metal, crystal, research, tech FROM players${gameId} WHERE userid = ? LIMIT 1`,
+        `SELECT userid, race_id, homeworld, currentsector, metal, crystal, research, tech FROM players${gameId} WHERE userid = ? LIMIT 1`,
         [playerId]
     );
     if (!rows || rows.length === 0) return;
@@ -6861,8 +7035,6 @@ async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 
         }
 
         const scoutCost = combatSystem.SHIP_TYPES.SCOUT.cost;
-        const frigateCost = combatSystem.SHIP_TYPES.FRIGATE.cost;
-        const destroyerCost = combatSystem.SHIP_TYPES.DESTROYER.cost;
         const colonyCost = combatSystem.SHIP_TYPES.COLONY_SHIP.cost;
 
         const shipRows = await queryDb(
@@ -6879,25 +7051,65 @@ async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 
             [playerId, COLONY_SHIP_ID]
         );
         const colonyCount = (colonyRows && colonyRows[0] && colonyRows[0].count) || 0;
-        if (colonyCount === 0 && budget >= colonyCost.metal + 400) {
-            await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${COLONY_SHIP_ID}`, stub));
-            budget -= colonyCost.metal;
+
+        // Expansion is the AI's first call on the treasury. Measured over 60 turns, AI
+        // empires sat at ~500 metal with no colony ship while a dozen settleable worlds
+        // went unclaimed: buildings, spaceport upgrades and warships each took their cut
+        // before this check, and the 1400-metal cushion it demanded was never reached.
+        // They colonised exactly once per match and then stopped for good.
+        // Count settleable worlds with a query shape the whole stack supports. A
+        // COUNT(*) with a WHERE clause is unhandled by the mock database, and the
+        // .catch() below turned that into a silent zero — which disabled the expansion
+        // reserve entirely and let the AI spend every coin on frigates instead. The
+        // symptom was an empire frozen at two worlds for 150 turns.
+        const openWorldRows = await queryDb(`SELECT * FROM map${gameId}`, []).catch(() => []);
+        const unclaimedWorlds = (openWorldRows || []).filter(row => {
+            const type = Number(row.type);
+            return !row.owner && type >= 6 && type <= 9;
+        }).length;
+        const colonyCushion = unclaimedWorlds > 0 ? 0 : 400;
+        if (colonyCount === 0 && budget >= colonyCost.metal + colonyCushion) {
+            const bought = await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${COLONY_SHIP_ID}`, stub));
+            if (bought.ok) budget -= colonyCost.metal;
         }
         if (!shipCounts[SCOUT_SHIP_ID] && budget >= scoutCost.metal + 200) {
-            await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${SCOUT_SHIP_ID}`, stub));
-            budget -= scoutCost.metal;
+            const bought = await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${SCOUT_SHIP_ID}`, stub));
+            if (bought.ok) budget -= scoutCost.metal;
         }
-        if (budget >= destroyerCost.metal * (2 - aggressiveness)) {
-            await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${combatSystem.SHIP_TYPES.DESTROYER.id}`, stub));
-            budget -= destroyerCost.metal;
-        } else if (budget >= frigateCost.metal * (2 - aggressiveness)) {
-            await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${combatSystem.SHIP_TYPES.FRIGATE.id}`, stub));
-            budget -= frigateCost.metal;
+
+        // Warships. Only hulls this empire can actually field are attempted, so the
+        // AI never burns its whole turn on a Dreadnought its yard will refuse — and a
+        // rejection steps down to the next hull instead of ending production.
+        const buildableHulls = AI_WARSHIP_PREFERENCE.filter(hull => {
+            const yardsNeeded = techSystem.shipyardLevelRequired(hull.id);
+            if (shipyards < yardsNeeded) return false;
+            if (portLevel < yardsNeeded + 1) return false;
+            return raceSystem.canRaceBuildShip(player.race_id, hull.id);
+        });
+        const expansionReserve = (colonyCount === 0 && unclaimedWorlds > 0)
+            ? colonyCost.metal + 200
+            : 0;
+        const shipBudgetFloor = (strat === 'economic'
+            ? profile.metalReserve * 2
+            : profile.metalReserve) + expansionReserve;
+        let shipsAllowed = profile.shipsPerTurn
+            + (strat === 'aggressive' ? 1 : 0)
+            - (strat === 'economic' ? 1 : 0);
+        shipsAllowed = Math.max(1, shipsAllowed);
+
+        while (shipsAllowed > 0) {
+            const hull = buildableHulls.find(candidate =>
+                budget - (candidate.cost.metal || 0) >= shipBudgetFloor);
+            if (!hull) break;
+            const bought = await runAiMutation(gameId, playerId, stub => buyShip(`//buyship:${hull.id}`, stub));
+            if (!bought.ok) break; // out of yard capacity or resources this turn
+            budget -= hull.cost.metal || 0;
+            shipsAllowed -= 1;
         }
     }
 
     await handleAiExpansion(gameId, playerId, homeworld);
-    if (strat === 'aggressive') {
+    if (strat === 'aggressive' || profile.harass) {
         await handleAiHarass(gameId, playerId, homeworld);
     }
     await aiResearchAndDefend(gameId, playerId, strat);
@@ -6992,7 +7204,7 @@ async function handleAiHarass(gameId, playerId, homeSector) {
 
 async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
     const rows = await queryDb(
-        `SELECT research, tech, homeworld, metal FROM players${gameId} WHERE userid = ? LIMIT 1`,
+        `SELECT research, tech, homeworld, metal, race_id FROM players${gameId} WHERE userid = ? LIMIT 1`,
         [playerId]
     );
     if (!rows || rows.length === 0) return;
@@ -7004,10 +7216,42 @@ async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
     // Strategy-flavored research priorities; fall back to anything affordable.
     const priorityByStrategy = {
         aggressive: ['MILITARY_SHIPYARDS', 'LASER_WEAPONS', 'REINFORCED_HULLS', 'METAL_EXTRACTION', 'ROCKETRY', 'DEFLECTOR_SHIELDS'],
-        defensive: ['ORBITAL_ENGINEERING', 'DEFLECTOR_SHIELDS', 'REINFORCED_HULLS', 'METAL_EXTRACTION', 'COUNTER_INTEL', 'MILITARY_SHIPYARDS'],
+        economic: ['METAL_EXTRACTION', 'CRYSTAL_REFINING', 'RESEARCH_NETWORKS', 'TERRAFORMING', 'ORBITAL_ENGINEERING', 'MILITARY_SHIPYARDS'],
         balanced: ['METAL_EXTRACTION', 'MILITARY_SHIPYARDS', 'CRYSTAL_REFINING', 'TERRAFORMING', 'LASER_WEAPONS', 'RESEARCH_NETWORKS']
     };
-    const priorities = priorityByStrategy[strategy] || priorityByStrategy.balanced;
+    let priorities = priorityByStrategy[strategy] || priorityByStrategy.balanced;
+    let saveForTerraform = false;
+
+    // Blocked expansion outranks every other research goal. Measured over 150 turns:
+    // once the terraform-0 worlds are claimed, every remaining world needs Terraforming
+    // and an AI sits on an idle colony ship forever — aggressive empires never had
+    // TERRAFORMING in their list at all. If we are holding a colony ship with nowhere
+    // to put it, unblock that before buying another weapon.
+    const blockedRows = await queryDb(
+        `SELECT id, sectorid FROM ships${gameId} WHERE owner = ? AND type = ? LIMIT 1`,
+        [playerId, COLONY_SHIP_ID]
+    ).catch(() => []);
+    if (blockedRows && blockedRows.length > 0) {
+        const worldRows = await queryDb(`SELECT * FROM map${gameId}`, []).catch(() => []);
+        const terraform = techSystem.aggregateEffects(levels).terraform;
+        const settleableNow = (worldRows || []).some(row => {
+            const type = Number(row.type);
+            return !row.owner && type >= 6 && type <= 9 && (Number(row.terraformlvl) || 0) <= terraform;
+        });
+        if (!settleableNow) {
+            priorities = ['TERRAFORMING', ...priorities];
+            // Promoting it is not enough on its own: if Terraforming is unaffordable
+            // this turn the loop below simply falls through to something cheaper, and
+            // the empire never accumulates the 140+ points to unblock itself. Only
+            // save when affordability is the ONLY obstacle — never stall behind a tech
+            // this race cannot research or has already maxed.
+            const terraform = techSystem.TECHNOLOGIES.TERRAFORMING;
+            const level = techSystem.getLevel(levels, terraform.id);
+            const cap = raceSystem.getTechLevelCap(player.race_id, terraform);
+            const prerequisitesMet = techSystem.missingRequirements(terraform, levels).length === 0;
+            saveForTerraform = prerequisitesMet && level < Math.min(terraform.maxLevel, cap);
+        }
+    }
 
     let pick = null;
     for (const key of priorities) {
@@ -7015,6 +7259,11 @@ async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
             pick = techSystem.TECHNOLOGIES[key];
             break;
         }
+    }
+    // Banking towards the tech that unblocks expansion: spending on a cheaper
+    // substitute now is what kept the AI permanently one purchase short.
+    if (saveForTerraform && (!pick || pick.key !== 'TERRAFORMING')) {
+        return;
     }
     if (!pick) {
         pick = Object.values(techSystem.TECHNOLOGIES)
@@ -7092,6 +7341,7 @@ module.exports = {
     setStandingOrders,
     applyStandingOrdersForPlayer,
     triggerAiTurn,
+    notifyEliminatedPlayers,
     computeBattlePlaybackMs,
     isTurnProcessing,
     isBattlePauseActive,

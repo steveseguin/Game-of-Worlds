@@ -47,16 +47,6 @@ import * as THREE from './vendor/three.module.min.js';
         [STATUS.FLEET]: 0x3fc1c9
     };
 
-    // Sector type → planet texture (public/images/planetN.jpg).
-    const TYPE_TEXTURES = {
-        5: 'images/planet1.jpg',
-        6: 'images/planet2.jpg',
-        7: 'images/planet4.jpg',
-        8: 'images/planet6.jpg',
-        9: 'images/planet8.jpg',
-        10: 'images/planet10.jpg'
-    };
-
     const HEX_SIZE = 1;
     const HORIZ = HEX_SIZE * 1.5;
     const VERT = HEX_SIZE * Math.sqrt(3);
@@ -82,10 +72,15 @@ import * as THREE from './vendor/three.module.min.js';
         center: new THREE.Vector3(),
         camTarget: new THREE.Vector3(),
         camOffset: new THREE.Vector3(),
+        // HUD panels overlap the viewport (build pad bottom-left, minimap bottom-right,
+        // status bars up top). These insets describe the clear band inside the canvas so
+        // the focused sector lands somewhere the player can actually see it.
+        safeInset: { left: 0, right: 0, top: 0, bottom: 0 },
+        frameOffset: new THREE.Vector3(),
         drag: null,
         clock: new THREE.Clock(),
         animHandle: null,
-        textureLoader: new THREE.TextureLoader()
+        // Every map texture is generated at runtime; no image files to fetch.
     };
 
     function sectorPosition(id) {
@@ -97,36 +92,217 @@ import * as THREE from './vendor/three.module.min.js';
         return new THREE.Vector3(x, 0, z);
     }
 
-    function getTexture(path) {
-        if (!state.textures.has(path)) {
-            const tex = state.textureLoader.load(path);
-            tex.colorSpace = THREE.SRGBColorSpace;
-            state.textures.set(path, tex);
-        }
-        return state.textures.get(path);
-    }
-
-    function makeBadgeTexture(text, borderColor) {
+    /**
+     * Fleet-strength pill: a drawn ship chevron plus the count. The glyph is painted
+     * rather than typed so it cannot fall back to a tofu box on a machine without the
+     * dingbat font.
+     */
+    function makeBadgeTexture(count, hostile) {
         const canvas = document.createElement('canvas');
         canvas.width = 128;
         canvas.height = 64;
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = 'rgba(10,14,28,0.85)';
-        ctx.strokeStyle = borderColor || 'rgba(120,180,255,0.9)';
+        const accent = hostile ? 'rgba(255,110,110,0.95)' : 'rgba(120,200,255,0.95)';
+
+        ctx.fillStyle = hostile ? 'rgba(38,12,16,0.88)' : 'rgba(10,18,34,0.88)';
+        ctx.strokeStyle = accent;
         ctx.lineWidth = 4;
-        const r = 18;
         ctx.beginPath();
-        ctx.roundRect(4, 4, 120, 56, r);
+        ctx.roundRect(4, 8, 120, 48, 16);
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = '#dce6ff';
-        ctx.font = 'bold 30px "Segoe UI", sans-serif';
-        ctx.textAlign = 'center';
+
+        // Ship chevron.
+        ctx.fillStyle = accent;
+        ctx.beginPath();
+        ctx.moveTo(30, 20);
+        ctx.lineTo(44, 32);
+        ctx.lineTo(30, 44);
+        ctx.lineTo(35, 32);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = hostile ? '#ffd9d9' : '#e4efff';
+        ctx.font = 'bold 30px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(text, 64, 34);
+        ctx.fillText(String(count), 56, 33);
+
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = THREE.SRGBColorSpace;
         return tex;
+    }
+
+    // ------------------------------------------------------------------
+    // Procedural worlds
+    //
+    // The shipped planet JPEGs are photographs on black backgrounds. Wrapped onto a
+    // sphere as an equirectangular map, the black surround becomes most of the globe —
+    // which is why "temperate" worlds rendered as unreadable dark blobs next to empty
+    // space. These generators paint proper seamless equirectangular maps instead, and
+    // give each sector type a colour identity a player can read at a glance.
+    // ------------------------------------------------------------------
+
+    // Each grade of world gets a colour identity strong enough to read at map zoom,
+    // where a planet is only ~40px across. Hue carries the meaning: grey = dead,
+    // orange = marginal, green = temperate, blue = ocean, violet = exotic.
+    const PLANET_STYLES = {
+        // 5: scorched dead rock — no atmosphere, no colour, nothing to settle.
+        5: { deep: [56, 51, 48], mid: [98, 88, 80], high: [146, 132, 118], cap: [168, 164, 160], capSize: 0.04, clouds: 0, bands: 0.2, blobs: 36, atmo: null },
+        // 6: marginal rust world — the cheapest colony target, unmistakably arid.
+        6: { deep: [92, 36, 18], mid: [162, 76, 30], high: [214, 134, 62], cap: [232, 214, 190], capSize: 0.08, clouds: 0.06, bands: 0.24, blobs: 32, atmo: [232, 128, 56] },
+        // 7: temperate — the workhorse colony. Land dominates; only a little water.
+        7: { deep: [30, 76, 52], mid: [72, 132, 56], high: [168, 176, 86], cap: [226, 238, 246], capSize: 0.11, clouds: 0.14, bands: 0.1, blobs: 30, atmo: [140, 226, 140] },
+        // 8: ocean garden world — deep blue seas, bright shallows, heavy weather.
+        8: { deep: [8, 44, 104], mid: [22, 104, 190], high: [64, 196, 208], cap: [240, 248, 255], capSize: 0.16, clouds: 0.5, bands: 0.05, blobs: 18, atmo: [96, 190, 255] },
+        // 9: exotic high-yield world — banded, luminous, plainly not natural.
+        9: { deep: [58, 22, 96], mid: [144, 48, 186], high: [64, 214, 206], cap: [226, 206, 255], capSize: 0.06, clouds: 0.18, bands: 0.55, blobs: 26, atmo: [206, 118, 255] },
+        // 10: homeworld — earthlike, but warmer and richer than anything else nearby.
+        10: { deep: [14, 62, 122], mid: [46, 136, 132], high: [126, 190, 84], cap: [255, 253, 246], capSize: 0.15, clouds: 0.34, bands: 0.05, blobs: 26, atmo: [255, 206, 128] }
+    };
+
+    /** Deterministic PRNG so a given world looks the same on every render. */
+    function seededRandom(seed) {
+        let a = (seed >>> 0) || 1;
+        return function next() {
+            a += 0x6D2B79F5;
+            let t = a;
+            t = Math.imul(t ^ (t >>> 15), t | 1);
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
+    function rgba(c, alpha) {
+        return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})`;
+    }
+
+    /**
+     * Paint a seamless equirectangular planet map. Blobs are drawn three times
+     * (x-512, x, x+512) so the seam matches, and widened towards the poles to cancel
+     * the horizontal squeeze equirectangular mapping applies there.
+     */
+    function makePlanetTexture(type, variant) {
+        const style = PLANET_STYLES[type] || PLANET_STYLES[7];
+        const W = 512;
+        const H = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        const rand = seededRandom(type * 7919 + variant * 104729 + 17);
+
+        ctx.fillStyle = rgba(style.deep, 1);
+        ctx.fillRect(0, 0, W, H);
+
+        // Latitude banding — gas-giant striping for the exotic worlds, a faint
+        // climate gradient for the rest.
+        const bandCount = 7 + Math.floor(rand() * 5);
+        for (let i = 0; i < bandCount; i++) {
+            const y = (i / bandCount) * H;
+            const height = (H / bandCount) * (0.5 + rand() * 0.8);
+            ctx.fillStyle = rgba(i % 2 ? style.mid : style.high, style.bands * (0.4 + rand() * 0.6));
+            ctx.fillRect(0, y, W, height);
+        }
+
+        const blob = (cx, cy, r, colour, alpha) => {
+            // Near the poles a degree of longitude is a shorter arc, so stretch.
+            const lat = (cy / H - 0.5) * Math.PI;
+            const stretch = 1 / Math.max(0.22, Math.cos(lat));
+            for (const offset of [-W, 0, W]) {
+                const grad = ctx.createRadialGradient(cx + offset, cy, 0, cx + offset, cy, r);
+                grad.addColorStop(0, rgba(colour, alpha));
+                grad.addColorStop(0.62, rgba(colour, alpha * 0.72));
+                grad.addColorStop(1, rgba(colour, 0));
+                ctx.save();
+                ctx.translate(cx + offset, cy);
+                ctx.scale(stretch, 1);
+                ctx.translate(-(cx + offset), -cy);
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(cx + offset, cy, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        };
+
+        // Continents / terrain masses.
+        for (let i = 0; i < style.blobs; i++) {
+            const cx = rand() * W;
+            const cy = H * (0.12 + rand() * 0.76);
+            const r = 14 + rand() * 46;
+            blob(cx, cy, r, rand() > 0.45 ? style.mid : style.high, 0.55 + rand() * 0.4);
+        }
+        // A second, tighter pass adds coastline detail rather than flat shapes.
+        for (let i = 0; i < style.blobs; i++) {
+            const cx = rand() * W;
+            const cy = H * (0.1 + rand() * 0.8);
+            blob(cx, cy, 5 + rand() * 16, style.high, 0.25 + rand() * 0.35);
+        }
+
+        // Polar caps.
+        if (style.capSize > 0) {
+            const capH = H * style.capSize;
+            [0, 1].forEach(pole => {
+                const grad = pole
+                    ? ctx.createLinearGradient(0, H, 0, H - capH * 1.8)
+                    : ctx.createLinearGradient(0, 0, 0, capH * 1.8);
+                grad.addColorStop(0, rgba(style.cap, 0.95));
+                grad.addColorStop(0.45, rgba(style.cap, 0.5));
+                grad.addColorStop(1, rgba(style.cap, 0));
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, pole ? H - capH * 1.8 : 0, W, capH * 1.8);
+            });
+        }
+
+        // Cloud deck.
+        if (style.clouds > 0) {
+            const cloudCount = Math.round(30 * style.clouds) + 6;
+            for (let i = 0; i < cloudCount; i++) {
+                const cx = rand() * W;
+                const cy = H * (0.08 + rand() * 0.84);
+                blob(cx, cy, 10 + rand() * 34, [255, 255, 255], 0.10 + rand() * 0.22 * style.clouds * 2);
+            }
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.anisotropy = 4;
+        return tex;
+    }
+
+    /** Soft limb glow: clear at the centre so the planet shows through, bright at the rim. */
+    function getAtmosphereTexture(colour) {
+        const key = `atmo:${colour.join(',')}`;
+        if (state.textures.has(key)) return state.textures.get(key);
+        const size = 128;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.16, size / 2, size / 2, size / 2);
+        grad.addColorStop(0, rgba(colour, 0));
+        grad.addColorStop(0.62, rgba(colour, 0.02));
+        grad.addColorStop(0.78, rgba(colour, 0.42));
+        grad.addColorStop(0.87, rgba(colour, 0.20));
+        grad.addColorStop(1, rgba(colour, 0));
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, size, size);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        state.textures.set(key, tex);
+        return tex;
+    }
+
+    function getPlanetTexture(type, sectorId) {
+        // Three variants per type: worlds of a kind stay recognisable, but no two
+        // neighbours are literally identical.
+        const variant = Math.abs(Number(sectorId) || 0) % 3;
+        const key = `planet:${type}:${variant}`;
+        if (!state.textures.has(key)) {
+            state.textures.set(key, makePlanetTexture(type, variant));
+        }
+        return state.textures.get(key);
     }
 
     function makeSwirlTexture() {
@@ -135,17 +311,21 @@ import * as THREE from './vendor/three.module.min.js';
         const ctx = canvas.getContext('2d');
         const cx = 128;
         ctx.translate(cx, cx);
-        for (let arm = 0; arm < 3; arm++) {
-            ctx.rotate((Math.PI * 2) / 3);
+        for (let arm = 0; arm < 4; arm++) {
+            ctx.rotate((Math.PI * 2) / 4);
             for (let i = 0; i < 60; i++) {
                 const t = i / 60;
                 const angle = t * Math.PI * 2.2;
                 const radius = 20 + t * 100;
                 const px = Math.cos(angle) * radius;
                 const py = Math.sin(angle) * radius;
-                ctx.fillStyle = `rgba(${150 + t * 105}, ${120 + t * 60}, 255, ${0.5 * (1 - t)})`;
+                // A black hole annihilates any fleet that enters it, so it has to be the
+                // most unmistakable thing on the board. The old accretion disc was a
+                // faint dotted ring — a black circle on a dark tile, easy to read as
+                // empty space at map zoom. Hotter, denser, and brighter towards the core.
+                ctx.fillStyle = `rgba(${205 + t * 50}, ${140 + t * 80}, 255, ${0.85 * (1 - t * 0.75)})`;
                 ctx.beginPath();
-                ctx.arc(px, py, 5 * (1 - t) + 1, 0, Math.PI * 2);
+                ctx.arc(px, py, 7 * (1 - t) + 1.6, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
@@ -159,14 +339,18 @@ import * as THREE from './vendor/three.module.min.js';
         canvas.width = canvas.height = 192;
         const ctx = canvas.getContext('2d');
         const gradient = ctx.createRadialGradient(96, 96, 14, 96, 96, 96);
-        gradient.addColorStop(0, 'rgba(88, 103, 143, 0.42)');
-        gradient.addColorStop(0.55, 'rgba(38, 50, 82, 0.34)');
-        gradient.addColorStop(1, 'rgba(6, 10, 24, 0.08)');
+        // Unexplored space still has to be SEEN. These stops were dark enough that,
+        // multiplied by a near-black tile colour over a near-black starfield, ~100 of
+        // the 112 tiles rendered as literally nothing — the main map showed the player
+        // no galaxy shape at all and pushed them to read the tiny minimap instead.
+        gradient.addColorStop(0, 'rgba(150, 170, 220, 0.62)');
+        gradient.addColorStop(0.55, 'rgba(96, 116, 168, 0.5)');
+        gradient.addColorStop(1, 'rgba(44, 58, 96, 0.3)');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 192, 192);
 
         for (let i = 0; i < 240; i++) {
-            const alpha = 0.04 + Math.random() * 0.16;
+            const alpha = 0.06 + Math.random() * 0.2;
             const radius = 1 + Math.random() * 8;
             ctx.fillStyle = `rgba(190, 210, 255, ${alpha})`;
             ctx.beginPath();
@@ -221,25 +405,50 @@ import * as THREE from './vendor/three.module.min.js';
 
     function buildPlanet(entry) {
         const group = new THREE.Group();
-        const texPath = TYPE_TEXTURES[entry.type] || TYPE_TEXTURES[8];
-        const radius = entry.type === 10 ? 0.52 : 0.3 + (Math.max(5, Math.min(10, entry.type || 8)) - 5) * 0.05;
+        const type = Math.max(5, Math.min(10, Number(entry.type) || 8));
+        const style = PLANET_STYLES[type] || PLANET_STYLES[7];
+        // Richer worlds are visibly bigger, so value reads before you click.
+        const radius = type === 10 ? 0.52 : 0.3 + (type - 5) * 0.05;
         const sphere = new THREE.Mesh(
             state.sharedGeo.planet,
-            new THREE.MeshStandardMaterial({ map: getTexture(texPath), roughness: 0.9, metalness: 0.05 })
+            new THREE.MeshStandardMaterial({
+                map: getPlanetTexture(type, entry.id),
+                roughness: 0.82,
+                metalness: 0.04
+            })
         );
         sphere.scale.setScalar(radius);
         sphere.position.y = 0.55;
-        sphere.userData.spin = 0.12 + Math.random() * 0.12;
+        sphere.userData.spin = 0.1 + ((Number(entry.id) || 0) % 7) * 0.02;
         group.add(sphere);
 
+        // Atmospheric rim. A back-face shell alone reads as a flat grey bubble because
+        // every point of the far hemisphere is lit the same; a radial sprite that is
+        // transparent in the middle and bright at the limb gives an actual halo.
+        if (style.atmo) {
+            const atmosphere = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: getAtmosphereTexture(style.atmo),
+                transparent: true,
+                opacity: 0.55,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            }));
+            const halo = radius * 3.1;
+            atmosphere.scale.set(halo, halo, 1);
+            atmosphere.position.y = 0.55;
+            group.add(atmosphere);
+        }
+
         if (entry.status === STATUS.HOMEWORLD) {
+            // A slim orbital band, not a wide disc: the tile is already gold and the
+            // selection ring sits on top of it, so this only needs to whisper.
             const halo = new THREE.Mesh(
                 state.sharedGeo.ring,
-                new THREE.MeshBasicMaterial({ color: 0xffc04d, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false })
+                new THREE.MeshBasicMaterial({ color: 0xffc04d, transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false })
             );
-            halo.rotation.x = -Math.PI / 2;
+            halo.rotation.x = -Math.PI / 2.6;
             halo.position.y = 0.55;
-            halo.scale.setScalar(radius * 2.1);
+            halo.scale.setScalar(radius * 1.7);
             group.add(halo);
         }
         return group;
@@ -268,6 +477,7 @@ import * as THREE from './vendor/three.module.min.js';
         );
         disc.rotation.x = -Math.PI / 2.25;
         disc.position.y = 0.55;
+        disc.scale.setScalar(1.25);
         disc.userData.spin = -1.4;
         group.add(disc);
         return group;
@@ -292,25 +502,50 @@ import * as THREE from './vendor/three.module.min.js';
         return group;
     }
 
-    function buildStar(color) {
+    function buildStar(colorHex, rgbColour) {
         const group = new THREE.Group();
         const star = new THREE.Mesh(
             state.sharedGeo.planet,
-            new THREE.MeshBasicMaterial({ color })
+            new THREE.MeshBasicMaterial({ color: colorHex })
         );
         star.scale.setScalar(0.34);
         star.position.y = 0.55;
         star.userData.pulse = true;
         group.add(star);
-        const glow = new THREE.Mesh(
-            state.sharedGeo.ring,
-            new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending })
-        );
-        glow.rotation.x = -Math.PI / 2;
+        // A star should bloom, not sit inside a flat torus. Same limb-glow sprite the
+        // habitable worlds use, tuned brighter and wider.
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: getStarGlowTexture(rgbColour),
+            transparent: true,
+            opacity: 0.85,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        }));
+        glow.scale.set(1.7, 1.7, 1);
         glow.position.y = 0.55;
-        glow.scale.setScalar(0.9);
         group.add(glow);
         return group;
+    }
+
+    /** Bright core falling off to nothing — a corona rather than a ring. */
+    function getStarGlowTexture(colour) {
+        const key = `star:${colour.join(',')}`;
+        if (state.textures.has(key)) return state.textures.get(key);
+        const size = 128;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        grad.addColorStop(0, rgba(colour, 0.55));
+        grad.addColorStop(0.28, rgba(colour, 0.34));
+        grad.addColorStop(0.58, rgba(colour, 0.12));
+        grad.addColorStop(1, rgba(colour, 0));
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, size, size);
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        state.textures.set(key, tex);
+        return tex;
     }
 
     function rebuildContent(entry) {
@@ -324,9 +559,9 @@ import * as THREE from './vendor/three.module.min.js';
         } else if (entry.type === 1) {
             content = buildAsteroids();
         } else if (entry.type === 3) {
-            content = buildStar(0xff8c42);
+            content = buildStar(0xff8c42, [255, 140, 66]);
         } else if (entry.type === 4) {
-            content = buildStar(0xb5651d);
+            content = buildStar(0xd8802f, [216, 128, 47]);
         } else if (entry.type >= 5 && entry.type <= 10) {
             content = buildPlanet(entry);
         } else if (entry.status === STATUS.HOMEWORLD || entry.status === STATUS.OWNED ||
@@ -356,7 +591,11 @@ import * as THREE from './vendor/three.module.min.js';
 
         if (!entry.tileMaterial) {
             entry.tileMaterial = new THREE.MeshStandardMaterial({
-                color: 0x10131f,
+                // Explored space must never read as dimmer than fog. Brightening the
+                // fog earlier inverted that: a known-but-empty sector at 0x10131f sat
+                // darker than the unexplored tiles around it, so the map implied you
+                // knew less about the places you had actually been.
+                color: 0x232a45,
                 roughness: 0.85,
                 metalness: 0.15,
                 transparent: true,
@@ -364,7 +603,9 @@ import * as THREE from './vendor/three.module.min.js';
             });
         }
         entry.tileMaterial.emissive = new THREE.Color(color);
-        entry.tileMaterial.emissiveIntensity = entry.status === STATUS.UNKNOWN ? 0.12 : 0.4;
+        // Explored-but-unclaimed tiles carried almost no emissive lift, which is what
+        // let them fall behind the fog. They stay quieter than owned space, but present.
+        entry.tileMaterial.emissiveIntensity = entry.status === STATUS.UNKNOWN ? 0.3 : 0.4;
         entry.tileMaterial.opacity = entry.live ? 0.92 : 0.5;
         entry.tile.material = entry.tileMaterial;
         entry.tile.visible = true;
@@ -380,12 +621,16 @@ import * as THREE from './vendor/three.module.min.js';
         if (entry.fleetSize > 0) {
             const enemyFleet = (entry.flags & 16) !== 0;
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-                map: makeBadgeTexture(`⚔ ${entry.fleetSize}`, enemyFleet ? 'rgba(255,90,90,0.95)' : undefined),
+                map: makeBadgeTexture(entry.fleetSize, enemyFleet),
                 transparent: true,
                 depthWrite: false
             }));
-            sprite.scale.set(0.9, 0.45, 1);
-            sprite.position.set(0, 1.35, 0);
+            // Upper-right of this tile's own footprint. The old badge floated a full hex
+            // above the planet and printed itself across the neighbour to the north.
+            sprite.scale.set(0.56, 0.28, 1);
+            sprite.position.set(0.46, 0.52, -0.22);
+            sprite.renderOrder = 6;
+            sprite.material.depthTest = false;
             entry.group.add(sprite);
             entry.badge = sprite;
         }
@@ -418,8 +663,12 @@ import * as THREE from './vendor/three.module.min.js';
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
             map: tex,
             transparent: true,
-            depthWrite: false
+            depthWrite: false,
+            // Sector numbers must stay readable. Without this, asteroid rocks and the
+            // planet itself bury the label for exactly the tiles you most want to name.
+            depthTest: false
         }));
+        sprite.renderOrder = 5;
         sprite.scale.set(0.95, 0.36, 1);
         sprite.position.set(0, 0.22, 0.55);
         entry.group.add(sprite);
@@ -579,6 +828,7 @@ import * as THREE from './vendor/three.module.min.js';
         state.scene.add(group);
         state.fleetMoves.push({
             group,
+            toId: Number(toId),
             from: from.group.position.clone().setY(0.6),
             to: to.group.position.clone().setY(0.6),
             time: 0,
@@ -641,6 +891,7 @@ import * as THREE from './vendor/three.module.min.js';
         state.renderer.setSize(w, h, false);
         state.camera.aspect = w / h;
         state.camera.updateProjectionMatrix();
+        updateFrameOffset();
     }
 
     function fitCamera() {
@@ -653,6 +904,119 @@ import * as THREE from './vendor/three.module.min.js';
         const dist = Math.max(distForDepth, distForWidth) * 1.02;
         state.camOffset.set(0, dist * 0.92, dist * 0.5);
         state.zoom = 1;
+        updateFrameOffset();
+    }
+
+    // Largest inset we will honour on any one edge. The build pad and minimap between
+    // them cover nearly half the viewport height, and taking that literally would leave
+    // a letterbox too thin to frame anything in. They only cover the bottom CORNERS —
+    // the middle of the lower canvas stays clear — so cap the correction.
+    const MAX_SAFE_INSET_RATIO = 0.22;
+
+    /** The clear rectangle inside the canvas, with per-edge insets capped. */
+    function safeRect() {
+        const rect = state.container.getBoundingClientRect();
+        const w = Math.max(1, rect.width);
+        const h = Math.max(1, rect.height);
+        const maxX = w * MAX_SAFE_INSET_RATIO;
+        const maxY = h * MAX_SAFE_INSET_RATIO;
+        const left = Math.min(state.safeInset.left, maxX);
+        const right = Math.min(state.safeInset.right, maxX);
+        const top = Math.min(state.safeInset.top, maxY);
+        const bottom = Math.min(state.safeInset.bottom, maxY);
+        return {
+            w,
+            h,
+            left,
+            top,
+            usableW: Math.max(120, w - left - right),
+            usableH: Math.max(120, h - top - bottom)
+        };
+    }
+
+    /**
+     * Work out how far to slide the rendered world so the camera target appears in the
+     * middle of the un-occluded band rather than the middle of the canvas. The camera
+     * looks along -Z with a fixed downward tilt, so screen-right is world +X and
+     * screen-down is world +Z, stretched by the tilt.
+     */
+    function updateFrameOffset() {
+        state.frameOffset.set(0, 0, 0);
+        if (!state.camera || !state.container) return;
+        const { w, h, left, top, usableW, usableH } = safeRect();
+        // Where the clear band's centre sits, in -1..1 clip space.
+        const ndcX = ((left + usableW / 2) - w / 2) / (w / 2);
+        const ndcY = ((top + usableH / 2) - h / 2) / (h / 2);
+        if (!ndcX && !ndcY) return;
+
+        const fov = state.camera.fov * (Math.PI / 180);
+        const aspect = state.camera.aspect || (w / h);
+        const dist = state.camOffset.length() * (state.zoom || 1);
+        const halfH = Math.tan(fov / 2) * dist;
+        const halfW = halfH * aspect;
+        // The ground plane is viewed at an angle, so a screen-vertical step covers more
+        // world depth than it would head-on.
+        const pitchSin = state.camOffset.length() > 0
+            ? state.camOffset.y / state.camOffset.length()
+            : 1;
+        const halfDepth = halfH / Math.max(0.2, pitchSin);
+        state.frameOffset.set(-ndcX * halfW, 0, -ndcY * halfDepth);
+    }
+
+    /**
+     * Frame a specific set of sectors instead of the whole grid. Early on a commander
+     * knows nine tiles out of a hundred and twelve, and fitting the entire galaxy
+     * renders their empire as a thumbnail adrift in empty starfield.
+     */
+    function frameSectors(sectorIds, opts = {}) {
+        if (!state.ready || !state.camera) return false;
+        const ids = (Array.isArray(sectorIds) ? sectorIds : [])
+            .map(Number)
+            .filter(id => state.sectors.has(id));
+        if (ids.length === 0) return false;
+
+        let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+        ids.forEach(id => {
+            const p = state.sectors.get(id).group.position;
+            minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+            minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+        });
+        // A padded bounding box: one hex of breathing room on every side.
+        const pad = HEX_SIZE * (Number(opts.padHexes) || 2);
+        const spanX = (maxX - minX) + pad * 2;
+        const spanZ = (maxZ - minZ) + pad * 2;
+
+        const { w, h, usableW, usableH } = safeRect();
+
+        const fov = state.camera.fov * (Math.PI / 180);
+        const aspect = state.camera.aspect || (w / h);
+        const pitchSin = Math.max(0.2, state.camOffset.y / (state.camOffset.length() || 1));
+        // Distance needed for each axis, corrected for the slice of canvas we can use.
+        const distForWidth = (spanX / 2) / (Math.tan(fov / 2) * aspect) * (w / usableW);
+        const distForDepth = (spanZ / 2) * pitchSin / Math.tan(fov / 2) * (h / usableH);
+        const needed = Math.max(distForWidth, distForDepth);
+        const full = state.camOffset.length() || 1;
+        // Never zoom out past the whole-galaxy framing, and keep a sane close limit.
+        state.zoom = Math.min(1, Math.max(0.3, needed / full));
+        state.camTarget.set((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+        updateFrameOffset();
+        return true;
+    }
+
+    function setSafeArea(inset = {}) {
+        const next = {
+            left: Math.max(0, Number(inset.left) || 0),
+            right: Math.max(0, Number(inset.right) || 0),
+            top: Math.max(0, Number(inset.top) || 0),
+            bottom: Math.max(0, Number(inset.bottom) || 0)
+        };
+        const current = state.safeInset;
+        if (next.left === current.left && next.right === current.right
+            && next.top === current.top && next.bottom === current.bottom) {
+            return;
+        }
+        state.safeInset = next;
+        updateFrameOffset();
     }
 
     // ------------------------------------------------------------------
@@ -701,10 +1065,12 @@ import * as THREE from './vendor/three.module.min.js';
         state.fogTexture = makeFogTexture();
 
         state.fogMaterial = new THREE.MeshBasicMaterial({
-            color: 0x0c1020,
+            // A dim slate blue rather than near-black: the tile colour multiplies the
+            // fog texture, so 0x0c1020 drove the result to zero regardless of alpha.
+            color: 0x39456b,
             map: state.fogTexture,
             transparent: true,
-            opacity: 0.48,
+            opacity: 0.62,
             depthWrite: false
         });
         state.fogMaterial.__shared = true;
@@ -773,6 +1139,7 @@ import * as THREE from './vendor/three.module.min.js';
             event.preventDefault();
             const factor = event.deltaY > 0 ? 1.12 : 0.89;
             state.zoom = Math.min(3.2, Math.max(0.35, (state.zoom || 1) * factor));
+            updateFrameOffset();
         }, { passive: false });
     }
 
@@ -828,11 +1195,13 @@ import * as THREE from './vendor/three.module.min.js';
         const dt = Math.min(state.clock.getDelta(), 0.05);
         const t = state.clock.elapsedTime;
 
-        // Smooth camera
+        // Smooth camera. viewCentre is what lands in the middle of the canvas; the frame
+        // offset pushes it aside so camTarget itself shows up in the un-occluded band.
         const offset = state.camOffset.clone().multiplyScalar(state.zoom || 1);
-        const desired = state.camTarget.clone().add(offset);
+        const viewCentre = state.camTarget.clone().add(state.frameOffset);
+        const desired = viewCentre.clone().add(offset);
         state.camera.position.lerp(desired, 1 - Math.pow(0.0001, dt));
-        state.camera.lookAt(state.camTarget);
+        state.camera.lookAt(viewCentre);
 
         // Spin planets / discs / asteroid rings
         state.sectors.forEach(entry => {
@@ -872,6 +1241,11 @@ import * as THREE from './vendor/three.module.min.js';
                     move.group.children.forEach(child => {
                         if (child.material && !child.material.__shared) child.material.dispose();
                     });
+                    // Brief settle on the destination tile so the arrival reads even
+                    // if you were looking elsewhere while the tracer flew.
+                    if (state.sectors.has(move.toId)) {
+                        state.battlePulses.set(move.toId, { time: 0, life: 1.1, amplitude: 0.07, speed: 15 });
+                    }
                     return false;
                 }
                 return true;
@@ -883,9 +1257,13 @@ import * as THREE from './vendor/three.module.min.js';
             pulse.time += dt;
             const entry = state.sectors.get(id);
             if (!entry) return;
-            const s = 1 + Math.sin(pulse.time * 9) * 0.12;
-            entry.group.scale.setScalar(s);
-            if (pulse.time > 6) {
+            const life = pulse.life || 6;
+            const amplitude = pulse.amplitude || 0.12;
+            const speed = pulse.speed || 9;
+            // Ease the amplitude out so the tile settles instead of snapping back.
+            const fade = Math.max(0, 1 - pulse.time / life);
+            entry.group.scale.setScalar(1 + Math.sin(pulse.time * speed) * amplitude * fade);
+            if (pulse.time > life) {
                 entry.group.scale.setScalar(1);
                 state.battlePulses.delete(id);
             }
@@ -900,6 +1278,8 @@ import * as THREE from './vendor/three.module.min.js';
         setSectorDetail,
         setSelected,
         focusSector,
+        frameSectors,
+        setSafeArea,
         highlightSector,
         clearBattleSector,
         animateFleetMove,

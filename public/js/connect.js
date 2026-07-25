@@ -55,8 +55,6 @@ let turnResolutionFrozen = false;
 let battleFreezeTimer = null;
 let currentTurnNumber = null;
 let currentGameModeLabel = 'Quick Match';
-let lastResources = { metal: 0, crystal: 0, research: 0 };
-let pendingTurnDigest = null; // Track pending turn for resource digest
 let lastTurnDigest = [];
 let eventPanel;
 let countdownOverlay;
@@ -576,8 +574,20 @@ function renderTurnTimer() {
     }
 }
 
+// The music engine deliberately keeps its urgency ramp subtle (a 6% tempo lift over
+// the final ten seconds — see the "stabilize campaign music" work). That is too quiet
+// to serve as the only "your turn is ending" signal, so pair it with one discrete cue
+// on the way past the threshold. Fires at most once per turn and honours mute.
+const TURN_WARNING_SECONDS = 10;
+let turnWarningFiredFor = null;
+
 function updateTurnMusicUrgency() {
     window.SoundSystem?.setTurnMusicUrgency?.(turnTimer, turnDurationSeconds);
+    if (turnFrozen) return;
+    if (turnTimer > 0 && turnTimer <= TURN_WARNING_SECONDS && turnWarningFiredFor !== currentTurnNumber) {
+        turnWarningFiredFor = currentTurnNumber;
+        window.MediaManager?.playSfx?.('notification');
+    }
 }
 
 // Update timer display
@@ -595,6 +605,7 @@ function updateTimer() {
 
 function beginTurnCountdown(turnNumber, seconds = 180, deadlineAt = null) {
     currentTurnNumber = Number.parseInt(turnNumber, 10) || currentTurnNumber || 1;
+    turnWarningFiredFor = null;
     const parsedDuration = Number(seconds);
     turnDurationSeconds = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 180;
     const parsedDeadline = Number(deadlineAt);
@@ -832,8 +843,32 @@ function scheduleReconnect() {
 }
 
 // Handle WebSocket messages
+/**
+ * Acknowledge the outcome of an order with sound. Ships with the game but was never
+ * wired up: build/research/launch and every rejected order used to be silent, so the
+ * only feedback that an order landed was a line of text you might not be looking at.
+ */
+function playOutcomeCue(message) {
+    if (!window.MediaManager?.playSfx) return;
+    if (message.startsWith('Error:')) {
+        window.MediaManager.playSfx('error');
+        return;
+    }
+    if (!message.startsWith('Success:')) return;
+    if (/^Success: Built (?:Scout|Frigate|Destroyer|Cruiser|Battleship|Intruder|Dreadnought|Carrier|Colony)/i.test(message)) {
+        window.MediaManager.playSfx('shipLaunch');
+    } else if (/^Success: (?:Built|Upgraded)/i.test(message)) {
+        window.MediaManager.playSfx('buildComplete');
+    } else if (/^Success: Researched/i.test(message)) {
+        window.MediaManager.playSfx('researchComplete');
+    } else {
+        window.MediaManager.playSfx('success');
+    }
+}
+
 function handleWebSocketMessage(message) {
     console.log("Received message:", message);
+    playOutcomeCue(String(message || ''));
     if (["Invalid credentials", "User not found", "Invalid authentication format"].includes(message)) {
         shouldAutoReconnect = false;
         document.cookie = 'userId=; path=/; max-age=0';
@@ -1049,10 +1084,21 @@ function handleWebSocketMessage(message) {
         if (window.MediaManager?.playSfx) {
             window.MediaManager.playSfx('notification');
         }
-        // Mark that we have a pending turn digest - will emit when resources arrive
-        pendingTurnDigest = turnNumber;
+        // Income has already been applied and broadcast (empire:: precedes newturn::),
+        // so the digest can report it directly.
+        emitTurnDigest(turnNumber);
         if (websocket && websocket.readyState === WebSocket.OPEN) {
             websocket.send("//victoryprogress");
+        }
+    }
+    // "Finish turn early" tally. Without a handler this fell through to the chat feed
+    // and printed raw protocol text into the game log.
+    else if (message.indexOf("turnready::") === 0) {
+        const [, ready, total] = message.split("::");
+        const readyCount = Number(ready) || 0;
+        const totalCount = Number(total) || 0;
+        if (totalCount > 1) {
+            pushEventFeed(`${readyCount}/${totalCount} commanders have ended their turn.`, 'orders');
         }
     }
     else if (message.indexOf("turnphase::") === 0) {
@@ -1139,6 +1185,16 @@ function handleWebSocketMessage(message) {
     // Fleet movement broadcast (visible to everyone with sensor coverage)
     else if (message.indexOf("fleetmove::") === 0) {
         handleFleetMove(message);
+    }
+    // Lobby-only traffic that can still arrive on the game screen (the socket is
+    // shared). Without a branch here these fall through to the chat feed and print raw
+    // protocol strings like "gamelist::66,Test,0,4,waiting,quick..." into the game log.
+    else if (message.indexOf("gamelist::") === 0
+        || message.indexOf("races::") === 0
+        || message.indexOf("addai::") === 0
+        || message.indexOf("joingame::") === 0
+        || message.indexOf("changerace::") === 0) {
+        // Nothing to show here; the lobby owns these.
     }
     // Chat or other messages
     else {
@@ -1293,6 +1349,7 @@ function updateSectorInfo(message) {
         if (shouldFocusPanel) {
             GAME_STATE.selectedSectorData = sectorData;
             GAME_STATE.selectedSector = sectorId;
+            window.GalaxyMap?.markSelected?.(sectorId);
             if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
             if (window.Galaxy3D && window.Galaxy3D.setSectorDetail) {
                 window.Galaxy3D.setSectorDetail(sectorData);
@@ -1359,8 +1416,10 @@ function updateSectorInfo(message) {
                     fleetSize,
                     type: sectorType,
                     live: true,
-                    buildings: sectorData.buildings,
-                    indicator: numericOwnerId && numericOwnerId === numericPlayerId ? 'C' : null
+                    buildings: sectorData.buildings
+                    // No indicator here: the map badge letters (H/C/T/W/E) are derived
+                    // from mapstate flags. Forcing 'C' for any sector you own made the
+                    // map claim a colony ship was parked on your homeworld.
                 }
             );
         }
@@ -1402,7 +1461,21 @@ function updateSectorContact(message) {
         };
         renderIntelLedger();
         if (Number(GAME_STATE.selectedSector) !== sectorId) return;
-        GAME_STATE.selectedSectorData = null;
+        // Passive sensors are all you get for space you do not hold — which is exactly
+        // where colonisation happens. Keep the little we know so the Colonize checklist
+        // can answer "planet?", "already claimed?" and "is my colony ship here?" instead
+        // of falling back to "select a sector".
+        GAME_STATE.selectedSectorData = {
+            id: sectorId,
+            type: Number(sector.type),
+            owner: sector.owner,
+            ownerid: sector.owner,
+            terraformLevel: null,      // requires live intel or a probe
+            buildingSlotLimit: null,
+            ships: Array.isArray(data.ships) ? data.ships : [],
+            buildings: [],
+            sensorContactOnly: true
+        };
         window.BuildSystem?.refresh?.();
         window.GameUI?.updateSectorContact?.({
             id: sectorId,
@@ -1487,9 +1560,6 @@ function updateResources(message) {
         research: parseInt(parts[3]) || 0
     };
 
-    // Capture previous resources BEFORE updating
-    const previous = { ...GAME_STATE.player.resources };
-
     // Update game state with new resources
     GAME_STATE.player.resources = resources;
     renderStrategicWatch();
@@ -1500,55 +1570,34 @@ function updateResources(message) {
     }
     renderTechTree();
     if (window.BuildSystem?.refresh) window.BuildSystem.refresh();
-
-    // If we have a pending turn digest, emit it now that resources are updated
-    if (pendingTurnDigest !== null) {
-        // Calculate deltas: new resources minus previous resources
-        const deltaMetal = resources.metal - (previous.metal || 0);
-        const deltaCrystal = resources.crystal - (previous.crystal || 0);
-        const deltaResearch = resources.research - (previous.research || 0);
-
-        const lines = [
-            `Metal: ${deltaMetal >= 0 ? '+' : ''}${deltaMetal}`,
-            `Crystal: ${deltaCrystal >= 0 ? '+' : ''}${deltaCrystal}`,
-            `Research: ${deltaResearch >= 0 ? '+' : ''}${deltaResearch}`
-        ];
-
-        if (window.NotificationSystem && window.NotificationSystem.notify) {
-            window.NotificationSystem.notify(
-                `Turn ${pendingTurnDigest} ready`,
-                lines.join(' · '),
-                "info",
-                6000
-            );
-        }
-        pushEventFeed(`Turn ${pendingTurnDigest}: ${lines.join(' · ')}`, 'econ');
-        pendingTurnDigest = null;
-    }
-
-    lastResources = previous;
 }
 
+/**
+ * Report what the empire actually earned this turn. Diffing consecutive resources::
+ * messages does not work: income lands before newturn:: and every purchase produces
+ * its own resources:: update, so the diff used to report whatever the player last
+ * spent. The server already publishes the applied income in empire::.
+ */
 function emitTurnDigest(turnNumber) {
-    if (!lastResources) return;
-    const current = GAME_STATE.player.resources || {};
-    const deltaMetal = (current.metal || 0) - (lastResources.metal || 0);
-    const deltaCrystal = (current.crystal || 0) - (lastResources.crystal || 0);
-    const deltaResearch = (current.research || 0) - (lastResources.research || 0);
+    const income = (GAME_STATE.empire && GAME_STATE.empire.income) || null;
+    if (!income) return;
+    const metal = Math.round(Number(income.metal) || 0);
+    const crystal = Math.round(Number(income.crystal) || 0);
+    const research = Math.round(Number(income.research) || 0);
     const lines = [
-        `Metal: ${deltaMetal >= 0 ? '+' : ''}${deltaMetal}`,
-        `Crystal: ${deltaCrystal >= 0 ? '+' : ''}${deltaCrystal}`,
-        `Research: ${deltaResearch >= 0 ? '+' : ''}${deltaResearch}`
+        `Metal: +${metal}`,
+        `Crystal: +${crystal}`,
+        `Research: +${research}`
     ];
     if (window.NotificationSystem && window.NotificationSystem.notify) {
         window.NotificationSystem.notify(
             `Turn ${turnNumber} ready`,
-            lines.join(' · '),
+            `Income — ${lines.join(' · ')}`,
             "info",
             6000
         );
     }
-    pushEventFeed(`Turn ${turnNumber}: ${lines.join(' · ')}`, 'econ');
+    pushEventFeed(`Turn ${turnNumber} income: ${lines.join(' · ')}`, 'econ');
 }
 
 function updateMapConfig(message) {
@@ -1631,6 +1680,30 @@ function updateMapState(message) {
         }
     });
     renderIntelLedger();
+
+    // First map snapshot of the session: zoom to what this commander can actually see.
+    // Framing all 112 sectors when nine are known renders the empire as a speck.
+    if (!hasFramedKnownSpace) {
+        const known = sectorData
+            .map(entry => parseInt(entry.split(':')[0], 10))
+            .filter(Number.isFinite);
+        if (known.length > 0) {
+            hasFramedKnownSpace = Boolean(g3dFrameSectors(known));
+        }
+    }
+}
+
+let hasFramedKnownSpace = false;
+
+function g3dFrameSectors(ids) {
+    if (window.Galaxy3D?.frameSectors) {
+        return window.Galaxy3D.frameSectors(ids);
+    }
+    // The 3D view is an ES module and may still be loading; retry once it announces.
+    document.addEventListener('galaxy3d-ready', () => {
+        window.Galaxy3D?.frameSectors?.(ids);
+    }, { once: true });
+    return false;
 }
 
 function handleFleetMove(message) {
@@ -1665,6 +1738,7 @@ function mapFlagsToIndicator(flags, status) {
     if (flags & 2) labels.push('T');
     if (flags & 8) labels.push('W');
     if (flags & 16) labels.push('E');
+    if (flags & 32) labels.push('P'); // a probe of ours died here; cause unknown
     return labels.join('');
 }
 
@@ -1685,10 +1759,10 @@ function focusHomeworld() {
 }
 
 function colonizeSelectedSector() {
-    const selected = Number(window.GalaxyMap?.getSelectedSector?.() || GAME_STATE.selectedSector);
-    const suffix = Number.isFinite(selected) && selected > 0
-        ? `:${selected.toString(16).toUpperCase()}`
-        : '';
+    // Same source of truth as moving ships: the sector the server last confirmed we
+    // selected. The minimap's cached selection can lag behind a 3D map click.
+    const token = getSelectedSectorToken();
+    const suffix = token ? `:${token.toUpperCase()}` : '';
     const multiMove = document.getElementById('multiMove');
     if (multiMove) {
         multiMove.style.display = 'none';
@@ -1702,7 +1776,10 @@ function ensureEventPanel() {
     eventPanel.id = 'event-panel';
     eventPanel.style.position = 'fixed';
     eventPanel.style.right = '16px';
-    eventPanel.style.top = '70px';
+    // Clear the turn clock, which is pinned top-right above this panel and would
+    // otherwise cover the filter buttons.
+    const turnBarHeight = document.getElementById('turnTimeBar')?.getBoundingClientRect().height || 0;
+    eventPanel.style.top = `${Math.max(70, Math.round(turnBarHeight) + 12)}px`;
     eventPanel.style.bottom = 'auto';
     eventPanel.style.width = '340px';
     eventPanel.style.maxHeight = '42vh';
@@ -1898,7 +1975,8 @@ function renderTechTree() {
         const branch = branches[branchKey] || { name: branchKey, color: '#4c7cff', blurb: '' };
         const wrapper = document.createElement('section');
         wrapper.className = 'tech-branch';
-        wrapper.style.borderColor = `${branch.color}66`;
+        // Branch identity is carried by the header tint below; the section keeps the
+        // neutral border used everywhere else in the HUD.
 
         const title = document.createElement('div');
         title.className = 'tech-branch-title';
@@ -1928,7 +2006,6 @@ function renderTechTree() {
             button.type = 'button';
             button.className = 'tech-card';
             button.dataset.techId = String(tech.id);
-            button.style.borderLeft = `5px solid ${branch.color}`;
             button.disabled = maxed || locked || cappedOut || !check.ok;
             if (locked || cappedOut) button.classList.add('tech-locked');
 
@@ -1941,7 +2018,13 @@ function renderTechTree() {
                         ? 'Max level reached.'
                         : (missing.length ? `Requires ${missing.join(', ')}.` : (!check.ok ? check.reason : ''));
             const showReason = locked || cappedOut || (reason && !check.ok);
-            const costLabel = locked ? 'LOCKED' : (maxed || cappedOut) ? 'MAX' : `${cost}R`;
+            // "80R" used the same undefined single-letter shorthand the treasury bar
+            // and build panel have now dropped. Colour carries the resource identity.
+            const costLabel = locked
+                ? 'LOCKED'
+                : (maxed || cappedOut)
+                    ? 'MAX'
+                    : `${Number(cost).toLocaleString('en-US')} research`;
             button.innerHTML = `
                 <div class="tech-name">${escapeHtml(tech.name)} Lv${current}/${displayMax}</div>
                 <div class="tech-cost">${costLabel}</div>
@@ -1974,11 +2057,14 @@ function updateTechState(message) {
             GAME_STATE.player.resources.research = Number(data.research);
             const researchEl = document.getElementById('researchresource');
             if (researchEl) {
-                researchEl.textContent = ` ${Math.floor(Number(data.research))} Research`;
+                researchEl.textContent = Math.floor(Number(data.research)).toLocaleString('en-US');
             }
         }
         if (Number.isFinite(Number(data.homeworld))) {
-            const firstHomeworldSync = !Number.isFinite(Number(GAME_STATE.player.homeworld));
+            // Number(null) is 0, which IS finite — so test the raw value, not a
+            // coercion, or the opening camera never snaps to your homeworld.
+            const knownHomeworld = Number(GAME_STATE.player.homeworld);
+            const firstHomeworldSync = !Number.isFinite(knownHomeworld) || knownHomeworld <= 0;
             GAME_STATE.player.homeworld = Number(data.homeworld);
             const btn = document.getElementById('homeworldBtn');
             if (btn) {
@@ -2041,9 +2127,27 @@ function updateEmpireSummary(message) {
         GAME_STATE.empire = data;
         const income = data.income || {};
         const fleetTotal = Object.values(data.fleet || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+        // Per-turn rates belong next to the stockpile they feed, not in a separate line
+        // using undefined M/C/R shorthand.
+        const setRate = (id, value) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const amount = Math.floor(Number(value) || 0);
+            el.textContent = `${amount >= 0 ? '+' : ''}${amount.toLocaleString('en-US')}/turn`;
+            el.classList.toggle('is-zero', amount === 0);
+        };
+        setRate('metalincome', income.metal);
+        setRate('crystalincome', income.crystal);
+        setRate('researchincome', income.research);
+
         const el = document.getElementById('empireSummary');
         if (el) {
-            el.textContent = `Income: +${Math.floor(Number(income.metal) || 0)}M +${Math.floor(Number(income.crystal) || 0)}C +${Math.floor(Number(income.research) || 0)}R / turn | Worlds ${Number(data.worlds) || 0} | Sectors ${Number(data.sectors) || 0} | Fleet ${fleetTotal}`;
+            const worlds = Number(data.worlds) || 0;
+            const sectors = Number(data.sectors) || 0;
+            const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+            el.textContent = `Empire: ${plural(worlds, 'world')} · ${plural(sectors, 'sector')} · ${plural(fleetTotal, 'ship')}`;
+            el.title = 'Worlds are colonised planets. Sectors counts everything you hold, '
+                + 'including asteroid belts and empty space. Ships is your whole fleet.';
         }
         renderStrategicWatch();
     } catch (err) {
@@ -2067,24 +2171,26 @@ function updateVictoryProgress(message) {
             'Scientific Victory',
             'Time Victory'
         ];
+        // Say what the percentage is progress TOWARDS. "Dom: 2%" told a player nothing
+        // about what they were 2% of the way to doing.
         const shortNames = {
-            'Domination Victory': 'Dom',
-            'Elimination Victory': 'Elim',
-            'Economic Victory': 'Econ',
-            'Scientific Victory': 'Sci',
-            'Time Victory': 'Time'
+            'Domination Victory': 'Conquest',
+            'Elimination Victory': 'Survival',
+            'Economic Victory': 'Wealth',
+            'Scientific Victory': 'Research',
+            'Time Victory': 'Score'
         };
 
         const entries = Object.entries(conditions)
             .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
             .map(([name, detail]) => {
                 const progress = Math.max(0, Math.min(100, Number(detail && detail.progress) || 0));
-                const suffix = detail && detail.achieved ? ' ready' : '';
-                return `${shortNames[name] || name.replace(' Victory', '')}: ${Math.floor(progress)}%${suffix}`;
+                const suffix = detail && detail.achieved ? ' — READY' : '';
+                return `${shortNames[name] || name.replace(' Victory', '')} ${Math.floor(progress)}%${suffix}`;
             });
 
         el.textContent = entries.length > 0
-            ? `Victory: ${entries.join(' | ')}`
+            ? `Victory · ${entries.join(' · ')}`
             : 'Victory: none active';
         el.title = Object.entries(conditions)
             .map(([name, detail]) => `${name}: ${detail && detail.description ? detail.description : ''}`)
@@ -2302,6 +2408,11 @@ function changeSector(sectorId) {
         document.getElementById('probeSuggestionCard')?.remove();
         GAME_STATE.selectedSector = numericSectorId;
         GAME_STATE.selectedSectorData = null;
+        // Every selection path funnels through here, so this is the one place that can
+        // keep the minimap's cached selection honest. Clicks on the 3D map do not go
+        // through GalaxyMap.selectSector, and a stale cache made Colonize target the
+        // wrong sector. markSelected only records state — it never re-requests.
+        window.GalaxyMap?.markSelected?.(numericSectorId);
         window.GameUI?.showSectorSelection?.(numericSectorId, GAME_STATE.mapSectors[numericSectorId] || null);
         window.BuildSystem?.refresh?.();
     }

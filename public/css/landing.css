@@ -322,7 +322,6 @@ img { max-width: 100%; display: block; }
     gap: 2px;
     padding: 0.5rem 0.9rem;
     border: 1px solid var(--edge-bright);
-    border-left: 2px solid var(--cyan);
     border-radius: 3px;
     background: rgba(8,12,20,0.66);
     backdrop-filter: blur(3px);
@@ -614,9 +613,23 @@ img { max-width: 100%; display: block; }
     gap: 1.1rem;
     padding: 1.3rem 1.3rem 1.4rem;
     border-radius: 6px;
-    border-left: 2px solid color-mix(in srgb, var(--fac) 55%, transparent);
+    border: 1px solid var(--edge);
+    /* Beveled console chrome, matching the login and lobby screens: a light inner
+       edge top-left and a dark one bottom-right, so the card reads as a physical
+       panel rather than a flat rectangle. Neutral greys only — no accent edges. */
+    box-shadow:
+        inset 1px 1px 0 rgba(255, 255, 255, 0.07),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.55),
+        0 2px 10px rgba(0, 0, 0, 0.35);
     transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
     overflow: hidden;
+}
+.race:hover {
+    /* Press the bevel a touch brighter on hover instead of only shifting colour. */
+    box-shadow:
+        inset 1px 1px 0 rgba(255, 255, 255, 0.12),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.6),
+        0 4px 16px rgba(0, 0, 0, 0.45);
 }
 .race::after {
     content: "";
@@ -719,7 +732,7 @@ img { max-width: 100%; display: block; }
 }
 .chip--starter { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--edge)); }
 .chip--premium { color: var(--amber); }
-.race--premium { border-left-color: var(--amber); }
+.race--premium { border-color: color-mix(in srgb, var(--amber) 32%, var(--edge)); }
 .race--premium .race__emblem { box-shadow: 0 0 18px rgba(255,180,62,0.2); }
 
 /* ============================================================
@@ -733,10 +746,10 @@ img { max-width: 100%; display: block; }
     gap: 1.1rem 1.4rem;
     padding: 1.3rem 1.5rem;
     border-radius: 6px;
-    border-left: 2px solid var(--cyan-dim);
+    border: 1px solid var(--edge);
     transition: border-color .2s ease, transform .2s ease;
 }
-.log__row:hover { transform: translateX(4px); border-left-color: var(--cyan); }
+.log__row:hover { transform: translateX(4px); border-color: var(--edge-bright); }
 .log__led {
     width: 10px; height: 10px; margin-top: 6px;
     border-radius: 50%;

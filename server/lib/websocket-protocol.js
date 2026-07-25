@@ -13,7 +13,7 @@ const FROZEN_GAMEPLAY_COMMANDS = Object.freeze([
 
 const GAME_MESSAGE_PREFIXES = Object.freeze([
     'currentgame::', 'lobby::', 'startgame::', 'newturn::', 'turnclock::',
-    'turnphase::', 'resources::', 'techstate::', 'empire::',
+    'turnphase::', 'turnready::', 'resources::', 'techstate::', 'empire::',
     'victoryprogress::', 'mapconfig::', 'mapstate::', 'sector::', 'sectorcontact::', 'sectorintel::',
     'probeonly:', 'mmoptions:', 'mmoptionsv2::', 'fleetmove::', 'battlepause::', 'battle::',
     'battle_summary::', 'gameover::', 'standingorders::state::',

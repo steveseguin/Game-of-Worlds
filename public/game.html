@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260712e">
+    <link rel="stylesheet" href="css/style.css?v=20260725i">
     <style>
         /* Critical layout fixes & visual polish */
         html, body {
@@ -74,9 +74,105 @@
             box-shadow: 0 6px 18px rgba(0,0,0,0.35);
         }
         #resourceBar span { color: #e8ecff; }
-        #resourceBar #metalresource { color: #ffd3a8; }
-        #resourceBar #crystalresource { color: #a7d8ff; }
-        #resourceBar #researchresource { color: #a8f0c9; }
+        /* One block per resource: icon, then stock over per-turn rate, then the name.
+           Tabular figures stop the numbers jittering sideways every time income lands. */
+        #resourceBar .res {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+        }
+        #resourceBar .res-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            flex: none;
+        }
+        #resourceBar .res-icon svg { display: block; }
+        #resourceBar .res-figures {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            line-height: 1.05;
+            font-variant-numeric: tabular-nums;
+            font-feature-settings: "tnum" 1;
+        }
+        #resourceBar .res-stock {
+            font-size: 1.02em;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+        #resourceBar .res-rate {
+            font-size: 0.72em;
+            font-weight: 600;
+            opacity: 0.78;
+        }
+        #resourceBar .res-name {
+            font-size: 0.68em;
+            font-weight: 600;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            opacity: 0.5;
+        }
+        #resourceBar #res-metal .res-stock, #resourceBar #res-metal .res-rate { color: #ffd3a8; }
+        #resourceBar #res-crystal .res-stock, #resourceBar #res-crystal .res-rate { color: #a7d8ff; }
+        #resourceBar #res-research .res-stock, #resourceBar #res-research .res-rate { color: #a8f0c9; }
+        /* A stalled economy is worth noticing, so a zero rate stops looking like income. */
+        #resourceBar .res-rate.is-zero { color: rgba(232,236,255,0.42) !important; }
+        /* Hide the resource names first when the bar has to squeeze. */
+        @media (max-width: 900px) {
+            #resourceBar .res-name { display: none; }
+        }
+
+        /* Live requirement checklist: a met condition should read as met at a glance,
+           rather than the player re-deriving four static rules every time. */
+        .req-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+        .req-list li {
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            font-size: 12.5px;
+            line-height: 1.35;
+            color: rgba(232,236,255,0.62);
+        }
+        .req-list .req-mark { flex: none; width: 1.2em; text-align: center; font-weight: 700; }
+        .req-list li.is-met { color: #a8f0c9; }
+        .req-list li.is-blocked { color: #ffb4a8; }
+
+        /* Touch targets. Several controls — End Turn among them — sat at 28-31px high,
+           which is awkward on a phone. Desktop spacing is left exactly as it was; only
+           coarse pointers get the larger target so the collision-free HUD layout holds. */
+        @media (pointer: coarse) {
+            #controlPadGUI button,
+            #chatContainer button,
+            #connectionInfo button,
+            #utilityButtons button,
+            #turnTimeBar button,
+            #sectordisplay button {
+                min-height: 44px;
+                min-width: 44px;
+            }
+        }
+
+        /* Costs on build/ship buttons reuse the treasury colours, so a bare number is
+           self-identifying without the undefined "430M 120C" shorthand. */
+        .cost-metal, .cost-crystal {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .cost-metal { color: #ffd3a8; }
+        .cost-metal::before { content: "⛁ "; opacity: 0.75; font-weight: 400; }
+        .cost-crystal { color: #a7d8ff; }
+        .cost-crystal::before { content: "◆ "; opacity: 0.75; font-weight: 400; }
+        .cost-note { opacity: 0.68; font-weight: 500; }
+        /* The building count/level chip after a structure's name. */
+        .building-button > span,
+        .defense-button > span {
+            opacity: 0.8;
+            font-weight: 700;
+        }
 
         /* Turn time bar */
         #turnTimeBar {
@@ -111,9 +207,27 @@
         #turnRedFlashWhenLow { color: #ffd3a8; }
 
         /* Connection info */
+        /* The responsive layout sets explicit widths on these panels; without
+           border-box their padding and border push them past the viewport edge on
+           narrow screens, which is how the income and victory lines ended up clipped
+           off the right of a phone-width window. */
+        #resourceBar,
+        #empireSummary,
+        #victoryProgress,
+        #connectionInfo,
+        #sectordisplay,
+        #turnTimeBar,
+        #mapLegend,
+        #event-panel {
+            box-sizing: border-box;
+        }
         #connectionInfo {
             color: #cfd7ff;
             font-size: 13px;
+            /* Allow the status text and buttons to wrap instead of forcing the bar
+               wider than the space the layout gave it. */
+            flex-wrap: wrap;
+            row-gap: 4px;
         }
         #connectionInfo button {
             font-weight: 600 !important;
@@ -262,8 +376,9 @@
         .tech-card .tech-cost {
             font-size:12px;
             font-weight:700;
-            color:#f2d77a;
+            color:#a8f0c9;
             white-space:nowrap;
+            font-variant-numeric:tabular-nums;
         }
         .tech-card .tech-req {
             grid-column:1 / -1;
@@ -382,13 +497,36 @@
             </ul>
         </div>
     </div>
-    <!-- Resource Bar -->
+    <!-- Treasury. Each resource shows what you HAVE and what arrives NEXT TURN, side by
+         side, because every purchase decision is a comparison of exactly those two
+         numbers. They used to live in two separate bars in two different notations. -->
     <div id="resourceBar">
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:-25px;" alt="Metal"/></div><span id="metalresource"> 0 Metal,</span>
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:0;" alt="Crystal"/></div><span id="crystalresource"> 0 Crystal,</span>
-        <div style="display:inline-block;width: 25px; height: 25px; overflow: hidden;"><img src="./images/resources.png" style="position:relative;left:-50px;" alt="Research"/></div><span id="researchresource"> 0 Research</span>
+        <div class="res" id="res-metal" title="Metal — hulls, buildings and defences">
+            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><path d="M4 15.5 8 8h8l4 7.5-4 3.5H8z" fill="#c98a52"/><path d="M8 8h8l-2 4H10z" fill="#ffd3a8"/><path d="M4 15.5 8 12h8l4 3.5-4 3.5H8z" fill="#a86f42" opacity=".55"/><path d="M9.5 4.5 12 3l2.5 1.5L12 6.2z" fill="#ffe6c9"/></svg></span>
+            <span class="res-figures">
+                <span class="res-stock" id="metalresource">0</span>
+                <span class="res-rate" id="metalincome">+0</span>
+            </span>
+            <span class="res-name">Metal</span>
+        </div>
+        <div class="res" id="res-crystal" title="Crystal — probes, fleet movement and spycraft">
+            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><path d="M12 2.5 19 9l-7 12.5L5 9z" fill="#5aa8e8"/><path d="M12 2.5 19 9h-7z" fill="#bfe4ff"/><path d="M12 2.5 5 9h7z" fill="#8ecbff"/><path d="M12 9h7l-7 12.5z" fill="#3d86c4"/></svg></span>
+            <span class="res-figures">
+                <span class="res-stock" id="crystalresource">0</span>
+                <span class="res-rate" id="crystalincome">+0</span>
+            </span>
+            <span class="res-name">Crystal</span>
+        </div>
+        <div class="res" id="res-research" title="Research — technology levels">
+            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><circle cx="12" cy="12" r="2.6" fill="#a8f0c9"/><g fill="none" stroke="#6fd8a4" stroke-width="1.6"><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(120 12 12)"/></g></svg></span>
+            <span class="res-figures">
+                <span class="res-stock" id="researchresource">0</span>
+                <span class="res-rate" id="researchincome">+0</span>
+            </span>
+            <span class="res-name">Research</span>
+        </div>
     </div>
-    <div id="empireSummary">Income: +0M +0C +0R / turn | Worlds 0 | Fleet 0</div>
+    <div id="empireSummary">Empire: 0 worlds · 0 sectors · 0 ships</div>
     <div id="victoryProgress">Victory: loading</div>
 
     <!-- Turn Time Bar -->
@@ -520,28 +658,28 @@
             <div id="buildSectorContext" class="local-order-context">Select an owned sector to construct there.</div>
             <div style="font-weight:bold;margin-bottom:10px;">Local Economy Buildings</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
-                <button id="bb1" class="building-button" data-building-id="0" title="Metal Extractor: increases this sector's metal income. Uses one building slot.">⛏ Metal Extractor <span id="bbb1">0</span><br><small>50M 20C · ⓘ income</small></button>
-                <button id="bb2" class="building-button" data-building-id="1" title="Crystal Refinery: increases this sector's crystal income. Uses one building slot.">◆ Crystal Refinery <span id="bbb2">0</span><br><small>40M 30C · ⓘ income</small></button>
-                <button id="bb3" class="building-button" data-building-id="2" title="Research Academy: increases empire research generated by this sector. Uses one building slot.">⌬ Research Academy <span id="bbb3">0</span><br><small>60M 40C · ⓘ research</small></button>
-                <button id="bb4" class="building-button" data-building-id="3" title="Spaceport: builds ships locally. Higher tiers unlock larger hulls and more production.">🚀 Spaceport <span id="bbb4">0</span><br><small>100M 50C · ⓘ ships</small></button>
+                <button id="bb1" class="building-button" data-building-id="0" title="Metal Extractor: increases this sector's metal income. Uses one building slot.">⛏ Metal Extractor <span id="bbb1">0</span><br><small><span class="cost-metal">50</span> <span class="cost-crystal">20</span><span class="cost-note"> · sector metal</span></small></button>
+                <button id="bb2" class="building-button" data-building-id="1" title="Crystal Refinery: increases this sector's crystal income. Uses one building slot.">◆ Crystal Refinery <span id="bbb2">0</span><br><small><span class="cost-metal">40</span> <span class="cost-crystal">30</span><span class="cost-note"> · sector crystal</span></small></button>
+                <button id="bb3" class="building-button" data-building-id="2" title="Research Academy: increases empire research generated by this sector. Uses one building slot.">⌬ Research Academy <span id="bbb3">0</span><br><small><span class="cost-metal">60</span> <span class="cost-crystal">40</span><span class="cost-note"> · empire research</span></small></button>
+                <button id="bb4" class="building-button" data-building-id="3" title="Spaceport: builds ships locally. Higher tiers unlock larger hulls and more production.">🚀 Spaceport <span id="bbb4">0</span><br><small><span class="cost-metal">100</span> <span class="cost-crystal">50</span><span class="cost-note"> · builds ships</span></small></button>
             </div>
             <div style="font-weight:bold;margin-bottom:10px;">Local Defense & Special</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
-                <button id="bb5" class="defense-button" data-building-id="4" title="Orbital Turret: fights alongside fleets defending this sector. The crossed-swords map badge marks local combat strength.">⚔ Orbital Turret <span id="bbb5">0</span><br><small>80M 60C · ⓘ defense</small></button>
-                <button id="bb6" class="defense-button" data-building-id="5" title="Warp Gate: pairs with another owned gate for fast, safer travel between the two sectors.">◎ Warp Gate <span id="bbb6">0</span><br><small>200M 150C · ⓘ transit</small></button>
+                <button id="bb5" class="defense-button" data-building-id="4" title="Orbital Turret: fights alongside fleets defending this sector. The crossed-swords map badge marks local combat strength.">⚔ Orbital Turret <span id="bbb5">0</span><br><small><span class="cost-metal">80</span> <span class="cost-crystal">60</span><span class="cost-note"> · sector defence</span></small></button>
+                <button id="bb6" class="defense-button" data-building-id="5" title="Warp Gate: pairs with another owned gate for fast, safer travel between the two sectors.">◎ Warp Gate <span id="bbb6">0</span><br><small><span class="cost-metal">200</span> <span class="cost-crystal">150</span><span class="cost-note"> · fast transit</span></small></button>
             </div>
             <div style="font-weight:bold;margin-bottom:5px;">Build Ships at Selected Spaceport</div>
             <div id="spaceportProductionStatus" class="local-order-context">Build a Spaceport to produce ships locally.</div>
             <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;">
                 <button class="ship-button" data-ship-id="3" title="Scout: inexpensive exploration and sensor vessel.">⌁ Scout<br><small>200M</small></button>
                 <button class="ship-button" data-ship-id="1" title="Frigate: basic frontline combat ship.">▸ Frigate<br><small>430M</small></button>
-                <button class="ship-button" data-ship-id="2">Destroyer<br><small style="color:#888;">780M · Yard 1</small></button>
-                <button class="ship-button" data-ship-id="4">Cruiser<br><small style="color:#888;">980M 120C · Yard 1</small></button>
-                <button class="ship-button" data-ship-id="5">Battleship<br><small style="color:#888;">1650M 220C · Yard 2</small></button>
-                <button class="ship-button" data-ship-id="8">Intruder<br><small style="color:#888;">1950M 133C · Yard 2</small></button>
-                <button class="ship-button" data-ship-id="7">Dreadnought<br><small style="color:#888;">3200M 450C · Yard 3</small></button>
-                <button class="ship-button" data-ship-id="9">Carrier<br><small style="color:#888;">3000M 80C · Yard 3</small></button>
-                <button class="ship-button" data-ship-id="6">Colony Ship<br><small style="color:#888;">1000M</small></button>
+                <button class="ship-button" data-ship-id="2" title="Destroyer: heavier line ship; needs Military Shipyards 1.">Destroyer<br><small style="color:#888;">780M · Yard 1</small></button>
+                <button class="ship-button" data-ship-id="4" title="Cruiser: durable mid-weight hull; needs Military Shipyards 1.">Cruiser<br><small style="color:#888;">980M 120C · Yard 1</small></button>
+                <button class="ship-button" data-ship-id="5" title="Battleship: heavy gunline; needs Military Shipyards 2.">Battleship<br><small style="color:#888;">1650M 220C · Yard 2</small></button>
+                <button class="ship-button" data-ship-id="8" title="Intruder: strike hull built around raiding; needs Military Shipyards 2.">Intruder<br><small style="color:#888;">1950M 133C · Yard 2</small></button>
+                <button class="ship-button" data-ship-id="7" title="Dreadnought: the heaviest hull in the game; needs Military Shipyards 3.">Dreadnought<br><small style="color:#888;">3200M 450C · Yard 3</small></button>
+                <button class="ship-button" data-ship-id="9" title="Carrier: fleet backbone with high staying power; needs Military Shipyards 3.">Carrier<br><small style="color:#888;">3000M 80C · Yard 3</small></button>
+                <button class="ship-button" data-ship-id="6" title="Colony Ship: the only way to settle a planet. Consumed on colonisation.">Colony Ship<br><small style="color:#888;">1000M</small></button>
             </div>
         </div>
 
@@ -559,6 +697,8 @@
                 <div>Carriers: <span id="fleet-carriers">0</span></div>
                 <div>Colony Ships: <span id="fleet-colony">0</span></div>
             </div>
+            <div id="fleetEmptyState" style="font-size:13px;color:rgba(232,236,255,0.6);">No ships of yours are in this sector.</div>
+            <div id="fleetTotal" style="margin-top:8px;font-size:12px;font-weight:700;color:#a7d8ff;"></div>
             <div style="margin-top:15px;font-weight:bold;margin-bottom:10px;">Move Fleet</div>
             <div style="font-size:13px;color:#aaa;">Select a destination, then use Move Ships in its sector panel. Fleets travel on a direct plotted line; every crossed sector can affect the journey.</div>
         </div>
@@ -567,18 +707,23 @@
         <div id="techtree" class="tab-panel hidden">
             <div class="tech-panel-header">
                 <div style="font-weight:bold;">Research Technologies</div>
-                <div style="font-size:12px;color:#f2d77a;">Available: <span id="techResearchAvailable">0</span> R</div>
+                <div style="font-size:12px;color:#a8f0c9;font-variant-numeric:tabular-nums;">Available: <b id="techResearchAvailable">0</b> research</div>
             </div>
             <div id="techTreeRoot"></div>
         </div>
 
         <!-- Colonize Tab -->
         <div id="colonize" class="tab-panel hidden">
-            <b><button id="colonizeBtn" style="padding:20px;">Attempt to Colonize Sector</button></b><br /><br />
-            To colonize a sector, the following must be met:<br /><br />
-            -You need a Colony Ship in the sector<br /><br />
-            -You need a terraform tech level equal or greater to the sector's terraform requirement<br /><br />
-            -The sector must contain a planet
+            <div id="colonizeSectorContext" class="local-order-context">Select a sector to check whether you can settle it.</div>
+            <button id="colonizeBtn" class="building-button" style="width:100%;padding:14px;margin-bottom:12px;">Settle This World</button>
+            <div style="font-weight:bold;margin-bottom:8px;font-size:13px;">Requirements</div>
+            <ul id="colonizeChecklist" class="req-list">
+                <li data-req="planet"><span class="req-mark">•</span><span class="req-text">The sector must contain a planet</span></li>
+                <li data-req="ship"><span class="req-mark">•</span><span class="req-text">A Colony Ship must be in the sector</span></li>
+                <li data-req="terraform"><span class="req-mark">•</span><span class="req-text">Your Terraforming must meet the world's requirement</span></li>
+                <li data-req="unclaimed"><span class="req-mark">•</span><span class="req-text">Nobody else can already own it</span></li>
+            </ul>
+            <div style="margin-top:10px;font-size:12px;color:rgba(232,236,255,0.6);">Settling consumes the Colony Ship.</div>
         </div>
 
         <!-- Analytics Tab -->
@@ -587,20 +732,21 @@
                 <div style="font-weight:bold;">Combat Analytics</div>
                 <button id="combatAnalyticsRefresh" class="ghost" type="button" style="padding:7px 10px;">Refresh</button>
             </div>
+            <div style="font-size:12px;color:rgba(232,236,255,0.62);margin-bottom:8px;line-height:1.35;">Who is winning fights, what they are losing, and where. Fills in as battles resolve.</div>
             <div id="combatAnalyticsStatus" class="analytics-status-idle" style="font-size:12px;color:#bdd5ff;margin-bottom:10px;">Loading live combat telemetry...</div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px;margin-bottom:10px;">
-                <div>Game: <b id="combatAnalyticsGameId">-</b></div>
                 <div>Battles: <b id="combatAnalyticsBattleCount">0</b></div>
                 <div>Updated: <b id="combatAnalyticsUpdatedAt">-</b></div>
+                <div title="Match reference, useful when reporting a problem">Match: <b id="combatAnalyticsGameId">-</b></div>
             </div>
             <div id="combatAnalyticsPlayers" style="display:grid;gap:8px;"></div>
             <div style="font-weight:bold;margin:12px 0 6px;">Recent Battles</div>
             <div id="combatAnalyticsRecent" style="display:grid;gap:6px;"></div>
-            <details class="operations-detail" id="strategyWatchPanel">
+            <details class="operations-detail" id="strategyWatchPanel" open>
                 <summary>Strategic Watch</summary>
                 <div id="strategyWatch">No urgent strategic concerns.</div>
             </details>
-            <details class="operations-detail" id="victoryBriefingPanel">
+            <details class="operations-detail" id="victoryBriefingPanel" open>
                 <summary>Victory Briefing</summary>
                 <div id="victoryBriefing">Victory data is synchronizing.</div>
             </details>
@@ -620,7 +766,7 @@
         <div class="legend-row"><span class="legend-swatch" style="background:#3fc1c9;"></span>Your fleet (unclaimed)</div>
         <div class="legend-row"><span class="legend-swatch" style="background:#c08040;"></span>Asteroid/star hazard</div>
         <div class="legend-row"><span class="legend-swatch" style="background:#202020;"></span>Black hole</div>
-        <div style="margin-top:5px;color:rgba(220,228,255,0.72);">H home, C colony ship, T turret, W gate, E enemy fleet. Dim tiles are old memory.</div>
+        <div style="margin-top:5px;color:rgba(220,228,255,0.72);">H home, C colony ship, T turret, W gate, E enemy fleet, P probe lost. Dim tiles are old memory.</div>
     </div>
 
     <!-- Multi-Move Dialog -->
@@ -653,6 +799,9 @@
     <div id="chatContainer" style="position:fixed;bottom:0;left:0;width:500px;max-width:100%;height:40px;z-index:150;background:rgba(10,14,28,0.95);padding:5px 10px;box-sizing:border-box;display:flex;gap:6px;align-items:center;">
         <button id="chatHistoryUp" type="button" title="Previous chat" style="height:30px;width:30px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;">^</button>
         <button id="chatHistoryDown" type="button" title="Latest chat" style="height:30px;width:30px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;">v</button>
+        <!-- The build pad occupies roughly a third of the screen. This hands that space
+             back on demand without changing anyone's default layout. -->
+        <button id="controlPadToggle" type="button" title="Hide the command panel and enlarge the map" aria-pressed="false" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;">Hide panel</button>
         <form id="chatForm" style="margin:0;height:100%;flex:1;">
             <input id="chat" type="text" style="width:100%;height:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(20,25,40,0.9);color:#e8ecff;font-size:14px;" placeholder="Type and press enter to chat" />
         </form>
@@ -664,9 +813,9 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/ui.js?v=20260712d"></script>
+    <script src="js/ui.js?v=20260725a"></script>
     <script src="js/minimap.js?v=20260614b"></script>
-    <script src="js/GUI.js?v=20260712e"></script>
+    <script src="js/GUI.js?v=20260725c"></script>
     <script>
         // Authentication check for static hosting
         (function() {
@@ -687,25 +836,25 @@
             }
         })();
     </script>
-    <script src="js/build.js?v=20260712d"></script>
+    <script src="js/build.js?v=20260725c"></script>
     <script src="js/battle.js?v=20260614d"></script>
     <script src="js/chat.js?v=20260430a"></script>
     <script src="js/controlpad.js?v=20260712d"></script>
-    <script src="js/epic-music.js?v=20260712b"></script>
+    <script src="js/epic-music.js?v=20260725b"></script>
     <script src="js/sound.js?v=20260712b"></script>
     <script src="js/tech.js?v=20260612a"></script>
     <script src="js/notification-system.js?v=20251105"></script>
     <script src="js/avatar-notifications.js?v=20260712b"></script>
     <script src="js/advisor.js?v=20260712e"></script>
-    <script src="js/media.js?v=20260712a"></script>
+    <script src="js/media.js?v=20260725a"></script>
     <script src="js/combat-analytics.js?v=20260612a"></script>
     <script src="/config.js?v=20260614b"></script>
     <script src="js/shop-enhanced.js?v=20260614b"></script>
-    <script src="js/game-screen.js?v=20260712a"></script>
-    <script type="module" src="js/galaxy3d.js?v=20260712a"></script>
+    <script src="js/game-screen.js?v=20260725q"></script>
+    <script type="module" src="js/galaxy3d.js?v=20260725j"></script>
     <script type="module" src="js/battle3d.js?v=20260614e"></script>
     <script src="js/onboarding.js?v=20260613a"></script>
-    <script src="js/connect.js?v=20260712e"></script>
+    <script src="js/connect.js?v=20260725h"></script>
     <script src="js/tour.js?v=20260712c"></script>
     <script src="js/game.js?v=20260712e"></script>
     <script src="js/loader.js?v=20251105"></script>

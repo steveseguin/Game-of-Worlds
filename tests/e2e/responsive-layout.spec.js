@@ -1,0 +1,118 @@
+// Responsive HUD audit.
+//
+// The in-game HUD is a set of position:fixed panels laid out by JavaScript in
+// game-screen.js. Every panel's size depends on a scale factor, on measured
+// neighbours, and — on narrow screens — on media queries that override the
+// JavaScript with their own !important rules. That is exactly the kind of layout
+// that silently starts printing one panel over another at some resolution nobody
+// happens to test on.
+//
+// This spec drives a real browser at a spread of window sizes plus a set of random
+// ones, and asserts that no two visible HUD panels overlap and that nothing is
+// pushed off the edge of the viewport.
+//
+//   SMOKE_BASE_URL=https://gameofworlds.com npx playwright test responsive-layout
+
+const { test, expect } = require('@playwright/test');
+const harness = require('./support/ui-game-harness');
+
+// Panels that are laid out by applyResponsiveLayout(). Anything positioned by the
+// layout code belongs here; anything transient (modals, toasts) does not.
+const HUD_PANELS = [
+    'resourceBar', 'empireSummary', 'victoryProgress', 'sectordisplay', 'viewTitle',
+    'turnTimeBar', 'utilityButtons', 'connectionInfo', 'controlPadGUI', 'chatContainer',
+    'minimapid', 'mapLegend', 'event-panel', 'avatarbox'
+];
+
+// Real-world shapes: desktop, laptop, 4:3, ultrawide, tablet portrait, phones, and
+// the short-landscape case a phone produces when rotated.
+const FIXED_SIZES = [
+    [1920, 1080], [2560, 1080], [3440, 1440], [1600, 900], [1440, 900],
+    [1366, 768], [1280, 800], [1280, 1024], [1024, 768], [1024, 600],
+    [900, 600], [800, 600], [768, 1024], [640, 480],
+    [430, 932], [390, 844], [360, 640], [932, 430]
+];
+
+const RANDOM_SIZE_COUNT = Number(process.env.LAYOUT_FUZZ_COUNT || 8);
+
+function randomSizes(count) {
+    const sizes = [];
+    for (let i = 0; i < count; i++) {
+        sizes.push([
+            Math.floor(340 + Math.random() * 2260),
+            Math.floor(400 + Math.random() * 1200)
+        ]);
+    }
+    return sizes;
+}
+
+/** Measure the visible HUD panels and report overlaps / out-of-bounds boxes. */
+async function auditLayout(page, width, height) {
+    return page.evaluate(({ ids, w, h }) => {
+        window.GameScreen?.applyResponsiveLayout?.();
+        const boxes = [];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const cs = getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return;
+            const r = el.getBoundingClientRect();
+            if (r.width < 8 || r.height < 8) return;
+            boxes.push({ id, x: r.x, y: r.y, w: r.width, h: r.height });
+        });
+
+        const overlaps = [];
+        for (let i = 0; i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+                const a = boxes[i];
+                const b = boxes[j];
+                const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+                const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+                // A few pixels of shared edge is a rounding artefact, not a collision.
+                if (ox > 4 && oy > 4) {
+                    overlaps.push(`${a.id} over ${b.id} (${Math.round(ox)}x${Math.round(oy)}px)`);
+                }
+            }
+        }
+
+        const offscreen = boxes
+            .filter(b => b.x < -2 || b.y < -2 || b.x + b.w > w + 2 || b.y + b.h > h + 2)
+            .map(b => `${b.id} at ${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.w)}x${Math.round(b.h)}`);
+
+        return { overlaps, offscreen, panels: boxes.length };
+    }, { ids: HUD_PANELS, w: width, h: height });
+}
+
+test.describe('HUD layout holds together at every window size', () => {
+    test('no panel collisions across common and random viewports', async ({ page }) => {
+        test.setTimeout(180000);
+
+        // The HUD only exists inside a live game, so stand one up: guest sign-in,
+        // create a solo match, fill it with AI and start.
+        await harness.signInGuest(page, `layout_${Date.now().toString(36)}`);
+        await harness.waitForLobbyReady(page);
+        const gameName = `Layout ${Date.now()}`;
+        await harness.createGame(page, gameName, { maxPlayers: '2' });
+        await page.getByRole('button', { name: /Fill with AI/i }).click();
+        await page.waitForURL(/game\.html/, { timeout: 30000 });
+        await page.waitForSelector('#controlPadGUI', { timeout: 30000 });
+        await harness.dismissFirstRunGuidance(page).catch(() => {});
+
+        const failures = [];
+        const sizes = [...FIXED_SIZES, ...randomSizes(RANDOM_SIZE_COUNT)];
+
+        for (const [width, height] of sizes) {
+            await page.setViewportSize({ width, height });
+            await page.waitForTimeout(150); // debounced resize handler
+            const result = await auditLayout(page, width, height);
+            expect(result.panels, `no HUD panels rendered at ${width}x${height}`).toBeGreaterThan(2);
+            if (result.overlaps.length || result.offscreen.length) {
+                failures.push(
+                    `${width}x${height}: ${[...result.overlaps, ...result.offscreen].join('; ')}`
+                );
+            }
+        }
+
+        expect(failures, `HUD layout problems:\n${failures.join('\n')}`).toEqual([]);
+    });
+});

@@ -419,7 +419,10 @@ window.GalaxyMap = (function() {
     }
     
     // Select a sector
-    function selectSector(sectorId) {
+    // Record the selection and refresh the sensor overlay WITHOUT re-requesting the
+    // sector from the server. The 3D view drives its own click handling, so it calls
+    // this to keep the minimap's idea of "selected" in step (see markSelected below).
+    function applySelection(sectorId) {
         state.selectedSector = sectorId;
         Object.values(state.sectors).forEach(sector => sector.path.removeAttribute('data-sensor-neighbor'));
         const selected = state.sectors[sectorId];
@@ -439,6 +442,10 @@ window.GalaxyMap = (function() {
                 }
             });
         }
+    }
+
+    function selectSector(sectorId) {
+        applySelection(sectorId);
         changeSector(sectorId.toString(16).toUpperCase());
         hideTooltip();
         g3dCall('setSelected', sectorId);
@@ -661,6 +668,16 @@ window.GalaxyMap = (function() {
     return {
         initialize,
         selectSector,
+        // Selection made elsewhere (3D map click, server sector:: reply). Keeps this
+        // module's selectedSector authoritative so callers can't read a stale sector.
+        markSelected: function(sectorId) {
+            const id = Number(sectorId);
+            if (!Number.isFinite(id) || id <= 0) return;
+            applySelection(id);
+        },
+        focusSector: function(sectorId) {
+            g3dCall('focusSector', Number(sectorId));
+        },
         updateSectorStatus,
         SECTOR_STATUS,
         highlightSector: function(sectorId) {

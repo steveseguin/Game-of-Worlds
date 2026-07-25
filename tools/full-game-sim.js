@@ -208,7 +208,9 @@ async function main() {
     check(types === '3,6', 'starter scout + colony ship spawned', `types=${types}`);
 
     const startBuildings = await query(db, `SELECT * FROM buildings${gameId} WHERE owner = ?`, [alpha.name]);
-    check(startBuildings.length === 2, 'starter buildings placed', `count=${startBuildings.length}`);
+    // Metal extractor, crystal refinery and a Tier-1 spaceport (STARTING_BUILDINGS).
+    const startTypes = startBuildings.map(row => Number(row.type)).sort().join(',');
+    check(startTypes === '0,1,3', 'starter buildings placed', `types=${startTypes}`);
 
     // ------------------------------------------------------------------
     console.log('\n— Fog of war —');
@@ -254,15 +256,28 @@ async function main() {
     check(String(lv2[0].tech).includes('1:2'), 'tech levels stack', `tech=${lv2[0].tech}`);
     check(Number(lv2[0].research) === 2000 - 116, 'level cost scales (80 * 1.45)', `research=${lv2[0].research}`);
 
-    // Select home sector, then build a spaceport (slot 3 of 3).
+    // The homeworld already ships with a Tier-1 spaceport, so upgrading it must be
+    // gated on Military Shipyards rather than simply succeeding.
     alpha.drain();
     alpha.send(`//sector:${hex(alphaRow.homeworld)}`);
     await sleep(100);
     alpha.send('//buybuilding:3');
-    const buildMsg = await alpha.waitFor(m => m.startsWith('Success: Built') || m.startsWith('Error:'), 'building response');
-    check(buildMsg.startsWith('Success'), 'spaceport built on homeworld', buildMsg);
+    const gatedMsg = await alpha.waitFor(m => m.startsWith('Success: Built') || m.startsWith('Error:'), 'spaceport upgrade response');
+    check(/requires Military Shipyards/i.test(gatedMsg), 'spaceport upgrade gated on shipyards', gatedMsg);
 
-    // Pump a few turns for income, then buy a frigate.
+    // Research Shipyards 1, then the upgrade should go through.
+    await query(db, `UPDATE players${gameId} SET research = 4000 WHERE userid = ?`, [alpha.name]);
+    alpha.drain();
+    alpha.send('//buytech:19'); // MILITARY_SHIPYARDS
+    await alpha.waitFor(m => m.startsWith('Success: Researched') || m.startsWith('Error:'), 'shipyards research');
+    alpha.drain();
+    alpha.send('//buybuilding:3');
+    const buildMsg = await alpha.waitFor(m => m.startsWith('Success:') || m.startsWith('Error:'), 'building response');
+    check(/^Success: Upgraded Spaceport to level 2/.test(buildMsg), 'spaceport upgraded on homeworld', buildMsg);
+
+    // Pump a few turns for income, then buy a frigate. The spaceport upgrade above
+    // drained the treasury, so top it back up first.
+    await query(db, `UPDATE players${gameId} SET metal = 2000 WHERE userid = ?`, [alpha.name]);
     for (let i = 0; i < 4; i++) {
         serverLogic.processTurn(gameId);
         await sleep(120);
@@ -308,7 +323,25 @@ async function main() {
         alpha.drain();
         alpha.send(`//probe:${hex(blackHole.sectorid)}`);
         const bhProbe = await alpha.waitFor(m => m.includes('probe was destroyed'), 'probe destruction');
-        check(bhProbe.toLowerCase().includes('black hole'), 'probe destroyed by black hole', bhProbe);
+        // The cause stays hidden on purpose — a black hole, an asteroid belt and an
+        // enemy counter-intel net must all read the same. What the player DOES get is
+        // the location, flagged on the map so the mistake is not repeated blind.
+        check(!/black hole|asteroid/i.test(bhProbe), 'probe loss hides its cause', bhProbe);
+        alpha.drain();
+        alpha.send('//update');
+        const lossState = await alpha.waitFor(m => m.startsWith('mapstate::'), 'probe-loss mapstate');
+        const lossEntry = lossState.replace('mapstate::', '').split(',')
+            .find(entry => entry.startsWith(`${blackHole.sectorid}:`));
+        const lossFlags = lossEntry ? Number(lossEntry.split(':')[5]) : 0;
+        check(Boolean(lossEntry) && (lossFlags & 32) === 32, 'probe loss is flagged on the map', lossEntry || 'entry missing');
+        // Terrain stays hidden only while the sector is still dark. If our own sensors
+        // already cover it, the map is entitled to show what is there.
+        const lossFields = lossEntry ? lossEntry.split(':') : [];
+        const lossLive = lossFields[4] === '1';
+        const lossType = lossFields.length ? Number(lossFields[3]) : -1;
+        check(lossLive || lossType === 0,
+            'probe-loss marker does not leak the terrain',
+            lossEntry || 'entry missing');
     } else {
         fail('probe destroyed by black hole', 'no black hole on this map roll');
     }
@@ -445,15 +478,60 @@ async function main() {
 
     // ------------------------------------------------------------------
     console.log('\n— AI behavior —');
-    await query(db, `UPDATE players${gameId} SET metal = 3000, crystal = 1500, research = 500 WHERE userid = ?`, [ai.userid]);
+    // Pin the race and difficulty: AI races are now assigned at random, and Titan Lords
+    // genuinely cannot field a warship until Shipyards 1, which would make this flaky.
+    await query(db, `UPDATE players${gameId} SET race_id = 1, ai_difficulty = 'aggressive', ai_strategy = 'aggressive', metal = 3000, crystal = 1500, research = 500 WHERE userid = ?`, [ai.userid]);
+    // The combat section above can take the AI's homeworld off it, and an AI with no
+    // spaceport legitimately builds nothing. Hand it back so this measures the build
+    // logic rather than who happened to win an earlier skirmish.
+    await query(db, `UPDATE map${gameId} SET owner = ${Number(ai.userid)} WHERE sectorid = ${Number(ai.homeworld)}`, []);
+    const aiPorts = await query(db, `SELECT * FROM buildings${gameId} WHERE owner = ?`, [ai.userid]);
+    if (!aiPorts.some(row => Number(row.type) === 3)) {
+        await query(db, `INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`,
+            [Number(ai.homeworld), 3, Number(ai.userid)]);
+    }
+    // Drive the AI directly rather than through processTurn: a battle pause left over
+    // from the combat section silently swallows turns, and the extra turns processTurn
+    // burns can abandon the game out from under the later sections.
     for (let i = 0; i < 3; i++) {
-        serverLogic.processTurn(gameId);
-        await sleep(200);
+        serverLogic.gameState.turns[gameId] = Number(serverLogic.gameState.turns[gameId] || 1) + 1;
+        await serverLogic.triggerAiTurn(gameId);
+        await sleep(150);
     }
     const aiBuildings = await query(db, `SELECT * FROM buildings${gameId} WHERE owner = ?`, [ai.userid]);
     check(aiBuildings.length > 2, 'AI develops its homeworld', `buildings=${aiBuildings.length}`);
     const aiShips = await query(db, `SELECT * FROM ships${gameId} WHERE owner = ?`, [ai.userid]);
-    check(aiShips.length > 2, 'AI builds a fleet', `ships=${aiShips.length}`);
+    const WARSHIP_TYPES = new Set([1, 2, 4, 5, 7, 8, 9]);
+    const aiWarships = aiShips.filter(row => WARSHIP_TYPES.has(Number(row.type)));
+    check(aiWarships.length > 0, 'AI builds warships', `warships=${aiWarships.length} of ${aiShips.length} ships`);
+
+    const countWarships = async () => {
+        const rows = await query(db, `SELECT * FROM ships${gameId} WHERE owner = ?`, [ai.userid]);
+        return rows.filter(row => WARSHIP_TYPES.has(Number(row.type)));
+    };
+
+    // Given a Tier-4 yard and the research to use it, the AI should reach past the
+    // Frigate it is limited to at the start rather than stopping at the first refusal.
+    await query(db, `UPDATE buildings${gameId} SET level = 4 WHERE owner = ? AND type = 3`, [ai.userid]);
+    await query(db, `UPDATE players${gameId} SET tech = '19:3', metal = 12000, crystal = 4000 WHERE userid = ?`, [ai.userid]);
+    await serverLogic.triggerAiTurn(gameId);
+    await sleep(300);
+    const afterTradeUp = await countWarships();
+    check(afterTradeUp.some(row => Number(row.type) !== 1),
+        'AI trades up past the Frigate once its yard allows',
+        `types=${afterTradeUp.map(r => r.type).join(',')}`);
+
+    // Same yard, no heavy-hull research: capacity is now the only limit, so an
+    // aggressive AI should stack several Frigates in a single turn. Advance the turn
+    // counter first — spaceport production capacity is per-turn, and the trade-up pass
+    // above just spent this turn's allowance on Dreadnoughts.
+    serverLogic.gameState.turns[gameId] = Number(serverLogic.gameState.turns[gameId] || 1) + 1;
+    await query(db, `UPDATE players${gameId} SET tech = '', metal = 12000, crystal = 4000 WHERE userid = ?`, [ai.userid]);
+    const beforeStack = (await countWarships()).length;
+    await serverLogic.triggerAiTurn(gameId);
+    await sleep(300);
+    const built = (await countWarships()).length - beforeStack;
+    check(built >= 3, 'a well-supplied AI stacks several hulls in one turn', `built=${built}`);
     const aiPlayer = await query(db, `SELECT research, tech FROM players${gameId} WHERE userid = ?`, [ai.userid]);
     check(Number(aiPlayer[0].research) < 500 || String(aiPlayer[0].tech).length > 0, 'AI spends research', `research=${aiPlayer[0].research} tech=${aiPlayer[0].tech}`);
 
@@ -474,6 +552,10 @@ async function main() {
     // ------------------------------------------------------------------
     console.log('\n— Spycraft —');
     // Bravo invests heavily in counter-intel; alpha probes blind and pays for it.
+    // The AI section above now fields a real fleet and can take bravo's homeworld off
+    // it. Put bravo back in charge so this section measures counter-intelligence
+    // rather than who won an earlier war.
+    await query(db, `UPDATE map${gameId} SET owner = ${Number(bravo.name)} WHERE sectorid = ${Number(bravoRow.homeworld)}`, []);
     await query(db, `UPDATE players${gameId} SET tech = ? WHERE userid = ?`, ['9:4', bravo.name]);
     await query(db, `UPDATE players${gameId} SET tech = ? WHERE userid = ?`, ['', alpha.name]);
     await query(db, `UPDATE players${gameId} SET crystal = 5000 WHERE userid = ?`, [alpha.name]);
@@ -482,7 +564,10 @@ async function main() {
     bravo.drain();
     alpha.send(`//probe:${hex(bravoRow.homeworld)}`);
     const jammed = await alpha.waitFor(m => m.startsWith('Error:') || m.startsWith(`sector::${bravoRow.homeworld}`), 'counterspy outcome');
-    check(jammed.includes('counter-intelligence'), 'superior counter-intel destroys probes', jammed.slice(0, 100));
+    // Same denial as terrain hazards: the probe dies and the attacker learns only that
+    // the sector eats probes, never that a counter-intel net did the killing.
+    check(jammed.includes('probe was destroyed'), 'superior counter-intel destroys probes', jammed.slice(0, 120));
+    check(!/counter-intel/i.test(jammed), 'counter-intel kill stays deniable', jammed.slice(0, 120));
     const bravoAlert = bravo.find(m => m.includes('DESTROYED an enemy probe'));
     check(Boolean(bravoAlert), 'counter-spy victim is told of their win', bravoAlert ? bravoAlert.slice(0, 90) : 'no alert');
 
@@ -511,10 +596,12 @@ async function main() {
     // Alpha conquers everything: wipe rivals' ships and planets.
     await query(db, `DELETE FROM ships${gameId} WHERE sectorid = ? AND owner = ?`, [bgId, Number(bravo.name)]);
     const rivals = [Number(bravo.name), Number(ai.userid)];
-    for (const rival of rivals) {
-        const owned = await query(db, `SELECT sectorid FROM map${gameId}`, []);
-        for (const row of owned) {
-            // reassign every rival sector to alpha
+    // Hand every rival-held sector to alpha. The old loop body was empty, so rivals kept
+    // planets they had colonised mid-run and elimination could never fire.
+    const allSectors = await query(db, `SELECT sectorid, owner FROM map${gameId}`, []);
+    for (const row of allSectors) {
+        if (rivals.includes(Number(row.owner))) {
+            await query(db, `UPDATE map${gameId} SET owner = ${Number(alpha.name)} WHERE sectorid = ${Number(row.sectorid)}`, []);
         }
     }
     await query(db, `UPDATE map${gameId} SET owner = ${Number(alpha.name)} WHERE sectorid = ${Number(bravoRow.homeworld)}`, []);
@@ -526,9 +613,15 @@ async function main() {
             await query(db, `DELETE FROM ships${gameId} WHERE id = ?`, [ship.id]);
         }
     }
+    // The combat section above froze the turn clock for battle playback, and
+    // processTurn refuses to run during that pause. Wait it out or victory can never
+    // be evaluated (this is why this check used to fail).
+    for (let i = 0; i < 120 && serverLogic.isBattlePauseActive(gameId); i++) {
+        await sleep(250);
+    }
     alpha.drain();
-    serverLogic.processTurn(gameId);
-    await sleep(400);
+    await serverLogic.processTurn(gameId);
+    await sleep(600);
     const gameOver = alpha.find(m => m.startsWith('gameover::'));
     check(Boolean(gameOver), 'victory triggers gameover broadcast', gameOver || 'no gameover message');
 

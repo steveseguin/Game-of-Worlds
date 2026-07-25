@@ -586,6 +586,14 @@ class MockDatabase {
                         return;
                     }
 
+                    // Quoted literals, e.g. SET ai_strategy = 'aggressive'. Without this
+                    // the assignment was silently dropped and the test saw stale state.
+                    const stringLiteralMatch = assignment.match(/^([a-z_]+) = '([^']*)'/i);
+                    if (stringLiteralMatch) {
+                        player[stringLiteralMatch[1]] = stringLiteralMatch[2];
+                        return;
+                    }
+
                     const selfAddMatch = assignment.match(/^([a-z_]+) = ([a-z_]+) \+ \?/i);
                     if (selfAddMatch) {
                         const field = selfAddMatch[1];
@@ -805,6 +813,24 @@ class MockDatabase {
                                 building.production_turn = 0;
                                 building.production_used = 0;
                             }
+                            affectedRows += 1;
+                        }
+                    });
+                    return this._async(callback, null, { affectedRows });
+                }
+
+                // Test-harness helper: bulk-set a player's building level (e.g. hand an
+                // AI a Tier-4 spaceport so production capacity is not the variable).
+                if (/^UPDATE `?buildings\d+`? SET level = \d+ WHERE owner = \? AND type = \d+/i.test(normalized)) {
+                    const levelMatch = /SET level = (\d+)/i.exec(normalized);
+                    const typeMatch = /AND type = (\d+)/i.exec(normalized);
+                    const owner = Number((params || [])[0]);
+                    const level = Number(levelMatch && levelMatch[1]);
+                    const type = Number(typeMatch && typeMatch[1]);
+                    let affectedRows = 0;
+                    buildings.forEach(row => {
+                        if (Number(row.owner) === owner && Number(row.type) === type) {
+                            row.level = level;
                             affectedRows += 1;
                         }
                     });
