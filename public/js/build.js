@@ -136,6 +136,12 @@ const BuildSystem = (() => {
         }
 
         const type = Number(sector.type);
+        // A homeworld (10) IS a planet — it is just not a colonisation target, because
+        // somebody already lives there. Conflating the two made the checklist tell a
+        // player standing on their own capital that the sector "has no planet to settle",
+        // and the button explain itself with "There is no planet here to settle". Keep
+        // "is there a world here" and "can I settle it" as separate questions.
+        const hasPlanet = type >= 6 && type <= 10;
         const isPlanet = type >= 6 && type <= 9;
         const owner = Number(sector.owner ?? sector.ownerid) || 0;
         const unclaimed = owner === 0;
@@ -149,12 +155,12 @@ const BuildSystem = (() => {
         const terraformKnown = isPlanet && (unclaimed ? colonyShips > 0 || owner === myId : true);
 
         if (context) {
-            context.textContent = isPlanet
+            context.textContent = hasPlanet
                 ? `Sector ${sector.id}: ${unclaimed ? 'unclaimed world' : (owner === myId ? 'already yours' : 'held by a rival')}.`
                 : `Sector ${sector.id} has no planet to settle.`;
         }
 
-        mark('planet', isPlanet, isPlanet
+        mark('planet', hasPlanet, hasPlanet
             ? 'The sector contains a planet'
             : 'The sector must contain a planet');
         mark('ship', colonyShips > 0, colonyShips > 0
@@ -167,11 +173,13 @@ const BuildSystem = (() => {
             : "Your Terraforming must meet the world's requirement");
         mark('unclaimed', unclaimed, unclaimed
             ? 'Nobody owns this sector'
-            : 'Nobody else can already own it');
+            // "Nobody else can already own it" read as a flat contradiction on your own
+            // capital: nobody else does — you do. Say who holds it.
+            : (owner === myId ? 'You already hold this world' : 'A rival already holds this world'));
 
         let reason = '';
         if (battleFrozen) reason = 'Orders are frozen during battle playback';
-        else if (!isPlanet) reason = 'There is no planet here to settle';
+        else if (!hasPlanet) reason = 'There is no planet here to settle';
         else if (!unclaimed) reason = owner === myId ? 'You already own this world' : 'A rival holds this world';
         else if (colonyShips < 1) reason = 'Move a Colony Ship here first';
         else if (have < required) reason = `Needs Terraforming ${required}`;
