@@ -489,9 +489,16 @@
                 <button id="helpClose" style="background:transparent;border:none;color:#cfd7ff;font-size:18px;cursor:pointer;">✕</button>
             </div>
             <ul style="line-height:1.6;margin:12px 0 0 16px;color:rgba(232,236,255,0.8);">
-                <li>Turns advance every 3 minutes; use the Next Turn button when ready.</li>
+                <!-- Every instruction here has to name a control that exists and a tab that
+                     holds it. This list previously said "the Next Turn button" (it is
+                     labelled End Turn), sent players to the Fleet tab to build a colony
+                     ship (every ship button lives in Build; Fleet only shows and moves
+                     what you already have), and stated 3 minutes as fact when that is the
+                     Quick cadence only — an Epic turn is a day. Getting a new player's
+                     first colony wrong is the worst place in the product to be vague. -->
+                <li>Turns advance on the clock in the top right; press End Turn to finish yours early.</li>
                 <li>Resources: build extractors/refineries on owned sectors; research unlocks tech and better ships.</li>
-                <li>Colonize: build a colony ship (Fleet tab), move it to an unowned sector, then colonize.</li>
+                <li>Colonize: build a colony ship in the Build tab, move it to an unowned planet, then settle it from the Colonize tab.</li>
                 <li>Combat: fleets in the same sector auto-resolve each turn; build scouts early for vision.</li>
                 <li>Need a refresher? Reopen this help with the ? button.</li>
             </ul>
