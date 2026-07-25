@@ -689,7 +689,10 @@ img { max-width: 100%; display: block; }
 }
 .race:hover .race__ring { animation: spin 6s linear infinite; }
 
-.race__body { min-width: 0; }
+/* The role and ability lines run to two or three lines depending on the race, which left
+   every card's meters at a different height across a row. Make the body a column and pin
+   the meters to its bottom, so they line up no matter how long the copy above them runs. */
+.race__body { min-width: 0; display: flex; flex-direction: column; }
 .race__name {
     font-family: var(--font-display);
     font-weight: 700;
@@ -715,7 +718,7 @@ img { max-width: 100%; display: block; }
     vertical-align: 1px;
 }
 
-.race__bars { display: grid; gap: 0.4rem; max-width: 240px; }
+.race__bars { display: grid; gap: 0.4rem; max-width: 240px; margin-top: auto; }
 .bar { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 0.6rem; }
 .bar i { font-family: var(--font-mono); font-style: normal; font-size: 0.62rem; letter-spacing: 0.1em; color: var(--faint); }
 .bar span { height: 6px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
