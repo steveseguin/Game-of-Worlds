@@ -846,11 +846,23 @@ import { PLANET_STYLES, getPlanetTexture } from './planet-texture.js?v=20260725a
                     const s = src[Math.floor(Math.random() * src.length)];
                     const d = dst[Math.floor(Math.random() * dst.length)];
                     fireBeam(s, d, fromAtt ? FACTION.attacker.engine : FACTION.defender.engine);
+                    // Fire the sound WITH the beam. This used to play once at the top of
+                    // the round while the volleys themselves went off on staggered
+                    // timers, so a player saw ten shots and heard one, early.
+                    if (window.MediaManager?.playSfx) {
+                        window.MediaManager.playSfx('laserFire', { overlap: true });
+                    }
+                    // A hull that is still there after the shot took it on the shields.
+                    const impact = setTimeout(() => {
+                        if (d.visible && window.MediaManager?.playSfx) {
+                            window.MediaManager.playSfx('shieldHit', { overlap: true });
+                        }
+                    }, 160);
+                    timers.push(impact);
                 }
             }, Math.random() * (current.perRoundMs * 0.55));
             timers.push(tmr);
         }
-        if (window.MediaManager?.playSfx) window.MediaManager.playSfx('laserFire');
 
         // Apply this round's losses partway through, after some beams have flown.
         const killTimer = setTimeout(() => {

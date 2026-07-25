@@ -99,16 +99,45 @@
         }
     }
 
-    function playSfx(name) {
+    // Cap on simultaneous copies of one layered effect. A battle round fires up to ten
+    // volleys; letting every one spawn an element unbounded would stack a wall of noise
+    // and leak audio nodes if a round ever ran long.
+    const OVERLAP_LIMIT = 4;
+    const overlapping = {};
+
+    /**
+     * playSfx(name)                  — restart the shared element (UI clicks, one-shots)
+     * playSfx(name, { overlap: true }) — play a fresh copy that layers over the others
+     *
+     * There is ONE <audio> element per sound, so the default path restarts it. That is
+     * right for a click, but wrong for weapons fire: a round schedules its volleys on
+     * staggered timers, and restarting a single element per beam produces a stutter
+     * rather than a battle. Layered plays clone the element and let it expire.
+     */
+    function playSfx(name, options) {
         if (!sfxEnabled) return;
         window.SoundSystem?.ensureMusicContinuity?.();
         const el = audio[name];
-        if (el) {
-            el.currentTime = 0;
-            el.play().catch(() => {}).finally(() => {
-                window.SoundSystem?.ensureMusicContinuity?.();
-            });
+        if (!el) return;
+
+        if (options && options.overlap) {
+            const live = overlapping[name] || 0;
+            if (live >= OVERLAP_LIMIT) return;
+            const copy = el.cloneNode();
+            // Each layer is quieter than the single shot would be, so ten beams read as
+            // a barrage instead of clipping.
+            copy.volume = el.volume * 0.55;
+            overlapping[name] = live + 1;
+            const done = () => { overlapping[name] = Math.max(0, (overlapping[name] || 1) - 1); };
+            copy.addEventListener('ended', done, { once: true });
+            copy.play().catch(done);
+            return;
         }
+
+        el.currentTime = 0;
+        el.play().catch(() => {}).finally(() => {
+            window.SoundSystem?.ensureMusicContinuity?.();
+        });
     }
 
     function playMusic(name) {
