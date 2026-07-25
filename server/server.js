@@ -3603,6 +3603,11 @@ function buyTech(data, connection) {
                     connection.sendUTF(`Success: Researched ${tech.name} Lv${check.nextLevel}`);
                     updateResources(connection);
                     sendTechState(connection);
+                    // Economy techs change the per-turn rate immediately, but only
+                    // updateResources (the stockpile) was being resent — so the "+N/turn"
+                    // a player just spent research to raise kept showing the old figure
+                    // until the next turn tick, up to three minutes later.
+                    sendEmpireSummary(connection);
                     sendVictoryProgress(connection);
                 }
             );
@@ -4119,6 +4124,10 @@ function buyBuilding(data, connection) {
                                             connection.sendUTF(`Success: Built ${building.name} in sector ${buildSector}`);
                                             updateResources(connection);
                                             updateSector2(gameId, buildSector);
+                                            // Extractors, refineries and academies all raise the
+                                            // per-turn rate. Without this the income panel ignored
+                                            // the building you just paid for until the turn rolled.
+                                            sendEmpireSummary(connection);
                                         }
                                     );
                                 }
