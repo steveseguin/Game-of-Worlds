@@ -50,10 +50,16 @@ test.describe('Authoritative gameplay controls', () => {
         const scoutButton = page.locator('.ship-button[data-ship-id="3"]');
         await expect(scoutButton).toBeEnabled({ timeout: 15000 });
         await expect(page.locator('#bb4')).toBeDisabled();
-        await expect(page.locator('#bb4')).toContainText('Upgrade Spaceport 2');
+        // The label was reworded for readability — "Upgrade Spaceport to Lv 2", with the
+        // requirement and the payoff spelled out rather than a bare number. Assert the
+        // intent (it names the upgrade and the tier) instead of the old exact string.
+        await expect(page.locator('#bb4')).toContainText(/Upgrade Spaceport/i);
+        await expect(page.locator('#bb4')).toContainText(/Lv\s*2/i);
         await expect(page.locator('#bb4')).toHaveAttribute('title', /Military Shipyards Lv1/);
         await expect(page.locator('#spaceportProductionStatus')).toContainText('12/12 production', { timeout: 15000 });
-        await expect(scoutButton.locator('small')).toContainText('1P');
+        // Costs are spelled out now — "200 · 1 prod" — rather than the "1P"/"430M"
+        // shorthand, which named no unit the player had ever been taught.
+        await expect(scoutButton.locator('small')).toContainText(/1\s*prod/i);
         await scoutButton.click();
         await expect(page.locator('#spaceportProductionStatus')).toContainText('11/12 production', { timeout: 15000 });
         await expect(page.locator('.ship-button[data-ship-id="9"]')).toBeDisabled();
