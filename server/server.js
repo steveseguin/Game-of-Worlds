@@ -100,6 +100,21 @@ const DEFAULT_STANDING_ORDERS = {
 };
 const SCOUT_SHIP_ID = combatSystem.SHIP_TYPES?.SCOUT?.id || 3;
 const COLONY_SHIP_ID = combatSystem.SHIP_TYPES?.COLONY_SHIP?.id || 6;
+
+// Asteroid belt survival odds, stated once so the three places that roll them cannot
+// drift apart. The model is about closing speed, not about what the hull is made of:
+//
+//   TRANSIT  - a ship crossing a belt is between stars at light speed and cannot see
+//              what is in front of it, so a belt is a coin toss per hull.
+//   ARRIVAL  - a ship whose destination IS the belt is decelerating as it approaches
+//              and has time to see and dodge, so it fares better.
+//   DEPARTURE- leaving a belt you already occupy is never rolled. traceDirectRoute
+//              excludes the origin, so this needs no code; do not add any.
+//
+// Knowing a belt is there does not improve these odds - it lets you plot around it.
+// Owning it does: survivors of an arrival secure the belt and it becomes free transit.
+const BELT_LOSS_CHANCE_TRANSIT = 0.5;
+const BELT_LOSS_CHANCE_ARRIVAL = 0.25;
 const PROBE_COST_CRYSTAL = 300;
 const INTEL_LEVEL_TERRAIN = 1;
 const INTEL_LEVEL_PROBE = 2;
@@ -3693,7 +3708,13 @@ function revealProbedSector(gameId, playerId, targetSector, connection, knownSec
                 loseProbe(gameId, playerId, targetSector, connection);
                 return;
             }
-            if (sectorType === 1 && Number(sectorOwner) !== Number(playerId)) {
+            // A probe's destination IS the sector, so it decelerates into the belt and takes
+            // the arrival roll, not the transit one. This used to destroy the probe every
+            // single time, which made scouting a belt strictly worse than flying a cheap
+            // ship into it - the ship got the same intel, a 75% survival chance, and the
+            // sector. Knowing a belt is there does not improve the odds; owning it does.
+            if (sectorType === 1 && Number(sectorOwner) !== Number(playerId)
+                && Math.random() < BELT_LOSS_CHANCE_ARRIVAL) {
                 loseProbe(gameId, playerId, targetSector, connection);
                 return;
             }
@@ -4375,7 +4396,8 @@ async function applyIntermediateRouteHazards(gameId, playerId, targetSector, rou
                 break;
             }
             if (type === 1 && Number(sector.owner) !== Number(playerId)) {
-                const losses = active.filter(() => Math.random() > 0.5);
+                // Crossing at light speed, blind: the harsher roll.
+                const losses = active.filter(() => Math.random() < BELT_LOSS_CHANCE_TRANSIT);
                 losses.forEach(id => destroyed.add(id));
                 if (losses.length) reports.push({ type: 'asteroid', sectorId, count: losses.length });
                 markSectorExplored(gameId, playerId, sectorId);
@@ -4651,7 +4673,10 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                         }
                         const totalShips = ships.length;
                         // ~50% chance per ship of destruction
-                        const destroyed = ships.filter(() => Math.random() > 0.5);
+                        // Decelerating into the belt as the destination: the gentler roll.
+                        // This is what makes deliberately stopping at a belt to secure it a
+                        // better idea than repeatedly flying through one.
+                        const destroyed = ships.filter(() => Math.random() < BELT_LOSS_CHANCE_ARRIVAL);
                         const destroyedCount = destroyed.length;
                         const survivors = totalShips - destroyedCount;
 

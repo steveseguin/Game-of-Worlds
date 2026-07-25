@@ -139,8 +139,12 @@ Run `npm run setup` to create tables. Key tables:
   - Message: "Fleet arrived in sector X... but the sector contained a blackhole! UH-OH! Our fleet was crushed by the immense gravity!"
   - No escape, no partial losses
 
-- **Asteroid Belts (sectortype 1)**: Random damage on entry
-  - Each ship ~50% chance destruction: `Math.round(shipCount * Math.random())`
+- **Asteroid Belts (sectortype 1)**: Random damage, per hull, rolled independently
+  - Rate depends on closing speed — 50% crossing, 25% arriving, 0% departing. See the
+    hazard-odds table below; do not re-derive it here, the two would drift.
+  - The original `Math.round(shipCount * Math.random())` killed a *contiguous count* of
+    ships rather than rolling each hull, so a 4-ship fleet could never lose exactly the
+    middle two. Each hull now rolls for itself.
   - Three outcomes with narrative messages:
     - **Total loss**: "We lost our entire fleet!"
     - **Partial loss**: "We lost X ships. If we can control the sector though, that won't happen again."
@@ -148,13 +152,40 @@ Run `npm run setup` to create tables. Key tables:
   - **KEY**: Once YOU OWN the sector, it becomes safe - no more hazard damage
   - Strategic depth: Players must "secure" dangerous sectors to use them as safe transit routes
 
+### Hazard Odds — the closing-speed model
+
+Ships cross between stars at light speed and cannot see what is ahead of them, so a belt
+is only dangerous because space is otherwise empty. What matters is how fast you are
+going when you meet one, not what the hull is made of:
+
+| what the ship is doing | belt | black hole |
+|---|---|---|
+| **Transit** — crossing at light speed, blind | 50% loss per hull | total loss |
+| **Arrival** — decelerating, the belt IS the destination | 25% loss per hull | total loss |
+| **Departure** — leaving a belt you occupy | 0%, never rolled | n/a |
+
+- **Seeing** a belt does not improve the odds — it lets you plot a route *around* it.
+- **Owning** a belt does: survivors of an arrival secure it, and it becomes free transit
+  (and a small mine) for good. This is the "turn death-traps into supply lanes" loop.
+- Because arriving is safer than crossing, deliberately stopping at a belt to secure it
+  beats flying through it repeatedly. That is intended.
+- Black holes are never a dice roll, in any phase.
+
+The odds live in `BELT_LOSS_CHANCE_TRANSIT` / `BELT_LOSS_CHANCE_ARRIVAL` in server.js and
+are pinned by `tests/belt-hazard-odds.test.js`. Departure is free because
+`traceDirectRoute` excludes the origin — there is no code for it, so do not add any.
+
 ### Probe Mechanics
 - **Cost**: 300 crystals per probe
-- **Risk**: Probe DESTROYED if entering sectortype < 2 (Empty Space, Asteroid, or Black Hole)
-  - Probing black holes destroys probe with message: "Our probe was destroyed in sector X"
-  - Probing asteroids risks destruction
-  - Probing planets is safe and reveals resources
-- **Reward**: Reveals full sector info without fleet risk
+- **Risk**: a probe's destination IS the sector, so it takes the ARRIVAL roll
+  - Black hole: destroyed, always
+  - Unsecured asteroid belt: 25% chance of destruction (same as a decelerating hull)
+  - A belt you own, empty space, and planets: safe
+  - Enemy counter-intelligence can also kill a probe over sectors a rival controls
+- **Reward**: Reveals full sector info without risking a fleet
+- Earlier revisions of this file said "destroyed if sectortype < 2 (Empty Space, Asteroid,
+  or Black Hole)". That was self-contradictory — a black hole is type 2, not below it —
+  and it did not match the engine. The table above is the rule.
 
 ### Fleet Movement & Colonization
 - **Auto-Colonization**: Moving fleet to unowned sector = automatic ownership
