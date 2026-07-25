@@ -580,10 +580,10 @@ function renderTurnTimer() {
     }
 }
 
-// The music engine deliberately keeps its urgency ramp subtle (a 6% tempo lift over
-// the final ten seconds — see the "stabilize campaign music" work). That is too quiet
-// to serve as the only "your turn is ending" signal, so pair it with one discrete cue
-// on the way past the threshold. Fires at most once per turn and honours mute.
+// The music engine's urgency ramp is a build, not an alarm: a 12% tempo lift spread
+// across the final 45 seconds (see calculateUrgencyTempo in epic-music.js). It is meant
+// to be felt rather than noticed, so it cannot be the only "your turn is ending" signal.
+// Pair it with one discrete cue near the end. Fires at most once per turn, honours mute.
 const TURN_WARNING_SECONDS = 10;
 let turnWarningFiredFor = null;
 

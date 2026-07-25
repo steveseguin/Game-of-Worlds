@@ -4,26 +4,41 @@
     const LOOKAHEAD_SECONDS = 0.65;
     const TICK_MS = 55;
     const SILENCE = 0.0001;
-    const MAX_TEMPO_MULTIPLIER = 1.06;
+    // The dial to turn if the build wants to be stronger or gentler. 12% is roughly twice
+    // the old 6%, because 6% spread across a 45-second build is close to the threshold
+    // where a listener stops registering tempo change at all — a lift you cannot hear is
+    // the same as no lift.
+    const MAX_TEMPO_MULTIPLIER = 1.12;
     // How long before the turn ends the music may start tightening.
-    const URGENCY_WINDOW_SECONDS = 30;
+    const URGENCY_WINDOW_SECONDS = 45;
+    // Ceiling as a share of the turn, so short turns are not spent entirely in countdown.
+    // At 0.25 a 180s Quick turn gets the full 45s; the old 0.2 silently capped it at 36.
+    const URGENCY_WINDOW_SHARE = 0.25;
+    // Curve shape. 1 is a flat ramp, 2 is the old quadratic that kept two thirds of the
+    // window inaudible. 1.5 still accelerates into the final seconds but has moved
+    // perceptibly by the time a third of the window has passed, which is the point: the
+    // player should notice while there is still time to spend metal or move a fleet.
+    const URGENCY_CURVE_EXPONENT = 1.5;
 
     function calculateUrgencyTempo(secondsRemaining, turnDurationSeconds) {
         const remaining = Number(secondsRemaining);
         const duration = Number(turnDurationSeconds);
         if (!Number.isFinite(remaining) || !Number.isFinite(duration) || duration <= 0) return 1;
 
-        // Urgency should be a slow build into the closing seconds, never a mood the
-        // music sits in. The window opens at thirty seconds so the tightening is
-        // perceptible as a build rather than a twitch, but a quadratic ease keeps the
-        // first two-thirds of that window essentially inaudible — no urgency while
-        // there is nothing to be urgent about. The ceiling is unchanged.
-        // Short turns keep their proportional window so a 30s test turn does not
-        // spend its entire length in countdown.
-        const urgencyWindow = Math.min(URGENCY_WINDOW_SECONDS, duration * 0.2);
+        // Urgency is a build the player can act on, not an announcement that the turn has
+        // already gone. The previous shape opened at 30s but eased quadratically, so the
+        // first two thirds were inaudible and the whole lift landed in the last handful of
+        // seconds — by which point there is no time left to spend metal or move a fleet.
+        // It now opens at 45s and moves perceptibly from roughly a third of the way in,
+        // while still accelerating into the closing bars.
+        //
+        // Short turns keep a proportional window so a 30s test turn does not spend its
+        // whole length in countdown; long turns are capped, since a day-long Epic turn
+        // does not want an hours-long crescendo.
+        const urgencyWindow = Math.min(URGENCY_WINDOW_SECONDS, duration * URGENCY_WINDOW_SHARE);
         if (urgencyWindow <= 0 || remaining >= urgencyWindow) return 1;
         const linear = Math.max(0, Math.min(1, (urgencyWindow - Math.max(0, remaining)) / urgencyWindow));
-        return 1 + (MAX_TEMPO_MULTIPLIER - 1) * (linear * linear);
+        return 1 + (MAX_TEMPO_MULTIPLIER - 1) * Math.pow(linear, URGENCY_CURVE_EXPONENT);
     }
 
     const playlists = {

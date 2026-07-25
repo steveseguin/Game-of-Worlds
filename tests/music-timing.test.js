@@ -3,38 +3,61 @@ const assert = require('node:assert/strict');
 
 const { EpicMusicEngine, calculateUrgencyTempo } = require('../public/js/epic-music.js');
 
-test('music urgency stays silent until the final thirty seconds of a quick turn', () => {
+// The urgency ramp exists so a player FEELS the turn ending while there is still time to
+// spend metal or move a fleet. An earlier shape opened at 30s but eased quadratically, so
+// two thirds of the window was inaudible and the whole lift arrived in the last few
+// seconds — by then the information is useless. These tests pin the replacement: a 45s
+// window that has moved perceptibly by the time a third of it has gone.
+
+test('urgency is silent until the final forty-five seconds of a quick turn', () => {
     assert.equal(calculateUrgencyTempo(120, 180), 1);
-    assert.equal(calculateUrgencyTempo(31, 180), 1);
-    assert.equal(calculateUrgencyTempo(30, 180), 1);
-    assert.ok(calculateUrgencyTempo(29, 180) > 1);
-    assert.ok(calculateUrgencyTempo(5, 180) > calculateUrgencyTempo(20, 180));
-    assert.equal(calculateUrgencyTempo(0, 180), 1.06);
+    assert.equal(calculateUrgencyTempo(46, 180), 1);
+    assert.equal(calculateUrgencyTempo(45, 180), 1);
+    assert.ok(calculateUrgencyTempo(44, 180) > 1);
+    assert.ok(calculateUrgencyTempo(5, 180) > calculateUrgencyTempo(20, 180),
+        'the build must be monotonic - later is always more urgent');
+    assert.equal(Number(calculateUrgencyTempo(0, 180).toFixed(4)), 1.12);
 });
 
-test('urgency builds gently — no tension while there is nothing to be tense about', () => {
-    // The point of the window is a build, not a mood the music sits in. The opening
-    // two thirds of it must stay under a quarter of the total lift, so the player
-    // only feels it once the clock genuinely matters.
+test('the build is audible while there is still time to act on it', () => {
+    // This is the whole point of the change, so it is asserted rather than assumed.
+    // At 30s remaining a Quick turn still has real decisions left in it; the music has
+    // to have started moving by then, which the old quadratic-over-30s shape did not.
     const lift = seconds => calculateUrgencyTempo(seconds, 180) - 1;
     const total = lift(0);
-    assert.ok(lift(25) < total * 0.05, 'five seconds into the window should be imperceptible');
-    assert.ok(lift(20) < total * 0.2, 'a third of the way in should still be subtle');
-    assert.ok(lift(10) > total * 0.35, 'the last ten seconds should carry the build');
-    assert.ok(lift(2) > total * 0.8, 'the final breath should be near the ceiling');
+    assert.ok(lift(30) > total * 0.1,
+        'a third of the way in should be perceptible, not inaudible');
+    assert.ok(lift(30) < total * 0.35,
+        '...but still clearly a build rather than the destination');
+    assert.ok(lift(15) > total * 0.45, 'past halfway the build should dominate');
+    assert.ok(lift(2) > total * 0.85, 'the final breath should be near the ceiling');
 });
 
-test('long turns cap the music urgency window at thirty seconds', () => {
-    assert.equal(calculateUrgencyTempo(61, 86400), 1);
-    assert.equal(calculateUrgencyTempo(30, 86400), 1);
-    assert.ok(calculateUrgencyTempo(29, 86400) > 1);
-    assert.equal(calculateUrgencyTempo(0, 86400), 1.06);
+test('urgency still accelerates rather than ramping flat', () => {
+    // A straight line would reach the ceiling too early and sit there. Each successive
+    // stretch of the window must contribute more lift than the one before it.
+    const lift = seconds => calculateUrgencyTempo(seconds, 180) - 1;
+    const firstThird = lift(30) - lift(45);
+    const middleThird = lift(15) - lift(30);
+    const finalThird = lift(0) - lift(15);
+    assert.ok(middleThird > firstThird, 'the middle of the window should out-build the opening');
+    assert.ok(finalThird > middleThird, 'the closing seconds should out-build the middle');
 });
 
-test('short test turns use their final twenty percent', () => {
-    assert.equal(calculateUrgencyTempo(7, 30), 1);
-    assert.equal(calculateUrgencyTempo(6, 30), 1);
-    assert.ok(calculateUrgencyTempo(3, 30) > 1);
+test('long turns cap the urgency window rather than crescendoing for hours', () => {
+    // An Epic turn is a day long; 25% of it would be a six-hour build.
+    assert.equal(calculateUrgencyTempo(46, 86400), 1);
+    assert.equal(calculateUrgencyTempo(45, 86400), 1);
+    assert.ok(calculateUrgencyTempo(44, 86400) > 1);
+    assert.equal(Number(calculateUrgencyTempo(0, 86400).toFixed(4)), 1.12);
+});
+
+test('short test turns use a proportional window, not the full forty-five seconds', () => {
+    // A 30s turn would otherwise spend its entire length in countdown. 25% of 30 is 7.5s.
+    assert.equal(calculateUrgencyTempo(8, 30), 1);
+    assert.equal(calculateUrgencyTempo(7.5, 30), 1);
+    assert.ok(calculateUrgencyTempo(7, 30) > 1);
+    assert.ok(calculateUrgencyTempo(30, 30) === 1, 'the start of a turn is never urgent');
 });
 
 test('scheduler drops missed wall-clock beats instead of replaying a fast backlog', () => {

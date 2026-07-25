@@ -29,23 +29,28 @@ test.describe('Authoritative gameplay controls', () => {
             return Number.parseInt(text, 10);
         }, { timeout: 15000 }).toBeLessThanOrEqual(30);
 
-        // The urgency window is 30 seconds, not the 10 it was originally written against:
-        // the brief was "slowly increase the urgency before 10 seconds, perhaps even at
-        // 30 — I just don't want urgency if there is no perceived need for it". So the
-        // music must still be completely level at 30s and only lean in below that.
+        // The urgency window is 45 seconds. The original brief was "slowly increase the
+        // urgency before 10 seconds, perhaps even at 30 — I just don't want urgency if
+        // there is no perceived need for it", and the first attempt honoured the second
+        // half of that so literally that the build was inaudible until the turn was
+        // already lost. The window now opens at 45s and has moved perceptibly by 30s,
+        // which is the earliest point a player can still do much about it, while staying
+        // completely level before that. Unit coverage of the curve's shape lives in
+        // tests/music-timing.test.js; this checks the browser-side wiring agrees.
         const tempoBehavior = await page.evaluate(() => ({
-            early: window.SoundSystem.setTurnMusicUrgency(31, 180),
-            threshold: window.SoundSystem.setTurnMusicUrgency(30, 180),
+            early: window.SoundSystem.setTurnMusicUrgency(46, 180),
+            threshold: window.SoundSystem.setTurnMusicUrgency(45, 180),
+            actionable: window.SoundSystem.setTurnMusicUrgency(30, 180),
             urgent: window.SoundSystem.setTurnMusicUrgency(11, 180),
             final: window.SoundSystem.setTurnMusicUrgency(0, 30)
         }));
         expect(tempoBehavior.early).toBe(1);
         expect(tempoBehavior.threshold).toBe(1);
-        expect(tempoBehavior.urgent).toBeGreaterThan(1);
-        // Quadratic ramp, so the lean-in stays gentle well into the window rather than
-        // jumping the moment it opens.
-        expect(tempoBehavior.urgent).toBeLessThan(1.03);
-        expect(tempoBehavior.final).toBeCloseTo(1.06, 5);
+        // Audible while there is still a turn left to play — the point of the change.
+        expect(tempoBehavior.actionable).toBeGreaterThan(1.01);
+        expect(tempoBehavior.actionable).toBeLessThan(1.05);
+        expect(tempoBehavior.urgent).toBeGreaterThan(tempoBehavior.actionable);
+        expect(tempoBehavior.final).toBeCloseTo(1.12, 5);
 
         const scoutButton = page.locator('.ship-button[data-ship-id="3"]');
         await expect(scoutButton).toBeEnabled({ timeout: 15000 });
