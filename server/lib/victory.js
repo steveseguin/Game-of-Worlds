@@ -14,13 +14,18 @@ const TIME_VICTORY_TURN_LIMIT = Number(process.env.VICTORY_TIME_TURN_LIMIT) || 3
 // minutes that is fifteen hours for a mode the lobby sells as "one sitting"; at Epic's
 // twenty-four hours it is over two years. The only guaranteed way a match ends has to
 // scale with its own cadence.
-// Sized against expansion rate, not just wall-clock. A colony ship is 1000 metal and
-// 7 of a Tier-1 spaceport's 12 production; modelling that against observed income
-// (~60 metal/turn for one developed world, ~52 more per world after) reaches roughly
-// 14 worlds by turn 60 and 43 by turn 90. Domination wants ~45 of ~60 colonisable
-// worlds, so a limit under about 80 turns quietly deletes conquest as a victory path
-// and every match ends on score. 300 was the opposite problem — the map saturates
-// around turn 90 and the remaining 210 turns decide nothing.
+// Sized against expansion rate, not just wall-clock. Do not re-derive this by hand — the
+// arithmetic model that used to live here swung by 5x on defensible guesses and was wrong
+// twice. Run `node tools/balance-probe.js 90 --seed=N`, which stands up a real four-empire
+// game and prints the colonisation-only ceiling for whatever the colony ship currently
+// costs. Seed it: map-to-map variance is larger than most changes being measured.
+//
+// Measured 2026-07-25 at the current 500-metal colony ship: the ceiling is roughly 44-51
+// of ~54-68 colonisable worlds inside 90 turns, against a 75% threshold. Expansion alone
+// lands just short, so domination is reachable but has to be finished by conquest — which
+// is the intent. A limit much under 80 turns deletes conquest as a victory path and every
+// match ends on score; 300 was the opposite problem, since the map saturates around turn
+// 90 and the remaining 210 turns decide nothing.
 const TIME_VICTORY_TURNS_BY_MODE = Object.freeze({
     quick: Number(process.env.VICTORY_TIME_TURNS_QUICK) || 90,   // conquest live at the wire
     epic: Number(process.env.VICTORY_TIME_TURNS_EPIC) || 120,    // ~4 months at a turn a day
