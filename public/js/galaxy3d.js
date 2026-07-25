@@ -931,6 +931,12 @@ import { PLANET_STYLES, getPlanetTexture } from './planet-texture.js?v=20260725a
         state.renderer = renderer;
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         container.appendChild(renderer.domElement);
+        // A bare <canvas> is announced as nothing at all. Name it and say where the same
+        // information can be read as text, since the map itself is pointer-driven and the
+        // selected-sector panel is the readable path through it.
+        renderer.domElement.setAttribute('role', 'img');
+        renderer.domElement.setAttribute('aria-label',
+            'Galaxy map. Sector details for the selected sector are listed in the selected sector panel.');
         renderer.domElement.style.width = '100%';
         renderer.domElement.style.height = '100%';
         renderer.domElement.style.display = 'block';

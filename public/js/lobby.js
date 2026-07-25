@@ -584,15 +584,18 @@ function renderGameTable(rows, renderedRows) {
         return;
     }
 
+    // scope="col" is what lets a screen reader announce "Mode: Quick" instead of reading
+    // a bare cell with no idea which column it came from. Without it this table is a grid
+    // of unlabelled values.
     let html = `
         <tr>
-            <th>Game ID</th>
-            <th>Name</th>
-            <th>Players</th>
-            <th>Mode</th>
-            <th>Access</th>
-            <th>Status</th>
-            <th>Action</th>
+            <th scope="col">Game ID</th>
+            <th scope="col">Name</th>
+            <th scope="col">Players</th>
+            <th scope="col">Mode</th>
+            <th scope="col">Access</th>
+            <th scope="col">Status</th>
+            <th scope="col">Action</th>
         </tr>
     `;
 

@@ -566,10 +566,10 @@
             <div class="card" id="createGameCard" data-code="PNL-01">
                 <h3>Create a New Game</h3>
                 <div class="form-row" style="margin-bottom:12px;">
-                    <input type="text" id="gameName" placeholder="Game name">
+                    <input type="text" id="gameName" placeholder="Game name" aria-label="Game name">
                 </div>
                 <div class="form-row" style="margin-bottom:14px;">
-                    <select id="maxPlayers">
+                    <select id="maxPlayers" aria-label="Maximum players">
                         <option value="2">2 Players</option>
                         <option value="3">3 Players</option>
                         <option value="4" selected>4 Players</option>
@@ -585,7 +585,7 @@
                     </select>
                 </div>
                 <div class="form-row" style="margin-bottom:14px;">
-                    <select id="gameMode">
+                    <select id="gameMode" aria-label="Game mode">
                         <option value="quick" selected>Quick — fast-paced turns</option>
                         <option value="epic">Epic — 1 turn per day</option>
                         <option value="test" id="testGameModeOption" hidden>Test - accelerated</option>
@@ -666,6 +666,6 @@
     <script src="/config.js?v=20260614b"></script>
     <script src="js/epic-music.js?v=20260725b"></script>
     <script src="js/sound.js?v=20260712a"></script>
-    <script src="js/lobby.js?v=20260725a"></script>
+    <script src="js/lobby.js?v=20260725b"></script>
 </body>
 </html>
