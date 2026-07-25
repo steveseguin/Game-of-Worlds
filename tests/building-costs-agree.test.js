@@ -100,3 +100,46 @@ test('the build buttons advertise the price the server will actually charge', ()
     assert.deepEqual(mismatches, [],
         `a build button advertises a price the server does not charge:\n  ${mismatches.join('\n  ')}`);
 });
+
+// Ships have the same problem in a milder form. build.js carries FALLBACK_SHIP_COSTS,
+// used to price the ship buttons whenever the server's techstate has not arrived yet —
+// which is exactly the moment a new player is first looking at them. The server figure
+// wins once it lands, so a drifted fallback does not overcharge anyone; it just quotes a
+// price that is not real, and then silently changes.
+test('the fallback ship prices match the ones the server will send', () => {
+    const combat = require('../server/lib/combat');
+    const src = fs.readFileSync(path.join(root, 'public', 'js', 'build.js'), 'utf8');
+    const block = src.match(/const FALLBACK_SHIP_COSTS = \{([\s\S]*?)\n\s*\};/);
+    assert.ok(block, 'could not find FALLBACK_SHIP_COSTS in build.js');
+
+    const fallback = {};
+    for (const m of block[1].matchAll(/(\d+):\s*\{\s*metal:\s*(\d+),\s*crystal:\s*(\d+)[^}]*production:\s*(\d+)/g)) {
+        fallback[Number(m[1])] = {
+            metal: Number(m[2]),
+            crystal: Number(m[3]),
+            production: Number(m[4])
+        };
+    }
+
+    const hulls = Object.values(combat.SHIP_TYPES);
+    assert.ok(hulls.length >= 9, `expected the full hull roster, saw ${hulls.length}`);
+
+    const mismatches = [];
+    hulls.forEach(ship => {
+        const shown = fallback[ship.id];
+        if (!shown) {
+            mismatches.push(`${ship.name}: missing from FALLBACK_SHIP_COSTS`);
+            return;
+        }
+        if (shown.metal !== ship.cost.metal || shown.crystal !== ship.cost.crystal) {
+            mismatches.push(`${ship.name}: fallback ${shown.metal}/${shown.crystal}, real ${ship.cost.metal}/${ship.cost.crystal}`);
+        }
+        // buildSlots is what the spaceport actually charges against its per-turn budget.
+        if (shown.production !== ship.buildSlots) {
+            mismatches.push(`${ship.name}: fallback claims ${shown.production} production, costs ${ship.buildSlots}`);
+        }
+    });
+
+    assert.deepEqual(mismatches, [],
+        `the ship buttons would quote a price the server does not use:\n  ${mismatches.join('\n  ')}`);
+});
