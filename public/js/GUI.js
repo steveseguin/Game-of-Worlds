@@ -391,6 +391,18 @@ const GameUI = (function() {
             });
         }
 
+        // The selected-sector panel carries its own Active/Being Built table (f1..f9).
+        // Its only writer was updateFleet(), fed by a "fleet:" wire message the server
+        // has never sent — so that table read "Unknown" on every row of every sector
+        // forever, including your own homeworld, directly under a panel captioned
+        // "Live intel - Details are live". Fill it from the same counts as the Fleet tab.
+        // "Being Built" (fa1..fa9) stays as it is: per-sector production queues are not
+        // in this payload, and inventing a number there would be worse than saying N/A.
+        for (let type = 1; type <= 9; type += 1) {
+            const cell = document.getElementById(`f${type}`);
+            if (cell) cell.textContent = String(counts[type] || 0);
+        }
+
         const fields = {
             'fleet-scouts': counts[3],
             'fleet-frigates': counts[1],
