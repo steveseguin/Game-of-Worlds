@@ -358,7 +358,7 @@ const Shop = (function() {
         return `
             <div id="shop-races" class="shop-section active">
                 <h3>Premium Races</h3>
-                <div class="shop-info">Unlock additional balanced race options. Paid races do not receive paid stat advantages.</div>
+                <div class="shop-info">Unlock additional balanced race options. Paid races do not receive paid stat advantages, and each carries a hull restriction listed on its card.</div>
                 <div class="shop-items">
                     ${generateRaceItems()}
                 </div>
@@ -383,7 +383,7 @@ const Shop = (function() {
                 description: 'A high-tech faction theme with balanced competitive stats.',
                 price: '$4.99',
                 image: './images/quantum-icon.svg',
-                features: ['Quantum visuals', 'Unique faction portrait', 'Balanced race option']
+                features: ['Quantum visuals', 'Unique faction portrait', 'Balanced race option', 'Restriction: cannot build Dreadnoughts']
             },
             {
                 id: 'race_titan',
@@ -391,7 +391,7 @@ const Shop = (function() {
                 description: 'A monumental empire theme with balanced competitive stats.',
                 price: '$4.99',
                 image: './images/titan-icon.svg',
-                features: ['Titan visuals', 'Unique faction portrait', 'Balanced race option']
+                features: ['Titan visuals', 'Unique faction portrait', 'Balanced race option', 'Restriction: capital hulls only - no Frigate, Destroyer, Scout or Intruder']
             },
             {
                 id: 'race_shadow',
@@ -399,7 +399,7 @@ const Shop = (function() {
                 description: 'A covert empire theme with balanced competitive stats.',
                 price: '$4.99',
                 image: './images/shadow-icon.svg',
-                features: ['Shadow visuals', 'Unique faction portrait', 'Balanced race option']
+                features: ['Shadow visuals', 'Unique faction portrait', 'Balanced race option', 'Restriction: cannot build Dreadnoughts or Carriers']
             }
         ];
         
