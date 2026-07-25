@@ -52,7 +52,7 @@ const RACE_TYPES = {
             shipAttack: 0.95,
             shipDefense: 1.05
         },
-        specialAbility: "Neural Network - Research costs 20% less",
+        specialAbility: "Neural Network - research output +30% and hulls 10% cheaper, bought with weaker metal output and softer guns",
         techTreeModifiers: {
             "advancedAI": { cost: 0.8, prereq: null }
         },
@@ -149,7 +149,7 @@ const RACE_TYPES = {
             shipAttack: 1.1,
             shipDefense: 1.4
         },
-        specialAbility: "Auto-Repair - Ships regenerate 5% hull per turn",
+        specialAbility: "Forge Doctrine - the galaxy's strongest metal output and +40% ship defence, on slow and costly hulls",
         techTreeModifiers: {
             "nanotech": { cost: 0.8, unlocked: true }
         },
@@ -174,7 +174,7 @@ const RACE_TYPES = {
             shipAttack: 1.0,
             shipDefense: 1.0
         },
-        specialAbility: "Evolution - Ships gain +2% stats per turn survived",
+        specialAbility: "Living Hulls - ships grown 10% cheaper on strong crystal output, at the cost of metal",
         techTreeModifiers: {
             "bioEngineering": { cost: 0.9, unlocked: true }
         },
@@ -198,7 +198,7 @@ const RACE_TYPES = {
             shipAttack: 1.1,
             shipDefense: 0.9
         },
-        specialAbility: "Nomadic - No building requirements for ships",
+        specialAbility: "Nomadic - the fastest and cheapest fleet in the galaxy, paid for with thin armour and poor metal",
         techTreeModifiers: {
             "mobileBase": { unlocked: true }
         },
@@ -222,7 +222,7 @@ const RACE_TYPES = {
             shipAttack: 1.5,
             shipDefense: 1.5
         },
-        specialAbility: "Precursor Tech - All techs unlocked but cost 50% more",
+        specialAbility: "Precursor Tech - the fastest research and the deadliest hulls, at 50% more per ship and a weak economy",
         techTreeModifiers: {
             "all": { unlocked: true, cost: 1.5 }
         },
@@ -247,7 +247,7 @@ const RACE_TYPES = {
             shipAttack: 1.3,
             shipDefense: 1.1
         },
-        specialAbility: "Quantum Entanglement - Can teleport ships once per 5 turns",
+        specialAbility: "Quantum Entanglement - superior research, crystal and firepower, paid for with 30% dearer hulls",
         techTreeModifiers: {
             "quantumPhysics": { unlocked: true, exclusive: true }
         },
@@ -295,7 +295,12 @@ const RACE_TYPES = {
             shipAttack: 1.2,
             shipDefense: 0.8
         },
-        specialAbility: "Cloak - All ships have 30% chance to avoid detection",
+        // This one IS implemented, unlike most of the signatures on this screen:
+        // unitModifiers.all.stealth feeds getRaceStealthScore(), which is compared against
+        // the enemy's detection score in resolveBattle. Beat their sensors and they see
+        // only a summary of the fight instead of the full telemetry. Worded to say what it
+        // actually does rather than "avoid detection", which sounded like evasion.
+        specialAbility: "Cloak - a stealth signature that hides your fleet's composition from enemies whose scouts cannot see through it",
         techTreeModifiers: {
             "stealthTech": { unlocked: true, exclusive: true }
         },
