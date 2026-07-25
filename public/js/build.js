@@ -25,7 +25,7 @@ const BuildSystem = (() => {
         3: { metal: 200, crystal: 0, shipyard: 0, production: 1 },
         4: { metal: 980, crystal: 120, shipyard: 1, production: 8 },
         5: { metal: 1650, crystal: 220, shipyard: 2, production: 12 },
-        6: { metal: 1000, crystal: 0, shipyard: 0, production: 7 },
+        6: { metal: 500, crystal: 0, shipyard: 0, production: 7 },
         7: { metal: 3200, crystal: 450, shipyard: 3, production: 24 },
         8: { metal: 1950, crystal: 133, shipyard: 2, production: 7 },
         9: { metal: 3000, crystal: 80, shipyard: 3, production: 16 }

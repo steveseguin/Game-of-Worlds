@@ -199,12 +199,12 @@ class PaymentValidator {
 
     // Validate product
     validateProduct(productId) {
-        // This would check against the PRODUCTS object
-        // For now, simplified validation
+        // Must stay in step with PURCHASABLE_PRODUCT_IDS in payments.js - a product needs
+        // to clear BOTH lists to be sold, and tests/payment-delivery-guard.test.js checks
+        // they agree. The five cosmetics are omitted deliberately: nothing is implemented
+        // behind them, so owning one changes nothing but a badge in the shop.
         const validProducts = [
-            'race_quantum', 'race_titan', 'race_shadow',
-            'skin_pack_neon', 'avatar_pack_legendary',
-            'cosmetic_empire_theme', 'cosmetic_fleet_trails', 'cosmetic_voice_pack'
+            'race_quantum', 'race_titan', 'race_shadow'
         ];
 
         if (!validProducts.includes(productId)) {

@@ -246,15 +246,20 @@ const PRODUCTS = {
     }
 };
 
+// Only products that actually do something when owned may be sold. The three races are
+// real: owning one unlocks it at race selection. The five cosmetics were not — ownership
+// was read in exactly one place, to draw an "OWNED" badge in the shop. There is no theme
+// system, no trail rendering, and no voice assets at all (every file in public/sounds/ is
+// an SFX), so buying one bought a badge. They stay defined in PRODUCTS so existing owners
+// keep their records and so re-enabling one is a single line, but they cannot be bought
+// until the feature behind them exists.
 const PURCHASABLE_PRODUCT_IDS = new Set([
     'race_quantum',
     'race_titan',
-    'race_shadow',
-    'skin_pack_neon',
-    'avatar_pack_legendary',
-    'cosmetic_empire_theme',
-    'cosmetic_fleet_trails',
-    'cosmetic_voice_pack'
+    'race_shadow'
+    // Not purchasable - nothing is implemented behind these:
+    //   skin_pack_neon, avatar_pack_legendary,
+    //   cosmetic_empire_theme, cosmetic_fleet_trails, cosmetic_voice_pack
 ]);
 
 // Premium currency exchange rates

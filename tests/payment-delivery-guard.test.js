@@ -99,6 +99,68 @@ test('the escape hatch is read the same way the code that honours it reads it', 
     });
 });
 
+// ---------------------------------------------------------------------------
+// What may be sold, and what the shop offers to sell, have to be the same set.
+
+/** The ids in PURCHASABLE_PRODUCT_IDS, read from source so the comments stay honest. */
+function purchasableIds() {
+    const block = paymentsSrc.match(/const PURCHASABLE_PRODUCT_IDS = new Set\(\[([\s\S]*?)\]\)/);
+    assert.ok(block, 'could not find PURCHASABLE_PRODUCT_IDS');
+    // Ignore commented-out entries; those are deliberately withheld.
+    return block[1].split('\n')
+        .filter(line => !line.trim().startsWith('//'))
+        .flatMap(line => [...line.matchAll(/'([\w]+)'/g)].map(m => m[1]));
+}
+
+/** The ids validateProduct() will accept. */
+function validatorIds() {
+    const src = fs.readFileSync(
+        path.join(__dirname, '..', 'server', 'lib', 'payment-validator.js'), 'utf8');
+    const block = src.match(/const validProducts = \[([\s\S]*?)\]/);
+    assert.ok(block, 'could not find validProducts in payment-validator.js');
+    return block[1].split('\n')
+        .filter(line => !line.trim().startsWith('//'))
+        .flatMap(line => [...line.matchAll(/'([\w]+)'/g)].map(m => m[1]));
+}
+
+test('the two allowlists a purchase must clear agree with each other', () => {
+    // A product has to pass both. If they drift, one list silently decides everything and
+    // the other becomes decoration -- which is exactly how a product nobody meant to sell
+    // stays on sale.
+    assert.deepEqual(purchasableIds().slice().sort(), validatorIds().slice().sort(),
+        'PURCHASABLE_PRODUCT_IDS and validateProduct() must permit the same products');
+});
+
+test('only products with something implemented behind them are sellable', () => {
+    // The three races are real: owning one unlocks it at race selection. The cosmetics are
+    // not -- ownership is read only to draw an OWNED badge. Selling one takes money for a
+    // badge, so they must stay out until the feature exists.
+    assert.deepEqual(purchasableIds().slice().sort(),
+        ['race_quantum', 'race_shadow', 'race_titan']);
+});
+
+test('the shop never offers a purchase click the server would refuse', () => {
+    // A blocked product that still has an onclick is worse than one that was never listed:
+    // the player reads the pitch, clicks buy, and gets an error. Cards may stay on display,
+    // but only sellable products may be clickable.
+    const shop = fs.readFileSync(
+        path.join(__dirname, '..', 'public', 'js', 'shop-enhanced.js'), 'utf8');
+    const sellable = new Set(purchasableIds());
+
+    // Every id the cosmetics section lists, with whether it is marked available.
+    const cosmetics = shop.match(/function generateCosmeticItems\(\)([\s\S]*?)\n {4}\}/);
+    assert.ok(cosmetics, 'could not find generateCosmeticItems');
+
+    const entries = [...cosmetics[1].matchAll(/id:\s*'([\w]+)'([\s\S]*?)(?=\n\s{12}\}|$)/g)]
+        .map(m => ({ id: m[1], available: !/available:\s*false/.test(m[2]) }));
+    assert.ok(entries.length >= 3, `expected the cosmetic cards, parsed ${entries.length}`);
+
+    const offered = entries.filter(e => e.available).map(e => e.id);
+    const wrong = offered.filter(id => !sellable.has(id));
+    assert.deepEqual(wrong, [],
+        `these cards are clickable but the server will not sell them: ${wrong.join(', ')}`);
+});
+
 test('startup tells the operator the shop is off, not merely that verification is broken', () => {
     const validator = fs.readFileSync(
         path.join(__dirname, '..', 'server', 'config', 'env-validator.js'), 'utf8');

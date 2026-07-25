@@ -579,7 +579,8 @@ const Shop = (function() {
                 price: '$3.99',
                 description: 'Custom UI skin, avatar frame, and lobby banner.',
                 features: ['Dynamic UI colors', 'Animated banner', 'Unique chat flair'],
-                image: './images/terran-emblem-v2.svg'
+                image: './images/terran-emblem-v2.svg',
+                available: false
             },
             {
                 id: 'cosmetic_fleet_trails',
@@ -587,7 +588,8 @@ const Shop = (function() {
                 price: '$2.49',
                 description: 'Leave prismatic trails across the galaxy map.',
                 features: ['Animated fleet trails', 'Custom warp animation'],
-                image: './images/zephyr-icon.svg'
+                image: './images/zephyr-icon.svg',
+                available: false
             },
             {
                 id: 'cosmetic_voice_pack',
@@ -595,22 +597,28 @@ const Shop = (function() {
                 price: '$1.99',
                 description: 'New voice lines for alerts and turn reminders.',
                 features: ['20+ voiced notifications', 'Toggle per category'],
-                image: './images/quantum-icon.svg'
+                image: './images/quantum-icon.svg',
+                available: false
             }
         ];
         
-        return cosmetics.map(item => `
-            <div class="shop-item" data-product-id="${item.id}"
-                 onclick="Shop.purchaseCosmetic('${item.id}')">
+        // Nothing is implemented behind these yet and the server refuses to sell them, so
+        // the card still describes the plan but offers no click that would only fail.
+        return cosmetics.map(item => {
+            const soon = item.available === false;
+            return `
+            <div class="shop-item${soon ? ' unavailable' : ''}" data-product-id="${item.id}"
+                 ${soon ? 'aria-disabled="true"' : `onclick="Shop.purchaseCosmetic('${item.id}')"`}>
                 <img src="${item.image}" alt="${item.name}" loading="lazy">
                 <h4>${item.name}</h4>
                 <p class="item-description">${item.description}</p>
                 <ul class="item-features">
                     ${item.features.map(feature => `<li>• ${feature}</li>`).join('')}
                 </ul>
-                <div class="price">${item.price}</div>
+                <div class="price${soon ? ' price-unavailable' : ''}">${soon ? 'Coming soon' : item.price}</div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
     
     function generateCrystalShopItems() {
@@ -1285,6 +1293,26 @@ const Shop = (function() {
                 transform: translateY(-2px);
                 border-color: rgba(66, 216, 200, 0.38);
                 background: rgba(255, 255, 255, 0.07);
+            }
+
+            /* Described but not yet built. Still legible, plainly not for sale, and inert
+               under the cursor so it never reads as a button. Matches .race-card.locked. */
+            .shop-item.unavailable {
+                cursor: default;
+                filter: saturate(0.45);
+                opacity: 0.78;
+            }
+
+            .shop-item.unavailable:hover {
+                transform: none;
+                border-color: rgba(255, 255, 255, 0.1);
+                background: rgba(255, 255, 255, 0.045);
+            }
+
+            .price.price-unavailable {
+                background: rgba(255, 255, 255, 0.1);
+                color: rgba(232, 236, 255, 0.82);
+                font-weight: 700;
             }
 
             .shop-item img {

@@ -75,7 +75,14 @@ const SHIP_TYPES = {
         hull: 1,
         shields: 1,
         movement: 2,
-        cost: { metal: 1000, crystal: 0 },
+        // 500, not 1000. Domination needs 75% of a 72-sector galaxy - 54 worlds - and at
+        // 1000 metal even flawless play (every coin to colony ships, nothing spent on
+        // defence, no world ever lost) tops out around 8 worlds inside Quick's 90 turns.
+        // Domination was therefore unreachable and the turn limit decided every match.
+        // At 500 expansion alone reaches roughly 43, so the last stretch has to be taken
+        // by conquest: settling gets you close, fighting finishes it. See
+        // tools/balance-probe.js, which recomputes this ceiling from these numbers.
+        cost: { metal: 500, crystal: 0 },
         buildSlots: 7,
         movementCost: 200
     },

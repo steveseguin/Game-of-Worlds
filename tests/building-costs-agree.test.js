@@ -106,6 +106,45 @@ test('the build buttons advertise the price the server will actually charge', ()
 // which is exactly the moment a new player is first looking at them. The server figure
 // wins once it lands, so a drifted fallback does not overcharge anyone; it just quotes a
 // price that is not real, and then silently changes.
+// The ship buttons carry the price a third time, hand-written into their <small> labels.
+// This one has no runtime override at all: whatever the markup says is what a player reads
+// until they click. Halving the Colony Ship needed three separate edits (combat.js,
+// build.js, game.html) and only the first two were guarded — so guard the third.
+test('the ship buttons advertise the price the server will actually charge', () => {
+    const combat = require('../server/lib/combat');
+    const src = fs.readFileSync(path.join(root, 'public', 'game.html'), 'utf8');
+
+    const shown = {};
+    const buttonRe = /data-ship-id="(\d+)"[^>]*>[\s\S]{0,240}?<small[^>]*>([^<]*)<\/small>/g;
+    for (const m of src.matchAll(buttonRe)) {
+        const label = m[2];
+        const metal = label.match(/([\d,]+)\s*M\b/);
+        const crystal = label.match(/([\d,]+)\s*C\b/);
+        shown[Number(m[1])] = {
+            metal: metal ? Number(metal[1].replace(/,/g, '')) : null,
+            crystal: crystal ? Number(crystal[1].replace(/,/g, '')) : 0
+        };
+    }
+
+    assert.ok(Object.keys(shown).length >= 8,
+        `expected a price on every ship button, parsed ${Object.keys(shown).length}`);
+
+    const mismatches = [];
+    Object.values(combat.SHIP_TYPES).forEach(ship => {
+        const label = shown[ship.id];
+        if (!label) return;              // not every hull is offered in the build tab
+        if (label.metal !== ship.cost.metal) {
+            mismatches.push(`${ship.name}: button says ${label.metal}M, costs ${ship.cost.metal}M`);
+        }
+        if (label.crystal !== ship.cost.crystal) {
+            mismatches.push(`${ship.name}: button says ${label.crystal}C, costs ${ship.cost.crystal}C`);
+        }
+    });
+
+    assert.deepEqual(mismatches, [],
+        `a ship button advertises a price the server does not charge:\n  ${mismatches.join('\n  ')}`);
+});
+
 test('the fallback ship prices match the ones the server will send', () => {
     const combat = require('../server/lib/combat');
     const src = fs.readFileSync(path.join(root, 'public', 'js', 'build.js'), 'utf8');
