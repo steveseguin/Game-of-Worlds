@@ -9,11 +9,35 @@
  * instead. Four AI empires, a real generated map, real income, real combat, and report
  * who holds what over time.
  *
- *   node tools/balance-probe.js [turns]
+ *   node tools/balance-probe.js [turns] [--seed=N]
+ *
+ * Pass a seed to make the run reproducible. Without one every run draws a different map,
+ * and map-to-map variance is larger than most changes being measured: two runs of the
+ * same build came out at 25.9% and 11.3% peak share. Comparing a change against an
+ * unseeded baseline therefore measures the dice, not the change. With a seed, run the
+ * same seed before and after and the difference is the change:
+ *
+ *   for s in 1 2 3 4 5; do node tools/balance-probe.js 90 --seed=$s | tail -3; done
  */
 
 process.env.USE_MOCK_DB = '1';
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+
+// Seed BEFORE anything else is required: map generation reads Math.random at require
+// time in some paths, and a late swap would leave those already drawn.
+const seedArg = process.argv.find(a => a.startsWith('--seed='));
+if (seedArg) {
+    // mulberry32 — small, fast, and good enough that map generation does not visibly
+    // pattern. The exact generator does not matter; reproducibility does.
+    let state = (Number(seedArg.slice(7)) || 1) >>> 0;
+    Math.random = function seededRandom() {
+        state = (state + 0x6D2B79F5) >>> 0;
+        let t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
 
 const { MockDatabase } = require('../server/lib/mock-db');
 const serverLogic = require('../server/server');
