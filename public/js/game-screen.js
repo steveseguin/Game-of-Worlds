@@ -181,10 +181,31 @@
         // printing over each other at common laptop resolutions.
         let columnTop = veryNarrow ? turnHeight + 8 : 0;
         let columnRight = 0;
+        // Trips once a panel runs out of vertical room. Everything further down the
+        // column is lower priority, so once this is set the rest stays hidden too.
+        let columnCrowded = false;
         const trackColumn = el => {
             const box = el.getBoundingClientRect();
             columnTop += box.height + 4;
             columnRight = Math.max(columnRight, box.right);
+        };
+        // Commit a panel to the column only if its rendered box clears the bottom
+        // furniture. Measuring beats a per-panel threshold: every one of these panels
+        // changes height with the font scale and with how much the empire owns, so a
+        // constant that looks safe at one size prints over the build pad at another.
+        const fitColumn = el => {
+            if (columnCrowded) {
+                setImportant(el, 'display', 'none');
+                return false;
+            }
+            const room = viewportHeight - columnTop - bottomReserved - 12;
+            if (el.getBoundingClientRect().height > room) {
+                setImportant(el, 'display', 'none');
+                columnCrowded = true;
+                return false;
+            }
+            trackColumn(el);
+            return true;
         };
 
         if (resourceBar) {
@@ -200,6 +221,7 @@
         let inlineInfoBottom = 0;
         if (connectionInfo) {
             setImportant(connectionInfo, 'position', 'fixed');
+            setImportant(connectionInfo, 'display', 'block');
             // Inline beside the resource bar only when there is genuinely room between
             // it and the utility buttons; otherwise it becomes the next row of the
             // left column instead of sliding underneath the buttons.
@@ -225,7 +247,7 @@
                 setImportant(connectionInfo, 'left', '10px');
                 setImportant(connectionInfo, 'top', px(columnTop));
                 setImportant(connectionInfo, 'max-width', px(Math.max(150, stackedMax)));
-                trackColumn(connectionInfo);
+                fitColumn(connectionInfo);
             }
             connectionInfo.style.fontSize = `${clamp(13 * scale, 11, 14)}px`;
         }
@@ -234,11 +256,14 @@
             const summaryWidth = veryNarrow
                 ? Math.max(150, viewportWidth - 16)
                 : Math.min(500 * scale, viewportWidth - turnWidth - 24);
+            setImportant(empireSummary, 'display', 'block');
             setImportant(empireSummary, 'width', px(Math.max(150, summaryWidth)));
             setImportant(empireSummary, 'top', px(columnTop));
             setImportant(empireSummary, 'left', '10px');
             empireSummary.style.fontSize = `${clamp(12 * scale, 10, 13)}px`;
-            trackColumn(empireSummary);
+            // Income yields last of the column, but on a short window it still has to
+            // yield rather than print over the build pad.
+            fitColumn(empireSummary);
         }
 
         const victoryProgress = document.getElementById('victoryProgress');
@@ -247,7 +272,7 @@
             // a commander acts on every turn; victory percentages are a status read and
             // have their own panel, so they yield first.
             const victoryRoom = viewportHeight - columnTop - bottomReserved - 12;
-            if (victoryRoom < 34) {
+            if (columnCrowded || victoryRoom < 34) {
                 setImportant(victoryProgress, 'display', 'none');
             } else {
                 setImportant(victoryProgress, 'display', 'block');
@@ -258,8 +283,9 @@
                 setImportant(victoryProgress, 'top', px(columnTop));
                 setImportant(victoryProgress, 'left', '10px');
                 victoryProgress.style.fontSize = `${clamp(12 * scale, 10, 13)}px`;
-                trackColumn(victoryProgress);
-                columnTop += 2;
+                if (fitColumn(victoryProgress)) {
+                    columnTop += 2;
+                }
             }
         }
 
