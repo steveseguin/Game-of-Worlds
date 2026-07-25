@@ -98,11 +98,11 @@ test.describe('Full multiplayer game playthrough', () => {
     test('host and joiner play through lobby -> game -> surrender -> winner', async ({ browser }) => {
         const hostContext = await browser.newContext();
         const hostPage = await hostContext.newPage();
-        hostPage.on('dialog', dialog => dialog.accept());
+        hostPage.on('dialog', dialog => dialog.accept().catch(() => {}));
 
         const joinerContext = await browser.newContext();
         const joinerPage = await joinerContext.newPage();
-        joinerPage.on('dialog', dialog => dialog.accept());
+        joinerPage.on('dialog', dialog => dialog.accept().catch(() => {}));
 
         const hostName = uniqueId('host_');
         const joinerName = uniqueId('joiner_');

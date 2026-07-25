@@ -113,7 +113,7 @@ async function chooseFirstAvailableRace(page) {
 
 test.describe('Lobby end-to-end flows', () => {
     test.beforeEach(async ({ page }) => {
-        page.on('dialog', dialog => dialog.accept());
+        page.on('dialog', dialog => dialog.accept().catch(() => {}));
     });
 
     test('creator can register, create a game, and start solo', async ({ page }) => {
@@ -253,11 +253,11 @@ test.describe('Lobby end-to-end flows', () => {
     test('host and joiner can start a full game', async ({ browser }) => {
         const hostContext = await browser.newContext();
         const hostPage = await hostContext.newPage();
-        hostPage.on('dialog', dialog => dialog.accept());
+        hostPage.on('dialog', dialog => dialog.accept().catch(() => {}));
 
         const joinerContext = await browser.newContext();
         const joinerPage = await joinerContext.newPage();
-        joinerPage.on('dialog', dialog => dialog.accept());
+        joinerPage.on('dialog', dialog => dialog.accept().catch(() => {}));
 
         const hostName = uniqueId('host_');
         const joinerName = uniqueId('joiner_');

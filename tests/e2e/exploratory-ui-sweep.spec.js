@@ -365,7 +365,7 @@ test.describe('Exploratory multi-game UI strategy sweep', () => {
         const contextOptions = { viewport: { width: 1680, height: 1000 } };
         const soloContext = await browser.newContext(contextOptions);
         const soloPage = await soloContext.newPage();
-        soloPage.on('dialog', dialog => dialog.accept());
+        soloPage.on('dialog', dialog => dialog.accept().catch(() => {}));
         attachDiagnostics(soloPage, 'host-ai', issues);
 
         const hostName = uniqueId('sweep_host_');

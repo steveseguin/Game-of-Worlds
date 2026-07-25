@@ -74,7 +74,7 @@ test.describe('Complete multiplayer UI harness', () => {
         const pageErrors = [];
 
         for (const [label, page] of [['host', hostPage], ['guest', guestPage]]) {
-            page.on('dialog', dialog => dialog.accept());
+            page.on('dialog', dialog => dialog.accept().catch(() => {}));
             page.on('pageerror', error => pageErrors.push(`${label}: ${error.message}`));
         }
 

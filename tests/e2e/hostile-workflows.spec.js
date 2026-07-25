@@ -30,8 +30,8 @@ test.describe('Hostile and recovery UI workflows', () => {
         const guestContext = await browser.newContext();
         const hostPage = await hostContext.newPage();
         const guestPage = await guestContext.newPage();
-        hostPage.on('dialog', dialog => dialog.accept());
-        guestPage.on('dialog', dialog => dialog.accept());
+        hostPage.on('dialog', dialog => dialog.accept().catch(() => {}));
+        guestPage.on('dialog', dialog => dialog.accept().catch(() => {}));
 
         const hostName = uniqueId('reg_host_');
         const guestName = uniqueId('reg_guest_');
@@ -75,8 +75,8 @@ test.describe('Hostile and recovery UI workflows', () => {
         const guestContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
         const hostPage = await hostContext.newPage();
         const guestPage = await guestContext.newPage();
-        hostPage.on('dialog', dialog => dialog.accept());
-        guestPage.on('dialog', dialog => dialog.accept());
+        hostPage.on('dialog', dialog => dialog.accept().catch(() => {}));
+        guestPage.on('dialog', dialog => dialog.accept().catch(() => {}));
 
         const hostName = uniqueId('leave_host_');
         const gameName = uniqueId('leaveflow_');

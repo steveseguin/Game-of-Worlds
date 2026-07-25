@@ -122,7 +122,7 @@ function isBlockedByHarness(text) {
 
 test.describe('Game Health Checks', () => {
     test.beforeEach(async ({ page }) => {
-        page.on('dialog', dialog => dialog.accept());
+        page.on('dialog', dialog => dialog.accept().catch(() => {}));
     });
 
     test('game loads without critical console errors', async ({ page }) => {

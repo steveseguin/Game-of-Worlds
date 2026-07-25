@@ -12,7 +12,7 @@ test.describe('Authoritative gameplay controls', () => {
     test.setTimeout(180000);
 
     test('test games expose the real clock and construction prerequisites', async ({ page }) => {
-        page.on('dialog', dialog => dialog.accept());
+        page.on('dialog', dialog => dialog.accept().catch(() => {}));
         const username = uniqueId('controls_');
         await registerUser(page, {
             username,
@@ -91,7 +91,7 @@ test.describe('Authoritative gameplay controls', () => {
     });
 
     test('Fill with AI waits for every requested seat before starting', async ({ page }) => {
-        page.on('dialog', dialog => dialog.accept());
+        page.on('dialog', dialog => dialog.accept().catch(() => {}));
         const username = uniqueId('sandbox_');
         await registerUser(page, {
             username,
@@ -107,7 +107,7 @@ test.describe('Authoritative gameplay controls', () => {
     });
 
     test('sector inspection keeps intel and explicit fleet choices in the left command context', async ({ page }) => {
-        page.on('dialog', dialog => dialog.accept());
+        page.on('dialog', dialog => dialog.accept().catch(() => {}));
         const username = uniqueId('sector_ui_');
         await registerUser(page, {
             username,

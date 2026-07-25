@@ -387,8 +387,8 @@ test.describe('Live two-client combat with multiple rounds', () => {
         const hostPage = await hostContext.newPage();
         const joinerPage = await joinerContext.newPage();
 
-        hostPage.on('dialog', dialog => dialog.accept());
-        joinerPage.on('dialog', dialog => dialog.accept());
+        hostPage.on('dialog', dialog => dialog.accept().catch(() => {}));
+        joinerPage.on('dialog', dialog => dialog.accept().catch(() => {}));
 
         const hostName = uniqueId('combat_host_');
         const joinerName = uniqueId('combat_join_');
