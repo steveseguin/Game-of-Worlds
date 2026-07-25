@@ -126,6 +126,21 @@
             #resourceBar .res-name { display: none; }
         }
 
+        /* Below ~430px the bar cannot have the whole width: it has to sit left of the
+           utility buttons, which leaves it about 215px. Three resource blocks did not fit
+           in that, so it wrapped to two rows, grew to 83px tall, and its bottom edge ran
+           7px into the build pad (measured at 361x428). Tighten the blocks so they stay on
+           one row rather than letting the bar grow downwards into a panel that is pinned
+           to the bottom of the screen and cannot move out of the way. */
+        @media (max-width: 430px) {
+            #resourceBar { gap: 7px !important; padding: 6px 9px !important; }
+            #resourceBar .res { gap: 4px; }
+            #resourceBar .res-icon { width: 18px; height: 18px; }
+            #resourceBar .res-icon svg { width: 18px; height: 18px; }
+            #resourceBar .res-stock { font-size: 0.92em; letter-spacing: 0; }
+            #resourceBar .res-rate { font-size: 0.64em; }
+        }
+
         /* Live requirement checklist: a met condition should read as met at a glance,
            rather than the player re-deriving four static rules every time. */
         .req-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -906,7 +921,7 @@
     <script src="js/combat-analytics.js?v=20260612a"></script>
     <script src="/config.js?v=20260614b"></script>
     <script src="js/shop-enhanced.js?v=20260725b"></script>
-    <script src="js/game-screen.js?v=20260725t"></script>
+    <script src="js/game-screen.js?v=20260725u"></script>
     <script type="module" src="js/galaxy3d.js?v=20260725n"></script>
     <script type="module" src="js/battle3d.js?v=20260725c"></script>
     <script src="js/onboarding.js?v=20260613a"></script>

@@ -50,8 +50,20 @@
 
         let minimapWidth = Math.min(500 * scale, viewportWidth * (stackBottomPanels ? 0.42 : 0.36));
         minimapWidth = clamp(minimapWidth, stackBottomPanels ? 128 : 190, 560);
+        // Side by side at the bottom, the minimap gets whatever the build pad leaves. The
+        // clamp below has a 180px floor, which used to be applied even when less than
+        // 180px remained — so the minimap was forced to a width that did not fit and
+        // printed over the build pad (caught at 439x436). If it genuinely cannot fit,
+        // drop it: it duplicates the main 3D view, which is the one thing on screen that
+        // is definitely still visible.
+        let minimapCrowdedOut = false;
         if (!stackBottomPanels && controlWidth + minimapWidth > viewportWidth - 18) {
-            minimapWidth = clamp(viewportWidth - controlWidth - 18, 180, minimapWidth);
+            const room = viewportWidth - controlWidth - 18;
+            if (room < 180) {
+                minimapCrowdedOut = true;
+            } else {
+                minimapWidth = clamp(room, 180, minimapWidth);
+            }
         }
         const minimapHeight = minimapWidth * (356 / 500);
         // Provisional: recomputed below from the control pad's MEASURED height, because
@@ -121,7 +133,9 @@
         // and chat leave no room for the status column — it duplicates the main 3D view,
         // which is already full-screen there.
         const minimapCollapsed = document.body.classList.contains('minimap-collapsed');
-        const hideMinimap = minimapCollapsed || (stackBottomPanels && viewportHeight < 720);
+        const hideMinimap = minimapCollapsed
+            || minimapCrowdedOut
+            || (stackBottomPanels && viewportHeight < 720);
         // Only the stacked layout ever counted the minimap in bottomReserved, so only the
         // stacked layout may take it back out. Subtracting in the side-by-side layout would
         // reserve less than the chat and build pad actually occupy.

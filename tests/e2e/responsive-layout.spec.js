@@ -33,6 +33,26 @@ const FIXED_SIZES = [
     [430, 932], [390, 844], [360, 640], [932, 430]
 ];
 
+// Real device shapes, both orientations. The generic sweep above draws arbitrary boxes,
+// which is good at finding surprises but says nothing about whether the HUD works on the
+// devices people actually hold. A phone rotated to landscape is a different layout branch
+// from the same phone in portrait (shortLandscape vs stackBottomPanels), and tablets sit
+// in the awkward middle where neither the phone nor the desktop path is chosen.
+const DEVICE_SIZES = [
+    // phones, portrait
+    ['iPhone SE', 375, 667], ['iPhone 13', 390, 844], ['iPhone 15 Pro Max', 430, 932],
+    ['Pixel 5', 393, 851], ['Galaxy S8', 360, 740], ['small Android', 320, 568],
+    // phones, landscape
+    ['iPhone SE landscape', 667, 375], ['iPhone 13 landscape', 844, 390],
+    ['iPhone 15 Pro Max landscape', 932, 430], ['Galaxy S8 landscape', 740, 360],
+    // tablets, portrait
+    ['iPad mini', 768, 1024], ['iPad Air', 820, 1180], ['iPad Pro 11', 834, 1194],
+    ['iPad Pro 12.9', 1024, 1366], ['Galaxy Tab', 800, 1280],
+    // tablets, landscape
+    ['iPad mini landscape', 1024, 768], ['iPad Air landscape', 1180, 820],
+    ['iPad Pro 12.9 landscape', 1366, 1024], ['Galaxy Tab landscape', 1280, 800]
+];
+
 const RANDOM_SIZE_COUNT = Number(process.env.LAYOUT_FUZZ_COUNT || 8);
 
 // LAYOUT_FUZZ_SEED makes the random viewports reproducible. Without it you cannot tell a
@@ -138,6 +158,38 @@ test.describe('HUD layout holds together at every window size', () => {
         expect(failures, `HUD layout problems:\n${failures.join('\n')}`).toEqual([]);
     });
 
+    // Phones and tablets, by name, in both orientations. Named because "360x640 failed" is
+    // a bug report nobody acts on, while "Galaxy S8 portrait is broken" is one they do.
+    test('the HUD works on real phones and tablets, portrait and landscape', async ({ page }) => {
+        test.setTimeout(240000);
+
+        await harness.signInGuest(page, `device_${Date.now().toString(36)}`);
+        await harness.waitForLobbyReady(page);
+        await harness.createGame(page, `Device ${Date.now()}`, { maxPlayers: '2' });
+        await page.getByRole('button', { name: /Fill with AI/i }).click();
+        await page.waitForURL(/game\.html/, { timeout: 30000 });
+        await page.waitForSelector('#controlPadGUI', { timeout: 30000 });
+        await harness.dismissFirstRunGuidance(page).catch(() => {});
+
+        const failures = [];
+        for (const [name, width, height] of DEVICE_SIZES) {
+            await page.setViewportSize({ width, height });
+            await page.waitForTimeout(150);
+            const result = await auditLayout(page, width, height);
+            // A device that renders almost no HUD is broken even without a collision.
+            if (result.panels < 3) {
+                failures.push(`${name} (${width}x${height}): only ${result.panels} HUD panels rendered`);
+            }
+            if (result.overlaps.length || result.offscreen.length) {
+                failures.push(
+                    `${name} (${width}x${height}): ${[...result.overlaps, ...result.offscreen].join('; ')}`
+                );
+            }
+        }
+
+        expect(failures, `device layout problems:\n${failures.join('\n')}`).toEqual([]);
+    });
+
     // The build pad and minimap can be collapsed to hand their space back to the map.
     // Two things have to hold and neither is obvious: the panel must actually disappear,
     // AND the 3D view's safe area must shrink to match. Hiding a panel while the camera
@@ -234,7 +286,7 @@ test.describe('touch targets under a coarse pointer', () => {
         const coarse = await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches);
         expect(coarse, 'touch emulation must make (pointer: coarse) match or this test proves nothing').toBe(true);
 
-        const undersized = await page.evaluate(() => {
+        const measureUndersized = () => page.evaluate(() => {
             const scopes = ['#controlPadGUI', '#chatContainer', '#connectionInfo',
                 '#utilityButtons', '#turnTimeBar', '#sectordisplay'];
             const bad = [];
@@ -255,6 +307,27 @@ test.describe('touch targets under a coarse pointer', () => {
             return bad;
         });
 
-        expect(undersized, `buttons below the 44px tap target:\n  ${undersized.join('\n  ')}`).toEqual([]);
+        // Across real touch devices, not one. A tap target that is fine on a 390px phone
+        // can still be squeezed below 44px on a 320px one, and tablets take a different
+        // layout branch again — the rule is only worth anything if it holds on all of them.
+        const TOUCH_SIZES = [
+            ['small Android', 320, 568], ['Galaxy S8', 360, 740], ['iPhone SE', 375, 667],
+            ['iPhone 13', 390, 844], ['iPhone 15 Pro Max', 430, 932],
+            ['iPhone 13 landscape', 844, 390],
+            ['iPad mini', 768, 1024], ['iPad mini landscape', 1024, 768],
+            ['iPad Pro 12.9', 1024, 1366]
+        ];
+
+        const failures = [];
+        for (const [name, width, height] of TOUCH_SIZES) {
+            await page.setViewportSize({ width, height });
+            await page.waitForTimeout(150);
+            const undersized = await measureUndersized();
+            if (undersized.length) {
+                failures.push(`${name} (${width}x${height}): ${undersized.join(', ')}`);
+            }
+        }
+
+        expect(failures, `buttons below the 44px tap target:\n  ${failures.join('\n  ')}`).toEqual([]);
     });
 });
