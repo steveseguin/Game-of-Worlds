@@ -1820,7 +1820,7 @@ function ensureEventPanel() {
         <div style="font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
             <span>Recent events</span>
             <div id="event-filters" style="display:flex;gap:6px;">
-                ${['all','battles','econ','orders','system'].map(f => `<button data-filter="${f}" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:${eventFilter===f ? '#223455' : 'transparent'};color:#cfd7ff;cursor:pointer;font-size:11px;">${f}</button>`).join('')}
+                ${['all','battles','econ','orders','system'].map(f => `<button data-filter="${f}" aria-pressed="${eventFilter === f ? 'true' : 'false'}" style="padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:${eventFilter===f ? '#223455' : 'transparent'};color:#cfd7ff;cursor:pointer;font-size:11px;">${f}</button>`).join('')}
             </div>
         </div>
         <div id="event-feed-list"></div>`;
@@ -1844,7 +1844,12 @@ function renderEventFeed() {
     const filterBar = document.getElementById('event-filters');
     if (filterBar) {
         filterBar.querySelectorAll('button').forEach(btn => {
-            btn.style.background = btn.getAttribute('data-filter') === eventFilter ? '#223455' : 'transparent';
+            const selected = btn.getAttribute('data-filter') === eventFilter;
+            btn.style.background = selected ? '#223455' : 'transparent';
+            // These are toggles with a visible selected state and no programmatic one, so
+            // a screen reader user got the filtering with no way to tell which filter was
+            // active — the list just went quiet.
+            btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
         });
     }
     list.innerHTML = '';
