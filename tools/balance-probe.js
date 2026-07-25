@@ -153,7 +153,57 @@ async function main() {
     });
     console.log('  unclaimed settleable worlds by terraform requirement:', JSON.stringify(byTerraform));
 
+    // What the ECONOMY allows, independent of how well anyone plays. Every coin goes to
+    // colony ships, travel is instant, nothing is spent on defence, buildings or
+    // research, and no rival ever takes a world back. Reality is strictly worse than
+    // this, so a threshold above the ceiling cannot be reached by anyone, ever — and
+    // unlike an average-case model there is no optimistic assumption to argue about.
+    const yieldByType = { 6: 10, 7: 16, 8: 22, 9: 30, 10: 35 };
+    const settleable = mapNow.filter(r => {
+        const t = Number(r.type);
+        return t >= 6 && t <= 9;
+    });
+    const avgYield = settleable.length
+        ? settleable.reduce((sum, r) => sum + (yieldByType[Number(r.type)] || 0), 0) / settleable.length
+        : 19.5;
+
+    function expansionCeiling(turnLimit) {
+        let metal = 0;
+        let worlds = 1;
+        for (let t = 1; t <= turnLimit; t++) {
+            metal += 5 + yieldByType[10] + (worlds - 1) * avgYield; // BASE_INCOME + holdings
+            while (metal >= colonyCost && worlds < colonisable) {
+                metal -= colonyCost;
+                worlds += 1;
+            }
+        }
+        return worlds;
+    }
+
     const measuredTurns = endedOnTurn || TURNS;
+    const ceiling = expansionCeiling(turnLimit);
+    console.log();
+    console.log('--- what the economy allows (perfect play, colonisation only) ---');
+    console.log(`  a colony ship costs ${colonyCost} metal; the average settleable world yields ${avgYield.toFixed(1)}/turn`);
+    console.log(`  ceiling in ${turnLimit} turns: ${ceiling} worlds of ${colonisable}` +
+        ` — domination needs ${needed}, so it is ${ceiling >= needed ? 'reachable' : 'UNREACHABLE by any player'}`);
+    if (ceiling < needed) {
+        // Which lever, and how far it has to move. The ceiling is very sensitive to the
+        // colony price and barely sensitive to anything else.
+        const affordable = [];
+        [0.7, 0.5, 0.35, 0.25].forEach(f => {
+            const cost = Math.round(colonyCost * f);
+            let metal = 0;
+            let worlds = 1;
+            for (let t = 1; t <= turnLimit; t++) {
+                metal += 5 + yieldByType[10] + (worlds - 1) * avgYield;
+                while (metal >= cost && worlds < colonisable) { metal -= cost; worlds += 1; }
+            }
+            affordable.push(`${cost}→${worlds}`);
+        });
+        console.log(`  colony cost vs worlds reached: ${affordable.join('  ')}`);
+        console.log(`  (either the colony price comes down, or the threshold comes down to meet ${ceiling}-ish)`);
+    }
     console.log();
     console.log(`peak single empire: ${peak} worlds of ${colonisable} (${((peak / colonisable) * 100).toFixed(1)}%)`);
     console.log(`domination threshold: ${needed} worlds — ${peak >= needed ? 'REACHED' : 'NOT reached'} in ${measuredTurns} turns`);
