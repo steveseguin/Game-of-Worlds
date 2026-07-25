@@ -732,6 +732,42 @@ function safeDecodeURIComponent(value, fallback = '') {
     }
 }
 
+// Longest name that survives a round trip. games.name is VARCHAR(64), so anything past
+// that was silently truncated by the database and the player got back a different name
+// from the one they typed, with no warning.
+const MAX_GAME_NAME_LENGTH = 60;
+
+/**
+ * Clean a player-supplied game name before it is stored and broadcast to every client
+ * in the lobby list.
+ *
+ * NOT the same as security.validateGameName(), which is defined and exported but has
+ * never been called by anything. Wiring that up as-is would have been a regression: its
+ * pattern is /^[a-zA-Z0-9\s_-]{3,30}$/, which rejects an apostrophe and every accented
+ * or non-Latin character, so "Bob's Fleet" and any name not written in English would
+ * stop working. This keeps the protection that actually matters — a bounded length and
+ * no control characters that would break the lobby table — and leaves the character set
+ * alone. Escaping still happens at every render site on the client, which is what
+ * prevents markup from executing; this is defence in depth, not the only defence.
+ */
+function normalizeGameName(raw) {
+    if (typeof raw !== 'string') return '';
+    // Replace C0/C1 control characters (newlines, NUL and friends) with a space and
+    // collapse runs of whitespace, so a name cannot smuggle line breaks into what the
+    // lobby renders as a single-line table cell. Filtering by code point rather than a
+    // regex class keeps this source pure ASCII.
+    const cleaned = Array.from(raw)
+        .map(ch => {
+            const code = ch.codePointAt(0);
+            const isControl = code < 0x20 || (code >= 0x7f && code <= 0x9f);
+            return isControl ? ' ' : ch;
+        })
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return cleaned.slice(0, MAX_GAME_NAME_LENGTH).trim();
+}
+
 function createGameTables(gameId, callback) {
     let tables;
     try {
@@ -1441,7 +1477,7 @@ function handleCreateGame(data, connection) {
 
     const parts = data.split(':');
     const encodedName = parts[1] || '';
-    const gameName = safeDecodeURIComponent(encodedName, '').trim();
+    const gameName = normalizeGameName(safeDecodeURIComponent(encodedName, ''));
     const maxPlayers = Math.max(2, Math.min(MAX_LOBBY_PLAYERS, parsePositiveInt(parts[2], DEFAULT_MAX_PLAYERS)));
     const mode = normalizeMode(parts[3]);
     const registeredOnly = normalizeRegisteredOnly(parts[4]);
