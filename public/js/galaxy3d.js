@@ -1179,6 +1179,10 @@ import { PLANET_STYLES, getPlanetTexture } from './planet-texture.js?v=20260725a
         focusSector,
         frameSectors,
         setSafeArea,
+        // Read-only view of the insets the HUD has claimed. Collapsing a panel is supposed
+        // to hand its space back to the camera, and the only way to tell that from merely
+        // hiding a box is to read what the camera still believes is occluded.
+        debugSafeInset: () => ({ ...state.safeInset }),
         highlightSector,
         clearBattleSector,
         animateFleetMove,

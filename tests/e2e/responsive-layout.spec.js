@@ -35,12 +35,34 @@ const FIXED_SIZES = [
 
 const RANDOM_SIZE_COUNT = Number(process.env.LAYOUT_FUZZ_COUNT || 8);
 
+// LAYOUT_FUZZ_SEED makes the random viewports reproducible. Without it you cannot tell a
+// layout change from a different roll of the dice: a 150-viewport sweep before and after a
+// change reported entirely different collisions purely because it drew different sizes.
+// Unseeded is right for routine runs — fresh sizes each time is how new collisions get
+// found — but any before/after comparison must pin the seed so both sides see the same
+// viewports. Same reasoning as tools/balance-probe.js --seed.
+const FUZZ_SEED = process.env.LAYOUT_FUZZ_SEED ? Number(process.env.LAYOUT_FUZZ_SEED) : null;
+
+function makeRandom() {
+    if (FUZZ_SEED === null) return Math.random;
+    // mulberry32: small and reproducible. The generator does not matter, repeatability does.
+    let state = FUZZ_SEED >>> 0;
+    return function seeded() {
+        state = (state + 0x6D2B79F5) >>> 0;
+        let t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 function randomSizes(count) {
+    const rand = makeRandom();
     const sizes = [];
     for (let i = 0; i < count; i++) {
         sizes.push([
-            Math.floor(340 + Math.random() * 2260),
-            Math.floor(400 + Math.random() * 1200)
+            Math.floor(340 + rand() * 2260),
+            Math.floor(400 + rand() * 1200)
         ]);
     }
     return sizes;
@@ -114,6 +136,78 @@ test.describe('HUD layout holds together at every window size', () => {
         }
 
         expect(failures, `HUD layout problems:\n${failures.join('\n')}`).toEqual([]);
+    });
+
+    // The build pad and minimap can be collapsed to hand their space back to the map.
+    // Two things have to hold and neither is obvious: the panel must actually disappear,
+    // AND the 3D view's safe area must shrink to match. Hiding a panel while the camera
+    // still frames around it would look like nothing happened, which is the failure mode
+    // this guards. The collapsed layouts are also new geometry that the sweep above never
+    // exercises, since it only ever measures the default state.
+    test('collapsing the build pad and minimap frees their space, in every combination', async ({ page }) => {
+        test.setTimeout(180000);
+
+        await harness.signInGuest(page, `collapse_${Date.now().toString(36)}`);
+        await harness.waitForLobbyReady(page);
+        await harness.createGame(page, `Collapse ${Date.now()}`, { maxPlayers: '2' });
+        await page.getByRole('button', { name: /Fill with AI/i }).click();
+        await page.waitForURL(/game\.html/, { timeout: 30000 });
+        await page.waitForSelector('#controlPadGUI', { timeout: 30000 });
+        await harness.dismissFirstRunGuidance(page).catch(() => {});
+
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.waitForTimeout(200);
+
+        const setCollapsed = async (pad, map) => {
+            await page.evaluate(({ p, m }) => {
+                document.body.classList.toggle('controlpad-collapsed', p);
+                document.body.classList.toggle('minimap-collapsed', m);
+                window.GameScreen?.applyResponsiveLayout?.();
+            }, { p: pad, m: map });
+            await page.waitForTimeout(150);
+        };
+
+        const measure = () => page.evaluate(() => {
+            const vis = id => {
+                const el = document.getElementById(id);
+                if (!el) return false;
+                const cs = getComputedStyle(el);
+                return cs.display !== 'none' && el.getBoundingClientRect().height > 8;
+            };
+            return { pad: vis('controlPadGUI'), map: vis('minimapid') };
+        });
+
+        const failures = [];
+        for (const [pad, map] of [[false, false], [true, false], [false, true], [true, true]]) {
+            await setCollapsed(pad, map);
+            const seen = await measure();
+            if (seen.pad === pad) failures.push(`build pad visible=${seen.pad} when collapsed=${pad}`);
+            if (seen.map === map) failures.push(`minimap visible=${seen.map} when collapsed=${map}`);
+
+            const audit = await auditLayout(page, 1440, 900);
+            if (audit.overlaps.length || audit.offscreen.length) {
+                failures.push(`pad=${pad} map=${map}: ${[...audit.overlaps, ...audit.offscreen].join('; ')}`);
+            }
+        }
+
+        // Collapsing both must genuinely give the camera more room, not just hide boxes.
+        await setCollapsed(false, false);
+        const expanded = await page.evaluate(() => window.Galaxy3D?.debugSafeInset?.() || null);
+        await setCollapsed(true, true);
+        const collapsed = await page.evaluate(() => window.Galaxy3D?.debugSafeInset?.() || null);
+        // Assert the accessor exists rather than skipping when it does not. A silent skip
+        // here would let the most important claim in this test - that collapsing actually
+        // gives the camera its space back - pass without ever being checked.
+        expect(expanded, 'Galaxy3D.debugSafeInset() must be available or this test proves nothing').toBeTruthy();
+        expect(collapsed, 'Galaxy3D.debugSafeInset() must be available or this test proves nothing').toBeTruthy();
+        const before = expanded.left + expanded.right + expanded.bottom;
+        const after = collapsed.left + collapsed.right + collapsed.bottom;
+        if (!(after < before)) {
+            failures.push(`safe area did not shrink when both panels collapsed: ${before} -> ${after}`);
+        }
+
+        await setCollapsed(false, false);
+        expect(failures, `collapse problems:\n${failures.join('\n')}`).toEqual([]);
     });
 });
 

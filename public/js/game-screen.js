@@ -115,11 +115,17 @@
             setImportant(chatFeed, 'font-size', `${clamp(12 * scale, 11, 14)}px`);
         }
 
-        // On a short phone screen the stacked minimap, build pad and chat leave no room
-        // for the status column, so panels start printing over each other. The minimap
-        // duplicates the main 3D view, which is already full-screen there — drop it.
-        const hideMinimap = stackBottomPanels && viewportHeight < 720;
-        if (hideMinimap) {
+        // Two different reasons the minimap can be absent, and they must stay separate.
+        // The player can hand its space back deliberately (minimapCollapsed), and on a
+        // short phone screen we drop it regardless because the stacked minimap, build pad
+        // and chat leave no room for the status column — it duplicates the main 3D view,
+        // which is already full-screen there.
+        const minimapCollapsed = document.body.classList.contains('minimap-collapsed');
+        const hideMinimap = minimapCollapsed || (stackBottomPanels && viewportHeight < 720);
+        // Only the stacked layout ever counted the minimap in bottomReserved, so only the
+        // stacked layout may take it back out. Subtracting in the side-by-side layout would
+        // reserve less than the chat and build pad actually occupy.
+        if (hideMinimap && stackBottomPanels) {
             bottomReserved -= minimapHeight + 6;
             minimapBottom = chatHeight + measuredControlHeight + 8;
         }
@@ -141,7 +147,11 @@
             const legendRoom = viewportWidth - controlWidth - legendRight - legendWidth - 16;
             setImportant(mapLegend, 'width', px(legendWidth));
             setImportant(mapLegend, 'right', px(legendRight));
-            setImportant(mapLegend, 'bottom', px(minimapBottom + minimapHeight + 8));
+            // The legend normally rides above the minimap. With the minimap gone it should
+            // drop to sit above the chat instead, not hover over the space it used to fill.
+            setImportant(mapLegend, 'bottom', px(hideMinimap
+                ? chatHeight + measuredControlHeight + 8
+                : minimapBottom + minimapHeight + 8));
             setImportant(mapLegend, 'display',
                 (shortLandscape || veryNarrow || legendRoom < 0) ? 'none' : 'block');
             mapLegend.style.fontSize = `${clamp(11 * scale, 9.5, 12)}px`;
@@ -208,10 +218,14 @@
             return true;
         };
 
+        let resourceBarRight = 0;
         if (resourceBar) {
             setImportant(resourceBar, 'width', px(resourceWidth));
             setImportant(resourceBar, 'top', px(columnTop));
             resourceBar.style.fontSize = `${clamp(13 * scale, 10.5, 14)}px`;
+            // Measured, not requested: the connection bar parks to the right of this and
+            // needs its true edge, media queries included.
+            resourceBarRight = resourceBar.getBoundingClientRect().right;
             trackColumn(resourceBar);
             // When the utility buttons had to drop onto their own row, the rest of the
             // column has to clear them or the connection bar runs underneath.
@@ -225,7 +239,17 @@
             // Inline beside the resource bar only when there is genuinely room between
             // it and the utility buttons; otherwise it becomes the next row of the
             // left column instead of sliding underneath the buttons.
-            const inlineLeft = Math.min(550 * scale, viewportWidth - 720);
+            // Must clear the resource bar, which shares this row. This used to be
+            // `min(550 * scale, viewportWidth - 720)`, where the 720 was a guess at how
+            // wide the resource bar would be — and at ~1000-1100px wide the guess came in
+            // BELOW the bar's real right edge, so the connection bar printed on top of it.
+            // Seeded fuzz reproduced it at 1008x521 (55px over) and 1050x549 (31px over);
+            // both are exactly resourceWidth - inlineLeft. Measure the bar instead of
+            // guessing at it.
+            const inlineLeft = Math.max(
+                resourceBarRight + 12,
+                Math.min(550 * scale, viewportWidth - 720)
+            );
             const rightGuard = turnWidth + 10 + utilityWidth + 16;
             const inlineRoom = viewportWidth - rightGuard - inlineLeft;
             // The stylesheet pins both left and right on this bar, which stretches it
@@ -324,8 +348,11 @@
             const safeArea = stackBottomPanels
                 ? { left: 0, right: 0, top: topReserved, bottom: bottomReserved }
                 : {
-                    left: Math.max(0, controlWidth - tacticalLeft),
-                    right: minimapWidth,
+                    // A collapsed panel occludes nothing, so it must not reserve anything.
+                    // This is what makes collapsing actually give the map the space back
+                    // rather than just hiding a panel over a still-shrunken camera frame.
+                    left: controlPadCollapsed ? 0 : Math.max(0, controlWidth - tacticalLeft),
+                    right: hideMinimap ? 0 : minimapWidth,
                     top: Math.max(statusColumnBottom, turnHeight + 8),
                     bottom: chatHeight + measuredControlHeight
                 };
@@ -454,31 +481,62 @@
         toggleAudioMuted
     };
 
-    function wireControlPadToggle() {
-        const button = document.getElementById('controlPadToggle');
+    /**
+     * Wire one collapsible HUD panel. The panel itself is hidden by applyResponsiveLayout
+     * reading the body class, not here — that keeps a single place deciding geometry, and
+     * it is why collapsing also shrinks the 3D view's safe area instead of merely hiding a
+     * box over an unchanged camera frame.
+     *
+     * The choice is remembered per browser. A player who wants the map big wants it big
+     * every session, and re-hiding the same panel every login is the kind of small tax
+     * that makes a UI feel like it is not listening.
+     */
+    function wirePanelToggle({ buttonId, bodyClass, storageKey, showLabel, hideLabel, showTitle, hideTitle }) {
+        const button = document.getElementById(buttonId);
         if (!button) return;
         let collapsed = false;
-        try { collapsed = localStorage.getItem('gow-controlpad') === 'hidden'; } catch (_) {}
+        try { collapsed = localStorage.getItem(storageKey) === 'hidden'; } catch (_) {}
         const apply = () => {
-            document.body.classList.toggle('controlpad-collapsed', collapsed);
-            button.textContent = collapsed ? 'Show panel' : 'Hide panel';
+            document.body.classList.toggle(bodyClass, collapsed);
+            button.textContent = collapsed ? showLabel : hideLabel;
+            // aria-pressed describes the toggle's state, not the panel's: pressed means
+            // "this control is currently suppressing its panel".
             button.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
-            button.title = collapsed
-                ? 'Show the command panel'
-                : 'Hide the command panel and enlarge the map';
+            button.title = collapsed ? showTitle : hideTitle;
             applyResponsiveLayout();
         };
         button.addEventListener('click', () => {
             collapsed = !collapsed;
-            try { localStorage.setItem('gow-controlpad', collapsed ? 'hidden' : 'shown'); } catch (_) {}
+            try { localStorage.setItem(storageKey, collapsed ? 'hidden' : 'shown'); } catch (_) {}
             apply();
         });
         apply();
     }
 
+    function wirePanelToggles() {
+        wirePanelToggle({
+            buttonId: 'controlPadToggle',
+            bodyClass: 'controlpad-collapsed',
+            storageKey: 'gow-controlpad',
+            hideLabel: 'Hide panel',
+            showLabel: 'Show panel',
+            hideTitle: 'Hide the command panel and enlarge the map',
+            showTitle: 'Show the command panel'
+        });
+        wirePanelToggle({
+            buttonId: 'minimapToggle',
+            bodyClass: 'minimap-collapsed',
+            storageKey: 'gow-minimap',
+            hideLabel: 'Hide minimap',
+            showLabel: 'Show minimap',
+            hideTitle: 'Hide the minimap and enlarge the map',
+            showTitle: 'Show the minimap'
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         applyResponsiveLayout();
-        wireControlPadToggle();
+        wirePanelToggles();
         setTitle('Galaxy Map');
         initializeAudioButton();
     });
