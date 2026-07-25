@@ -467,12 +467,22 @@ img { max-width: 100%; display: block; }
     mix-blend-mode: screen;
     filter: drop-shadow(0 0 10px rgba(120,180,255,0.25));
 }
-.pillar__art--row { gap: 1.4rem; grid-auto-flow: column; }
+/* This card carries three resource sprites where its neighbours carry one full-bleed
+   illustration, and it looked unfinished next to them: three small stickers adrift on an
+   empty panel. The cause was not the gap - the source sprites are 25x25, so the max-height
+   here (46px, then 68px) never applied at all and they always drew at native size on a
+   120px panel. height forces the upscale that max-height could not; image-rendering keeps
+   the enlargement crisp instead of smeared, which suits sprites this small. */
+.pillar__art--row { gap: 1.1rem; grid-auto-flow: column; }
 .pillar__art--row img {
-    max-height: 46px;
+    height: 62px;
+    width: auto;
     image-rendering: pixelated;
+    /* These sprites used to be colour type 2 (no alpha) and so carried an opaque
+       rgb(51,51,51) box, invisible at 25px and glaring at 62px. They now have a real alpha
+       channel, so plain compositing is correct - screen would only wash the colours out. */
     mix-blend-mode: normal;
-    filter: drop-shadow(0 0 8px rgba(120,180,255,0.35));
+    filter: drop-shadow(0 0 10px rgba(120,180,255,0.4));
 }
 .pillar__art--ship img { max-height: 64px; }
 
