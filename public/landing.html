@@ -74,7 +74,9 @@
                     </a>
                     <div class="mode-chips" role="list">
                         <span class="chip" role="listitem"><b>QUICK</b><i>3-minute turns · an afternoon</i></span>
-                        <span class="chip" role="listitem"><b>EPIC</b><i>one turn a day · for weeks</i></span>
+                        <!-- 120 turns at a turn a day is four months, not "weeks". Kept in step with the
+                             body copy below, which now says the same thing. -->
+                        <span class="chip" role="listitem"><b>EPIC</b><i>one turn a day · for months</i></span>
                     </div>
                 </div>
 
@@ -161,7 +163,13 @@
                         <span class="pillar__tag">TEMPO</span>
                     </div>
                     <h3>Quick or Epic</h3>
-                    <p>Binge a whole campaign in twenty minutes of fast turns — or trade one decisive move a day with friends over weeks. Epic mode boosts income so every order lands hard.</p>
+                    <!-- Said "twenty minutes", which is about seven turns. A Quick match is
+                         90 turns at three minutes each — an afternoon — and the QUICK chip
+                         further up the page already said so, so the page contradicted itself
+                         on the one thing a visitor most needs to know before starting: how
+                         much of their day this wants. Epic's income boost is real
+                         (EPIC_RESOURCE_MULTIPLIER is 12) and stays. -->
+                    <p>Play out a whole campaign across an afternoon of three-minute turns — or trade one decisive move a day with friends for months. Epic mode boosts income so every order lands hard.</p>
                 </article>
 
                 <article class="pillar">
