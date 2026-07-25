@@ -268,6 +268,54 @@
         .tab-panel::-webkit-scrollbar-thumb { background: rgba(76,124,255,0.4); border-radius: 4px; }
         .tab-panel::-webkit-scrollbar-thumb:hover { background: rgba(76,124,255,0.6); }
 
+        /* Beveled, pressable controls — the same language as the login, lobby and landing
+           pages, which the game screen had never adopted despite being the page players
+           spend all their time on. Chunky faux-3D: light top-left edge, dark bottom-right,
+           a raised lip underneath, and a real press on :active.
+
+           Deliberately geometry-free. Only box-shadow and transform are touched, neither
+           of which reflows, so the measured HUD column in game-screen.js and the 44px
+           coarse-pointer targets are unaffected. The bevel is white/black alpha rather
+           than a coloured edge — a tinted accent stripe is banned, and this is the
+           technique the lobby already uses to get depth without one. */
+        #controlPadGUI button,
+        #sectordisplay button,
+        #turnTimeBar button,
+        #utilityButtons button,
+        #chatContainer button {
+            box-shadow:
+                inset 1px 1px 0 rgba(255, 255, 255, 0.14),
+                inset -2px -2px 0 rgba(0, 0, 0, 0.42),
+                0 2px 0 rgba(0, 0, 0, 0.5),
+                0 4px 10px rgba(0, 0, 0, 0.34) !important;
+            transition: transform 90ms ease, box-shadow 90ms ease;
+        }
+        #controlPadGUI button:active:not(:disabled),
+        #sectordisplay button:active:not(:disabled),
+        #turnTimeBar button:active:not(:disabled),
+        #utilityButtons button:active:not(:disabled),
+        #chatContainer button:active:not(:disabled) {
+            transform: translateY(2px);
+            box-shadow:
+                inset 2px 2px 5px rgba(0, 0, 0, 0.55),
+                0 0 0 rgba(0, 0, 0, 0) !important;
+        }
+        /* A disabled control should not look like it is waiting to be pressed. */
+        #controlPadGUI button:disabled,
+        #sectordisplay button:disabled,
+        #turnTimeBar button:disabled {
+            box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.05),
+                        inset -1px -1px 0 rgba(0, 0, 0, 0.3) !important;
+            transform: none;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #controlPadGUI button,
+            #sectordisplay button,
+            #turnTimeBar button,
+            #utilityButtons button,
+            #chatContainer button { transition: none; }
+        }
+
         /* Building, defense, ship, tech buttons - polish */
         .building-button {
             background: linear-gradient(120deg, #164b33, #20613f) !important;
