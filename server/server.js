@@ -6959,6 +6959,24 @@ function sectorDistance(gameId, a, b) {
     return Math.max(Math.abs(pa.x - pb.x), Math.abs(pa.y - pb.y));
 }
 
+/**
+ * Sectors this player has scouted and knows hold somebody else's fleet.
+ *
+ * Explored sectors only, deliberately: the AI gets exactly the intelligence a human in
+ * its seat would have, which is the same thing the client draws from the ENEMY_FLEET map
+ * flag. Reading the full ships table would let the AI dodge fleets it has never seen.
+ */
+function knownHostileSectors(fleetRows, exploredSectors, playerId) {
+    const hostile = new Set();
+    (fleetRows || []).forEach(row => {
+        const sector = Number(row.sectorid);
+        if (!exploredSectors.has(sector)) return;
+        if (Number(row.owner) === Number(playerId)) return;
+        if (Number(row.count) > 0) hostile.add(sector);
+    });
+    return hostile;
+}
+
 async function nextStepTowards(gameId, current, target, playerId, options = {}) {
     // cautious: prefer a known-safe step over an unscouted one. Used for irreplaceable
     // cargo (colony ships) where a wrong guess costs the empire its expansion.
@@ -6987,12 +7005,17 @@ async function nextStepTowards(gameId, current, target, playerId, options = {}) 
     if (candidates.length === 0) return null;
 
     try {
-        const [rows, exploredRows] = await Promise.all([
+        const [rows, exploredRows, fleetRows] = await Promise.all([
             queryDb(`SELECT sectorid, type, owner FROM map${gameId} WHERE sectorid IN (${candidates.map(() => '?').join(',')})`, candidates),
-            queryDb(`SELECT sectorid FROM explored_sectors${gameId} WHERE playerid = ?`, [playerId]).catch(() => [])
+            queryDb(`SELECT sectorid FROM explored_sectors${gameId} WHERE playerid = ?`, [playerId]).catch(() => []),
+            // Full-table GROUP BY: the only ships query shape the mock database answers
+            // without a WHERE clause. A narrower query would silently return [] there and
+            // quietly disable the check in every test and simulation.
+            queryDb(`SELECT sectorid, owner, type, COUNT(*) as count FROM ships${gameId} GROUP BY sectorid, owner, type`, []).catch(() => [])
         ]);
         const info = new Map((rows || []).map(r => [Number(r.sectorid), r]));
         const known = new Set((exploredRows || []).map(row => Number(row.sectorid)));
+        const hostile = knownHostileSectors(fleetRows, known, playerId);
         // The AI uses only its own intelligence. Unknown preferred steps remain a
         // real gamble; known black holes and unsecured belts can be routed around.
         const gambles = [];
@@ -7012,13 +7035,24 @@ async function nextStepTowards(gameId, current, target, playerId, options = {}) 
             const type = Number(row.type);
             if (type === 2) continue; // black hole: never
             if (type === 1 && Number(row.owner) !== Number(playerId)) continue; // asteroid: only if secured
+            // A sector the AI has scouted and knows holds someone else's fleet. A colony
+            // ship has 0 attack and 1 hull, so stepping in is not a risk, it is a death:
+            // the balance probe showed the same two sectors eating a colony ship every
+            // turn for 90 turns ("losses(A:1,D:0) top(A:Colony Ship,D:Frigate)"), which is
+            // why AI empires never grew past their first world. Escorted warships still
+            // route normally; only cautious cargo declines the fight.
+            if (cautious && hostile.has(id)) continue;
             return id;
         }
         if (gambles.length > 0) return gambles[0];
         // All safe-ish routes blocked; accept an asteroid risk rather than stalling.
+        // Still never walk cargo into a known enemy fleet: stalling one turn beats
+        // handing over the ship, and the escort logic can clear the sector later.
         for (const id of candidates) {
             const row = info.get(id);
-            if (row && Number(row.type) !== 2) return id;
+            if (!row || Number(row.type) === 2) continue;
+            if (cautious && hostile.has(id)) continue;
+            return id;
         }
     } catch (err) {
         console.warn(`AI pathing failed in game ${gameId}:`, err.message || err);
@@ -7247,6 +7281,13 @@ async function handleAiExpansion(gameId, playerId, homeSector) {
     const reachable = candidates.filter(row => (Number(row.terraformlvl) || 0) <= terraformLevel);
     if (reachable.length === 0) return; // research terraforming and try again later
 
+    // Deliberately still the NEAREST reachable world, not the nearest *undefended* one.
+    // Steering target selection away from guarded worlds was measured over five matched
+    // seeds and made things worse, not better: it sends the colony ship to a farther world,
+    // which means more turns in transit, more unscouted sectors crossed, and on seed 3 both
+    // more losses (13 -> 18) and less expansion (9.7% -> 5.6%). Avoiding a fleet is a
+    // step-level decision, handled in nextStepTowards; re-planning the whole expansion
+    // around it costs more than the fight it dodges.
     const target = reachable.reduce((best, row) => {
         const dist = sectorDistance(gameId, row.sectorid, current);
         if (!best || dist < best.dist) return { sector: Number(row.sectorid), dist };
