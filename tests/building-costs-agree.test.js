@@ -1,0 +1,102 @@
+// A building's price is written down in three places:
+//
+//   server/server.js  BUILDING_COSTS   — authoritative; this is what the player is charged
+//   public/js/build.js BUILDING_COSTS  — affordability checks and the cost chips it re-renders
+//   public/game.html                   — the cost spans in the initial markup
+//
+// Nothing links them. Change the price on the server and the button keeps advertising the
+// old one, the client keeps enabling or greying it on the old one, and the player is
+// charged something they were never shown.
+//
+// They all agree today. This test exists because "fix one copy and miss its twin" has
+// already produced two defects in this codebase: the music urgency window was corrected in
+// the unit test but not the e2e spec, and the landing page's Quick-match length was
+// corrected on the chip but not in the paragraph four lines below it. Duplicated facts are
+// where the fixes go wrong, so the duplication gets a guard rather than a promise.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.join(__dirname, '..');
+
+function serverCosts() {
+    const src = fs.readFileSync(path.join(root, 'server', 'server.js'), 'utf8');
+    const block = src.match(/const BUILDING_COSTS = \{([\s\S]*?)\n\};/);
+    assert.ok(block, 'could not find BUILDING_COSTS in server.js');
+    const costs = {};
+    for (const m of block[1].matchAll(/(\d+):\s*\{[^}]*metal:\s*(\d+),\s*crystal:\s*(\d+)/g)) {
+        costs[Number(m[1])] = { metal: Number(m[2]), crystal: Number(m[3]) };
+    }
+    return costs;
+}
+
+function clientCosts() {
+    const src = fs.readFileSync(path.join(root, 'public', 'js', 'build.js'), 'utf8');
+    const block = src.match(/const BUILDING_COSTS = \{([\s\S]*?)\n\s*\};/);
+    assert.ok(block, 'could not find BUILDING_COSTS in build.js');
+    const costs = {};
+    for (const m of block[1].matchAll(/(\d+):\s*\{\s*metal:\s*(\d+),\s*crystal:\s*(\d+)/g)) {
+        costs[Number(m[1])] = { metal: Number(m[2]), crystal: Number(m[3]) };
+    }
+    return costs;
+}
+
+/** The cost spans baked into the build buttons, keyed by data-building-id. */
+function markupCosts() {
+    const src = fs.readFileSync(path.join(root, 'public', 'game.html'), 'utf8');
+    const costs = {};
+    const buttonRe = /data-building-id="(\d+)"[\s\S]{0,600}?cost-metal">(\d+)<\/span>\s*<span class="cost-crystal">(\d+)</g;
+    for (const m of src.matchAll(buttonRe)) {
+        costs[Number(m[1])] = { metal: Number(m[2]), crystal: Number(m[3]) };
+    }
+    return costs;
+}
+
+test('the client prices buildings exactly the way the server charges for them', () => {
+    const server = serverCosts();
+    const client = clientCosts();
+
+    assert.ok(Object.keys(server).length >= 6, `expected the full building list, saw ${Object.keys(server).length}`);
+
+    const mismatches = [];
+    Object.keys(server).forEach(id => {
+        const a = server[id];
+        const b = client[id];
+        if (!b) {
+            mismatches.push(`building ${id}: missing from build.js`);
+            return;
+        }
+        if (a.metal !== b.metal || a.crystal !== b.crystal) {
+            mismatches.push(`building ${id}: server ${a.metal}/${a.crystal} vs build.js ${b.metal}/${b.crystal}`);
+        }
+    });
+
+    assert.deepEqual(mismatches, [],
+        `build.js disagrees with the server about what a building costs:\n  ${mismatches.join('\n  ')}`);
+});
+
+test('the build buttons advertise the price the server will actually charge', () => {
+    const server = serverCosts();
+    const markup = markupCosts();
+
+    assert.ok(Object.keys(markup).length >= 6,
+        `expected a cost on every build button, parsed ${Object.keys(markup).length}`);
+
+    const mismatches = [];
+    Object.keys(markup).forEach(id => {
+        const shown = markup[id];
+        const real = server[id];
+        if (!real) {
+            mismatches.push(`button for building ${id} has no server cost`);
+            return;
+        }
+        if (shown.metal !== real.metal || shown.crystal !== real.crystal) {
+            mismatches.push(`building ${id}: button shows ${shown.metal}/${shown.crystal}, server charges ${real.metal}/${real.crystal}`);
+        }
+    });
+
+    assert.deepEqual(mismatches, [],
+        `a build button advertises a price the server does not charge:\n  ${mismatches.join('\n  ')}`);
+});
