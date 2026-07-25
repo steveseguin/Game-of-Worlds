@@ -260,7 +260,12 @@ const VICTORY_CONDITIONS = {
     TIME: {
         id: 7,
         name: 'Time Victory',
+        // Built at module load from the flat fallback, which is wrong for every real
+        // game: the limit became mode-aware (quick 90, epic 120, test 40) and this text
+        // did not follow, so a Quick player was told their match ran 300 turns when it
+        // actually ends at 90. describe() is consulted per game where one exists.
         description: `Have the highest score after ${TIME_VICTORY_TURN_LIMIT} turns`,
+        describe: (gameId, gameState) => `Have the highest score after ${timeVictoryTurnLimit(gameId, gameState)} turns`,
         check: function(gameId, playerId, gameState, db, callback) {
             const currentTurn = gameState.turns[gameId] || 0;
             const limit = timeVictoryTurnLimit(gameId, gameState);
@@ -554,7 +559,11 @@ function getVictoryProgress(gameId, playerId, gameState, db, callback) {
     conditions.forEach(condition => {
         condition.check(gameId, playerId, gameState, db, (achieved, percent) => {
             progress[condition.name] = {
-                description: condition.description,
+                // A condition whose wording depends on the game (the turn limit varies by
+                // mode) supplies describe(); the rest are fixed strings.
+                description: typeof condition.describe === 'function'
+                    ? condition.describe(gameId, gameState)
+                    : condition.description,
                 progress: percent,
                 achieved
             };

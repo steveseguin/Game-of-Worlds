@@ -52,3 +52,25 @@ test('every mode still has a reachable end state', () => {
 // capturing rivals' developed worlds. Settling this needs a full-length simulation
 // with AI opponents and real combat, not a spreadsheet. Until then the domination
 // threshold is left at its long-standing value rather than tuned on bad evidence.
+
+// The turn limit became mode-aware, but the sentence shown to the player was built once
+// at module load from the flat 300-turn fallback. A Quick commander was told their match
+// ran 300 turns when it actually ends at 90 — the single most important pacing fact in
+// the game, off by more than 3x. Caught in a Playwright page snapshot, not by any test.
+test('the victory panel quotes the turn limit the game will actually enforce', () => {
+    const timeCondition = Object.values(victory.VICTORY_CONDITIONS)
+        .find(condition => condition.name === 'Time Victory');
+    assert.ok(timeCondition, 'expected a Time Victory condition');
+    assert.equal(typeof timeCondition.describe, 'function',
+        'Time Victory needs describe() — its wording depends on the game mode');
+
+    Object.entries(victory.TIME_VICTORY_TURNS_BY_MODE).forEach(([mode, turns]) => {
+        const text = timeCondition.describe(1, stateFor(mode));
+        assert.ok(text.includes(String(turns)),
+            `${mode} should be described as ${turns} turns, got "${text}"`);
+        assert.equal(text, victory.VICTORY_CONDITIONS.TIME.describe(1, stateFor(mode)));
+    });
+
+    // An unknown mode still has to say something true — the historical limit.
+    assert.ok(timeCondition.describe(1, stateFor('something-else')).includes('300'));
+});
