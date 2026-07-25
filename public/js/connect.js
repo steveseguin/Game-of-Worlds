@@ -45,6 +45,11 @@ let lobbyRedirectFallbackId = null;
 let awaitingAuth = false;
 let hasAuthenticated = false;
 let pendingInitialUpdate = false;
+// Set once the server has told us the match is over. The server closes the socket
+// straight after that, and an ordinary close puts a "THE CONNECTION WAS LOST /
+// please refresh" panel over the screen — which told a player who had just
+// surrendered, or just won, that something had gone wrong. See websocket.onclose.
+let gameHasEnded = false;
 let turnTimer = 180; // 3 minutes per turn
 let turnInterval;
 let turnDeadlineAt = null;
@@ -239,6 +244,7 @@ const MESSAGE_HANDLERS = {
         const winnerId = parseInt(parts[0], 10);
         const hasWinner = Number.isFinite(winnerId);
         const reason = safeDecodeURIComponent(parts[1] || "Victory condition met");
+        gameHasEnded = true;
         if (window.Battle3D?.cleanupBattleVisualization) {
             window.Battle3D.cleanupBattleVisualization();
         }
@@ -755,6 +761,9 @@ function initializeWebSocket() {
         document.getElementById("status").innerHTML = "Connected";
         shouldAutoReconnect = true;
         pendingLobbyRedirect = false;
+        // A live socket means a live session again, so a genuine drop after this point
+        // must still raise the connection-lost panel.
+        gameHasEnded = false;
         pendingInitialUpdate = window.location.pathname.includes('game.html');
         if (window.NotificationSystem && typeof window.NotificationSystem.initialize === 'function') {
             window.NotificationSystem.initialize();
@@ -781,12 +790,18 @@ function initializeWebSocket() {
         awaitingAuth = false;
         hasAuthenticated = false;
         pendingInitialUpdate = false;
-        if (!pendingLobbyRedirect) {
+        // A finished game is a normal, expected close: the server sends gameover and
+        // then drops the socket. Showing the connection-lost panel there covers the
+        // game-over modal and asks the player to reload a match that is already over,
+        // and reconnecting would only be refused. Leave the result on screen.
+        if (!pendingLobbyRedirect && !gameHasEnded) {
             document.getElementById("lobbyWindow").style.display = "block";
         }
 
         // Auto-reconnect after delay if needed
-        scheduleReconnect();
+        if (!gameHasEnded) {
+            scheduleReconnect();
+        }
     };
 }
 

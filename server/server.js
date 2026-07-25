@@ -6113,7 +6113,10 @@ function handleSurrender(connection) {
 
             if (remainingHumans.length === 0) {
                 finishPlayerRemoval(() => {
-                    connection.sendUTF(`gameover::::${encodeURIComponent('No human players remain')}`);
+                    // The game is being abandoned because nobody human is left, but the
+                    // player reading this chose to surrender — tell them what they did,
+                    // not what it did to the match.
+                    connection.sendUTF(`gameover::::${encodeURIComponent('Surrendered')}`);
                     abandonGame(gameId, 'No human players remain');
                 });
                 return;
