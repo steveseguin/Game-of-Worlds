@@ -3970,6 +3970,11 @@ async function persistShipPurchase({ gameId, playerId, shipType, buildSector, sh
         connection.sendUTF(`Success: Built ${shipData.name} in sector ${buildSector} (${productionCost} production)`);
         updateResources(connection);
         updateSector2(gameId, buildSector);
+        // The empire line counts ships. Building one and being told you still have the
+        // old number is the same staleness that hid economy buildings from the income
+        // rate — the header simply denied the hull you had just paid for until the turn
+        // rolled over.
+        sendEmpireSummary(connection);
     } catch (error) {
         if (session) await session.rollback().catch(() => {});
         // Lightweight test adapters and legacy embedders may not expose a
