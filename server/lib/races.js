@@ -22,7 +22,16 @@ const RACE_TYPES = {
             shipAttack: 1.0,
             shipDefense: 1.0
         },
-        specialAbility: "Adaptable - 10% faster building construction",
+        // Was "Adaptable - 10% faster building construction", which described a mechanic
+        // this game does not have: buildings and ships complete the moment you pay for
+        // them, gated by production slots rather than by any elapsed build time. There is
+        // no duration for 10% to come off, specialAbility is a display string the server
+        // never reads, and every Terran bonus is 1.0 — so the line promised nothing and
+        // delivered nothing, on the only race a new player can actually pick.
+        //
+        // Its real identity is the one thing no other race has: not a single value below
+        // 1.0 anywhere. Every other doctrine buys its strength with a weakness somewhere.
+        specialAbility: "Adaptable - no weaknesses in any discipline, and full access to every technology and hull",
         techTreeModifiers: {},
         unitModifiers: {}
     },
