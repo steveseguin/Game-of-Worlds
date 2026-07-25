@@ -429,7 +429,15 @@ import { PLANET_STYLES, getPlanetTexture } from './planet-texture.js?v=20260725a
         // black surround becomes most of the globe, so the world the fleets were
         // fighting over rendered as a mostly-black smear that looked nothing like the
         // same world on the galaxy map. Both views now paint from one generator.
-        const mat = stdMat(0xffffff, { metalness: 0.04, roughness: 1.0, envMapIntensity: 0.12 });
+        // Held well below full brightness on purpose. This is a backdrop, and the
+        // scene's five lights hit it much harder than they hit the fleet: the planet is
+        // diffuse (metalness 0.04) while the ships are metallic (0.65) and so reflect
+        // rather than soak up light. At full white the defenders — who sit in front of
+        // their own world — were silhouetted against a bright surface while the
+        // attackers had clean black behind them, which is an unfair legibility split in
+        // a screen the player only gets to watch. The old photo texture hid this by
+        // being mostly black; now that it renders, the dimming has to be deliberate.
+        const mat = stdMat(0x7c838f, { metalness: 0.04, roughness: 1.0, envMapIntensity: 0.12 });
         mat.map = getPlanetTexture(planetType, sectorId);
         mat.needsUpdate = true;
         const planet = new THREE.Mesh(geo(new THREE.SphereGeometry(1, 56, 56)), mat);
