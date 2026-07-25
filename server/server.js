@@ -2113,6 +2113,35 @@ async function setTurnResolutionPhase(gameId, turn, phase, persist = true) {
     };
 }
 
+/**
+ * The multiplier this game's mode applies to income. Epic pays 12x per turn because a
+ * turn is a whole day; test pays 20x so a match resolves quickly.
+ */
+function resourceMultiplierFor(gameId) {
+    const mode = normalizeMode((gameState.activeGames[gameId] || {}).mode);
+    if (mode === 'test') return TEST_RESOURCE_MULTIPLIER;
+    if (mode === 'epic') return EPIC_RESOURCE_MULTIPLIER;
+    return 1;
+}
+
+/**
+ * What a player is ACTUALLY credited at end of turn: the raw sector income scaled by
+ * their race's production doctrine and the mode multiplier.
+ *
+ * The HUD used to read the raw computeTurnIncome() figure and skip both of those, so the
+ * "+N/turn" a commander plans against was wrong for every race but Terran (up to ±40%)
+ * and wrong by 12x in Epic — a Titan Lords player in Epic saw +61 and banked 1024. Both
+ * the ledger and the display go through here now so they cannot drift apart again.
+ */
+function scaleIncomeForPlayer(rawIncome, raceId, multiplier) {
+    const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === raceId) || raceSystem.RACE_TYPES.TERRAN;
+    return {
+        metal: Math.floor((Number(rawIncome.metal) || 0) * race.bonuses.metalProduction * multiplier),
+        crystal: Math.floor((Number(rawIncome.crystal) || 0) * race.bonuses.crystalProduction * multiplier),
+        research: Math.floor((Number(rawIncome.research) || 0) * race.bonuses.researchSpeed * multiplier)
+    };
+}
+
 async function processTurnIncome(gameId, modeMultiplier, turn) {
     const tables = gameTables(gameId);
     const players = await queryDb(`SELECT * FROM ${tables.players}`);
@@ -2120,11 +2149,11 @@ async function processTurnIncome(gameId, modeMultiplier, turn) {
 
     await Promise.all((players || []).map(async player => {
         try {
-            const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === player.race_id) || raceSystem.RACE_TYPES.TERRAN;
             const income = await computeTurnIncome(gameId, player.userid);
-            const metalGen = Math.floor(income.metal * race.bonuses.metalProduction * modeMultiplier);
-            const crystalGen = Math.floor(income.crystal * race.bonuses.crystalProduction * modeMultiplier);
-            const researchGen = Math.floor(income.research * race.bonuses.researchSpeed * modeMultiplier);
+            const scaled = scaleIncomeForPlayer(income, player.race_id, modeMultiplier);
+            const metalGen = scaled.metal;
+            const crystalGen = scaled.crystal;
+            const researchGen = scaled.research;
 
             const updateResult = await queryDb(
                 `UPDATE ${tables.players} SET
@@ -2150,8 +2179,10 @@ async function processTurnIncome(gameId, modeMultiplier, turn) {
                     sendVisibleMapState(gameId, client);
                 }
             });
-            if (race.id === 6) autoRepairShips(gameId, player.userid);
-            else if (race.id === 7) evolveShips(gameId, player.userid);
+            // Race doctrines that fire once income has landed: Mechanicus hulls
+            // self-repair, Bioform hulls evolve.
+            if (Number(player.race_id) === 6) autoRepairShips(gameId, player.userid);
+            else if (Number(player.race_id) === 7) evolveShips(gameId, player.userid);
         } catch (error) {
             failures.push({ playerId: Number(player.userid), error });
         }
@@ -2293,9 +2324,7 @@ async function processTurnUnchecked(gameId, failedResolution = null) {
 
     const activeState = gameState.activeGames[gameId] || {};
     const mode = normalizeMode(activeState.mode);
-    const modeMultiplier = mode === 'test'
-        ? TEST_RESOURCE_MULTIPLIER
-        : (mode === 'epic' ? EPIC_RESOURCE_MULTIPLIER : 1);
+    const modeMultiplier = resourceMultiplierFor(gameId);
 
     if (resumeIndex <= phaseOrder.indexOf('income')) {
         await setTurnResolutionPhase(gameId, nextTurn, 'income');
@@ -3408,8 +3437,13 @@ function sendEmpireSummary(connection) {
         computeTurnIncome(gameId, playerId).catch(() => ({ metal: 0, crystal: 0, research: 0 })),
         queryDb(`SELECT sectorid, type FROM map${gameId} WHERE owner = ?`, [playerId]).catch(() => []),
         queryDb(`SELECT sectorid, type, COUNT(*) as count FROM buildings${gameId} WHERE owner = ? GROUP BY sectorid, type`, [playerId]).catch(() => []),
-        queryDb(`SELECT sectorid, type, COUNT(*) as count FROM ships${gameId} WHERE owner = ? GROUP BY sectorid, type`, [playerId]).catch(() => [])
-    ]).then(([income, sectors, buildings, ships]) => {
+        queryDb(`SELECT sectorid, type, COUNT(*) as count FROM ships${gameId} WHERE owner = ? GROUP BY sectorid, type`, [playerId]).catch(() => []),
+        // The rate shown must be the rate credited, so it needs this player's race
+        // doctrine and the mode multiplier — see scaleIncomeForPlayer.
+        queryDb(`SELECT race_id FROM players${gameId} WHERE userid = ? LIMIT 1`, [playerId]).catch(() => [])
+    ]).then(([rawIncome, sectors, buildings, ships, raceRows]) => {
+        const raceId = raceRows && raceRows[0] ? raceRows[0].race_id : undefined;
+        const income = scaleIncomeForPlayer(rawIncome, raceId, resourceMultiplierFor(gameId));
         const sectorRows = Array.isArray(sectors) ? sectors : [];
         const buildingRows = Array.isArray(buildings) ? buildings : [];
         const shipRows = Array.isArray(ships) ? ships : [];
@@ -7318,6 +7352,8 @@ module.exports = {
     buyTech,
     sendTechState,
     sendEmpireSummary,
+    processTurnIncome,
+    scaleIncomeForPlayer,
     sendVictoryProgress,
     handleTechStateRequest,
     handleVictoryProgressRequest,
