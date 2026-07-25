@@ -76,10 +76,25 @@ async function main() {
     const needed = Math.ceil(colonisable * dominationPct / 100);
     console.log(`map ${map.length} sectors, ${colonisable} colonisable`);
     console.log(`domination needs ${needed} worlds (${dominationPct}%)\n`);
-    console.log('turn |  best empire | all held | share of colonisable');
+    const colonyCost = require('../server/lib/combat').SHIP_TYPES.COLONY_SHIP.cost.metal;
+    console.log(`a colony ship costs ${colonyCost} metal\n`);
+    console.log('turn |  best empire | all held | share | metal per AI (colony ships)');
 
     let peak = 0;
+    let endedOnTurn = 0;
+    // The turn limit is read up front: once the game ends, victory cleanup removes the
+    // activeGames entry and timeVictoryTurnLimit falls back to its default, so asking
+    // afterwards reports the wrong number.
+    const turnLimit = victory.timeVictoryTurnLimit(GAME_ID, serverLogic.gameState);
     for (let turn = 1; turn <= TURNS; turn++) {
+        // A finished game keeps accepting processTurn calls but does nothing, so the
+        // table would repeat the final row and read as "expansion plateaued" when in
+        // fact the match was over. Stop at the real end and say which turn it was.
+        if (!serverLogic.gameState.activeGames[GAME_ID]) {
+            endedOnTurn = turn - 1;
+            console.log(`\n[game ended on turn ${endedOnTurn} — not simulating further]`);
+            break;
+        }
         // processTurn, not triggerAiTurn: the latter runs AI orders but skips the
         // income phase, so empires spend their starting metal once and never earn
         // again — which reads as "expansion is impossible" when it is just a broke AI.
@@ -105,10 +120,19 @@ async function main() {
             const total = counts.reduce((a, b) => a + b, 0);
             peak = Math.max(peak, best);
             const share = colonisable ? ((best / colonisable) * 100).toFixed(1) : '0';
+            // Metal alongside holdings: a stalled empire that is broke needs a different
+            // fix from one that is rich and simply has nowhere left it can settle.
+            const pRows = await query(`SELECT * FROM players${GAME_ID}`);
+            const shipRows = await query(`SELECT * FROM ships${GAME_ID}`).catch(() => []);
+            const purse = pRows.filter(p => Number(p.userid) !== 1).map(p => {
+                const colonies = (shipRows || []).filter(s =>
+                    Number(s.owner) === Number(p.userid) && Number(s.type) === 6).length;
+                return `${Math.floor(Number(p.metal) || 0)}${colonies ? `(${colonies})` : ''}`;
+            }).join(' ');
             console.log(
                 String(turn).padStart(4) + ' | ' +
                 String(best).padStart(12) + ' | ' +
-                String(total).padStart(8) + ' | ' + share + '%'
+                String(total).padStart(8) + ' | ' + share.padStart(5) + '% | ' + purse
             );
         }
     }
@@ -129,11 +153,16 @@ async function main() {
     });
     console.log('  unclaimed settleable worlds by terraform requirement:', JSON.stringify(byTerraform));
 
-    const limit = victory.timeVictoryTurnLimit(GAME_ID, serverLogic.gameState);
+    const measuredTurns = endedOnTurn || TURNS;
     console.log();
     console.log(`peak single empire: ${peak} worlds of ${colonisable} (${((peak / colonisable) * 100).toFixed(1)}%)`);
-    console.log(`domination threshold: ${needed} worlds — ${peak >= needed ? 'REACHED' : 'NOT reached'} in ${TURNS} turns`);
-    console.log(`quick-mode time limit is ${limit} turns`);
+    console.log(`domination threshold: ${needed} worlds — ${peak >= needed ? 'REACHED' : 'NOT reached'} in ${measuredTurns} turns`);
+    console.log(`quick-mode time limit is ${turnLimit} turns`);
+    if (endedOnTurn) {
+        console.log(`the match ended on turn ${endedOnTurn}, so that is the whole window a player gets`);
+    } else if (TURNS > turnLimit) {
+        console.log(`NOTE: asked for ${TURNS} turns but the mode ends at ${turnLimit} — the tail is not real play`);
+    }
     process.exit(0);
 }
 
