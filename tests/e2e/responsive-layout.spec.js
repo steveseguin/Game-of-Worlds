@@ -116,3 +116,51 @@ test.describe('HUD layout holds together at every window size', () => {
         expect(failures, `HUD layout problems:\n${failures.join('\n')}`).toEqual([]);
     });
 });
+
+// The stylesheet promises a 44x44 minimum for HUD buttons under (pointer: coarse).
+// That rule was written and never verified: if a selector does not match, or the media
+// query never applies, nothing fails — the buttons just stay too small to hit on a
+// phone, which is exactly the kind of silent miss this suite exists to catch.
+test.describe('touch targets under a coarse pointer', () => {
+    test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+    test('HUD buttons meet the 44px minimum the stylesheet promises', async ({ page }) => {
+        test.setTimeout(180000);
+
+        await harness.signInGuest(page, `touch_${Date.now().toString(36)}`);
+        await harness.waitForLobbyReady(page);
+        await harness.createGame(page, `Touch ${Date.now()}`, { maxPlayers: '2' });
+        await page.getByRole('button', { name: /Fill with AI/i }).click();
+        await page.waitForURL(/game\.html/, { timeout: 30000 });
+        await page.waitForSelector('#controlPadGUI', { timeout: 30000 });
+        await harness.dismissFirstRunGuidance(page).catch(() => {});
+
+        // Without this the whole test is vacuous: the rule is inside a media query, so if
+        // emulation does not make it match, every button trivially "passes".
+        const coarse = await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches);
+        expect(coarse, 'touch emulation must make (pointer: coarse) match or this test proves nothing').toBe(true);
+
+        const undersized = await page.evaluate(() => {
+            const scopes = ['#controlPadGUI', '#chatContainer', '#connectionInfo',
+                '#utilityButtons', '#turnTimeBar', '#sectordisplay'];
+            const bad = [];
+            scopes.forEach(scope => {
+                const root = document.querySelector(scope);
+                if (!root) return;
+                root.querySelectorAll('button').forEach(btn => {
+                    if (btn.offsetParent === null) return;          // not on screen
+                    if (btn.disabled) return;                       // cannot be tapped anyway
+                    const r = btn.getBoundingClientRect();
+                    if (r.width < 8 || r.height < 8) return;        // collapsed/decorative
+                    if (r.width < 44 || r.height < 44) {
+                        bad.push(`${scope} "${(btn.textContent || '').trim().slice(0, 18)}" ` +
+                            `${Math.round(r.width)}x${Math.round(r.height)}`);
+                    }
+                });
+            });
+            return bad;
+        });
+
+        expect(undersized, `buttons below the 44px tap target:\n  ${undersized.join('\n  ')}`).toEqual([]);
+    });
+});
