@@ -161,10 +161,19 @@ function validateEnvironment() {
     
     // Additional validation rules
     
-    // Check Stripe configuration consistency
+    // Check Stripe configuration consistency. The webhook is what delivers a purchase,
+    // so a missing secret is not merely a verification gap - it is the difference between
+    // a charge that arrives and a charge that vanishes.
     if (process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_WEBHOOK_SECRET) {
-        warnings.push('STRIPE_SECRET_KEY is set but STRIPE_WEBHOOK_SECRET is missing');
-        warnings.push('  Webhook verification will not work without STRIPE_WEBHOOK_SECRET');
+        if (String(process.env.STRIPE_SECRET_KEY).startsWith('sk_live_')) {
+            warnings.push('STRIPE_WEBHOOK_SECRET is missing while a LIVE Stripe key is set');
+            warnings.push('  Purchases would be charged and never delivered, so the shop is DISABLED');
+            warnings.push('  Set STRIPE_WEBHOOK_SECRET to re-enable payments');
+        } else {
+            warnings.push('STRIPE_SECRET_KEY is set but STRIPE_WEBHOOK_SECRET is missing');
+            warnings.push('  Test-mode purchases still settle via client confirmation, but going');
+            warnings.push('  live without the webhook secret will disable the shop');
+        }
         warnings.push('');
     }
     

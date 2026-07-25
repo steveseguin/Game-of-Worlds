@@ -5,12 +5,43 @@
  * Integrates with Stripe for secure payment processing.
  */
 
-// Initialize Stripe with secret key from environment
-const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
 const crypto = require('crypto');
 
+/**
+ * A purchase is only ever *delivered* from two places: the Stripe webhook
+ * (handleWebhook -> handlePaymentSuccess -> grantPurchase), and confirmTestPayment,
+ * which isTestConfirmationAllowed() gates to test keys.
+ *
+ * A live key with no STRIPE_WEBHOOK_SECRET has neither. constructEvent() throws on
+ * every webhook it receives, so the card is charged at Stripe and grantPurchase is
+ * never reached — the player pays and owns nothing, silently, with no retry.
+ *
+ * Startup only warns about this, and a warning does not stop a charge. So when the
+ * combination appears, refuse to arm Stripe at all: every payment path then fails
+ * closed with "Stripe is not configured" and no money can move. The game itself does
+ * not need payments to run, so this costs a shop, not a server.
+ */
+function paymentsAreUndeliverable(env = process.env) {
+    const key = String(env.STRIPE_SECRET_KEY || '');
+    if (!key.startsWith('sk_live_')) return false;              // test keys settle via confirmTestPayment
+    if (env.STRIPE_WEBHOOK_SECRET) return false;                // the webhook can verify, and deliver
+    // Deliberate escape hatch; if an operator has turned it on, a delivery path exists.
+    if (/^(true|1|yes)$/i.test(String(env.ALLOW_STRIPE_TEST_CONFIRM || '').trim())) return false;
+    return true;
+}
+
+// Initialize Stripe with secret key from environment
+let stripe = null;
+if (paymentsAreUndeliverable()) {
+    console.error('ERROR: Stripe disabled. A live key is set with no STRIPE_WEBHOOK_SECRET,');
+    console.error('       so payments would be charged but never delivered. Set the webhook');
+    console.error('       secret to re-enable the shop.');
+} else if (process.env.STRIPE_SECRET_KEY) {
+    stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+}
+
 // Warn if Stripe is not configured
-if (!stripe) {
+if (!stripe && !process.env.STRIPE_SECRET_KEY) {
     console.warn('WARNING: Stripe not configured. Set STRIPE_SECRET_KEY in environment.');
 }
 
@@ -1109,5 +1140,6 @@ class PaymentManager {
 module.exports = {
     PaymentManager,
     PRODUCTS,
-    CRYSTAL_SHOP
+    CRYSTAL_SHOP,
+    paymentsAreUndeliverable
 };
