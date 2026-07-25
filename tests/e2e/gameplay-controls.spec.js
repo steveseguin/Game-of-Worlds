@@ -29,15 +29,22 @@ test.describe('Authoritative gameplay controls', () => {
             return Number.parseInt(text, 10);
         }, { timeout: 15000 }).toBeLessThanOrEqual(30);
 
+        // The urgency window is 30 seconds, not the 10 it was originally written against:
+        // the brief was "slowly increase the urgency before 10 seconds, perhaps even at
+        // 30 — I just don't want urgency if there is no perceived need for it". So the
+        // music must still be completely level at 30s and only lean in below that.
         const tempoBehavior = await page.evaluate(() => ({
-            early: window.SoundSystem.setTurnMusicUrgency(11, 180),
-            threshold: window.SoundSystem.setTurnMusicUrgency(10, 180),
-            urgent: window.SoundSystem.setTurnMusicUrgency(5, 180),
+            early: window.SoundSystem.setTurnMusicUrgency(31, 180),
+            threshold: window.SoundSystem.setTurnMusicUrgency(30, 180),
+            urgent: window.SoundSystem.setTurnMusicUrgency(11, 180),
             final: window.SoundSystem.setTurnMusicUrgency(0, 30)
         }));
         expect(tempoBehavior.early).toBe(1);
         expect(tempoBehavior.threshold).toBe(1);
         expect(tempoBehavior.urgent).toBeGreaterThan(1);
+        // Quadratic ramp, so the lean-in stays gentle well into the window rather than
+        // jumping the moment it opens.
+        expect(tempoBehavior.urgent).toBeLessThan(1.03);
         expect(tempoBehavior.final).toBeCloseTo(1.06, 5);
 
         const scoutButton = page.locator('.ship-button[data-ship-id="3"]');
