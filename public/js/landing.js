@@ -74,7 +74,44 @@ function makePlanetTexture() {
     const img = ctx.createImageData(w, h);
     const d = img.data;
     const PERIOD = 7;
-    const sea = 0.46;
+    // The sea level is derived, not assumed. fbm() averages several octaves of value
+    // noise, which pulls its output towards the middle of the range: measured, it spans
+    // about 0.04..0.38 and never reaches the 0.46 sea level this used to hard-code. The
+    // planet was therefore 100% ocean — the continent, coastline and ice-cap code below
+    // had never executed once, which is why the hero rendered as a featureless blue ball.
+    // Normalise the field, then pick the cut by percentile so the land/sea split holds
+    // whatever range the noise happens to produce.
+    const LAND_FRACTION = 0.34;
+    const elev = new Float32Array(w * h);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let py = 0; py < h; py++) {
+        const v = py / h;
+        for (let px = 0; px < w; px++) {
+            const u = px / w;
+            // continents
+            let e = fbm(u * PERIOD, v * PERIOD * (h / w) * 2.0, PERIOD, 6);
+            // warp for more organic coastlines
+            e = e * 0.82 + fbm(u * PERIOD * 2 + 11.3, v * PERIOD + 4.7, PERIOD * 2, 4) * 0.18;
+            elev[py * w + px] = e;
+            if (e < lo) lo = e;
+            if (e > hi) hi = e;
+        }
+    }
+    const span = (hi - lo) || 1;
+    const BINS = 256;
+    const hist = new Uint32Array(BINS);
+    for (let i = 0; i < elev.length; i++) {
+        const n = (elev[i] - lo) / span;
+        elev[i] = n;
+        hist[Math.min(BINS - 1, (n * BINS) | 0)] += 1;
+    }
+    let remaining = Math.round(elev.length * LAND_FRACTION);
+    let sea = 0.5;
+    for (let bin = BINS - 1; bin >= 0; bin--) {
+        remaining -= hist[bin];
+        if (remaining <= 0) { sea = bin / BINS; break; }
+    }
 
     for (let py = 0; py < h; py++) {
         const v = py / h;
@@ -82,21 +119,18 @@ function makePlanetTexture() {
         const lat = Math.abs(v - 0.5) * 2;
         for (let px = 0; px < w; px++) {
             const u = px / w;
-            // continents
-            let e = fbm(u * PERIOD, v * PERIOD * (h / w) * 2.0, PERIOD, 6);
-            // warp for more organic coastlines
-            e = e * 0.82 + fbm(u * PERIOD * 2 + 11.3, v * PERIOD + 4.7, PERIOD * 2, 4) * 0.18;
+            const e = elev[py * w + px];
             // shrink land toward poles a touch, grow ice
             const ice = Math.max(0, lat - 0.72) / 0.28;
 
             let r, g, b;
             if (e < sea) {
-                const dpt = e / sea; // 0 deep .. 1 coast
+                const dpt = e / (sea || 1); // 0 deep .. 1 coast
                 r = mix(12, 46, dpt);
                 g = mix(52, 120, dpt);
                 b = mix(104, 178, dpt);
             } else {
-                const land = (e - sea) / (1 - sea); // 0 coast .. 1 peak
+                const land = (e - sea) / ((1 - sea) || 1); // 0 coast .. 1 peak
                 if (land < 0.5) {
                     const t = land / 0.5;
                     r = mix(46, 110, t);
@@ -135,17 +169,45 @@ function makeCloudTexture() {
     const img = ctx.createImageData(w, h);
     const d = img.data;
     const PERIOD = 6;
+    // Same trap as the planet elevation: this noise peaks around 0.41, so the old
+    // `(c - 0.5) / 0.5` cut left every texel fully transparent and the cloud shell was
+    // invisible. Normalise first, then keep the densest CLOUD_COVER of the sphere.
+    const CLOUD_COVER = 0.45;
+    const field = new Float32Array(w * h);
+    let lo = Infinity;
+    let hi = -Infinity;
     for (let py = 0; py < h; py++) {
         const v = py / h;
         for (let px = 0; px < w; px++) {
             const u = px / w;
-            let c = fbm(u * PERIOD + 3.1, v * PERIOD * (h / w) * 2 + 9.2, PERIOD, 5);
-            c = Math.max(0, (c - 0.5)) / 0.5;
-            c = Math.pow(c, 1.4);
-            const o = (py * w + px) * 4;
-            d[o] = 255; d[o + 1] = 255; d[o + 2] = 255;
-            d[o + 3] = Math.min(255, c * 235);
+            const c = fbm(u * PERIOD + 3.1, v * PERIOD * (h / w) * 2 + 9.2, PERIOD, 5);
+            field[py * w + px] = c;
+            if (c < lo) lo = c;
+            if (c > hi) hi = c;
         }
+    }
+    const span = (hi - lo) || 1;
+    const BINS = 256;
+    const hist = new Uint32Array(BINS);
+    for (let i = 0; i < field.length; i++) {
+        const n = (field[i] - lo) / span;
+        field[i] = n;
+        hist[Math.min(BINS - 1, (n * BINS) | 0)] += 1;
+    }
+    let remaining = Math.round(field.length * CLOUD_COVER);
+    let cut = 0.5;
+    for (let bin = BINS - 1; bin >= 0; bin--) {
+        remaining -= hist[bin];
+        if (remaining <= 0) { cut = bin / BINS; break; }
+    }
+
+    for (let i = 0; i < field.length; i++) {
+        // Ramp from the cut to full density so cloud edges stay soft rather than
+        // stamping a hard-edged shape onto the globe.
+        const c = Math.pow(Math.max(0, field[i] - cut) / ((1 - cut) || 1), 1.15);
+        const o = i * 4;
+        d[o] = 255; d[o + 1] = 255; d[o + 2] = 255;
+        d[o + 3] = Math.min(255, c * 225);
     }
     ctx.putImageData(img, 0, 0);
     const tex = new THREE.CanvasTexture(cv);
@@ -198,7 +260,10 @@ function makeCloudTexture() {
     const atmo = new THREE.Mesh(
         new THREE.SphereGeometry(1.16, 64, 64),
         new THREE.ShaderMaterial({
-            uniforms: { glowColor: { value: new THREE.Color(0x5fd2ff) }, c: { value: 0.62 }, p: { value: 3.4 } },
+            // Tighter and dimmer than it was: a wide neon-cyan halo is the glowing-accent
+            // look the rest of this design deliberately avoids. Higher exponent pulls the
+            // glow into a thin band at the limb instead of a bubble around the whole disc.
+            uniforms: { glowColor: { value: new THREE.Color(0x6fb6e6) }, c: { value: 0.52 }, p: { value: 4.6 } },
             vertexShader: 'varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
             fragmentShader: 'uniform vec3 glowColor; uniform float c; uniform float p; varying vec3 vN; void main(){ float i = pow(clamp(c - dot(vN, vec3(0.0,0.0,1.0)), 0.0, 1.0), p); gl_FragColor = vec4(glowColor, i); }',
             side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
@@ -206,13 +271,19 @@ function makeCloudTexture() {
     );
     world.add(atmo);
 
-    // lighting — warm system star upper right, cool fill from left
-    const star = new THREE.DirectionalLight(0xfff4dd, 2.95);
-    star.position.set(1.2, 1.0, 3.0);
+    // lighting — warm system star upper right, cool fill from left.
+    // The star used to sit at z=3.0 with the camera at z=3.45, i.e. almost directly
+    // behind the viewer. A head-on key light gives a sphere no terminator, and without
+    // that day/night edge it reads as a flat disc however good the texture is. Move it
+    // out to the side so the globe turns away into shadow — which also darkens the limb
+    // nearest the hero copy, so the headline sits on quieter ground.
+    const star = new THREE.DirectionalLight(0xfff4dd, 3.1);
+    star.position.set(2.5, 1.25, 1.15);
     star.target.position.set(0.62, 0.0, 0.0);
     scene.add(star.target);
     scene.add(star);
-    scene.add(new THREE.AmbientLight(0x39455e, 0.55));
+    // Low ambient, or the new terminator is washed straight back out.
+    scene.add(new THREE.AmbientLight(0x39455e, 0.30));
     const rim = new THREE.DirectionalLight(0x57b0ff, 0.6);
     rim.position.set(-2.2, -0.4, 0.8);
     rim.target.position.set(0.62, 0.0, 0.0);
