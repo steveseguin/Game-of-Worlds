@@ -24,6 +24,29 @@ import * as THREE from './vendor/three.module.min.js';
 import { PLANET_STYLES, getPlanetTexture } from './planet-texture.js?v=20260725a';
 
 (function () {
+    // The landing page, login, race select and lobby all honour this; the game screen —
+    // by far the most animated page in the product — did not. Idle decoration (planets
+    // spinning, markers pulsing in and out of scale, the selection ring flashing, fog
+    // drifting) runs continuously for as long as the map is open, and scale oscillation
+    // and flashing are the two kinds of motion people set this preference to avoid.
+    //
+    // Informational motion is NOT suppressed: a fleet crossing the map, or the camera
+    // moving because you asked it to, tells you something. Only the idle loop is stilled,
+    // and everything it touches stays VISIBLE at a steady value — the selection ring in
+    // particular still marks the selected sector, it just stops pulsing.
+    const motionQuery = typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-reduced-motion: reduce)')
+        : null;
+    let reduceMotion = Boolean(motionQuery && motionQuery.matches);
+    if (motionQuery) {
+        const onChange = event => { reduceMotion = Boolean(event.matches); };
+        if (typeof motionQuery.addEventListener === 'function') {
+            motionQuery.addEventListener('change', onChange);
+        } else if (typeof motionQuery.addListener === 'function') {
+            motionQuery.addListener(onChange); // Safari < 14
+        }
+    }
+
     const STATUS = {
         UNKNOWN: 0,
         OWNED: 1,
@@ -1071,25 +1094,27 @@ import { PLANET_STYLES, getPlanetTexture } from './planet-texture.js?v=20260725a
         state.camera.position.lerp(desired, 1 - Math.pow(0.0001, dt));
         state.camera.lookAt(viewCentre);
 
-        // Spin planets / discs / asteroid rings
+        // Spin planets / discs / asteroid rings. Under reduced motion these hold still at
+        // their normal size rather than spinning and breathing.
         state.sectors.forEach(entry => {
             if (entry.content) {
                 entry.content.children.forEach(child => {
-                    if (child.userData.spin) child.rotation.y += child.userData.spin * dt;
+                    if (child.userData.spin && !reduceMotion) child.rotation.y += child.userData.spin * dt;
                     if (child.userData.pulse) {
-                        const s = 1 + Math.sin(t * 2.4) * 0.08;
+                        const s = reduceMotion ? 1 : 1 + Math.sin(t * 2.4) * 0.08;
                         child.scale.setScalar(0.34 * s);
                     }
                 });
             }
         });
 
-        // Selection ring shimmer
+        // Selection ring shimmer. It still marks the selected sector when motion is
+        // reduced — it just sits at a steady opacity instead of flashing.
         if (state.selectionRing && state.selectionRing.visible) {
-            state.selectionRing.material.opacity = 0.65 + Math.sin(t * 4) * 0.3;
+            state.selectionRing.material.opacity = reduceMotion ? 0.8 : 0.65 + Math.sin(t * 4) * 0.3;
         }
 
-        if (state.fogTexture) {
+        if (state.fogTexture && !reduceMotion) {
             state.fogTexture.offset.x = (t * 0.015) % 1;
             state.fogTexture.offset.y = (t * 0.009) % 1;
         }

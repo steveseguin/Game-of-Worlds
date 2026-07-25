@@ -1085,3 +1085,19 @@ summary:focus-visible {
     border-radius: 6px;
 }
 button:focus:not(:focus-visible) { outline: none; }
+
+/* Reduced motion, for the game screen and the lobby — the last two pages that ignored
+   it. The landing, auth and race-selection sheets already carry their own block.
+   Transitions collapse to near-zero rather than 0 so :focus and :hover still resolve
+   normally; the WebGL idle loop (planet spin, marker pulse, ring shimmer, fog drift) is
+   stilled separately in galaxy3d.js, which is where the real motion on this page lives. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
