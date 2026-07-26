@@ -44,6 +44,16 @@ unclear.
   2026-07-26 (`08-open-questions.md` Q10); mechanics unbuilt and uncosted.
 - Most campaign structure, voice recording, and narrative art production.
 
+### Visual reference
+
+- `visual-reference/` contains eleven generated boards covering all twelve races, the seed cast, all
+  nine standard ship classes, all twelve homeworld concepts, representative battles and hazards,
+  crystal, relics, exploration hardware, weapons, and all twelve proposed Wonders.
+- These are **REFERENCE**, not shipped art. The library records its lore sources, prompt set, and
+  known conflicts with legacy faction marks, sprites, and prototype portraits.
+- The next production pass should create race-specific ship silhouettes and final-aspect-ratio game
+  assets; the broad boards should not be copied directly into `public/images/`.
+
 ## Decisions needed
 
 ### 1. Who is the advisor?

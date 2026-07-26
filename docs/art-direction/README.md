@@ -29,6 +29,9 @@ The desired influence is the mech bay and commander briefing feeling: pre-render
 - [implementation-notes.md](implementation-notes.md) suggests a practical path that does not require a full renderer rewrite.
 - [decision-questions.md](decision-questions.md) lists useful questions before locking production UI decisions.
 - [bitmaps/](bitmaps/) contains original generated concept bitmaps for inspiration.
+- [../../lore/visual-reference/](../../lore/visual-reference/) contains setting-specific reference
+  boards for races, characters, ships, worlds, battles, objects, weapons, and proposed Wonders. Its
+  source map records where current in-game art and written lore diverge.
 
 ## Prototype
 

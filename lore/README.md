@@ -26,6 +26,7 @@ the historical audit log, not the current backlog.
 | The whole premise in miniature | `00-premise.md` |
 | Write or review canon | `11-laws-of-the-world.md`, `20-master-timeline.md`, `19-canon-and-variance.md`, `07-glossary.md`, then `03-themes.md` |
 | Understand the twelve races | `04-factions/README.md`, then `12-civilisations/` and `14-peoples/` |
+| Brief or review visual art | `visual-reference/`, then `../docs/art-direction/` |
 | Work on player-facing narrative | `17-the-feed/`, `18-naming-the-dark.md`, `22-act-one.md`, and `24-anthology/` |
 | Make a decision | `STATUS.md`, then the relevant entry in `08-open-questions.md` |
 | Review production cost | `09-production.md` |
@@ -122,6 +123,16 @@ rituals in `04-factions/`.
 
 The two testimony series are finished forms, not race-reference authorities. When a story disagrees
 with the spine, repair the story.
+
+### Visual reference
+
+| Path | Role |
+|---|---|
+| `visual-reference/` | Generated reference boards for all twelve races, seed characters, standard ships, homeworlds, battles, hazards, crystal, relics, exploration hardware, weapons, and proposed Wonders. Includes a canon source map, current-art reconciliation, and prompt ledger. **REFERENCE**, not shipped art. |
+| `../docs/art-direction/` | Shared UI composition, rendering, motion, and command-station direction. |
+
+Visual reference follows the same authority rules as prose. An attractive image does not make an
+unapproved anatomy, technology, Wonder, or emblem canon.
 
 ### Player-facing copy and co-authorship
 
