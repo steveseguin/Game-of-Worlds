@@ -125,7 +125,29 @@ function setLobbyConnectionState(state, message) {
     }
 }
 
+/**
+ * The two transport pills were static markup that asserted "Secure Websocket" and "HTTPS
+ * Enabled" whatever the page was actually served over. On production both happen to be
+ * true, which is exactly why it went unnoticed - and it is the one case where the claim
+ * matters: a deployment that lost TLS would still be reassuring the player it had not.
+ * A badge that cannot say the unwelcome version is decoration, not a status.
+ */
+function reflectTransportSecurity() {
+    const secure = window.location.protocol === 'https:';
+    const pills = [
+        [document.getElementById('pillTransport'), 'Secure Websocket', 'Websocket not encrypted'],
+        [document.getElementById('pillHttps'), 'HTTPS Enabled', 'HTTP — not encrypted']
+    ];
+    pills.forEach(([el, good, bad]) => {
+        if (!el) return;
+        el.textContent = secure ? good : bad;
+        el.classList.toggle('is-insecure', !secure);
+        el.title = secure ? '' : 'This page was not served over TLS. Credentials and game traffic are readable in transit.';
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    reflectTransportSecurity();
     userId = getCookie('userId');
     tempKey = getCookie('tempKey');
     const params = new URLSearchParams(window.location.search);

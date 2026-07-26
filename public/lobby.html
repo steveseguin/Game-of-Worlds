@@ -187,6 +187,10 @@
         box-shadow: inset 1px 1px 0 rgba(255,255,255,0.16), inset -1px -1px 0 rgba(0,0,0,0.55);
     }
     .pill::before { content: "▪"; color: var(--amber); }
+    /* The transport pills state a security property, so they have to be able to say the
+       unwelcome version too. Only the existing status marker changes colour. */
+    .pill.is-insecure { color: var(--muted); }
+    .pill.is-insecure::before { color: var(--red); }
 
     /* ---------- panel grid + cards ---------- */
     .panel-grid { display: grid; grid-template-columns: 380px 1fr; gap: 16px; margin-top: 20px; }
@@ -555,8 +559,11 @@
                 <h1>Game Lobby</h1>
                 <p>Spin up a match, pick your race, and rally human or AI commanders to the front.</p>
                 <div class="cta-row">
-                    <div class="pill">Secure Websocket</div>
-                    <div class="pill">HTTPS Enabled</div>
+                    <!-- Default to the secure wording so the markup reads true on
+                         production without JS; lobby.js downgrades both if the page
+                         turns out not to be served over TLS. -->
+                    <div class="pill" id="pillTransport">Secure Websocket</div>
+                    <div class="pill" id="pillHttps">HTTPS Enabled</div>
                     <div class="pill">Race Select on Join</div>
                 </div>
             </div>
@@ -666,6 +673,6 @@
     <script src="/config.js?v=20260614b"></script>
     <script src="js/epic-music.js?v=20260725b"></script>
     <script src="js/sound.js?v=20260712a"></script>
-    <script src="js/lobby.js?v=20260725b"></script>
+    <script src="js/lobby.js?v=20260726a"></script>
 </body>
 </html>
