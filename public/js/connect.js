@@ -981,6 +981,16 @@ function handleWebSocketMessage(message) {
         pushEventFeed('Standing orders: nothing to run this turn.', 'orders', 'info');
         return;
     }
+    // The server announces things the player did not order with this prefix: an empire
+    // being eliminated, and standing orders firing on their behalf ("Auto-built scout to
+    // keep vision online"). Nothing handled it, so it fell through to the generic path and
+    // the player was shown the wire prefix verbatim -
+    // "systemalert::A rival empire has been wiped out of the galaxy."
+    if (message.indexOf("systemalert::") === 0) {
+        const text = message.slice("systemalert::".length).trim();
+        if (text) pushEventFeed(text, 'system', classifyEventMessage(text).kind);
+        return;
+    }
     if (message.indexOf("standingorders::error::") === 0) {
         const text = message.replace("standingorders::error::", "") || 'Unable to update standing orders';
         if (window.NotificationSystem?.notify) {

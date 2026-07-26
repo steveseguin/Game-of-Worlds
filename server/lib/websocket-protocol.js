@@ -17,7 +17,12 @@ const GAME_MESSAGE_PREFIXES = Object.freeze([
     'victoryprogress::', 'mapconfig::', 'mapstate::', 'sector::', 'sectorcontact::', 'sectorintel::',
     'probeonly:', 'mmoptions:', 'mmoptionsv2::', 'fleetmove::', 'battlepause::', 'battle::',
     'battle_summary::', 'gameover::', 'standingorders::state::',
-    'standingorders::applied::', 'standingorders::error::', 'standingorders::noop'
+    'standingorders::applied::', 'standingorders::error::', 'standingorders::noop',
+    // Was missing, and the omission hid it from the contract test entirely - the guard
+    // only checks prefixes it has been told about. The client had no handler, so an
+    // elimination notice reached the player as the literal text
+    // "systemalert::A rival empire has been wiped out of the galaxy."
+    'systemalert::'
 ]);
 
 function formatTurnPhase(state, turn, phase = '') {
