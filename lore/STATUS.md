@@ -49,6 +49,9 @@ unclear.
 - `visual-reference/` contains eleven generated boards covering all twelve races, the seed cast, all
   nine standard ship classes, all twelve homeworld concepts, representative battles and hazards,
   crystal, relics, exploration hardware, weapons, and all twelve proposed Wonders.
+- `visual-reference/icon-system/` adds 142 individually usable gameplay icons: all 108 current
+  research levels, nine real building states, nine ship types, and sixteen core actions. Its alias
+  rule keeps the canonical mechanic directly beneath every evocative name.
 - These are **REFERENCE**, not shipped art. The library records its lore sources, prompt set, and
   known conflicts with legacy faction marks, sprites, and prototype portraits.
 - The next production pass should create race-specific ship silhouettes and final-aspect-ratio game

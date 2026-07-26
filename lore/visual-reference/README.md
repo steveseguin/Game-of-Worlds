@@ -17,6 +17,10 @@ This first library turns the written setting into one coherent visual vocabulary
 The boards are deliberately broad. They establish shared visual grammar before production commits to
 hundreds of individual sprites, portraits, and race-by-hull variants.
 
+For gameplay-scale assets, [icon-system/](icon-system/) contains a complete mapped set of 142
+individual icons: every current research level, building state, standard ship type, and core action.
+Each has an evocative alias plus its canonical mechanic.
+
 ## Asset index
 
 All grids read left-to-right, then top-to-bottom.
@@ -34,6 +38,7 @@ All grids read left-to-right, then top-to-bottom.
 | [09-crystal-relics-and-exploration.png](assets/09-crystal-relics-and-exploration.png) | Refined reckoning crystal; raw crystal; handheld relic; structural relic; probe; universal relic lifter |
 | [10-weapons.png](assets/10-weapons.png) | Laser; plasma projector; basic rocket; Hyper-V missile; antimatter warhead; Crystalline Ringer |
 | [11-wonders.png](assets/11-wonders.png) | Concord Lamp; Solved Sky; Ten Thousand Mouths; First Thickness; Whole Recitation; Endless Yard; Mother Grove; Reconciled Schedule; Closing; Unresolved Lane; Weight of Ages; Assembled Frame |
+| [Gameplay icon system](icon-system/) | 108 research levels; 9 building states; 9 ship types; 16 player actions; aliases, canonical labels, source atlases, prompt ledger, and individual 256×256 PNGs |
 
 ## What is visually locked
 
