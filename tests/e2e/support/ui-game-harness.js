@@ -391,7 +391,9 @@ async function buildBuilding(page, selector) {
 
 async function buildShip(page, shipId) {
     await focusHomeworld(page);
-    await page.click('#buildtab');
+    // Ship production lives in the Fleet tab, next to the fleet it adds to. The Build tab
+    // is buildings only.
+    await page.click('#fleettab');
     const button = page.locator(`.ship-button[data-ship-id="${shipId}"]`);
     await expect(button).toBeVisible({ timeout: 10000 });
     await expect(button).toBeEnabled({ timeout: 10000 });

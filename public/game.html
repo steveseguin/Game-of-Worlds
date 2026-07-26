@@ -561,7 +561,7 @@
                      first colony wrong is the worst place in the product to be vague. -->
                 <li>Turns advance on the clock in the top right; press End Turn to finish yours early.</li>
                 <li>Resources: build extractors/refineries on owned sectors; research unlocks tech and better ships.</li>
-                <li>Colonize: build a colony ship in the Build tab, move it to an unowned planet, then settle it from the Colonize tab.</li>
+                <li>Colonize: build a colony ship in the Fleet tab, move it to an unowned planet, then settle it from the Colonize tab.</li>
                 <li>Combat: fleets in the same sector auto-resolve each turn; build scouts early for vision.</li>
                 <li>Need a refresher? Reopen this help with the ? button.</li>
             </ul>
@@ -738,19 +738,6 @@
                 <button id="bb5" class="defense-button" data-building-id="4" title="Orbital Turret: fights alongside fleets defending this sector. The crossed-swords map badge marks local combat strength.">⚔ Orbital Turret <span id="bbb5">0</span><br><small><span class="cost-metal">80</span> <span class="cost-crystal">60</span><span class="cost-note"> · sector defence</span></small></button>
                 <button id="bb6" class="defense-button" data-building-id="5" title="Warp Gate: pairs with another owned gate for fast, safer travel between the two sectors.">◎ Warp Gate <span id="bbb6">0</span><br><small><span class="cost-metal">200</span> <span class="cost-crystal">150</span><span class="cost-note"> · fast transit</span></small></button>
             </div>
-            <div style="font-weight:bold;margin-bottom:5px;">Build Ships at Selected Spaceport</div>
-            <div id="spaceportProductionStatus" class="local-order-context">Build a Spaceport to produce ships locally.</div>
-            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;">
-                <button class="ship-button" data-ship-id="3" title="Scout: inexpensive exploration and sensor vessel.">⌁ Scout<br><small>200M</small></button>
-                <button class="ship-button" data-ship-id="1" title="Frigate: basic frontline combat ship.">▸ Frigate<br><small>430M</small></button>
-                <button class="ship-button" data-ship-id="2" title="Destroyer: heavier line ship; needs Military Shipyards 1.">Destroyer<br><small style="color:#888;">780M · Yard 1</small></button>
-                <button class="ship-button" data-ship-id="4" title="Cruiser: durable mid-weight hull; needs Military Shipyards 1.">Cruiser<br><small style="color:#888;">980M 120C · Yard 1</small></button>
-                <button class="ship-button" data-ship-id="5" title="Battleship: heavy gunline; needs Military Shipyards 2.">Battleship<br><small style="color:#888;">1650M 220C · Yard 2</small></button>
-                <button class="ship-button" data-ship-id="8" title="Intruder: strike hull built around raiding; needs Military Shipyards 2.">Intruder<br><small style="color:#888;">1950M 133C · Yard 2</small></button>
-                <button class="ship-button" data-ship-id="7" title="Dreadnought: the heaviest hull in the game; needs Military Shipyards 3.">Dreadnought<br><small style="color:#888;">3200M 450C · Yard 3</small></button>
-                <button class="ship-button" data-ship-id="9" title="Carrier: fleet backbone with high staying power; needs Military Shipyards 3.">Carrier<br><small style="color:#888;">3000M 80C · Yard 3</small></button>
-                <button class="ship-button" data-ship-id="6" title="Colony Ship: the only way to settle a planet. Consumed on colonisation.">Colony Ship<br><small style="color:#888;">500M</small></button>
-            </div>
         </div>
 
         <!-- Fleet Tab -->
@@ -769,6 +756,19 @@
             </div>
             <div id="fleetEmptyState" style="font-size:13px;color:rgba(232,236,255,0.6);">No ships of yours are in this sector.</div>
             <div id="fleetTotal" style="margin-top:8px;font-size:12px;font-weight:700;color:#a7d8ff;"></div>
+            <div style="margin-top:15px;font-weight:bold;margin-bottom:5px;">Build Ships at Selected Spaceport</div>
+            <div id="spaceportProductionStatus" class="local-order-context">Build a Spaceport to produce ships locally.</div>
+            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;">
+                <button class="ship-button" data-ship-id="3" title="Scout: inexpensive exploration and sensor vessel.">⌁ Scout<br><small>200M</small></button>
+                <button class="ship-button" data-ship-id="1" title="Frigate: basic frontline combat ship.">▸ Frigate<br><small>430M</small></button>
+                <button class="ship-button" data-ship-id="2" title="Destroyer: heavier line ship; needs Military Shipyards 1.">Destroyer<br><small style="color:#888;">780M · Yard 1</small></button>
+                <button class="ship-button" data-ship-id="4" title="Cruiser: durable mid-weight hull; needs Military Shipyards 1.">Cruiser<br><small style="color:#888;">980M 120C · Yard 1</small></button>
+                <button class="ship-button" data-ship-id="5" title="Battleship: heavy gunline; needs Military Shipyards 2.">Battleship<br><small style="color:#888;">1650M 220C · Yard 2</small></button>
+                <button class="ship-button" data-ship-id="8" title="Intruder: strike hull built around raiding; needs Military Shipyards 2.">Intruder<br><small style="color:#888;">1950M 133C · Yard 2</small></button>
+                <button class="ship-button" data-ship-id="7" title="Dreadnought: the heaviest hull in the game; needs Military Shipyards 3.">Dreadnought<br><small style="color:#888;">3200M 450C · Yard 3</small></button>
+                <button class="ship-button" data-ship-id="9" title="Carrier: fleet backbone with high staying power; needs Military Shipyards 3.">Carrier<br><small style="color:#888;">3000M 80C · Yard 3</small></button>
+                <button class="ship-button" data-ship-id="6" title="Colony Ship: the only way to settle a planet. Consumed on colonisation.">Colony Ship<br><small style="color:#888;">500M</small></button>
+            </div>
             <div style="margin-top:15px;font-weight:bold;margin-bottom:10px;">Move Fleet</div>
             <div style="font-size:13px;color:#aaa;">Select a destination, then use Move Ships in its sector panel. Fleets travel on a direct plotted line; every crossed sector can affect the journey.</div>
         </div>
@@ -924,7 +924,7 @@
     <script src="js/game-screen.js?v=20260725v"></script>
     <script type="module" src="js/galaxy3d.js?v=20260725n"></script>
     <script type="module" src="js/battle3d.js?v=20260725c"></script>
-    <script src="js/onboarding.js?v=20260613a"></script>
+    <script src="js/onboarding.js?v=20260725a"></script>
     <script src="js/connect.js?v=20260725m"></script>
     <script src="js/tour.js?v=20260712c"></script>
     <script src="js/game.js?v=20260712e"></script>

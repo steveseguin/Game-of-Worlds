@@ -29,7 +29,7 @@ window.Onboarding = (function () {
         {
             id: 'ship',
             label: 'Build a ship',
-            hint: 'Build tab: scouts are cheap eyes; colony ships claim planets.',
+            hint: 'Fleet tab: scouts are cheap eyes; colony ships claim planets.',
             outgoing: ['//buyship:']
         },
         {

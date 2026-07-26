@@ -52,6 +52,10 @@ test.describe('Authoritative gameplay controls', () => {
         expect(tempoBehavior.urgent).toBeGreaterThan(tempoBehavior.actionable);
         expect(tempoBehavior.final).toBeCloseTo(1.12, 5);
 
+        // Ship production moved to the Fleet tab, beside the fleet it feeds; the Build tab
+        // is buildings only now. The #bb4 (Spaceport) assertions below still read fine
+        // against the hidden Build panel, since they do not require visibility.
+        await page.click('#fleettab');
         const scoutButton = page.locator('.ship-button[data-ship-id="3"]');
         await expect(scoutButton).toBeEnabled({ timeout: 15000 });
         await expect(page.locator('#bb4')).toBeDisabled();
