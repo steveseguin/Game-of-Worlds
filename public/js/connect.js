@@ -1767,10 +1767,17 @@ function updateMapConfig(message) {
 function updateMapState(message) {
     // Format:
     // mapstate::sectorId:status:fleetSize:sectorType:live:flags:chartName:namedBy:namedTurn,...
-    // chartName is URI-encoded. Empty trailing fields preserve compatibility for unnamed
-    // sectors and snapshots produced by an older server.
-    const parts = message.split('::');
-    if (parts.length < 2) return;
+    // chartName is URI-encoded, so it can never contain a ':' or a ','.
+    //
+    // Strip the prefix; do NOT split the message on '::'. An unnamed sector has an empty
+    // chartName, which puts a literal '::' inside its own record - "19:1:0:10:1:1::0:0" - and
+    // splitting the whole message on '::' therefore truncated the payload at the first unnamed
+    // sector. Since almost every sector is unnamed, the entire map collapsed to one tile: probed
+    // sectors stayed fogged, ownership never updated, and nothing threw. Caught by
+    // complete-multiplayer-ui-harness.spec.js, which probed a sector and found it still fogged.
+    const PREFIX = 'mapstate::';
+    if (message.indexOf(PREFIX) !== 0) return;
+    const payload = message.slice(PREFIX.length);
 
     // Map string status to GalaxyMap numeric status values
     const statusMap = {
@@ -1786,7 +1793,7 @@ function updateMapState(message) {
         'fleet': 9       // FLEET - your ships hold an unclaimed sector
     };
 
-    const sectorData = parts[1] ? parts[1].split(',') : [];
+    const sectorData = payload ? payload.split(',') : [];
     sectorData.forEach(data => {
         const [
             sectorId,
