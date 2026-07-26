@@ -66,6 +66,49 @@ let countdownOverlay;
 let standingOrdersState = { autoRebuild: false, autoScout: false, targetScouts: 2 }; // Kept for AI, UI removed for humans
 let eventFilter = 'all';
 let eventEntries = [];
+
+/**
+ * How an event looks in the feed. `type` is what the filter buttons match; `kind` is
+ * finer and only drives presentation, so we can tell research from construction without
+ * adding filter buttons nobody asked for.
+ *
+ * Reading a wall of text to find the one line that matters is tiring, so each kind gets a
+ * glyph and a colour. Deliberately gentle: a coloured glyph and slightly tinted text, no
+ * borders, no filled badges, no left stripes. The palette is the one the treasury already
+ * uses — metal amber, crystal blue, research green — so a colour means the same thing in
+ * the feed as it does in the resource bar.
+ */
+const EVENT_KINDS = {
+    research:  { icon: '✦', color: '#a8f0c9' },
+    building:  { icon: '⬢', color: '#ffd3a8' },
+    ship:      { icon: '⬡', color: '#a7d8ff' },
+    movement:  { icon: '→', color: '#a7d8ff' },
+    battle:    { icon: '⚔', color: '#ffb4a8' },
+    problem:   { icon: '!', color: '#ffb4a8' },
+    income:    { icon: '⛁', color: '#ffd3a8' },
+    info:      { icon: '·', color: 'rgba(232,236,255,0.66)' }
+};
+
+/** Work out what an unstructured server line is about, for icon/colour and filtering. */
+function classifyEventMessage(text) {
+    const line = String(text || '');
+    if (/^Error:/i.test(line)) return { kind: 'problem', type: 'system' };
+    if (/^Success:\s*Researched/i.test(line)) return { kind: 'research', type: 'econ' };
+    if (/^Success:\s*Built\s+(?:Scout|Frigate|Destroyer|Cruiser|Battleship|Intruder|Dreadnought|Carrier|Colony)/i.test(line)) {
+        return { kind: 'ship', type: 'orders' };
+    }
+    if (/^Success:\s*(?:Built|Upgraded|Purchased)/i.test(line)) return { kind: 'building', type: 'econ' };
+    if (/\bincome\b|\bper turn\b/i.test(line)) return { kind: 'income', type: 'econ' };
+    if (/coloniz|claimed sector|settled/i.test(line)) return { kind: 'movement', type: 'orders' };
+    if (/fleet|arrived|moved|probe/i.test(line)) return { kind: 'movement', type: 'orders' };
+    if (/battle|destroyed|attack|annihilat/i.test(line)) return { kind: 'battle', type: 'battles' };
+    return { kind: 'info', type: 'system' };
+}
+
+/** True for lines that are player chat rather than a game event. */
+function isPlayerChat(text) {
+    return / says: /.test(String(text || ''));
+}
 let lastMapConfigReplayKey = null;
 const MESSAGE_HANDLERS = {
     connectedCount(payload) {
@@ -188,7 +231,7 @@ const MESSAGE_HANDLERS = {
             window.NotificationSystem.notify("Battle summary", `${detail} ${summary.reason}`.trim(), "info", 7000);
         }
         renderBattleSummaryCard(summary, title, detail);
-        pushEventFeed(`${title}: ${detail} ${summary.reason}`.trim(), 'battles');
+        pushEventFeed(`${title}: ${detail} ${summary.reason}`.trim(), 'battles', 'battle');
         // Stealth/summary viewers don't see the theater but the game is still
         // frozen for them — give them the battle score so the pause feels intentional.
         if (window.MediaManager?.playMusic) {
@@ -224,7 +267,7 @@ const MESSAGE_HANDLERS = {
                 6000
             );
         }
-        pushEventFeed(`Battle in sector ${sector}: ${winner} wins.`, 'battles');
+        pushEventFeed(`Battle in sector ${sector}: ${winner} wins.`, 'battles', 'battle');
         if (window.GalaxyMap?.clearBattleSector && sector) {
             window.GalaxyMap.clearBattleSector(sector);
         }
@@ -921,7 +964,7 @@ function handleWebSocketMessage(message) {
     if (message.indexOf("standingorders::applied::") === 0) {
         try {
             const summary = JSON.parse(message.replace("standingorders::applied::", ""));
-            summary.forEach(line => pushEventFeed(line, 'orders'));
+            summary.forEach(line => pushEventFeed(line, 'orders', classifyEventMessage(line).kind));
             if (window.NotificationSystem?.notify) {
                 window.NotificationSystem.notify('Standing orders executed', summary.join(' · '), 'info', 5000);
             }
@@ -931,7 +974,7 @@ function handleWebSocketMessage(message) {
         return;
     }
     if (message === "standingorders::noop") {
-        pushEventFeed('Standing orders: nothing to run this turn.', 'orders');
+        pushEventFeed('Standing orders: nothing to run this turn.', 'orders', 'info');
         return;
     }
     if (message.indexOf("standingorders::error::") === 0) {
@@ -1123,7 +1166,7 @@ function handleWebSocketMessage(message) {
         const readyCount = Number(ready) || 0;
         const totalCount = Number(total) || 0;
         if (totalCount > 1) {
-            pushEventFeed(`${readyCount}/${totalCount} commanders have ended their turn.`, 'orders');
+            pushEventFeed(`${readyCount}/${totalCount} commanders have ended their turn.`, 'orders', 'info');
         }
     }
     else if (message.indexOf("turnphase::") === 0) {
@@ -1221,14 +1264,23 @@ function handleWebSocketMessage(message) {
         || message.indexOf("changerace::") === 0) {
         // Nothing to show here; the lobby owns these.
     }
-    // Chat or other messages
+    // Chat, or a game event reported as loose text.
     else {
         updateMapFromPlainTextMessage(message);
         if (window.Advisor) {
             window.Advisor.observe(message);
         }
-        if (window.ChatSystem) {
-            window.ChatSystem.displayMessage(message);
+        // Order outcomes used to land in the chat feed on the left, which put "Success:
+        // Built Colony Ship" across the panels there and split the player's attention
+        // between two places that both report what just happened. Game events go to the
+        // event panel with everything else; the chat feed keeps actual chat.
+        if (isPlayerChat(message)) {
+            if (window.ChatSystem) {
+                window.ChatSystem.displayMessage(message);
+            }
+        } else {
+            const { kind, type } = classifyEventMessage(message);
+            pushEventFeed(String(message), type, kind);
         }
     }
 }
@@ -1622,7 +1674,7 @@ function emitTurnDigest(turnNumber) {
             6000
         );
     }
-    pushEventFeed(`Turn ${turnNumber} income: ${lines.join(' · ')}`, 'econ');
+    pushEventFeed(`Turn ${turnNumber} income: ${lines.join(' · ')}`, 'econ', 'income');
 }
 
 function updateMapConfig(message) {
@@ -1749,7 +1801,7 @@ function handleFleetMove(message) {
     }
     if (!mine) {
         const text = `Enemy fleet (${count} ship${count === 1 ? '' : 's'}) moved from sector ${from} to ${to}${viaWarpGate ? ' via warp gate' : ''}.`;
-        pushEventFeed(text, 'battles');
+        pushEventFeed(text, 'battles', 'battle');
         if (window.NotificationSystem?.notify) {
             window.NotificationSystem.notify('Enemy fleet movement', text, 'warning', 6000);
         }
@@ -1855,16 +1907,40 @@ function renderEventFeed() {
     list.innerHTML = '';
     const filtered = eventEntries.filter(entry => eventFilter === 'all' || entry.type === eventFilter);
     filtered.slice(0, 18).forEach(entry => {
+        const look = EVENT_KINDS[entry.kind] || EVENT_KINDS.info;
         const node = document.createElement('div');
+        node.style.display = 'grid';
+        node.style.gridTemplateColumns = '14px 1fr';
+        node.style.gap = '7px';
+        node.style.alignItems = 'baseline';
         node.style.marginBottom = '6px';
-        node.style.opacity = 0.95;
-        node.textContent = entry.text;
+
+        // The glyph carries the colour; the text stays near-neutral. Tinting a whole line
+        // of prose makes the panel loud and, at these sizes, harder to read rather than
+        // easier - the point is to let the eye skip to the right line, not to decorate.
+        const mark = document.createElement('span');
+        mark.textContent = look.icon;
+        mark.setAttribute('aria-hidden', 'true');
+        mark.style.color = look.color;
+        mark.style.textAlign = 'center';
+        mark.style.opacity = '0.9';
+
+        const body = document.createElement('span');
+        body.textContent = entry.text;
+        body.style.color = entry.kind === 'info'
+            ? 'rgba(232,236,255,0.78)'
+            : 'rgba(232,236,255,0.92)';
+        node.append(mark, body);
         list.appendChild(node);
     });
 }
 
-function pushEventFeed(text, type = 'system') {
-    eventEntries.unshift({ text, type, ts: Date.now() });
+function pushEventFeed(text, type = 'system', kind = null) {
+    // Callers that know what they are reporting pass a kind; anything else is classified
+    // from the text, which is how raw server lines get an icon without every call site
+    // being taught about them.
+    const resolved = kind || classifyEventMessage(text).kind;
+    eventEntries.unshift({ text, type, kind: resolved, ts: Date.now() });
     if (eventEntries.length > 40) {
         eventEntries = eventEntries.slice(0, 40);
     }
@@ -1906,7 +1982,7 @@ function handleCountdownMessage(payload) {
     const overlay = ensureCountdownOverlay();
     if (payload === 'cancel') {
         hideCountdownOverlay('A player left before launch.');
-        pushEventFeed('Launch aborted.');
+        pushEventFeed('Launch aborted.', 'system', 'problem');
         return;
     }
     const remaining = parseInt(payload, 10);

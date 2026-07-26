@@ -3,7 +3,13 @@
     const BASE_WIDTH = 1280;
     const BASE_HEIGHT = 760;
     let resizeTimer = null;
-    let currentTitle = 'Galaxy Map';
+    const DEFAULT_TITLE = 'Galaxy Map';
+    let currentTitle = DEFAULT_TITLE;
+    // "Galaxy Map" over a picture of the galaxy map tells the player nothing they cannot
+    // see, so the badge stays hidden while the title is the default. It still appears for
+    // titles that carry information - "Battle in Sector 19", "Sector 4" - which is the
+    // only reason the badge exists. The browser tab title is set either way.
+    let titleIsDefault = true;
 
     function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
@@ -401,7 +407,7 @@
             // Phone widths need every row for the status column; the title is a label,
             // not information, so it is the first thing to go.
             setImportant(viewTitle, 'display',
-                (shortLandscape || veryNarrow || titleRoom < 150) ? 'none' : 'block');
+                (titleIsDefault || shortLandscape || veryNarrow || titleRoom < 150) ? 'none' : 'block');
             setImportant(viewTitle, 'left', px(leftClear));
             setImportant(viewTitle, 'right', px(rightClear));
             // Sit clear of the connection bar when that bar shares the top row; on a
@@ -424,12 +430,14 @@
     }
 
     function setTitle(label, browserTitle) {
-        currentTitle = label || 'Galaxy Map';
+        currentTitle = label || DEFAULT_TITLE;
+        titleIsDefault = currentTitle === DEFAULT_TITLE;
         const viewTitle = document.getElementById('viewTitle');
         if (viewTitle) {
             viewTitle.textContent = currentTitle;
         }
         document.title = browserTitle || `${currentTitle} - Game of Worlds`;
+        applyResponsiveLayout();
     }
 
     function restoreTitle() {

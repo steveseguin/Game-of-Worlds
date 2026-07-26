@@ -349,25 +349,57 @@ const GameUI = (function() {
     function updateFleet(fleet) {
         if (!fleet) return;
 
-        // Update ship counts
+        // Update ship counts. Same rule as updateFleetDisplay: a hull with none present
+        // and none in production is not worth a row.
         for (let i = 1; i <= 9; i++) {
             const shipCount = document.getElementById(`f${i}`);
+            const here = Number(fleet[`ship${i}`]) || 0;
+            const queued = Number(fleet[`building${i}`]) || 0;
             if (shipCount) {
-                shipCount.textContent = fleet[`ship${i}`] || '0';
+                shipCount.textContent = String(here);
+                const row = shipCount.closest('tr');
+                if (row) row.style.display = (here > 0 || queued > 0) ? '' : 'none';
             }
 
             // Ships being built
             const buildingCount = document.getElementById(`fa${i}`);
             if (buildingCount) {
-                buildingCount.textContent = fleet[`building${i}`] || '0';
+                buildingCount.textContent = String(queued);
             }
 
             // Show/hide cancel buttons
             const cancelButton = document.getElementById(`fc${i}`);
             if (cancelButton) {
-                cancelButton.style.display = (parseInt(fleet[`building${i}`]) || 0) > 0 ? 'inline-block' : 'none';
+                cancelButton.style.display = queued > 0 ? 'inline-block' : 'none';
             }
         }
+        setShipTableEmptyState();
+    }
+
+    /**
+     * The sector ship table hides rows for hulls that are not there. When that leaves
+     * nothing, the bare column headings read as a panel that failed to load, so replace
+     * them with a plain line. Idempotent: safe to call on every sector change.
+     */
+    function setShipTableEmptyState() {
+        const table = document.getElementById('sectorShipTable');
+        if (!table) return;
+        const rows = Array.from(table.querySelectorAll('tr'));
+        const header = rows[0];
+        const anyVisible = rows.slice(1).some(row => row.style.display !== 'none');
+        if (header) header.style.display = anyVisible ? '' : 'none';
+
+        let empty = document.getElementById('sectorShipEmpty');
+        if (!empty) {
+            empty = document.createElement('div');
+            empty.id = 'sectorShipEmpty';
+            empty.style.color = 'rgba(232,236,255,0.55)';
+            empty.style.fontSize = '12px';
+            empty.style.padding = '2px 0';
+            table.parentNode.insertBefore(empty, table.nextSibling);
+        }
+        empty.textContent = anyVisible ? '' : 'No ships in this sector.';
+        empty.style.display = anyVisible ? 'none' : 'block';
     }
 
     function updateFleetDisplay(ships) {
@@ -398,10 +430,19 @@ const GameUI = (function() {
         // "Live intel - Details are live". Fill it from the same counts as the Fleet tab.
         // "Being Built" (fa1..fa9) stays as it is: per-sector production queues are not
         // in this payload, and inventing a number there would be worse than saying N/A.
+        // Only list hulls that are actually in the sector. Printing all nine every time -
+        // seven of them reading 0 next to an N/A - is noise the player has to read past to
+        // find the one line that matters, and it is worst in the early game when almost
+        // everything is zero. The row reappears the moment a ship of that type arrives.
         for (let type = 1; type <= 9; type += 1) {
             const cell = document.getElementById(`f${type}`);
-            if (cell) cell.textContent = String(counts[type] || 0);
+            if (!cell) continue;
+            const present = Number(counts[type] || 0);
+            cell.textContent = String(present);
+            const row = cell.closest('tr');
+            if (row) row.style.display = present > 0 ? '' : 'none';
         }
+        setShipTableEmptyState();
 
         const fields = {
             'fleet-scouts': counts[3],
