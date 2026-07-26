@@ -293,8 +293,16 @@ const Shop = (function() {
                 <div class="shop-payments-disabled">
                     <strong>Payments Offline</strong>
                     <p>Stripe payments are not configured for this environment. You can still browse cosmetic and crystal options, but purchases are disabled.</p>
-                </div>` : ''}
-                
+                </div>` : `
+                <div class="shop-balance">
+                    <span class="shop-balance-label">Premium crystals</span>
+                    <span class="shop-balance-value">
+                        <img class="crystal-icon" src="images/crystal.png" alt="">
+                        <span id="crystal-balance"><span class="balance-amount">—</span></span>
+                        <button class="refresh-balance" onclick="Shop.refreshBalance()" title="Refresh balance" aria-label="Refresh premium crystal balance">⟳</button>
+                    </span>
+                </div>`}
+
                 <div class="shop-content">
                     ${generateShopSections()}
                 </div>
@@ -716,6 +724,10 @@ const Shop = (function() {
     
     // Load user balance with error handling
     async function loadUserBalance() {
+        // A guest has no id, and /api/user/:id/balance only matches digits - fetching
+        // anyway would 404 and paint a red "Error" at someone who simply is not signed
+        // in. Leave the placeholder showing instead.
+        if (!userId) return;
         try {
             const response = await fetch(`/api/user/${userId}/balance`, {
                 credentials: 'include'
@@ -1233,7 +1245,10 @@ const Shop = (function() {
             .shop-balance {
                 display: flex;
                 align-items: center;
-                justify-content: flex-end;
+                /* Was flex-end, which left 834 of the row's 944px empty and pushed a bare
+                   unlabelled number into the far corner. The label carries the meaning:
+                   these are the paid crystals, not the crystal resource in the HUD. */
+                justify-content: space-between;
                 gap: 8px;
                 margin: 14px 18px 0;
                 padding: 10px 12px;
@@ -1241,6 +1256,18 @@ const Shop = (function() {
                 background: rgba(255, 255, 255, 0.045);
                 color: #dfe7ff;
                 font-weight: 700;
+            }
+
+            .shop-balance-label {
+                font-weight: 600;
+                color: rgba(223, 231, 255, 0.72);
+                letter-spacing: 0.02em;
+            }
+
+            .shop-balance-value {
+                display: flex;
+                align-items: center;
+                gap: 8px;
             }
 
             .crystal-icon {
@@ -1829,6 +1856,11 @@ const Shop = (function() {
             const container = document.getElementById('shop-container');
             if (!container) return;
             container.classList.remove('shop-hidden');
+            // Nothing called loadUserBalance - not open(), not the purchase flow, nothing.
+            // The fetch, the formatter, the error state and every style down to the
+            // rotate-on-hover refresh button all existed; only the markup and this call
+            // were missing, so the shop never told you what you had to spend.
+            loadUserBalance();
         },
         close: () => {
             const container = document.getElementById('shop-container');

@@ -27,9 +27,14 @@ const KNOWN_ABSENT = new Map([
     ['tech2', 'vestigial: tech levels render through renderTechTree()'],
     ['tech3', 'vestigial: tech levels render through renderTechTree()'],
     ['tech4', 'vestigial: tech levels render through renderTechTree()'],
-    ['gameWindow', 'vestigial: the game screen is not wrapped in a toggled container'],
-    ['crystal-balance', 'the shop panel has no balance element; the treasury bar carries crystal']
+    ['gameWindow', 'vestigial: the game screen is not wrapped in a toggled container']
 ]);
+// crystal-balance came off this list once the shop actually rendered it. It had been
+// excused as "the treasury bar carries crystal", but that is the mined crystal resource in
+// the HUD - a different currency from the paid balance the shop reads out of
+// /api/user/:id/balance. Reading the two as one is what kept a real gap classified as
+// harmless, so a reason on this list has to name the replacement precisely enough to be
+// checkable.
 
 function collectIds() {
     const ids = new Set();
