@@ -5,7 +5,7 @@
 | **Registry name** | Bioform Collective |
 | **Homeworld** | Registry designation Ossa's Delta, after its first witness. Warm, wet, biologically violent |
 | **What made it** | Nutrient flow. A hull has to grow somewhere |
-| **Explains** | Crystal ×1.2, metal ×0.8, hulls −10%, +2% growth/turn, **orbital locked** |
+| **Explains** | Crystal ×1.2, metal ×0.8, hulls −10%, **orbital locked**; veteran growth is a future mechanic |
 
 ---
 
@@ -165,11 +165,12 @@ the Tellers turn out to have been arguing on the wrong side of a case they could
 
 ## Canon anchors
 
-`races.js`: crystal ×1.2, metal ×0.8, hulls −10% cost, all stats 1.0 otherwise,
-`all: { growth: 0.02, organic: true }`. `RACE_ACCESS[7]`: `SHIELDS: 2, ORBITAL: 0`, no Carrier.
+`races.js`: crystal ×1.2, metal ×0.8, hulls −10% cost, all stats 1.0 otherwise, with no
+live per-turn growth modifier. `RACE_ACCESS[7]`: `SHIELDS: 2, ORBITAL: 0`, no Carrier.
 
 **Orbital locked** is the load-bearing lock and must never be balanced away: no turrets, no Warp
 Gates, ever. It is why they cannot fortify, why they spread rather than hold, and why they alone will
 never rebuild a fragment of the Trellis. Per Law 15, growth is the *only* sanctioned free
 regeneration besides Mechanicus capitals, its mechanism is stated (nine-year nutrient berths), and
-the hard cost is that replacement takes a decade and cannot be surged.
+the hard cost is that replacement takes a decade and cannot be surged. This remains fiction/design
+until the ship table persists age; the live game does not apply a bonus it cannot track.

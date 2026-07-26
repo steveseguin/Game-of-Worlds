@@ -60,6 +60,9 @@ This file records review findings that matter for future work. Keep entries conc
 | Partial battle persistence | Turret losses, survivor replacement, conquest, and captured buildings could be written only partially. | Battle persistence now uses one database transaction and propagates failure to turn-phase recovery. |
 | Partial Spaceport upgrades | Resource deduction and the local tier update could be separated by a process/database failure. | Spaceport upgrades now commit resource spending and the guarded tier update in one transaction. |
 | Restoration movement feedback | A failed persisted-map lookup looked like a malformed player order. | Movement now distinguishes nonexistent sectors from temporarily unavailable map validation. |
+| Phantom race turn abilities | Income processing called empty Mechanicus repair and Bioform evolution hooks, while modifier data carried keys no gameplay consumer read. | Removed the no-op hooks and inert keys; live race copy/canon now distinguishes shipped defence/cost doctrines from future persistent-damage/age designs. |
+| Unsupported treaty activation | The dormant diplomacy module accepted treaty types whose resource, research, vision, and defense effects were placeholders. | Only enforceable non-aggression proposals can succeed; unsupported stored treaties cannot activate, and attack checks use the requested live turn. |
+| Fake permanent upgrade | The disabled crystal catalog defined an extra fleet slot whose grant function returned success without storing anything. | Removed the nonexistent item/grant path and made all gameplay crystal concepts visibly unavailable and non-clickable. |
 
 ## Active Risks To Revisit
 

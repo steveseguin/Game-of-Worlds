@@ -141,7 +141,7 @@ const RACE_TYPES = {
     MECH: {
         id: 6,
         name: "Mechanicus",
-        description: "Robotic civilization with self-repairing ships",
+        description: "Armored machine fleets built around overwhelming metal output",
         unlockType: "achievement",
         unlockRequirement: { type: "ships_built", count: 500 },
         bonuses: {
@@ -158,15 +158,15 @@ const RACE_TYPES = {
             "nanotech": { cost: 0.8, unlocked: true }
         },
         unitModifiers: {
-            "battleship": { defense: 1.5, repair: 0.05 },
-            "dreadnought": { defense: 1.5, repair: 0.05 }
+            "battleship": { defense: 1.5 },
+            "dreadnought": { defense: 1.5 }
         }
     },
 
     ORGANIC: {
         id: 7,
         name: "Bioform Collective",
-        description: "Living ships that grow stronger over time",
+        description: "Crystal-fed living fleets grown quickly and at lower cost",
         unlockType: "achievement",
         unlockRequirement: { type: "battles_won", count: 50 },
         bonuses: {
@@ -182,9 +182,7 @@ const RACE_TYPES = {
         techTreeModifiers: {
             "bioEngineering": { cost: 0.9, unlocked: true }
         },
-        unitModifiers: {
-            "all": { growth: 0.02, organic: true }
-        }
+        unitModifiers: {}
     },
 
     NOMAD: {

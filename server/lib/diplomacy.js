@@ -61,6 +61,14 @@ const TREATY_TYPES = {
     }
 };
 
+// Diplomacy is not wired into the live command protocol yet. Only expose the
+// treaty whose effect this module can enforce end to end. Other definitions
+// remain design data, but callers cannot receive a successful response for
+// resource, research, vision, or defense effects that do not exist.
+const SUPPORTED_TREATY_TYPE_IDS = new Set([
+    TREATY_TYPES.NON_AGGRESSION.id
+]);
+
 class DiplomacyManager {
     constructor(gameId, db) {
         this.gameId = gameId;
@@ -177,6 +185,10 @@ class DiplomacyManager {
                 reject(new Error('Invalid treaty type'));
                 return;
             }
+            if (!SUPPORTED_TREATY_TYPE_IDS.has(treaty.id)) {
+                reject(new Error(`${treaty.name} is not implemented`));
+                return;
+            }
             
             this.db.query(
                 `INSERT INTO treaties${this.gameId} 
@@ -210,7 +222,11 @@ class DiplomacyManager {
                     }
                     
                     const treaty = results[0];
-                    const treatyType = Object.values(TREATY_TYPES).find(t => t.id === treaty.type);
+                    const treatyType = Object.values(TREATY_TYPES).find(t => t.id === Number(treaty.type));
+                    if (!treatyType || !SUPPORTED_TREATY_TYPE_IDS.has(treatyType.id)) {
+                        reject(new Error('Treaty type is not implemented'));
+                        return;
+                    }
                     const expiresTurn = currentTurn + treatyType.duration;
                     
                     // Update treaty status
@@ -222,11 +238,7 @@ class DiplomacyManager {
                         (err) => {
                             if (err) {
                                 reject(err);
-                            } else {
-                                // Apply treaty effects
-                                this.applyTreatyEffects(treaty, treatyType);
-                                resolve();
-                            }
+                            } else resolve();
                         }
                     );
                 }
@@ -447,43 +459,18 @@ class DiplomacyManager {
         });
     }
     
-    // Apply treaty effects
-    applyTreatyEffects(treaty, treatyType) {
-        // This would be expanded to actually apply the effects
-        // For now, it's a placeholder
-        console.log(`Applying treaty effects for ${treatyType.name} between ${treaty.player1} and ${treaty.player2}`);
-    }
-    
     // Check if players can attack each other
-    canAttack(attacker, defender) {
-        return new Promise((resolve, reject) => {
-            // Check diplomatic state
-            this.getDiplomaticState(attacker, defender)
-                .then(state => {
-                    if (!state.state.canAttack) {
-                        resolve(false);
-                        return;
-                    }
-                    
-                    // Check active treaties
-                    return this.getActiveTreaties(attacker, 0); // Current turn should be passed
-                })
-                .then(treaties => {
-                    if (!treaties) {
-                        resolve(true);
-                        return;
-                    }
-                    
-                    // Check if any treaty prevents attack
-                    const preventingTreaty = treaties.find(t => 
-                        (t.player1 === defender || t.player2 === defender) &&
-                        t.type === TREATY_TYPES.NON_AGGRESSION.id
-                    );
-                    
-                    resolve(!preventingTreaty);
-                })
-                .catch(reject);
-        });
+    async canAttack(attacker, defender, currentTurn = 0) {
+        const relation = await this.getDiplomaticState(attacker, defender);
+        if (!relation.state.canAttack) return false;
+
+        const treaties = await this.getActiveTreaties(attacker, currentTurn);
+        return !(treaties || []).some(treaty =>
+            (Number(treaty.player1) === Number(defender) || Number(treaty.player2) === Number(defender)) &&
+            SUPPORTED_TREATY_TYPE_IDS.has(Number(treaty.type)) &&
+            Object.values(TREATY_TYPES).some(type =>
+                type.id === Number(treaty.type) && type.effects && type.effects.canAttack === false)
+        );
     }
     
     // Get diplomatic overview for a player
@@ -547,5 +534,6 @@ class DiplomacyManager {
 module.exports = {
     DIPLOMATIC_STATES,
     TREATY_TYPES,
+    SUPPORTED_TREATY_TYPE_IDS,
     DiplomacyManager
 };

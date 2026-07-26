@@ -100,8 +100,8 @@ const CONSUMED_KEYS = new Set(['cost', 'speed', 'attack', 'defense', 'shields', 
  * a balance report that does not add up.
  */
 const KNOWN_INERT = new Set([
-    'vision', 'count', 'cost_crystal', 'warpRange', 'repair',
-    'growth', 'organic', 'mobile_base', 'teleport', 'phase', 'size',
+    'vision', 'count', 'cost_crystal', 'warpRange',
+    'mobile_base', 'teleport', 'phase', 'size',
     'attack_bonus_stealth'
 ]);
 
@@ -119,6 +119,13 @@ test('every declared modifier key is consumed or knowingly inert', () => {
     assert.deepEqual(surprises, [],
         'these modifier keys are declared and nothing reads them - wire them up, delete '
         + 'them, or add them to KNOWN_INERT deliberately:\n  ' + surprises.join('\n  '));
+});
+
+test('the turn engine has no race doctrine calls that silently do nothing', () => {
+    assert.doesNotMatch(serverSrc, /autoRepairShips|evolveShips/,
+        'a turn hook must not claim to repair or evolve ships without persistent hull damage and age');
+    assert.doesNotMatch(JSON.stringify(RACE_TYPES), /"repair"|"growth"|"organic"/,
+        'race data must not advertise modifier keys that no gameplay consumer reads');
 });
 
 test('techTreeModifiers is still read by nobody, and still names techs that do not exist', () => {

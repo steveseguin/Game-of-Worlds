@@ -172,10 +172,12 @@ what the annotation means.
 
 `races.js`: metal ×1.3 (highest), durability ×1.4, attack ×1.1, speed ×0.8, hulls +20% cost, research
 ×0.9. `RACE_ACCESS[6]`: `SHIELDS: 1, MISSILES: 2`, ships `[1,2,4,5,6,7,9]` — **no Scout (3), no
-Intruder (8).** Battleship and Dreadnought carry `defense: 1.5, repair: 0.05`.
+Intruder (8).** Battleship and Dreadnought carry `defense: 1.5`. The live table has no persistent
+damage field, so `repair` is not currently a gameplay modifier.
 
 The two missing hulls are the entire civilisation. **Shields cap 1** because the Second Shift
 distrusts any system that stops a shot without touching it — a deflector is a statistical defence and
 plate is a physical one, and they would rather be hit through good armour than missed by good luck.
-Field self-repair is a **capital-hull trait only**, because only a capital has the volume to carry a
-foundry (Law 15), and it consumes stock that runs out.
+In the fiction, field self-repair is a **capital-hull trait only**, because only a capital has the
+volume to carry a foundry (Law 15), and it consumes stock that runs out. In the live rules its
+survivability is represented by the capital defence modifier until individual damage is persistent.

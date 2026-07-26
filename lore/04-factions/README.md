@@ -218,8 +218,10 @@ They hold more ground than anyone and understand less of it than anyone. And it 
 **Voice:** work orders. Damage reported as scheduled labour. No adjectives whatsoever.
 > Sector taken. Twelve hulls returned for reshaping. Shoal present; it is ours now. Continue.
 
-**Mechanics:** metal ×1.3 (best on the roster), durability ×1.4, self-repair on capitals,
-speed ×0.8, hulls 20% dearer. Shields capped 1, missiles 2, **no Scout, no Intruder.**
+**Live mechanics:** metal ×1.3 (best on the roster), durability ×1.4, an additional ×1.5
+defence modifier on Battleships and Dreadnoughts, speed ×0.8, hulls 20% dearer. Shields capped
+1, missiles 2, **no Scout, no Intruder.** Field repair remains fiction and visual language until
+the engine persists damage on individual ships.
 **Unlock:** build 500 ships. **Full bible:** `06-mechanicus.md`
 
 ---
@@ -228,10 +230,9 @@ speed ×0.8, hulls 20% dearer. Shields capped 1, missiles 2, **no Scout, no Intr
 **Endonym:** *the Long Season.*
 **Answer to the dark:** grow into it.
 
-Living hulls, grown rather than built, 10% cheaper than anyone else's and getting steadily
-stronger with age — a Bioform cruiser ten turns old is a genuinely superior animal. Which means
-Bioform losses are the only *permanent* losses in the galaxy: replace a veteran and you have a
-juvenile, and the difference is a decade.
+Living hulls, grown rather than built, 10% cheaper than anyone else's. The fiction treats older
+hulls as mature animals and replacement as a decade-long loss. The live engine does not yet persist
+ship age, so it must not claim a per-turn veteran bonus until that state exists.
 
 **They cannot build orbital defences of any kind, and they can never build a Warp Gate.** This
 is the most thematically important lock in the game and it should never be balanced away. The
@@ -246,8 +247,9 @@ suggest that they are the only ones who guessed right.
 > seasons the shoal will be a garden and nobody will remember the price. We are not in a
 > hurry, and neither, truly, are you.
 
-**Mechanics:** crystal ×1.2, metal ×0.8, hulls 10% cheaper, +2% growth per turn. Shields
-capped 2, **orbital locked**, no Carrier.
+**Live mechanics:** crystal ×1.2, metal ×0.8, hulls 10% cheaper. Shields capped 2,
+**orbital locked**, no Carrier. The +2% growth-per-turn rule is a future design target, not a
+shipped modifier.
 **Unlock:** win 50 battles.
 
 ---

@@ -21,7 +21,6 @@ const raceSystem = require('./lib/races');
 const securitySystem = require('./lib/security');
 const victorySystem = require('./lib/victory');
 const aiSystem = require('./lib/ai');
-const diplomacySystem = require('./lib/diplomacy');
 const sectorNames = require('./lib/sector-names');
 const standingAdvisory = require('./lib/standing-advisory');
 const { PaymentManager } = require('./lib/payments');
@@ -2308,10 +2307,6 @@ async function processTurnIncome(gameId, modeMultiplier, turn) {
                     sendVisibleMapState(gameId, client);
                 }
             });
-            // Race doctrines that fire once income has landed: Mechanicus hulls
-            // self-repair, Bioform hulls evolve.
-            if (Number(player.race_id) === 6) autoRepairShips(gameId, player.userid);
-            else if (Number(player.race_id) === 7) evolveShips(gameId, player.userid);
         } catch (error) {
             failures.push({ playerId: Number(player.userid), error });
         }
@@ -6792,19 +6787,6 @@ function handlePlayerDisconnect(connection) {
     if (playerId && playerId !== 'unknown' && gameState.clientMap[playerId] === connection) {
         delete gameState.clientMap[playerId];
     }
-}
-
-// Special race ability functions
-function autoRepairShips(gameId, playerId) {
-    // Mechanicus auto-repair: 5% hull repair per turn
-    // This would need to be implemented with ship health tracking
-    // For now, just a placeholder
-}
-
-function evolveShips(gameId, playerId) {
-    // Bioform evolution: Ships gain 2% stats per turn
-    // This would need ship age tracking
-    // For now, just a placeholder
 }
 
 // Payment handler functions - delegate to enhanced endpoints

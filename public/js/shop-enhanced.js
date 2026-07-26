@@ -658,15 +658,11 @@ const Shop = (function() {
         ];
         
         return items.map(item => `
-            <div class="shop-item" data-product-id="${item.id}"
-                 onclick="Shop.spendCrystals('${item.id}')">
+            <div class="shop-item unavailable" data-product-id="${item.id}" aria-disabled="true">
                 <img src="./images/crystal.png" alt="${item.name}" loading="lazy">
                 <h4>${item.name}</h4>
                 <p class="item-description">${item.description}</p>
-                <div class="crystal-cost">
-                    <img src="./images/crystal.png" alt="" class="crystal-icon-inline">
-                    ${item.cost}
-                </div>
+                <div class="price price-unavailable">Coming soon</div>
             </div>
         `).join('');
     }

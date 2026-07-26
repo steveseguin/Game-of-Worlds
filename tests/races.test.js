@@ -58,7 +58,7 @@ test('applyShipModifiers applies race and unit modifiers without mutating the ba
     assert.ok(mechResult.cost.metal > baseStats.cost.metal, 'Race shipCost bonus should apply');
     assert.ok(mechResult.defense > baseStats.defense, 'Unit defense modifier should apply');
     assert.ok(mechResult.speed < baseStats.speed, 'Race shipSpeed penalty should apply');
-    assert.equal(typeof mechResult.repair, 'number', 'Unit modifier added properties should persist');
+    assert.equal(mechResult.repair, undefined, 'Unpersisted repair metadata must not pretend to be active');
 });
 
 test('applyShipModifiers respects all-unit modifiers', () => {
@@ -71,8 +71,7 @@ test('applyShipModifiers respects all-unit modifiers', () => {
 
     const bioResult = applyShipModifiers(RACE_TYPES.ORGANIC.id, 'frigate', baseStats);
 
-    assert.equal(typeof bioResult.growth, 'number', 'All-unit modifier should add growth property');
-    assert.equal(bioResult.growth, 0.02);
+    assert.equal(bioResult.growth, undefined, 'Unpersisted ship growth must not pretend to be active');
     assert.ok(
         bioResult.cost.metal < baseStats.cost.metal,
         'Race shipCost modifier should affect metal cost'

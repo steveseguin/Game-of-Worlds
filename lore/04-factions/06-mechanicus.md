@@ -160,9 +160,9 @@ rule that prevents that is: **they are not cold, they are busy.**
 
 ## How they fight
 
-- **Attrition, deliberately.** Durability ×1.4 and self-repairing capitals mean a Mechanicus
-  fleet gets *relatively* stronger the longer an engagement runs. Their tactical doctrine is
-  to refuse decisive battle and win the fourth round.
+- **Attrition, deliberately.** Durability ×1.4 and a further ×1.5 capital defence modifier mean
+  a Mechanicus fleet is built to survive long engagements. Their tactical doctrine is to refuse
+  decisive battle and win the fourth round.
 - **They walk into hazards on purpose.** They are the only power for whom crossing an unswept
   shoal is standard procedure rather than a calculated risk. On the map this reads as an enemy
   that arrives from directions nobody has a trace for.
@@ -218,6 +218,7 @@ rule that prevents that is: **they are not cold, they are busy.**
   ever changes, this document is void.
 - `branchCaps: { SHIELDS: 1, MISSILES: 2 }`.
 - metal ×1.3 (highest on roster), durability ×1.4, speed ×0.8, cost ×1.2, research ×0.9.
-- Battleship and Dreadnought carry `defense: 1.5, repair: 0.05` — field self-repair is a
-  capital-ship trait only, and the fiction should keep it that way.
+- Battleship and Dreadnought carry `defense: 1.5`. Field self-repair remains a capital-ship
+  fiction and visual target, but it is not a live turn effect until individual hull damage is
+  persistent.
 - Unlock: 500 ships built. Fittingly, the only race you earn by *manufacturing*.

@@ -300,12 +300,6 @@ const CRYSTAL_SHOP = {
         crystal: 25000,
         research: 12500
     },
-    EXTRA_FLEET_SLOT: {
-        id: 'crystal_fleet_slot',
-        name: 'Extra Fleet Slot',
-        cost: 500,
-        type: 'permanent'
-    },
     NAME_CHANGE: {
         id: 'crystal_name_change',
         name: 'Change Username',
@@ -913,9 +907,6 @@ class PaymentManager {
             case 'resources':
                 await this.grantResources(userId, item);
                 break;
-            case 'permanent':
-                await this.grantPermanentUpgrade(userId, item.id);
-                break;
             case 'service':
                 // Handle service requests
                 break;
@@ -1032,12 +1023,6 @@ class PaymentManager {
         });
     }
 
-    async grantPermanentUpgrade(userId, upgradeId) {
-        // This would track permanent upgrades like extra fleet slots
-        // For now, placeholder implementation
-        return Promise.resolve();
-    }
-
     // Spend crystals with connection (for transaction safety)
     async spendCrystalsWithConnection(userId, itemId, connection) {
         throw new Error('Crystal spending is disabled. Premium purchases are limited to races and cosmetics.');
@@ -1064,9 +1049,6 @@ class PaymentManager {
                 break;
             case 'resources':
                 await this.grantResourcesWithConnection(userId, item, connection);
-                break;
-            case 'permanent':
-                await this.grantPermanentUpgrade(userId, item.id);
                 break;
             case 'service':
                 // Handle service requests

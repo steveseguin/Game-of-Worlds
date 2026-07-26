@@ -37,8 +37,10 @@ Environment variables can override turn intervals and mode multipliers; do not h
 | Economy/build/research | Implemented | Guarded balances/state; construction is sector-local. Spaceports have four tiers and 12/20/32/48 immediate production capacity per turn; advanced hulls require both empire research and the corresponding local tier. Capacity and resources roll back on failed insertion. |
 | Colonization | Implemented | Terraform and colony-ship checks with conditional ownership claim. |
 | Combat/theater | Implemented | Race/tech/turret resolution, visibility-scoped reports, clock pause, and E2E paths. A surviving attacking victor now captures the sector and infrastructure; captured Spaceports lose one tier. Fully transactional/idempotent battle persistence remains open. |
+| Race doctrines | Implemented where state exists | Mechanicus capital defence and Bioform cost/economy modifiers are live. Field repair and veteran growth remain design-only because ships do not persist damage or age; the engine no longer fires no-op turn hooks or exposes inert modifier keys. |
+| Diplomacy | Design module only | No live command/UI path instantiates it. Unsupported treaty types fail closed; its isolated non-aggression rule is covered for any future integration. |
 | Victory/surrender/cleanup | Implemented | Victory module, explicit resignation, abandonment rules, runtime cleanup tests. |
-| Payments | Optional | Stripe-disabled behavior must remain isolated; production availability depends on secrets/webhook configuration. |
+| Payments | Optional | Only implemented race products are sellable. Gameplay crystal concepts render unavailable and nonexistent permanent upgrades are absent. Stripe-disabled behavior remains isolated; production availability depends on secrets/webhook configuration. |
 | Deploy/observability | Implemented | CI, SSH deployment helper, `/health`, `/status`, deploy commit/dirty metadata verifier. |
 | Gameplay integrity oracle | Implemented for tests | Read-only whole-game checks run inside full expansion/combat/victory journeys; no automatic repair path changes gameplay. |
 

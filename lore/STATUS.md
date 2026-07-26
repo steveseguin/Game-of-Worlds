@@ -30,6 +30,9 @@ unclear.
 
 ### Production-shaped but incomplete
 
+- Mechanicus field repair and Bioform veteran growth remain fiction/design targets. The live ship
+  table stores owner, type, and sector—not persistent damage or age—so the engine now exposes only
+  the real Mechanicus defence and Bioform cost doctrines instead of firing silent per-turn hooks.
 - `17-the-feed/`: approximately 108 proposed Rell variants keyed to real engine events. The shipped
   game borrows its vocabulary and some lines, but there is no complete data-driven variant rotation.
 - `22-act-one.md`: three mission scripts, but no campaign/scenario runtime consumes them.
