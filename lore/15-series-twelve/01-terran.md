@@ -41,6 +41,16 @@ Hazard means the sector was known to be dangerous.
 Neither of those is true. The chart was *right when we filed it*. There is no code for that. I checked the
 schedule of amendments back to AU 11 and there has never been one.
 
+Back to AU 11 is as far as the schedule goes. I want that noted, because I have thought about it since.
+Four of those codes are Concord field codes and I can put a date and an authorising office on each of
+them. The fifth one is *other*, and there is no amendment for it, and there is no office on it, and it
+is simply there, in a printed field, being used. Somebody put it in during the nine days or just after
+and did not sign it.
+
+I have filed nine hundred and forty crews under a word nobody can tell me the author of. Most of them
+under that one, because *hazard* wants a known danger and *navigational error* wants somebody to blame.
+I am aware of what it means that the only code that fits is the one with no paperwork.
+
 So I wrote it in the margin. Longhand. *Certified corridor, drift, no error by any party, chart accurate
 at date of filing.* Twenty-two words, outside the boxes, on all fourteen.
 
@@ -76,3 +86,22 @@ listener's assumption about why, which is the whole character.
 
 **Art beat.** The form. Section four, five printed codes, and twenty-two words of handwriting running off
 the edge of the box into white space. That single image is the Terran Empire.
+
+**The fifth code is a planted payoff — see `../28-through-lines.md` T4.** Halloway supplies the clue and
+does not solve it: the amendment schedule *begins* at AU 11, so four of the codes have provenance and
+**"other" has none.** It was added in the nine days by somebody unrecorded, and it is the only code in
+the Registry with no authorising office.
+
+What that buys, none of which may ever be said aloud by anybody:
+
+- **It sharpens her.** She was refused a sixth code three times. The fifth is proof somebody once had
+  exactly her problem and *won* — and the institution that stopped her promotion is standing on their
+  margin.
+- **It is where Ilsa's three names are.** A husband and two brothers, three manifests never reconciled,
+  filed under code five because there was nothing else. Rell writes *unreconciled* beside a word an
+  unknown clerk invented in the dark for precisely this, and does not know it.
+- **It is the ancestor of the idiom.** *Ships are destroyed; crews did not arrive* (`../07-glossary.md`)
+  began as a coded field with a blank where the author's name goes.
+
+Halloway's line in `../16-rell.md` — *"Nobody knows why the field has five codes"* — is the only
+permitted acknowledgement, and it is a complaint, not a clue, because she does not know either.

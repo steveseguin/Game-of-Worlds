@@ -66,6 +66,17 @@ grammar the listener cannot use. Kept short, as the roster requires, or it becom
    testimony. It pairs with Vaun's log (testimony 11): the one Lamp that came back on for some hours
    at the far end, like a door being checked. Something is already inside.
 
+   **And it is not the ship in testimony 8.** This is worth being exact about, because the resemblance
+   is a trap. The *Ninefold Patience* returned in **AU 31**; Osk was recorded in **AU 55**. A Quantum
+   witness using the future tense about a twenty-four-year-old event would be ordinary grammar and
+   would mean nothing. Osk is not doing that. There is a second one, it is still ahead, and this is the
+   only line in Series 9 that points at the player's own decade.
+
+   Placed at the end of `../28-through-lines.md` T1 for that reason: the line runs *refusal* (Ossa,
+   BU 40) → *handling* (Sarn, AU 0) → *a door checked* (Vaun, AU 0) → *a thing returned* (Keth, AU 31)
+   → *a thing still coming* (Osk, AU 55). Five species, five doctrines, one escalation, and no
+   character has read it as one.
+
 **The road analogy** is the clearest statement of the quarantine in the whole file, and it is
 delivered by the least credible witness in the galaxy, to an interviewer who has been sighing. That
 is the correct way to place your most important exposition — in the mouth of someone nobody believes.

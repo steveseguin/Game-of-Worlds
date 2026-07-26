@@ -79,3 +79,19 @@ as one.
 **Art beat.** No portrait, or barely one. A surface, at a scale that does not resolve into a face.
 The visual idea is that the player cannot tell whether they are looking at a person or a landscape,
 which is also the galactic reckoning market's whole problem.
+
+**Pair with Testimony 8, and this is the pairing that matters most in the file.** Sarn says the
+shutdown felt like being *set down* — *"carefully, the way you would set down something you did not
+wish to damage and did not intend to pick up again soon,"* and there was *consideration* in it.
+Thirty-one years later Keth walks a Warden through the *Ninefold Patience*: thirty-one years absent,
+returned on the correct lane, decelerating normally, **not a mark on the paint.** *Something brought
+it home.*
+
+Those are the same manners, reported by two species who cannot compare notes, one as a sensation and
+one as an object you can stand inside. Sarn felt it happen to a world. Keth can show you the hull.
+
+They are twenty-two entries and thirty years apart in a file ordered by recording date, so nobody has
+ever read them together — which is the whole design of Series 9 and is also why this note exists
+rather than a line in the testimony. See `../28-through-lines.md` T1. **Do not have any character
+make this connection**, and do not let a future draft give the thing a shape: *careful* is not a
+shape, and the courtesy is the frightening part.

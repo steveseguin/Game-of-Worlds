@@ -87,3 +87,13 @@ line as a barb. Play it as an apology.
 
 **Art beat.** A berth. A young hull nine years from being a cruiser, tended by hand. And somewhere in
 frame, a thin one — a line that flew the deep lanes and came back reluctant.
+
+**This testimony is the earliest point on the file's longest line, and it moves the whole thing forty
+years.** The hulls refused those lanes from **BU 40** — four decades before the Lamps went out. Read
+beside Sarn's *consideration* (testimony 4) and Keth's unmarked hull (testimony 8), the implication is
+not that something arrived in AU 0. It was already there, already attentive, and already behaving
+carefully, and the only ones who noticed were the people whose ships are alive and who could not file
+a feeling. See `../28-through-lines.md` T1.
+
+Which is also the quietest cruelty in the collection: the Bioform were right first, by forty years,
+and being right took the form of a reluctance nobody could write down.

@@ -120,6 +120,7 @@ rituals in `04-factions/`.
 | `22-act-one.md` | Three production-shaped mission scripts. |
 | `23-interludes.md` | Three comic scenes that broaden the emotional register. |
 | `24-anthology/` | 104 Codex-shaped pieces tied to game objects and systems. |
+| `28-through-lines.md` | **Read before adding or editing any story piece.** The six lines that run across the whole folder, each plant in order and where it lands — so a new piece joins a line instead of starting a new loose one. Payoffs are test-guarded. |
 
 The two testimony series are finished forms, not race-reference authorities. When a story disagrees
 with the spine, repair the story.

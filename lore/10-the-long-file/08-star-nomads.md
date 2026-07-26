@@ -83,6 +83,17 @@ campaign asset in this folder — a real hull, in a real berth, that the player 
 inside. Undamaged is the detail that matters: it did not survive the dark, it was *unaffected* by it.
 Something brought it home.
 
+**Pair with Testimony 4.** In AU 0 Elder Sarn described the shutdown as being *set down* — *"carefully,
+the way you would set down something you did not wish to damage,"* with *consideration* in it. This
+hull is that sentence with a hull number on it. Two species, thirty years apart, one describing manners
+and one able to point at the paint.
+
+**And pair forward with Testimony 10.** Osk (recorded AU 55) speaks of *one arrival that is not on the
+schedule* in the future tense — and the *Ninefold Patience* had already arrived by then, twenty-four
+years earlier. So Osk is not describing this ship. There is another one, and it has not happened yet.
+That is the only place in the file where the escalation points at the player's own present. See
+`../28-through-lines.md` T1. **No character connects these**, and nothing may give the agent a shape.
+
 **On the corrected count.** This is the Terran story hook from `04-factions/01-terran-empire.md` paid off from the
 other side. Note that Keth explicitly refuses to call it a lie — *"a great many careful people each
 made one small decision"* — which is a much more damning and much more adult account of institutional

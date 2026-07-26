@@ -31,6 +31,15 @@ never reconciled, because the count was kept by the Trellis. She read arrival sc
 years looking for them and never found them, and she started collecting other people's accounts instead
 because her own had no ending.
 
+**All three are filed under code five.** Section four of a Terran loss form is a coded field — hazard,
+enemy action, structural, navigational error, other — and three of the four real codes need a fact
+nobody has. So they sit under *other*, which is the only code in the Registry with no amendment and no
+authorising office, because somebody added it during the nine days and did not sign it
+(`15-series-twelve/01-terran.md`, and `28-through-lines.md` T4).
+
+Rell has known this since they were nine. It is never stated in the game. It is why the three cards are
+the object rather than the names.
+
 Her grandchild is a Chart-Warden. **Reconciling manifests is literally the job.**
 
 That is the whole engine of the arc, and its power is that it is *small, legitimate, and professional*.
@@ -100,9 +109,9 @@ supposed to be here.*
 >
 > **RELL:** I know what you did.
 >
-> **HALLOWAY:** Everyone knows what I did. Nobody knows why the field has five codes.
+> **HALLOWAY:** Everyone knows what I did. Nobody knows who wrote the fifth code.
 >
-> *(She leaves. Rell squares the three cards.)*
+> *(She leaves. Rell squares the three cards. All three are coded five.)*
 
 ### Two — Act II. Kettering.
 
@@ -259,3 +268,10 @@ scenes.
 5. **The change is a piece of handwriting**, and it is shown, and nobody comments on it. Compare
    Halloway's twenty-two words and Yard Nine's variance to the variance: three Terrans, three irregular
    acts, three careers, and none of them explained.
+6. **Rell's handwriting is the fourth instance of the same act, and the first one that costs the writer
+   what they wanted rather than what they had.** Ames filed correctly and the galaxy ended. Halloway
+   filed irregularly and her career ended. Yard Nine filed a variance to a variance and it was
+   *accepted*, which is worse. Rell writes one word in a field an unknown clerk invented in the dark
+   seventy-four years earlier for exactly this situation — so the last beat of the arc is a Terran
+   putting a true thing in the wrong place, in the one box that exists because somebody already did.
+   The line is mapped in `28-through-lines.md` T3 and T4. Nobody in the game says any of it.

@@ -257,6 +257,89 @@ test('the Shadow Realm imagery is not confused with relics', () => {
         `these files treat the Assembled Frame's eleven imagery fragments as relics:\n  ${wrong.join('\n  ')}`);
 });
 
+test('every through-line still has all of its plants and its payoff', () => {
+    // lore/28-through-lines.md maps six lines that run across the whole folder. Each is assembled from
+    // pieces in separate files, and the whole point of the map is that a piece can be edited by someone
+    // who does not know it is somebody's plant.
+    //
+    // The line that needs this most is T1 (the Consideration): five witnesses across five species and
+    // ninety-five years, none of whom states the claim, and which for several passes was not connected
+    // at all - Sarn's "set down carefully, with consideration" and Keth's "something brought it home"
+    // sat twenty-two entries apart with no cross-reference. Delete any one of the five and the
+    // escalation silently stops being one.
+    const files = loreFiles();
+    const need = (file, phrases) => {
+        const f = files.find(x => x.file === `lore/${file}`);
+        assert.ok(f, `${file} is missing`);
+        for (const p of phrases) {
+            assert.match(f.flat, p, `${file} no longer contains ${p} - see lore/28-through-lines.md`);
+        }
+    };
+
+    // T1 - the Consideration, in chronological order of what each witness saw.
+    need('10-the-long-file/07-bioform.md', [/refused/i, /BU 40/]);                 // refusal
+    need('10-the-long-file/04-crystalline.md', [/set down/i, /consideration/i]);   // handling
+    need('10-the-long-file/11-titan-lords.md', [/one Lamp came back on/i]);        // a door checked
+    need('10-the-long-file/08-star-nomads.md', [/AU 31/, /brought it home/i]);     // a thing returned
+    need('10-the-long-file/10-quantum.md', [/not on the schedule/i]);              // a thing still coming
+
+    // T1's two ends must stay cross-referenced, which is the repair this line actually needed.
+    need('10-the-long-file/04-crystalline.md', [/Testimony 8|testimony 8/]);
+    need('10-the-long-file/08-star-nomads.md', [/Testimony 4|testimony 4/]);
+
+    // T2 - the clock. The keystone is that 9-D is adjacent to an empty origin coordinate.
+    need('20-master-timeline.md', [/9-D/, /review interval/i]);
+    need('10-the-long-file/06-mechanicus.md', [/9-D/, /origin coordinate/i]);
+
+    // T3/T4 - three irregular Terrans, and the fifth code that is now their spine.
+    need('15-series-twelve/01-terran.md', [/twenty-two words/i, /back to AU 11/i, /\bother\b/i]);
+    need('15-series-twelve/06-mechanicus.md', [/variance to the variance/i]);
+    need('16-rell.md', [/fifth code/i, /unreconciled/i]);
+
+    // T5/T6 - the count, and the thirty-one refusals.
+    need('16-rell.md', [/thirty-one thousand/i]);
+    need('10-the-long-file/README.md', [/thirty-one times/i]);
+
+    // And the map itself must still name every line it claims to.
+    need('28-through-lines.md', [/T1 · The Consideration/, /T2 · The clock/, /T3 ·/, /T4 · The fifth code/,
+        /T5 · The count/, /T6 · Thirty-one refusals/]);
+});
+
+test('the Law 25 constraint travels with the Consideration line', () => {
+    // T1 characterises the thing behind the quarantine entirely through manners, and Law 25 is what
+    // makes that legal. The failure mode is a future draft "clarifying" it into a creature - which
+    // would not read as a mistake, it would read as good description.
+    //
+    // A word blacklist was tried here first and abandoned, because it cannot tell description from
+    // denial or from unrelated usage: it fired on Sarn calling MORTALS "a brief creature" and on this
+    // project's own sentence "not a beast at a door". Policing prose semantics with a regex produces a
+    // guard that cries wolf and then gets deleted, which is worse than no guard.
+    //
+    // So this asserts the thing that is actually checkable and actually useful: the constraint is
+    // written down beside the material, in the file a future author will open. A rule nobody can find
+    // is a rule that gets broken by someone acting in good faith.
+    const files = loreFiles();
+    const map = files.find(f => f.file === 'lore/28-through-lines.md');
+    assert.ok(map, 'lore/28-through-lines.md is missing');
+
+    assert.match(map.flat, /Law 25/,
+        'the through-line map no longer cites Law 25, which is the only thing keeping T1 legal');
+    assert.match(map.flat, /never designed,\s*named, or shown/i,
+        'the map no longer states Law 25 in full; a summarised rule is a rule that drifts');
+    assert.match(map.flat, /careful is not a shape|courtesy is what is frightening/i,
+        'the map no longer explains WHY behaviour is permitted and shape is not - which is the '
+        + 'instruction a future author needs, not the prohibition');
+
+    // And the two testimonies most likely to be "improved" carry the warning locally, because nobody
+    // edits a testimony with the map open.
+    for (const want of ['lore/10-the-long-file/04-crystalline.md', 'lore/10-the-long-file/08-star-nomads.md']) {
+        const f = files.find(x => x.file === want);
+        assert.ok(f, `${want} is missing`);
+        assert.match(f.flat, /not (?:let a future draft )?give (?:the thing|the agent) a shape|shape/i,
+            `${want} no longer warns against giving the agent a shape`);
+    }
+});
+
 test('no file claims the artifact field is still undecided', () => {
     // Q5d asked whether the field should do anything and Q10 answered it. The encyclopedia - the
     // "start here for facts" file - still said "not canon until a mechanics decision is made" a full
