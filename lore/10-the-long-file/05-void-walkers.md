@@ -89,3 +89,19 @@ anyway, and it lands much harder when she is trying to get the interview over wi
 
 **Art beat.** A single fast hull, coming out of a lane sideways, wrong. And the visual restraint that
 matters: we never show what was in the lane. Not now, not ever.
+
+**Wren is the only bet in either book that paid — see `../28-through-lines.md` T7.** She did the one
+thing her doctrine forbids, blind, at speed, and it bought her a second of sight and her life. Every
+other wager in this folder cost somebody: Halloway's corridor, Sten's inherited lane, four Mechanicus
+hulls at 9-D. The setting's exchange rate on knowledge is always bad, and Wren is the exception that
+makes the rule visible.
+
+**And she is the front half of Account 5, twenty-two years later.** Sten breaks off in the sixth hour
+exactly as Wren did — that account says so. What it cannot say, because Sten does not know it, is the
+symmetry: **Wren broke a rule to save herself, and Sten will have to break one to save somebody she
+will never meet** (plant P2). One deceleration and one refusal, the same doctrine, opposite
+directions, and the second one is the more expensive.
+
+Which is also why Wren refuses to describe what she saw and is *irritated* rather than haunted. She
+has spent thirty-four years being the person whose survival everybody wants a lesson from, and there
+isn't one. She got lucky at speed. She knows exactly how thin that is.

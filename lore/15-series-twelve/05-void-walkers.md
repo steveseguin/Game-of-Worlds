@@ -81,3 +81,24 @@ need to know which.*
 
 **VO note.** Fast, faster than anyone else in this collection, no pauses. The only slow line is *"it was a
 very fine lane."*
+
+**Pair with Account 1, and it is the sharpest pairing in either book — see `../28-through-lines.md` T8.**
+Deputy Warden Halloway lost eleven hulls on a **certified corridor** that had been safe for eight years
+and forty-one transits. Sten flies a **recited lane** that Marn last flew in AU 59, fifteen years ago.
+
+Terra writes everything down. The Void Walkers write nothing down and recite instead. **Both doctrines
+fail identically, for the identical reason** — Law 10, a trace degrades — and each empire is privately
+certain the carelessness belongs to the other. Halloway has no *code* for a chart that was right when
+filed. Sten has no *procedure* for a recitation that cannot be amended. Two people, two opposite
+civilisations, the same fifteen-or-forty-one crossings of borrowed confidence, and they will never meet.
+
+The answer to both is Law 6 and neither doctrine can reach it: a shoal you **hold** is safe forever,
+because knowledge about ground you stand on cannot go stale. The player solves Halloway's problem and
+Sten's problem all game, one sector at a time, and must never be told that is what they are doing.
+
+**Forward plant, and do not resolve it here (P2).** Sten has three lanes, one of them kills, and if she
+dies they pass on. The payoff belongs to a later pass: **Sten refuses to recite the third lane** — the
+first Void Walker to withhold a bequest — which is Wren's act twenty-two years later and in the
+opposite direction. Wren broke doctrine to save herself; Sten breaks it for a courier she will never
+meet. And it costs her the thing that makes it hard: the only way to stop Marn's lane killing people is
+to let that part of Marn end.

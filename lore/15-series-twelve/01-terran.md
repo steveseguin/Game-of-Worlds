@@ -80,6 +80,17 @@ promotion. **Read the two accounts together.**
 the fiction has shown what that costs, and it shows it as a *coded field*, which is the most Terran
 possible framing of a fleet dying.
 
+**Pair with Account 5 — see `../28-through-lines.md` T8.** Courier Sten recites a lane Marn last flew
+fifteen years ago, and the shoal at its second waypoint has moved. Halloway's corridor was certified and
+correct and killed eleven hulls on its forty-second transit. **Terra writes everything down; the Void
+Walkers write nothing down and recite instead; both doctrines fail identically because of the same law**,
+and each empire is quietly sure the carelessness is the other's. She has no code for it. Sten has no
+procedure for it. Neither can reach the answer, which is Law 6 — a shoal you *hold* is safe forever,
+because knowledge about ground you stand on cannot go stale.
+
+That is the player's whole game, arriving as the solution to a problem two civilisations cannot name.
+**Never state it on screen.**
+
 **VO note.** Brisk, technical, unemotional, and she gives the cabinet and drawer number unprompted. The
 only place to let anything through is *"and I could not do it"* — and then she immediately corrects the
 listener's assumption about why, which is the whole character.

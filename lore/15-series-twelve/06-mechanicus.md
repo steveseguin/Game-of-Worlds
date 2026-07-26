@@ -88,3 +88,20 @@ recognise each other.**
 **VO note.** No inflection anywhere, including Fourth's quoted passage, which Yard Nine reads out flat
 because reading it any other way is not something it knows how to do. Do not let the performer find the
 moment. There isn't one; that's the point.
+
+**The variance is the Mechanicus growing, once — and it makes the disaster larger. Plant P3, see
+`../28-through-lines.md`.** *The hull is to be capable of returning with its crew* is one shift, in one
+yard, deciding on its own initiative that coming back should be a design requirement. In an empire whose
+entire doctrine is **do not look**, that is a genuine institutional development, arrived at from below,
+by a shift with no authority to have it.
+
+And it was **accepted** in AU 74, which is the worst available outcome. The variance does not stop the
+Yard going to 9-D. It equips it. The AU 12 annotation reads *requires heavier hull, revisit* — and Yard
+Nine has now built the heavier hull, so the annotation can finally be honoured, by a fleet that is
+still not ordered to look at anything (T2).
+
+Sixty-two years of compounding cost from one refusal to spend on knowledge: four hulls in AU 12, seven
+patched hulls seen passing in AU 68, and now the good hull that lets the order be executed at last.
+**An institution's single moment of growth arriving too late and enlarging the catastrophe is a crueller
+shape than an institution that never grows**, and it is the correct one here, because nobody involved
+did anything wrong. Yard Nine wanted its crews to come home. That is why they are going.

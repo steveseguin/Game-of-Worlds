@@ -173,6 +173,111 @@ Epilogue: Rell files the six sentences as Testimony 12, and goes back to work.
 
 ---
 
+## T7 · The bet — the line that makes the fiction the same shape as the game
+
+**The claim:** every character in this folder is making the wager the player makes every turn. You
+cannot see ahead. You can buy a fact with crystal, with hulls, or with people. The exchange rate is
+always bad. **And exactly once it is not.**
+
+That is not a theme applied to the mechanics. It is the mechanics, read as character.
+
+| Who | The bet | What it paid |
+|---|---|---|
+| **Courier Wren** (9 · 05) | Decelerated blind, inside a transition — the one act her doctrine forbids | **Saved.** One second of sight, and she is the only person alive who was inside it |
+| **Courier Sten** (12 · 05) | Flew a lane she had been *given*, exactly as recited | **Cost.** The shoal at the second waypoint had moved. She now recites a lane that kills people |
+| **Dep. Warden Halloway** (12 · 01) | A certified corridor, safe eight years and forty-one transits | **Cost.** Eleven hulls into gravel on the forty-second, and fourteen letters, and no code for why |
+| **The Mechanicus** (9 · 06, 12 · 06) | Declined to look. Four heavy hulls into 9-D in AU 12 | **Cost, and still compounding.** Seven more are on their way, and the order still does not say look |
+| **Every probe ever flown** | Three hundred of reckoning against a sector's truth | Thirty-three turns of a small planet's crystal for one fact — **and it is still the cheap option** |
+| **Every swept shoal** | Hulls, once | **The only good rate in the galaxy.** Law 6: charted, cleared, corridored, safe *forever* |
+
+**Why this is worth naming rather than leaving implicit.** It gives every new piece a position to
+occupy: a character is either paying for knowledge, refusing to pay for it, or living off knowledge
+somebody else paid for. Those are the only three postures in this setting, and the third is the one
+that generates tragedy, because of T8.
+
+**The rule for writing it.** A bet that pays must cost something anyway, and a bet that fails must
+have been *reasonable when it was taken*. Wren survived and is the only witness who will not describe
+what she saw. Halloway's chart was accurate at date of filing and she says so in the margin. Nobody in
+this folder is punished for stupidity — that is a different and much cheaper kind of story.
+
+---
+
+## T8 · Two doctrines, one decay — and the answer is the thing the player already does
+
+The two most opposite doctrines in the galaxy fail in **exactly the same way, for exactly the same
+reason**, and each empire believes it is a flaw in the other's method.
+
+> **Law 10.** *A trace is property and it degrades. Shoals drift. A twenty-year-old trace is a rumour
+> with paperwork.*
+
+- **Terra writes everything down.** Halloway's corridor was certified, surveyed, and correct. It was
+  safe for forty-one transits and killed eleven hulls on the forty-second. Section four has no code
+  for *the chart was right when we filed it*, so she wrote twenty-two words in the margin and lost her
+  career for it.
+- **The Void Walkers write nothing down and recite instead.** Marn died with nine lanes and gave Sten
+  three. Marn last flew that lane in **AU 59**; Sten flies it in **AU 74**. Fifteen years. The shoal at
+  the second waypoint has moved, and *a recitation cannot be amended* — a lane is what the dying said
+  it was — so Sten recites a lane that kills people, every morning, entire, in order.
+
+One empire's knowledge went stale on paper. The other's went stale in a mouth. **Same law. Same
+fifteen or forty-one crossings of false confidence. Two people who will never meet, each certain the
+other's civilisation is the careless one.**
+
+**And here is the part that is not obvious, which is why it goes in this file rather than in a
+testimony:** the answer to both of them is already in the game, and neither doctrine can reach it.
+
+Law 6 is the only positive-sum mechanic in the setting. A **held** shoal is charted, cleared,
+corridored and safe *forever* — it does not decay, because you are standing on it. Not a better
+archive. Not a more faithful recitation. **Ownership.** The reason a swept sector is permanent is that
+knowledge about ground you hold cannot go stale, and every other kind can.
+
+So the player spends a whole game solving Halloway's problem and Sten's problem, one sector at a time,
+and is never told that is what they are doing. The Second File's accidental thesis — *the Sweeping is
+working* — is this line's payoff, and the Bioform Collective have been saying it courteously for
+seventy-four years.
+
+**Never state this on screen.** Not in a codex entry, not in Rell's feed, not in a mission briefing.
+The moment a document explains that sweeping is the answer to institutional decay, it stops being
+something a player noticed and becomes something a game told them.
+
+---
+
+## Planted, and not yet played out
+
+Forward plants: things already on the page whose payoff is deliberately *not* written, so that a later
+pass has somewhere to go instead of inventing a new thread. Each says what it is loaded with.
+
+**P1 · The second arrival.** Osk (9 · 10, recorded AU 55) speaks in future tense of *one arrival that
+is not on the schedule*, and it is **not** the AU 31 ship, which had already come home. Something is
+still coming and it is the only Series 9 line aimed at the player's own decade. Loaded for: the end of
+T1. Do not fire it in a document — it should arrive as an *event*, and it should arrive politely.
+
+**P2 · Sten passes on a lane that kills.** She has three lanes and one of them is lethal and she
+recites all three every morning because the dead cannot consent to a revision. **If she dies, they
+pass on.** That is a loaded gun with a twenty-six-year-old holding it.
+
+The payoff, when somebody writes it: **Sten refuses to recite the third lane** — the first Void Walker
+to withhold a bequest — and it is the same act as Wren's, twenty-two years apart and in the opposite
+direction. Wren broke doctrine to save herself. Sten breaks it to save a courier she will never meet.
+Her weakness is exactly what makes it hard: *whose lane is it?* And it costs her something real, which
+is why it works — the only way to stop Marn's lane killing people is to let that part of Marn end.
+
+**P3 · Yard Nine's variance was accepted.** *The hull is to be capable of returning with its crew* —
+the Mechanicus growing, once, a strength out of their central weakness. And it is the worst possible
+news, because it means the Yard is going to 9-D **anyway**, with a better hull, still not looking. An
+institution's one moment of development arriving too late and making the disaster larger is a crueller
+beat than the institution never developing at all. Loaded for: the end of T2.
+
+**P4 · Halloway's cost is what arms Rell.** She read the amendment schedule back to AU 11 because she
+was looking for a sixth code, and that is the only reason anybody alive knows the fifth has no author
+(T4). Her career ended for twenty-two words, and the residue is one warning delivered in an archive at
+night — *I am not warning you. I am telling you the price, because nobody told me* — which is what
+lets Rell choose deliberately rather than stumble. **A mistake that cost one career and bought the
+protagonist's agency.** Already written in `16-rell.md` Scene One; noted here so nobody trims it as
+colour.
+
+---
+
 ## What is still a single thread, honestly
 
 Not everything is woven and it should not all be. Recorded so the next pass picks a real target

@@ -300,9 +300,56 @@ test('every through-line still has all of its plants and its payoff', () => {
     need('16-rell.md', [/thirty-one thousand/i]);
     need('10-the-long-file/README.md', [/thirty-one times/i]);
 
+    // T7 - the bet. The setting's exchange rate on knowledge, and its one exception.
+    need('10-the-long-file/05-void-walkers.md', [/decelerat/i, /one second/i]);   // the bet that paid
+    need('11-laws-of-the-world.md', [/safe forever/i, /positive-sum/i]);          // Law 6, the exception
+    need('11-laws-of-the-world.md', [/a trace is property and it degrades/i]);    // Law 10, the reason
+
+    // T8 - two doctrines, one decay. Both halves must keep their numbers, because the pairing is only
+    // sharp while the durations are specific: forty-one transits against fifteen years.
+    need('15-series-twelve/01-terran.md', [/forty-one transits/i, /Account 5/]);
+    need('15-series-twelve/05-void-walkers.md', [/AU 59/, /Account 1/, /Law 6/]);
+
+    // Forward plants. These are loaded and deliberately unfired; the risk is somebody "finishing" one
+    // in a document, or trimming it as loose colour.
+    need('28-through-lines.md', [/P1 · The second arrival/, /P2 · Sten passes on a lane that kills/,
+        /P3 · Yard Nine's variance was accepted/, /P4 · Halloway's cost is what arms Rell/]);
+    need('15-series-twelve/06-mechanicus.md', [/variance to the variance/i, /accepted/i]);
+
     // And the map itself must still name every line it claims to.
     need('28-through-lines.md', [/T1 · The Consideration/, /T2 · The clock/, /T3 ·/, /T4 · The fifth code/,
-        /T5 · The count/, /T6 · Thirty-one refusals/]);
+        /T5 · The count/, /T6 · Thirty-one refusals/, /T7 · The bet/, /T8 · Two doctrines, one decay/]);
+});
+
+test('the two things T8 forbids saying on screen are not said on screen', () => {
+    // T8's payoff is a player noticing that sweeping is the answer to institutional decay. It stops
+    // being a discovery the moment any document explains it, and the tempting place to explain it is
+    // exactly where it would do most damage: player-facing copy.
+    //
+    // Scope is deliberately the shipped surfaces plus the codex source, not the lore folder - the lore
+    // folder is where the connection is SUPPOSED to be written down, which is what 28-through-lines.md
+    // is for.
+    const surfaces = [
+        path.join(root, 'public', 'js', 'codex.js'),
+        path.join(root, 'public', 'js', 'advisor.js'),
+        path.join(root, 'public', 'js', 'ui.js')
+    ];
+    const TELLS = [
+        /sweeping is the answer/i,
+        /solves? (?:the )?(?:problem of )?institutional decay/i,
+        /the only knowledge that does not (?:go stale|decay) is/i
+    ];
+    const offenders = [];
+    for (const file of surfaces) {
+        if (!fs.existsSync(file)) continue;
+        const text = fs.readFileSync(file, 'utf8').replace(/\s+/g, ' ');
+        for (const tell of TELLS) {
+            if (tell.test(text)) offenders.push(`${path.basename(file)}: ${tell}`);
+        }
+    }
+    assert.deepEqual(offenders, [],
+        'player-facing copy now explains T8 outright, which converts something a player noticed into '
+        + `something the game told them:\n  ${offenders.join('\n  ')}`);
 });
 
 test('the Law 25 constraint travels with the Consideration line', () => {
