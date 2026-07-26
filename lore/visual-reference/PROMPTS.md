@@ -62,13 +62,13 @@ Four equal panels:
 
 Four equal portrait/environment panels:
 
-1. Ilsa Rell: middle-aged, androgynous, exhausted but exacting, worn command uniform, paper file and
-   pencil at a dim console; not glamorous and not posed as an action hero.
-2. Commander Vance: practical fleet commander, disciplined posture, tactical display, visibly
-   responsible for people rather than decorated for spectacle.
-3. Dr. Mira Ito: scientist/archivist among instruments, specimen light, and annotated physical
-   records; curiosity held inside rigorous procedure.
-4. Pilot Sesse: alert pilot in a repaired flight rig, compact cockpit, route marks and hand-used
+1. Chart-Warden Rell: middle-aged, androgynous, exhausted but exacting, worn command uniform, paper
+   file and pencil at a dim console; not glamorous and not posed as an action hero.
+2. Registrar Vance: practical institutional head, disciplined posture, files and a tactical display,
+   visibly responsible for people rather than decorated for spectacle.
+3. Sweep-Admiral Ito: scientist-strategist among instruments and annotated physical records;
+   curiosity held inside rigorous procedure.
+4. Navigator Sesse: alert pilot in a repaired flight rig, compact cockpit, route marks and hand-used
    controls; capable and human-scale.
 
 ### 05 — non-Terran characters
@@ -77,10 +77,10 @@ Four equal portrait/environment panels:
 
 1. Liaison Fourth: Silicon presence represented through an interface chamber, heat sinks, precise
    indicators, and a deliberately prepared human contact surface; no robot face.
-2. Keth: Crystalline individual with distinctive internal fractures and warm/cyan refraction,
-   personality conveyed by posture and light rather than clothes.
-3. Analyst Nine: Quantum analyst in two nearly compatible positions at a precise instrument,
-   conditional edges and disciplined observation.
+2. Keth: Star Nomad trace-broker at a market table, layered practical textiles, inherited route
+   objects, warm hospitality, and a chart treated as merchandise and memorial at once.
+3. Analyst Nine: Silicon analyst represented by a precise instrument and heat-management interface;
+   conditional readouts and disciplined observation, no robot face.
 4. The Emissary: Ancient contact represented only by a lit installation, impossible geometry, and
    the pressure of an unseen presence. Never show its body.
 

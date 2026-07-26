@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Waveform</title>
+  <defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 1.5H4" stroke="#b9d7d8" stroke-opacity=".08"/></pattern>
+    <pattern id="stripe" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="18" fill="#e85d3f" fill-opacity=".28"/></pattern>
+  </defs>
+  <path d="M18 128H42L54 92 72 170 92 68 112 152 132 104 150 144 170 78 190 166 208 112 238 128" fill="none" stroke="#8bd68f" stroke-width="7" filter="url(#glow)"><animate attributeName="stroke-opacity" values=".55;1;.55" dur=".8s" repeatCount="indefinite"/></path>
+</svg>

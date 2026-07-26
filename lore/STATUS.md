@@ -52,10 +52,16 @@ unclear.
 - `visual-reference/icon-system/` adds 142 individually usable gameplay icons: all 108 current
   research levels, nine real building states, nine ship types, and sixteen core actions. Its alias
   rule keeps the canonical mechanic directly beneath every evocative name.
+- `visual-reference/production/` adds a purpose-built production bridge: four Rell states, twelve
+  multi-size Registry glyphs, all sector/map states, twelve three-anchor fleet languages, battle and
+  construction states, relic and Lifter assets, twelve homeworld backdrops, nine story stills, three
+  posters, animated console SVGs, and supporting UI. Its derivative catalog currently records 223
+  named assets.
 - These are **REFERENCE**, not shipped art. The library records its lore sources, prompt set, and
   known conflicts with legacy faction marks, sprites, and prototype portraits.
-- The next production pass should create race-specific ship silhouettes and final-aspect-ratio game
-  assets; the broad boards should not be copied directly into `public/images/`.
+- Race-specific ship silhouettes and final-aspect-ratio references now exist. The next pass is
+  selective runtime integration and in-game validation; the broad boards still must not be copied
+  directly into `public/images/`.
 
 ## Decisions needed
 

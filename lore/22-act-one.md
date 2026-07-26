@@ -34,6 +34,10 @@ itself. A shoal that is the destination is already an arrival roll — the fleet
 which would make Sesse's choice below meaningless. The shoal has to be somewhere she is passing
 through. See Laws 1–3 in `11-laws-of-the-world.md`.)*
 
+![Sesse's two seconds of sight inside the shoal](visual-reference/production/campaign/01-sesses-two-seconds.png)
+
+*Story still: three hulls return because Sesse makes the wrong maneuver at the right moment.*
+
 ### SCENE — the launch bay, before anything
 
 *Ordel Gate. A hull is being loaded. Rell is at a rail with a clipboard; below, a young navigator is
@@ -142,6 +146,8 @@ arithmetic only closes if they probe first. This is the mission where *nineteen 
 Four Hundred and Six's calculation in `15-series-twelve/02-silicon.md` — becomes something the player
 does with their own hands.
 
+![Rell and Keth at the trace market](visual-reference/production/campaign/09-trace-market.png)
+
 ### SCENE — the trace market, and the mission's comedy
 
 *A Nomad convoy in dock. Keth has a table out. Rell is examining a chart and being watched.*
@@ -239,6 +245,8 @@ one.*
 >
 > **RELL:** It is also the only thing I can actually do.
 
+![Rell writes Sesse's Crossing in the margin](visual-reference/production/campaign/02-sesses-crossing.png)
+
 **Why the scene is written this way, and what it is asking for.** Rell writes the name **by hand, in a
 margin, irregularly** — the third Terran in this folder to do that, after Halloway's twenty-two words
 and Yard Nine's variance to the variance. The through-line is deliberate: in this empire the only way
@@ -288,6 +296,8 @@ through unswept sectors and bleeds, and once you own the crossings the arithmeti
 > Those four hundred are alone out there and their own people cannot perceive that this has happened.
 > I do not have anywhere to put that, so I am putting it in the log.
 
+![Four hundred Zephyr hull-bodies alone across the shoal](visual-reference/production/campaign/07-four-hundred-alone.png)
+
 That third beat is the whole Zephyr design working: the report card noted that the Swarm and the
 Quantum were *"closer to a concept than a contradiction."* This is the contradiction made concrete —
 **a people whose greatest strength manufactures a kind of suffering they are constitutionally unable
@@ -313,6 +323,8 @@ later.
 > They are annotating as they go. They are not lost and they are not searching.
 >
 > They are on a schedule.
+
+![Seven Mechanicus hulls execute the old work order](visual-reference/production/campaign/03-the-schedule.png)
 
 **This fixes a real defect.** The report card graded **Escalation C+** with the note *"the setting has
 no rising pressure — the threat is undesigned by rule, the Ancients are passive, and nothing is

@@ -10,6 +10,11 @@ one thing in this folder, change it here first and let the rest follow.
 *A galaxy that once travelled on lit, charted roads has gone blind — and the empires racing
 to relight it do not know that the roads were switched off on purpose, to keep something out.*
 
+![The Lamps Are Out — text-free inspiration poster](visual-reference/production/posters/01-the-lamps-are-out.png)
+
+*Inspiration poster: the Trellis failing above the command station. The black gaps are the subject;
+nothing beyond the quarantine is depicted.*
+
 ---
 
 ## The paragraph
@@ -37,6 +42,8 @@ None of them know that the Trellis did not fail. It was shut down from the insid
 ## The one-pager
 
 ### What the player is actually doing
+
+![Every Map Is Written in Wrecks — text-free inspiration poster](visual-reference/production/posters/02-every-map-is-written-in-wrecks.png)
 
 The player is a **Chart-Warden's commander** — the officer who decides where the empire's
 next verified fact will come from, and what it will cost. Everything the game asks of you is
@@ -96,6 +103,8 @@ the game's win screens are already arguing with each other:
 - **Time** — hold the most ground when the clock runs out. *Nobody wins. Somebody is standing.*
 
 ### The turn of the knife
+
+![Roads Run Both Ways — text-free inspiration poster](visual-reference/production/posters/03-roads-run-both-ways.png)
 
 The campaign's job is to make the player understand, somewhere around hour fifteen, that
 **the win condition is the mistake.** The Trellis was not infrastructure. It was also a road,

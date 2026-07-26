@@ -7,6 +7,8 @@
 | **Recorded** | AU 52. Refused twice before |
 | **Carries** | She had one second of sight, and the lane ahead was **occupied** |
 
+![Courier Wren exits the failed lane sideways; what occupied it remains unseen](../visual-reference/production/campaign/05-wren-sideways.png)
+
 ---
 
 Forty minutes, Bell to Anselm's Reach. Longest lane in the galaxy. I flew it two hundred and six

@@ -237,6 +237,18 @@ img { max-width: 100%; display: block; }
 .hud-status__val[data-online] { color: var(--ok); }
 .hud-divider { width: 1px; height: 14px; background: var(--edge-bright); }
 
+.hud-links {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.hud-links a { color: var(--muted); }
+.hud-links a:hover, .hud-links a:focus-visible { color: var(--cyan); }
+
 /* ============================================================
    HERO
    ============================================================ */
@@ -831,6 +843,8 @@ img { max-width: 100%; display: block; }
 .hud-foot__credit { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); margin: 0; }
 .hud-foot__guide { margin-left: auto; font-family: var(--font-mono); font-size: 0.76rem; color: var(--cyan-dim); letter-spacing: 0.12em; text-decoration: none; text-transform: uppercase; }
 .hud-foot__guide:hover, .hud-foot__guide:focus-visible { color: var(--cyan); text-decoration: underline; text-underline-offset: 0.3em; }
+.hud-foot__links { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; }
+.hud-foot__links .hud-foot__guide { margin-left: 0; }
 .hud-foot__legal { font-family: var(--font-mono); font-size: 0.72rem; color: var(--faint); margin: 1rem 0 0; letter-spacing: 0.1em; }
 
 /* ============================================================
@@ -868,6 +882,8 @@ img { max-width: 100%; display: block; }
     .btn--key { font-size: 0.74rem; padding: 0.6rem 0.95rem; }
     .btn__full { display: none; }
     .btn__short { display: inline; }
+    .hud-links a:first-child { display: none; }
+    .hud-links { margin-left: auto; font-size: 0.62rem; }
     .hero__title { font-size: clamp(2.8rem, 14vw, 4rem); }
     .hero__stats { gap: 1.5rem; }
     .hero__actions { gap: 1.1rem; }

@@ -7,6 +7,8 @@ not a wager.
 
 Everything terrible in it comes from a law that already exists. Nothing here needed inventing.
 
+![At Ordel Gate, Titan hulls occupy the sky where the two moons should be](../visual-reference/production/campaign/06-they-could-not-be-moved.png)
+
 ---
 
 ## The account of Battery Warden Arran, Ordel Gate Approaches, taken AU 74

@@ -16,7 +16,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/landing.css?v=20260725d">
+    <link rel="stylesheet" href="css/landing.css?v=20260726a">
 </head>
 <body>
     <div class="scanlines" aria-hidden="true"></div>
@@ -44,6 +44,11 @@
                 <span class="hud-status__val" id="stardate">—</span>
             </span>
         </div>
+
+        <nav class="hud-links" aria-label="Site navigation">
+            <a href="/docs/">Guide</a>
+            <a href="/lore/">Lore archive</a>
+        </nav>
 
         <a class="btn btn--key" href="/login.html">
             <span class="btn__full">ENTER COMMAND</span>
@@ -449,7 +454,10 @@
         <div class="hud-foot__line" aria-hidden="true"></div>
         <div class="hud-foot__row">
             <p class="hud-foot__brand">GAME OF WORLDS <span>// GALACTIC CONQUEST</span></p>
-            <a class="hud-foot__guide" href="/docs/">Player Guide</a>
+            <nav class="hud-foot__links" aria-label="Footer navigation">
+                <a class="hud-foot__guide" href="/docs/">Player Guide</a>
+                <a class="hud-foot__guide" href="/lore/">Lore &amp; Art Archive</a>
+            </nav>
             <p class="hud-foot__credit">Created by Steve Seguin in 2012 · rebuilt for the modern web.</p>
         </div>
         <p class="hud-foot__legal">© 2026 Game of Worlds. All systems nominal.</p>

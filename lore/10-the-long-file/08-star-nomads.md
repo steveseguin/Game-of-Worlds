@@ -7,6 +7,8 @@
 | **Recorded** | AU 66 |
 | **Carries** | A ship that did not arrive in AU 0 **arrived in AU 31.** Empty, undamaged, decelerating normally |
 
+![The pristine Ninefold Patience in its hidden berth](../visual-reference/production/campaign/04-ninefold-patience.png)
+
 ---
 
 Sit down, sit down. You are the Rell woman.

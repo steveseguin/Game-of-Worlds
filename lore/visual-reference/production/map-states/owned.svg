@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Owned</title>
+  <defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 1.5H4" stroke="#b9d7d8" stroke-opacity=".08"/></pattern>
+    <pattern id="stripe" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="18" fill="#e85d3f" fill-opacity=".28"/></pattern>
+  </defs>
+  <rect width="256" height="256" fill="none"/><path d="M18 82V18H82M174 18H238V82M238 174V238H174M82 238H18V174" fill="none" stroke="#6dd58c" stroke-width="9" filter="url(#glow)"/>
+</svg>

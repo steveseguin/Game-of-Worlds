@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Steam</title>
+  <defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 1.5H4" stroke="#b9d7d8" stroke-opacity=".08"/></pattern>
+    <pattern id="stripe" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="18" fill="#e85d3f" fill-opacity=".28"/></pattern>
+  </defs>
+  <g fill="#c9d4d5"><circle cx="100" cy="210" r="20" opacity=".16"><animate attributeName="cy" values="220;36" dur="3s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.28;0" dur="3s" repeatCount="indefinite"/></circle><circle cx="152" cy="224" r="28" opacity=".12"><animate attributeName="cy" values="232;52" dur="3.8s" begin=".6s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;.22;0" dur="3.8s" begin=".6s" repeatCount="indefinite"/></circle></g>
+</svg>

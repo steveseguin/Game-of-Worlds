@@ -92,6 +92,11 @@ That last one is a whole character in twenty-eight words, and it costs one line 
 
 ### Portrait states
 
+![Commander Rell production state atlas: idle, speaking, alert, signal-lost](visual-reference/production/commander/rell-states-atlas.png)
+
+*Production reference. Individual square and portrait exports live beside the atlas in
+`visual-reference/production/commander/`.*
+
 Mapping to the four states the art direction already calls for:
 
 - **Idle** — reading. Rell is always working; they look up when there is something for you.

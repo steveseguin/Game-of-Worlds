@@ -60,6 +60,12 @@ Game-of-Worlds/
 
 For fast orientation on server APIs, WebSocket messages, gameplay state, turn flow, deployment, and known risks, start with [`docs/agents/README.md`](docs/agents/README.md).
 
+## Lore & Art Archive
+
+The complete living setting bible is available in [`lore/`](lore/README.md), including stories, civilisation and faction files, timelines, production notes, visual references, gameplay icon aliases, and the production-art catalog.
+
+The public site also presents a curated, browser-friendly bonus-material collection at **[gameofworlds.com/lore/](https://gameofworlds.com/lore/)**. The website links back to the versioned Markdown source so readers and contributors can always reach the full archive.
+
 ## Quick Start
 
 ### Prerequisites

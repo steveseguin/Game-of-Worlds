@@ -213,6 +213,8 @@ supposed to be here.*
 
 **Rell can close the three entries, and does not.**
 
+![Rell writes the same notation on the three code-five cards](visual-reference/production/campaign/08-three-cards.png)
+
 They write **unreconciled** in the three cards, in their own hand, and they do it *deliberately* — not
 as failure, not as sacrifice, and not as a gesture. They do it because a Chart-Warden's job is to
 reconcile what left against what arrived, and closing an entry against a figure you know is false is not

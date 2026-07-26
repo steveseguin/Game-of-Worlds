@@ -30,7 +30,7 @@ All grids read left-to-right, then top-to-bottom.
 | [01-races-terran-to-crystalline.png](assets/01-races-terran-to-crystalline.png) | Terran; Silicon Collective; Zephyr Swarm; Crystalline |
 | [02-races-void-to-nomads.png](assets/02-races-void-to-nomads.png) | Void Walkers; Mechanicus; Bioform; Star Nomads |
 | [03-races-ancients-to-shadow.png](assets/03-races-ancients-to-shadow.png) | Ancients; Quantum; Titan Lords; Shadow Realm |
-| [04-characters-terran.png](assets/04-characters-terran.png) | Ilsa Rell; Commander Vance; Dr. Mira Ito; Pilot Sesse |
+| [04-characters-terran.png](assets/04-characters-terran.png) | Chart-Warden Rell; Registrar Vance; Sweep-Admiral Ito; Navigator Sesse |
 | [05-characters-non-terran.png](assets/05-characters-non-terran.png) | Liaison Fourth; Keth; Analyst Nine; the Emissary |
 | [06-ship-classes.png](assets/06-ship-classes.png) | Frigate; Destroyer; Scout; Cruiser; Battleship; Colony Ship; Dreadnought; Intruder; Carrier |
 | [07-homeworlds.png](assets/07-homeworlds.png) | Terra; Sill; Churn; Sarn's World; Bell; Works; Ossa's Delta; Kettering; an Ancient installation; Osk's Flux; Ordel Deep; Sable's Dark |
@@ -39,6 +39,8 @@ All grids read left-to-right, then top-to-bottom.
 | [10-weapons.png](assets/10-weapons.png) | Laser; plasma projector; basic rocket; Hyper-V missile; antimatter warhead; Crystalline Ringer |
 | [11-wonders.png](assets/11-wonders.png) | Concord Lamp; Solved Sky; Ten Thousand Mouths; First Thickness; Whole Recitation; Endless Yard; Mother Grove; Reconciled Schedule; Closing; Unresolved Lane; Weight of Ages; Assembled Frame |
 | [Gameplay icon system](icon-system/) | 108 research levels; 9 building states; 9 ship types; 16 player actions; aliases, canonical labels, source atlases, prompt ledger, and individual 256×256 PNGs |
+
+| [Production visual assets](production/) | Game-ratio commander states, Registry glyphs, sectors, map overlays, race fleets, effects, event cards, construction states, relics, homeworlds, campaign stills, posters, and supporting UI |
 
 ## What is visually locked
 

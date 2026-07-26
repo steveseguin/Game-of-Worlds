@@ -64,6 +64,8 @@ actually know they built the Trellis. We know they were here first and their thi
 
 ## What a relic is
 
+![Five seamless Unattributed relic forms](visual-reference/production/relics/relics-atlas.png)
+
 Not a weapon. Not a technology. **A part.**
 
 The justification was written before any of this conversation happened, in `24-anthology/13-wonders.md`:
@@ -183,6 +185,8 @@ available anywhere in this game. `SECTOR_STATUS.ARTIFACT` already exists in `pub
 has never been used.
 
 ### Moving one
+
+![The universal Relic Lifter](visual-reference/production/relics/relic-lifter.png)
 
 **A dedicated lifter hull, available to every race**, exempt from race doctrine exactly as the Colony
 Ship already is (`races.js`: *"Colony (6) is always allowed"*).

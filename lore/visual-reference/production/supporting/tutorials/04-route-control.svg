@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <title>04 Route Control</title>
+  <defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 1.5H4" stroke="#b9d7d8" stroke-opacity=".08"/></pattern>
+    <pattern id="stripe" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="18" fill="#e85d3f" fill-opacity=".28"/></pattern>
+  </defs>
+  <defs><marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M0 0L12 6 0 12Z" fill="#46d4df"/></marker></defs>
+  <rect width="960" height="540" rx="24" fill="#05080c"/>
+  <rect x="14" y="14" width="932" height="512" rx="18" fill="#0a1117" stroke="#52656d" stroke-width="4"/>
+  <rect width="960" height="540" fill="url(#scan)"/>
+  <text x="48" y="70" fill="#d8e1df" font-family="Arial, sans-serif" font-size="34" font-weight="700">ROUTE CONTROL</text>
+  <text x="48" y="108" fill="#8fa3a8" font-family="Arial, sans-serif" font-size="20">Survive, hold, sweep: the death trap becomes a permanent road.</text>
+  <g fill="#777f82"><circle cx="190" cy="258" r="28"/><circle cx="252" cy="330" r="34"/><circle cx="310" cy="246" r="22"/><circle cx="348" cy="338" r="19"/></g><path d="M74 302H420" stroke="#e85d3f" stroke-width="8" stroke-dasharray="16 12"/><path d="M470 302H598" stroke="#d5b76a" stroke-width="9"/><path d="M550 268L598 302 550 336Z" fill="#d5b76a"/><g fill="#777f82"><circle cx="684" cy="258" r="28"/><circle cx="746" cy="330" r="34"/><circle cx="804" cy="246" r="22"/><circle cx="842" cy="338" r="19"/></g><path d="M620 302H900" stroke="#46d4df" stroke-width="12"/><text x="98" y="424" fill="#e85d3f" font-family="Arial" font-size="22">UNSWEPT: RISK EACH CROSSING</text><text x="654" y="424" fill="#46d4df" font-family="Arial" font-size="22">HELD: SAFE FOREVER</text>
+
+</svg>

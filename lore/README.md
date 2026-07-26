@@ -131,6 +131,7 @@ with the spine, repair the story.
 | Path | Role |
 |---|---|
 | `visual-reference/` | Generated reference boards for all twelve races, seed characters, standard ships, homeworlds, battles, hazards, crystal, relics, exploration hardware, weapons, and proposed Wonders. Includes a canon source map, current-art reconciliation, and prompt ledger. **REFERENCE**, not shipped art. |
+| `visual-reference/production/` | Final-ratio production references and 223 named derivatives: Rell states, Registry glyphs, sector tiles, map overlays, twelve fleet languages, effects, event cards, construction states, relics, homeworlds, campaign stills, posters, animated console assets, and supporting UI. **PRODUCTION REFERENCE**, not automatically shipped. |
 | `../docs/art-direction/` | Shared UI composition, rendering, motion, and command-station direction. |
 
 Visual reference follows the same authority rules as prose. An attractive image does not make an

@@ -79,18 +79,36 @@ thing an artist makes.
 | Story beat stills | 6–8 | The relay at Anselm, the lit lane, the dead Lamp, the docking schedule with a gap in it |
 | Ship silhouettes | 9 × 12 | **The expensive one.** Nine hull classes across twelve races is 108 designs |
 
+### Production art delivered
+
+`visual-reference/production/` now contains the first complete production-reference pass:
+
+- four Rell states in square and portrait formats;
+- twelve Registry/UI race glyphs at 32, 64, 128, and 512px;
+- all eleven sector tiles and six map-state overlays;
+- twelve three-anchor race fleet languages and 36 individual hull anchors;
+- battle effects, event cards, five construction states, five relics, the Relic Lifter, animated
+  console elements, twelve final-ratio homeworlds, nine campaign/lore stills, and three posters;
+- supporting diplomacy frames, victories, achievements, resource states, fleet orders, tutorial
+  diagrams, race cards, and a landing hero.
+
+These assets are **not runtime integration**. They stay in lore until an implemented screen consumes
+them, at which point only the selected derivative moves into `public/images/`. The generated broad
+boards are no longer the only handoff layer.
+
 ### Where to spend and where not to
 
-**Spend on:** Rell's four states, the twelve crests, and the six story stills. That is 22 assets,
-and they carry essentially the whole narrative experience.
+**Spend on:** Rell's four states, the twelve Registry glyphs, and the selected story stills. Their
+production references now exist; the next cost is integration, UI validation, and final human paintover
+where needed.
 
 **Do not spend on:** 108 ship designs. Do what the era this game is imitating did — design **one
 silhouette language per race** (the Mechanicus quilt, the Terran box-with-a-handle, the Titan
 mass) and recolour and rescale across hull classes. Nobody has ever complained that two
 destroyers from the same navy looked similar.
 
-**Defer:** leader portraits. They are needed only if diplomacy gets a face, and diplomacy is
-currently deferred in the roadmap anyway.
+**Defer:** twelve bespoke leader portraits. The production pass provides neutral/friendly/hostile/
+distressed portrait frames without inventing a face for every diplomacy channel.
 
 ### The two art ideas worth protecting
 
