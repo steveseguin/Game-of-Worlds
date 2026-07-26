@@ -204,9 +204,16 @@ const Advisor = (function () {
         { re: /Fleet claimed sector ([0-9A-F]+)|Success: Colonized sector (\d+)/i, event: 'colonized', sector: 1 },
         { re: /Battle report: Victory in sector ([0-9A-F]+)/i, event: 'battleWon', sector: 1 },
         { re: /Battle report: Defeat in sector ([0-9A-F]+)/i, event: 'battleLost', sector: 1 },
-        { re: /Success: Purchased/i, event: 'researchDone' },
+        // The server says "Researched", never "Purchased". This matched nothing, so the
+        // advisor has never once acknowledged a technology - three written lines per race
+        // that could not fire.
+        { re: /Success: Researched/i, event: 'researchDone' },
         { re: /Success: Built (Colony Ship)/i, event: 'colonyReady' },
-        { re: /Success: Built (?!Colony)/i, event: 'shipBuilt' },
+        // Named hulls only. This used to be "Built (?!Colony)", which also matched
+        // "Success: Built Metal Extractor" - so constructing a refinery had the advisor
+        // remark on a new hull smelling of solder. There is no building event to route
+        // structures to, and saying nothing beats saying the wrong thing.
+        { re: /Success: Built (?:Scout|Frigate|Destroyer|Cruiser|Battleship|Intruder|Dreadnought|Carrier)\b/i, event: 'shipBuilt' },
         { re: /An enemy fleet (was destroyed|lost)/i, event: 'enemySighted' }
     ];
 
