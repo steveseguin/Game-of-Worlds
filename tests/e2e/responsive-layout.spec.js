@@ -158,6 +158,68 @@ test.describe('HUD layout holds together at every window size', () => {
         expect(failures, `HUD layout problems:\n${failures.join('\n')}`).toEqual([]);
     });
 
+    // Every other layout check in this file runs against a BRAND NEW game, where almost
+    // nothing has been built and almost nothing has happened. That is the easiest possible
+    // state for the HUD: the empire summary is one short line, the sector panel lists no
+    // buildings, and the event feed is empty. Panels grow with the game, so a HUD that is
+    // collision-free on turn 1 proves very little about turn 20.
+    //
+    // This plays for a while first - buildings, ships, research, several turns of income
+    // and events - and only then measures. It is the state the player actually spends the
+    // match in.
+    test('the HUD still holds together after a game has been played into', async ({ page }) => {
+        test.setTimeout(300000);
+
+        await harness.signInGuest(page, `busy_${Date.now().toString(36)}`);
+        await harness.waitForLobbyReady(page);
+        await harness.createGame(page, `Busy ${Date.now()}`, { maxPlayers: '2', mode: 'test' });
+        await page.getByRole('button', { name: /Fill with AI/i }).click();
+        await page.waitForURL(/game\.html/, { timeout: 30000 });
+        await page.waitForSelector('#controlPadGUI', { timeout: 30000 });
+        await harness.dismissFirstRunGuidance(page).catch(() => {});
+        await page.setViewportSize({ width: 1440, height: 900 });
+
+        // Fill the sector with structures, the fleet with hulls, and the feed with events.
+        // Each of these is allowed to fail: the point is to accumulate as much state as the
+        // economy affords, not to assert any particular purchase succeeded.
+        await harness.focusHomeworld(page).catch(() => {});
+        for (const selector of ['#bb1', '#bb2', '#bb3', '#bb5', '#bb1', '#bb2']) {
+            await harness.buildBuilding(page, selector).catch(() => {});
+        }
+        for (const shipId of [3, 1, 3, 1, 6]) {
+            await harness.buildShip(page, shipId).catch(() => {});
+        }
+        await harness.researchTech(page, /Metal Extraction/i).catch(() => {});
+        await harness.researchTech(page, /Terraforming/i).catch(() => {});
+        for (let turn = 0; turn < 4; turn++) {
+            await harness.endTurnAll(page).catch(() => {});
+        }
+        await harness.focusHomeworld(page).catch(() => {});
+        await page.waitForTimeout(400);
+
+        // Sanity: if none of that landed, the test would be auditing a fresh game again and
+        // silently proving nothing. Require that SOMETHING accumulated.
+        const accumulated = await page.evaluate(() => ({
+            events: document.querySelectorAll('#event-feed-list > div').length,
+            summary: (document.getElementById('empireSummary')?.textContent || '').trim().length
+        }));
+        expect(accumulated.events + accumulated.summary,
+            'nothing accumulated - this test would be measuring a fresh game').toBeGreaterThan(10);
+
+        const failures = [];
+        const sizes = [[1440, 900], [1280, 800], [1366, 768], [1024, 768], [820, 1180], [390, 844]];
+        for (const [width, height] of sizes) {
+            await page.setViewportSize({ width, height });
+            await page.waitForTimeout(200);
+            const result = await auditLayout(page, width, height);
+            if (result.overlaps.length || result.offscreen.length) {
+                failures.push(`${width}x${height} (played-in): ${[...result.overlaps, ...result.offscreen].join('; ')}`);
+            }
+        }
+
+        expect(failures, `HUD problems once the game has state:\n${failures.join('\n')}`).toEqual([]);
+    });
+
     // Phones and tablets, by name, in both orientations. Named because "360x640 failed" is
     // a bug report nobody acts on, while "Galaxy S8 portrait is broken" is one they do.
     test('the HUD works on real phones and tablets, portrait and landscape', async ({ page }) => {

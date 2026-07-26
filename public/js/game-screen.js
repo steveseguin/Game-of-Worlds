@@ -353,6 +353,44 @@
             sectorDisplay.style.fontSize = `${clamp(12 * scale, 10.5, 13)}px`;
         }
 
+        // The event panel is built by connect.js with a hard-coded 340px width and a fixed
+        // right offset, and until now nothing laid it out. That was survivable only while
+        // it was usually empty: it grows with the feed, so it appeared once a player had
+        // actually done things, which is why every fresh-game layout check missed it. On a
+        // 390px phone a 340px panel spans almost the whole width and printed over the
+        // entire left column; on a laptop the map legend grew up into it.
+        //
+        // Sized here like every other panel: it may use the space to the right of the
+        // status column, and it stops above whatever occupies the lower right. If that
+        // leaves too little to be readable it is hidden, the same call the minimap and the
+        // legend already make.
+        const eventPanel = document.getElementById('event-panel');
+        if (eventPanel) {
+            const columnClear = Math.max(columnRight, controlWidth) + 16;
+            const eventWidth = Math.min(340, viewportWidth - columnClear - 24);
+            if (eventWidth < 200) {
+                setImportant(eventPanel, 'display', 'none');
+            } else {
+                setImportant(eventPanel, 'display', 'block');
+                setImportant(eventPanel, 'width', px(eventWidth));
+                setImportant(eventPanel, 'right', '16px');
+                const eventTop = Math.max(70, turnHeight + 12);
+                // Whatever sits in the lower right is the floor: the legend if it is
+                // showing, otherwise the minimap, otherwise the bottom of the viewport.
+                const legendBox = mapLegend && getComputedStyle(mapLegend).display !== 'none'
+                    ? mapLegend.getBoundingClientRect() : null;
+                const minimapBox = minimap && getComputedStyle(minimap).display !== 'none'
+                    ? minimap.getBoundingClientRect() : null;
+                const floor = Math.min(
+                    legendBox && legendBox.height > 0 ? legendBox.top : viewportHeight,
+                    minimapBox && minimapBox.height > 0 ? minimapBox.top : viewportHeight,
+                    viewportHeight - 12
+                );
+                setImportant(eventPanel, 'top', px(eventTop));
+                setImportant(eventPanel, 'max-height', px(Math.max(120, floor - eventTop - 12)));
+            }
+        }
+
         if (galaxyViewport) {
             const tacticalLeft = shortLandscape || veryNarrow
                 ? 0
