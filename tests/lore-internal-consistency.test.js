@@ -331,6 +331,16 @@ test('every through-line still has all of its plants and its payoff', () => {
     // would make it a gimmick, which is why the map says so and why this counts them.
     need('22-act-one.md', [/decelerated inside the crossing/i]);
 
+    // T7's positive pole. 24-16 is the only piece in the elevated register and the ratio is what makes
+    // it work, so both the piece and the licence that permits it have to survive together.
+    need('24-anthology/16-the-first-clean-run.md', [
+        /four hours (?:and )?nine/i,                        // the figure the whole piece lands on
+        /somebody who is not good/i,                        // the thesis: a road does not need heroes
+        /Anselm's Reach/,                                   // the link back to Wren
+        /it will never be|cannot see|not \*needing\* to|not needing to/i   // Law 1 kept intact
+    ]);
+    need('03-themes.md', [/The one licensed elevation/, /16-the-first-clean-run/]);
+
     // And the map itself must still name every line it claims to.
     need('28-through-lines.md', [/T1 · The Consideration/, /T2 · The clock/, /T3 ·/, /T4 · The fifth code/,
         /T5 · The count/, /T6 · Thirty-one refusals/, /T7 · The bet/, /T8 · Two doctrines, one decay/]);

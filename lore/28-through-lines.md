@@ -3,7 +3,7 @@
 Status: **REFERENCE**, and it is the one file in this folder whose job is to stop other files from
 becoming lost threads.
 
-`lore/` has twenty-four testimonies, four scenes, three mission scripts and a hundred and five
+`lore/` has twenty-four testimonies, four scenes, three mission scripts and a hundred and six
 anthology pieces. Every one of them is finished on its own, which is a strength and is also exactly how
 a folder this size ends up as a pile of good writing that does not accumulate. A reader should be able
 to feel a shape building across a whole playthrough, and the only way that survives forty more pieces
@@ -193,6 +193,18 @@ That is not a theme applied to the mechanics. It is the mechanics, read as chara
 | **Every probe ever flown** | Three hundred of reckoning against a sector's truth | Thirty-three turns of a small planet's crystal for one fact — **and it is still the cheap option** |
 | **Every swept shoal** | Hulls, once | **The only good rate in the galaxy.** Law 6: charted, cleared, corridored, safe *forever* |
 | **Every orbital turret** | Eighty metal, sixty crystal, and it will never go anywhere | **The only purchase that is not a wager at all.** It is standing on the ground it is a fact about |
+| **Courier Tolt** (24 · 16) | Nothing. She bets nothing — that is the entry | **The ledger comes out ahead.** Eleven swept sectors end to end, Bell to Kettering, four hours nine, and for eleven minutes she did not have to do the sum |
+
+**T7 has a positive pole and it was empty until 24 · 16.** Every row above except the last two is a
+price. `03-themes.md`'s locked register is superb at price and forbids awe, so for a hundred and five
+pieces the one thing in this setting that is pure gain — Law 6, which the laws themselves call *sacred* —
+was only ever written about as an expense. The charter now licenses elevation for that single subject and
+"The First Clean Run" is the model.
+
+**And the line closes on itself, which nobody planned.** Wren's lane is *Bell to Anselm's Reach, forty
+minutes, longest in the galaxy*, flown two hundred and six times, and she was inside it on the day. The
+Reach is **waypoint two** of Tolt's chain. The folder's one bet that paid and the folder's one row that
+costs nothing are the same piece of sky, seventy-four years apart.
 
 **Why this is worth naming rather than leaving implicit.** It gives every new piece a position to
 occupy: a character is either paying for knowledge, refusing to pay for it, or living off knowledge
@@ -304,7 +316,7 @@ colour.
 Not everything is woven and it should not all be. Recorded so the next pass picks a real target
 instead of re-solving what is done.
 
-- **`24-anthology/`, 105 pieces.** Deliberately standalone — one per hull, building, tech level and
+- **`24-anthology/`, 106 pieces.** Deliberately standalone — one per hull, building, tech level and
   sector type, because they are codex-shaped and a codex entry cannot depend on reading another. Four
   of them touch T1 and T3; the rest are texture, correctly.
 - **`23-interludes.md`, three comic scenes.** Unattached on purpose. Comedy that carries plot stops

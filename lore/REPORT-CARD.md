@@ -16,6 +16,11 @@ verifiable by someone who did not make it. A grade may be **lowered** on review 
 claimed credit it did not earn. Optimism about our own work is the failure mode this file exists to
 prevent.
 
+**Revision 12 — 2026-07-26.** Target: *Emotional range (C+)*, stuck for six revisions. The cause was
+not a shortage of pieces — it was the locked tone register, which forbids awe and was in direct tension
+with Law 6's instruction to treat swept ground as sacred. One licensed exception and one piece. Detail in
+R12.
+
 **Revision 11 — 2026-07-26.** A review pass rather than an improvement pass. It found a **live
 map-breaking bug** on the deployed branch, three conflicts between one-day-old canon and existing canon,
 and a documented wire payload that never existed. **Internal consistency comes down, A− → B+**, and the
@@ -45,7 +50,7 @@ real and it did not cross any criterion's threshold, and saying so is the point 
 
 ## Grades
 
-| | Criterion | R1 | R3 | R6 | R10 | R11 | |
+| | Criterion | R1 | R3 | R6 | R10 | R12 | |
 |---|---|:---:|:---:|:---:|:---:|:---:|---|
 | **A. World** | Limitation over power | A | A | A | A | **A** | — |
 | | Material logic | A | A | A | A | **A** | — |
@@ -62,7 +67,7 @@ real and it did not cross any criterion's threshold, and saying so is the point 
 | | Setup and payoff | A− | A− | A | A | **A** | ▲ in R6 — some of it now pays off to a *player* |
 | | Causality *(therefore / but)* | B | B | B+ | B+ | **B+** | Act One chains therefore/but explicitly |
 | | Escalation | C+ | C+ | B− | B− | **B−** | the galaxy finally has a clock |
-| | Emotional range | D | D+ | C+ | C+ | **C+** | range across 104 pieces; still short on comedy |
+| | Emotional range | D | D+ | C+ | C+ | **B** | ▲ the cause was the locked register, not a shortage of pieces — see R12. Still short on comedy |
 | **D. Delivery** | Redundant discovery paths | B− | C | C | B− | **B−** | ▲ in R9 — the core conceit is learnable three ways |
 | | Legibility to a newcomer | C− | B− | B− | B+ | **B+** | ▲ in R9 — the tooltip names the sector; the panel states the premise |
 | | Co-authorship | C | D | D | D | **C+** | ▲ the player names the shoals they sweep, and the map shows it |
@@ -70,12 +75,84 @@ real and it did not cross any criterion's threshold, and saying so is the point 
 
 **Sections — World A− · Character B+ · Story B+ · Delivery B− · Overall B**
 
-*Computed, not felt: World **3.62** (was 3.68 — Internal consistency lowered in R11), Character 3.20,
-Story 3.26, Delivery **2.83** (was 2.10 at R6), overall **3.26**. **Twelve of twenty criteria are still
-below A.** Delivery has gone from the section that could not move to the section that moved most, and it
-is no longer last by a wide margin. The lowest grades are Change within the story, Emotional range and
-Co-authorship, all at C+ — and the one that just fell is the one worth watching, because it fell for a
-missing guarantee rather than a specific mistake.*
+*Computed, not felt: World 3.62, Character 3.20, Story **3.40** (Emotional range C+→B in R12),
+Delivery 2.83, overall **3.30**. **Thirteen of twenty criteria are still below A.***
+
+*Delivery has gone from the section that could not move to the section that moved most, and it is no
+longer last by a wide margin. **The two lowest grades are now Change within the story and Co-authorship,
+both C+.** Two others are worth watching for opposite reasons: Internal consistency fell for a missing
+guarantee rather than a specific mistake, and Restraint has been held at B− five revisions running,
+which is the longest-standing unaddressed criticism on this card.*
+
+---
+
+## R12 — Emotional range was capped by the tone charter, not by a shortage of pieces
+
+**Emotional range C+ → B.** Six revisions of writing had not moved it past C+, and the note kept saying
+*short on comedy*, which was true and was not the cause.
+
+### The actual diagnosis
+
+`03-themes.md`'s tone register is **LOCKED**: *"weathered professional… specific, dry, occasionally
+beautiful by accident. The characters do not describe their own feelings and the writing does not
+describe them either."*
+
+That charter is excellent and it is why the grief in this folder works. It also **structurally forbids
+awe.** *Beautiful by accident* means beauty is never aimed at. *Characters do not describe their own
+feelings* means that in a hundred and sixty thousand words **nobody was permitted to be proud.** Adding
+more pieces in that register could never widen the range, because the register was the ceiling.
+
+**And it was in direct tension with a law.** `11-laws-of-the-world.md` Law 6: sweeping is *"the single
+positive-sum mechanic in the setting and the fiction should treat it as **sacred**."* The charter
+instructed writers to treat something as sacred and simultaneously banned the only register in which
+they could. So every piece about sweeping was about the hulls it cost, and none was about the road. A
+hundred and five pieces described a price and none described a gain.
+
+### What shipped
+
+**One licensed exception in the charter, tightly scoped**, with four rules that keep it from becoming
+the register the same document mocks: the pride is never in oneself; no adjective does the work; it must
+cost the character something to say it; and it never breaks Law 1 — sweeping makes space *safe*, not
+*lit*. Licensed for permanence and first crossings only. **Explicitly not licensed for combat,
+conquest, fleets, Wonders or victory** — anything a player *beats*.
+
+**And one piece: `24-anthology/16-the-first-clean-run.md`.** Courier Tolt flies eleven swept sectors end
+to end, Bell to Kettering, four hours nine minutes, and for eleven minutes does not have to do the
+arithmetic of survival she has done every crossing for nineteen years. She cannot see — nobody can, and
+she says so twice — and what she gets is not needing to.
+
+Three things make it work rather than gush:
+
+1. **The pride is inheritance, not achievement.** The chain went in over ninety-one years, by four
+   empires, for unrelated reasons, none of them building a road. She is a beneficiary of strangers, most
+   of whom disliked each other. That converts Theme 1 — *knowledge is bought and somebody else always
+   paid* — from a debt into a gift, which the folder had never once done.
+2. **The last line is the game's thesis**, and it is not about her: *it can be done again tomorrow by
+   somebody who is not good.* A road does not need heroes. That is the whole reason Law 6 is the only
+   positive-sum thing in the setting.
+3. **She is embarrassed about it.** Her one moment of feeling is sitting down behind a reckoning shed,
+   and Onn has the manners not to mention it. That is rule 3 of the licence doing its job.
+
+**A link nobody planned.** Wren's testimony is *"forty minutes, Bell to Anselm's Reach, longest lane in
+the galaxy"* — flown two hundred and six times, and she was inside it on the day. **The Reach is
+waypoint two of Tolt's chain.** The folder's one bet that paid and the folder's one row that costs
+nothing are the same piece of sky, seventy-four years apart. It needed no invention; the lane is simply
+on the chain, which is what the through-line file exists to notice.
+
+### Why B and not higher
+
+- **Comedy is still thin** — three interludes, and the original note stands. Awe was the larger absence
+  and is now addressed; humour is not.
+- **It is one piece in a hundred and six**, deliberately, and the ratio is what makes it land. So the
+  range is now genuinely wider at the top end and it is wide by a single data point, which is not the
+  same as a folder that can move freely between registers.
+- **Nothing in the middle.** The folder does grief, procedure, cost and now elevation. It does not do
+  warmth between people who are not grieving, or ordinary contentment, or irritation as anything but
+  characterisation. A register that goes from *flat* to *sacred* with nothing in between is a range with
+  a hole in it.
+
+**What did not move.** Restraint holds at B− — this is two more long pieces and one charter amendment,
+and delivering none of it to a player. Internal consistency holds at B+ for the reason given in R11.
 
 ---
 
@@ -654,6 +731,14 @@ Added a `chart` event kind. Fixed the sweep announcing a name `COALESCE` had not
 comment `ee361ab` had invalidated. Strengthened the schema guard from one name-writer to two, each with
 its own rule. 268/268 units across three consecutive runs; e2e with a proven negative control.
 Co-authorship D→C+. Everything else held.
+
+**R11 → R12.** Diagnosed *Emotional range* as a charter problem rather than a content one: the locked
+tone register forbids awe (*beautiful by accident*, *characters do not describe their own feelings*) while
+Law 6 instructs us to treat swept ground as **sacred**. Licensed one tightly scoped elevation in
+`03-themes.md` with four rules, and wrote the model piece — Courier Tolt flying eleven swept sectors end
+to end, four hours nine, and not having to do the sum. The pride is inheritance rather than achievement,
+and Wren's lane turns out to be waypoint two of the chain. Emotional range C+→B. Restraint and Internal
+consistency held.
 
 **R10 → R11.** Review pass, no new writing. Fixed a live bug that collapsed the whole map snapshot to one
 sector whenever any sector was unnamed — `mapstate::` records contain `::` and the parser split the

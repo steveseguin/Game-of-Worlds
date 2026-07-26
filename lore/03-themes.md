@@ -96,6 +96,46 @@ No.
 Also no. That is a different, excellent game, and copying its register would make ours look
 like a tribute act.
 
+### The one licensed elevation — and why the charter needs it
+
+**Added 2026-07-26.** The register above is correct and stays locked, and it has a cost that was
+showing: it is superb at grief, cost and procedure, and it **structurally forbids awe.** *Occasionally
+beautiful by accident* means beauty is never aimed at. *Characters do not describe their own feelings*
+means nobody in a hundred and sixty thousand words is ever allowed to be **proud.**
+
+That produced a real defect rather than a matter of taste. `11-laws-of-the-world.md` Law 6 says sweeping
+is *"the single positive-sum mechanic in the setting and the fiction should treat it as **sacred**."*
+This document was telling writers to treat something as sacred and simultaneously banning the only
+register in which they could. Every piece about sweeping was therefore about the hulls it cost, and none
+was about the road.
+
+**So: elevation is licensed, for exactly one subject.**
+
+| | |
+|---|---|
+| **Licensed for** | The permanence Law 6 creates. Swept ground. A corridor that used to kill people and now does not. A first crossing. The moment somebody stands on something that will outlast them |
+| **Not licensed for** | Combat. Conquest. Fleets. Wonders. Victory. Anything a player *beats* |
+| **Because** | The setting has precisely one thing that is pure gain and permanent, and it is the thing the player actually does. Awe spent anywhere else is the register in "What we never sound like" |
+
+**Four rules, and they are what keep this from becoming the thing we mock above.**
+
+1. **The pride is never in oneself.** It is in what other people paid for. A swept chain is ninety years
+   of strangers' dead, and a courier flying it is a beneficiary, not a hero. *That* is the emotion the
+   folder was missing — not triumph, **inheritance.**
+2. **No adjective does the work.** Elevation comes from the *fact*, held still: nothing in these eleven
+   sectors can kill you, and that has not been true for anybody since AU 0. If the sentence needs
+   *magnificent* to land, the fact underneath it is not big enough.
+3. **It must cost the character something to say.** Wren is irritated rather than haunted; the same
+   discipline applies upward. Somebody moved should be embarrassed about it, or professional about it,
+   or busy.
+4. **Never at the expense of Law 1.** Sweeping makes space *safe*. It does not restore *sight*. A swept
+   corridor is not lit and nobody in it can see ahead — what they get is the absence of the arithmetic,
+   which is a better feeling and a true one.
+
+**The model piece is `24-anthology/16-the-first-clean-run.md`.** If elevation is ever needed again, match
+that and no further; it is deliberately the only one of its kind in a hundred and six pieces, and the
+ratio is the reason it works.
+
 ### Three specific rules of voice
 
 1. **Never say "destroyed" about people.** Ships are destroyed. Crews **did not arrive.**

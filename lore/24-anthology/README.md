@@ -61,8 +61,9 @@ setting from these should end up curious, not briefed.
 | `13-wonders.md` | The twelve Wonders, in myth form | 12 |
 | `14-race-weapons.md` | The signature weapons, as their own people tell them | 12 |
 | `15-they-could-not-be-moved.md` | **One long piece.** An invasion stopped by fixed batteries, told by the deputy who costed them as poor value | 1 |
+| `16-the-first-clean-run.md` | **One long piece, and the only elevated one.** Eleven swept sectors end to end; the payoff for Law 6 | 1 |
 
-**105 pieces across fifteen files.** Each file states its own count in its header. `15-` is the one
+**106 pieces across sixteen files.** Each file states its own count in its header. `15-` is the one
 deliberate exception to the 350-500 word rule: it is a single long account, because the argument it pays
 off took nine years and the morning it pays off took four minutes.
 
