@@ -71,7 +71,9 @@ lines, drawn deterministically, that frame the match without changing a rule:
 
 **Cost:** small. Text plus a deterministic draw. This is the highest value-per-line item in this document.
 
-**BUILT.** `server/lib/standing-advisory.js`, broadcast as four `systemalert::` lines at game start.
+**BUILT.** `server/lib/standing-advisory.js`, broadcast as four `advisory::` lines at game start — its own
+wire prefix, not `systemalert::`, so the feed icon is chosen by the sender: three of the four lines
+mention mouths, shoals or a fleet and the text classifier was correctly reading them as fleet movements.
 Every figure is counted off the map array that was just written to the table, so it cannot contradict the
 board; the phrasing is a hash of the game id, so a reconnect reads the same advisory back. It names no
 positions and never mentions relics. `tests/standing-advisory.test.js` (5) checks all of that — and caught

@@ -1945,7 +1945,7 @@ async function initializeGame(gameId, connection, game = {}) {
         // the same advisory back. It reveals no positions; the map is fogged and this is not intel.
         try {
             standingAdvisory.compose(gameId, map).forEach(line => {
-                broadcastToGame(gameId, `systemalert::${line}`);
+                broadcastToGame(gameId, `advisory::${line}`);
             });
         } catch (advisoryError) {
             // Flavour must never be able to stop a game starting.

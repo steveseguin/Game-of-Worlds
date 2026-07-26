@@ -35,7 +35,12 @@ const FIXED_SIZES = [
     [1920, 1080], [2560, 1080], [3440, 1440], [1600, 900], [1440, 900],
     [1366, 768], [1280, 800], [1280, 1024], [1024, 768], [1024, 600],
     [900, 600], [800, 600], [768, 1024], [640, 480],
-    [430, 932], [390, 844], [360, 640], [932, 430]
+    [430, 932], [390, 844], [360, 640], [932, 430],
+    // Regression: 510x407 was found by the random sweep and is the gap between two thresholds
+    // that described one decision - game-screen.js squeezed the resource bar under 560px while the
+    // stylesheet only tightened its contents under 430px, so between them the bar wrapped to two
+    // rows and grew 9px into the control pad. Pinned so it cannot come back by luck.
+    [510, 407]
 ];
 
 // Real device shapes, both orientations. The generic sweep above draws arbitrary boxes,

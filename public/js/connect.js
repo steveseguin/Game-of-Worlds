@@ -1018,6 +1018,15 @@ function handleWebSocketMessage(message) {
         }
         return;
     }
+    // The cluster reading at game start. It gets the charting mark explicitly rather than going
+    // through classifyEventMessage, because it is a Registry document and its prose mentions mouths,
+    // shoals and fleets - which the classifier correctly reads as movement and which is wrong here.
+    // Choosing the icon at the sender is the fix for text-coupled icons, not another pattern.
+    if (message.indexOf("advisory::") === 0) {
+        const text = message.slice("advisory::".length).trim();
+        if (text) pushEventFeed(text, 'system', 'chart');
+        return;
+    }
     if (message.indexOf("standingorders::error::") === 0) {
         const text = message.replace("standingorders::error::", "") || 'Unable to update standing orders';
         if (window.NotificationSystem?.notify) {

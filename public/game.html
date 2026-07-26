@@ -131,8 +131,18 @@
            in that, so it wrapped to two rows, grew to 83px tall, and its bottom edge ran
            7px into the build pad (measured at 361x428). Tighten the blocks so they stay on
            one row rather than letting the bar grow downwards into a panel that is pinned
-           to the bottom of the screen and cannot move out of the way. */
-        @media (max-width: 430px) {
+           to the bottom of the screen and cannot move out of the way.
+
+           THE THRESHOLD HERE MUST MATCH game-screen.js's `veryNarrow`, WHICH IS 560, NOT 430.
+           It did not, and that gap was a live bug: the layout script treats anything under
+           560px as very narrow and gives the bar a squeezed width, while this rule only
+           tightened its contents under 430. Between the two the bar got a narrow box with
+           full-size contents, wrapped to two rows again, and grew down into the control pad —
+           reproduced by responsive-layout.spec.js at a random 510x407 as
+           "resourceBar over controlPadGUI (282x9px)", where 282px is exactly the squeezed
+           width. Two thresholds describing one decision is the defect; if `veryNarrow` moves,
+           move this with it. */
+        @media (max-width: 560px) {
             #resourceBar { gap: 7px !important; padding: 6px 9px !important; }
             #resourceBar .res { gap: 4px; }
             #resourceBar .res-icon { width: 18px; height: 18px; }

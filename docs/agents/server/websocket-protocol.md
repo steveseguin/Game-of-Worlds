@@ -122,6 +122,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `gameover::...` | game/lobby | Game end. |
 | `standingorders::state::<json>` / `standingorders::applied::<json>` / `standingorders::error::<msg>` / `standingorders::noop` | game | Standing order state/results/errors. |
 | `systemalert::<msg>` | game | Important narrative/system update. |
+| `advisory::<msg>` | game | One line of the cluster Standing Advisory, broadcast to everyone at game start. Every figure in it is counted off the generated map and the phrasing is deterministic per game id (`server/lib/standing-advisory.js`). Carries its own prefix so the feed icon is set by the sender rather than inferred from prose. |
 | `namechoice::<json>` | game | Sent only to the player who just swept a shoal: `{sector, chosen, candidates, turn, cost, memorial}`. `cost` is the number of hulls lost crossing, and the prompt leads with it. `memorial` is true when NOTHING survived: the sector is named but not owned, the prompt reads completely differently, and the name is still permanent and still inherited by whoever takes the ground later. They reply with `//namesector`. Candidates come from `server/lib/sector-names.js` and the server accepts only an index into them, so no player-supplied text ever reaches another player's map. |
 | `maxbuild::`, `ownsector:`, `fleet:`, `tech:`, `ub:`, `info:` | game | Legacy/current compatibility messages still parsed by `public/js/connect.js`. |
 

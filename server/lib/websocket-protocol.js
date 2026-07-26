@@ -26,7 +26,11 @@ const GAME_MESSAGE_PREFIXES = Object.freeze([
     // Offered to the one player who just swept a shoal, so they choose what goes on the
     // chart. Curated candidates only - see server/lib/sector-names.js for why the server
     // never accepts free text for a name that every player will see forever.
-    'namechoice::'
+    'namechoice::',
+    // The cluster reading, broadcast once at game start. Its own prefix rather than systemalert:: so
+    // the feed icon is chosen by the SENDER instead of inferred from the prose - three of its four
+    // lines mention mouths, shoals or a fleet and were being iconed as fleet movements.
+    'advisory::'
 ]);
 
 function formatTurnPhase(state, turn, phase = '') {
