@@ -147,23 +147,54 @@ test('the Wonder rules reconciled in R11 stay reconciled', () => {
         `these files assert a rule Q10 superseded:\n  ${[...new Set(offenders)].join('\n  ')}`);
 });
 
-test('the siteless-Wonder problem is still recorded as open', () => {
-    // Q10f announces construction with its sector; the Shadow Realm's Wonder has no sector. That
-    // conflict is the kind of thing that gets quietly dropped rather than solved, and dropping it
-    // means the obvious implementation deletes the exception 13-wonders/README.md calls the whole
-    // point of that race. Three files must keep saying so until somebody decides.
+test('the siteless-Wonder exception survives the construction announcement', () => {
+    // Q10f announces construction with its sector; the Shadow Realm's Wonder has no sector, and
+    // 13-wonders/README.md calls that absence the whole point of the race. Q10g resolved it: a count,
+    // not a coordinate.
+    //
+    // This is the assertion most likely to rot, because the obvious implementation of "announce the
+    // sector" simply has nothing to say for one race, and the cheapest way to make the code tidy is to
+    // quietly give the Frame a site. Four files have to keep the exception on the page.
     const files = loreFiles();
-    const mustFlagIt = ['08-open-questions.md', '13-wonders/README.md', '27-the-unattributed.md'];
+    const mustCarryIt = [
+        '08-open-questions.md',
+        '13-wonders/README.md',
+        '13-wonders/12-shadow-realm.md',
+        '27-the-unattributed.md'
+    ];
 
     const silent = [];
-    for (const want of mustFlagIt) {
-        const f = files.find(x => x.file === `lore/${want}` || x.file.endsWith(`/${want}`));
+    const undecided = [];
+    for (const want of mustCarryIt) {
+        const f = files.find(x => x.file === `lore/${want}`);
         assert.ok(f, `${want} is missing`);
-        if (!/has no site|siteless/i.test(f.flat)) silent.push(f.file);
+        if (!/has no site|no construction site|siteless/i.test(f.flat)) silent.push(f.file);
+        // And each must carry the resolution, not just the problem.
+        if (!/count instead of a coordinate|a count, not a coordinate|how many of the eleven/i.test(f.flat)) {
+            undecided.push(f.file);
+        }
     }
     assert.deepEqual(silent, [],
-        'these files no longer record that the Shadow Realm Wonder has no site, which the '
-        + `construction announcement depends on:\n  ${silent.join('\n  ')}`);
+        `these files no longer record that the Assembled Frame has no site:\n  ${silent.join('\n  ')}`);
+    assert.deepEqual(undecided, [],
+        'these files record the siteless problem without Q10g\'s answer, so a reader is left to '
+        + `invent one:\n  ${undecided.join('\n  ')}`);
+});
+
+test('a finished Wonder wins, and no file still calls that an open choice', () => {
+    // Q10h settled it. The specific phrasings that described it as unsettled were written by me one
+    // pass earlier and are exactly the kind of hedge that survives a decision.
+    const offenders = loreFiles()
+        .filter(f => !NOT_CANON.has(f.name))
+        .filter(f => /live choice, not a settled one|whether a finished Wonder wins outright/i.test(f.flat))
+        .map(f => f.file);
+    assert.deepEqual(offenders, [],
+        `these files still present the finished-Wonder question as undecided:\n  ${offenders.join('\n  ')}`);
+
+    // And the decision has to be findable in the record.
+    const record = loreFiles().find(f => f.name === '08-open-questions.md');
+    assert.match(record.flat, /Q10h[\s\S]{0,200}?Completion is the victory/i,
+        'Q10h no longer records that completion is the victory');
 });
 
 test('no file claims the artifact field is still undecided', () => {

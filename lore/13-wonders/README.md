@@ -65,11 +65,16 @@ line of sight. Q10f made this stronger than it was, and the fiction pays for it 
 intelligence having to leak: a Wonder is a Lamp being relit. It is a light. Everybody can see it.
 
 There is exactly one exception — the Shadow Realm's, which has no site — and that exception is the
-whole point of the Shadow Realm. **A universal announcement has to preserve it.** Whatever the
-Shadow Realm's Assembled Frame announces, it cannot be a sector, because there is not one. Flagged
-in Q10 as unresolved; do not implement the announcement without deciding what a siteless Wonder
-tells the galaxy, because the obvious implementation deletes the best-designed exception on the
-roster.
+whole point of the Shadow Realm. **It announces a count instead of a coordinate** (Q10g): the galaxy
+is told how many of the eleven fragments the Assembled Frame has recovered, updated as that changes,
+and never where. That is a harder clock to ignore than a sector, not a softer one — *"somebody has
+begun in sector 34"* can be discounted by anyone far away; *"seven of eleven"* cannot be discounted
+by anybody. And the race that refuses to be counted becomes the only empire the galaxy counts, which
+is the reason it is right rather than a consolation for having no site.
+
+They remain stoppable, differently: the Frame's progress **is** the relics held, and a relic transfers
+with the ground, so there is no site to besiege and up to eleven worlds to take, each setting them
+back by one.
 
 **4. Maintenance is mandatory, per-turn, and it hurts.** Every Wonder has an upkeep, and every
 upkeep is denominated in the thing that empire can least afford. Miss it and the Wonder goes
@@ -92,9 +97,11 @@ player with a finished Wonder and no army still loses,"* and that was written wh
 hold time were separate. Q10f deliberately collapsed them into one clock. The letter of the old rule
 is therefore wrong; its intent survives, front-loaded into the build.
 
-**If that trade is not wanted**, the fix is to re-separate the clocks: require holding the *completed*
-Wonder for a further N turns before it wins. That restores this rule exactly as it was, at the cost
-of the simplification Q10f was chosen for. It is a live choice, not a settled one.
+**Settled, Q10h: completion is the victory.** The alternative — hold a *finished* Wonder for a further
+N turns — was rejected on play rather than on tidiness. It adds an endgame phase in which the outcome
+is already decided and the game continues, which is the shape that makes players concede instead of
+play. It also needs a second piece of state and reintroduces a bug that build-is-hold removes for
+free: a clock measured from completion outlives the ground it stands on, so a captor inherits it.
 
 **7. Every Wonder has a stated danger, and the danger is narrative, not a debuff.** It is what
 happens to the galaxy if this is the one that gets finished. The campaign uses these. Skirmish play

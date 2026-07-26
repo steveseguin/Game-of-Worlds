@@ -22,6 +22,21 @@ different holders who each paid for it and each know what they have. Progress is
 recovered, and every fragment is a separate negotiation with a separate empire, and none of them will
 part with it cheaply now that they know somebody wants the set.
 
+**And so it announces a count instead of a coordinate** (Q10g). Every other Wonder tells the galaxy who
+has begun and where. The Frame has no where, so the galaxy is told **how many of the eleven are
+recovered**, updated as that number changes, and never a location. This is not a concession for having
+no site; it is a worse thing to hear. *Somebody has begun in sector 34* can be discounted by anyone far
+enough away. *Seven of eleven* cannot be discounted by anybody.
+
+The Unlisted will note, correctly and without pleasure, that the empire which refuses to be counted has
+become the only empire in the galaxy that the galaxy counts. Ossa is said to have called the public
+tally *"the first honest ledger anybody ever kept about us, and we did not get to write it."*
+
+**How they are stopped.** Not by siege — there is nothing to lay siege to. The Frame's progress **is**
+the fragments, and a fragment sits on ground and changes hands with it (Q10b). So there is no single
+target and there are up to eleven soft ones, each worth one step backwards. Fine-grained rather than
+decisive, which is the correct way to be at war with people nobody can find.
+
 And when it is complete, they can finally read it. Sable was honest about that in AU 67, which was the
 one time in recorded history an Unlisted volunteered the truth: *we cannot read them either.*
 

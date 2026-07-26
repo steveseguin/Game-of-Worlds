@@ -87,12 +87,17 @@ its sector**, and whose completion wins — reviving the `WONDER` victory that h
 `enabled: false` since launch. Taking the sector mid-build destroys the works and hands the parts to the
 attacker.
 
-**Blocking, and found only on review:** the Shadow Realm's Assembled Frame **has no site**, which
-`13-wonders/README.md` calls the whole point of that race — so a universal "construction has begun in
-sector X" announcement has nothing to announce for them, and the obvious implementation quietly deletes
-the exception. Decide what a siteless Wonder tells the galaxy first. The same review found Q10 had
-contradicted three of the seven Wonder rules; all three are reconciled in `13-wonders/README.md` and
-recorded in Q10.
+**Found on review and now closed.** Q10 had contradicted three of the seven Wonder rules; all three are
+reconciled in `13-wonders/README.md` and recorded in Q10. The two forks that review left open are decided:
+
+- **Q10g — a siteless Wonder announces a count, not a coordinate.** The Shadow Realm's Assembled Frame
+  has no site, so the galaxy is told how many of the eleven fragments are recovered rather than where.
+  Harder to ignore than a sector, and the empire that refuses to be counted becomes the only one the
+  galaxy counts. They are stopped by taking the worlds their fragments sit on.
+- **Q10h — completion is the victory.** Build time is hold time; there is no second holding phase. The
+  army requirement lives in surviving a long, publicly announced construction. `turn_built` should mean
+  *construction started*, and the row is deleted when the sector falls — which makes `victory.js`'s
+  existing arithmetic correct instead of dangerous.
 
 **Still needed before any of it ships:** every number, whether `artifact = 1–5` means five kinds or five
 grades, and art for the lifter. **Fiction is now safe to write** against the locked parts, and was not

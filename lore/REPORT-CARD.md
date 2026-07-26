@@ -168,12 +168,38 @@ Nothing else. This pass found and fixed problems; it did not deliver anything to
 anything new, so **Restraint, Contact, Legibility, Co-authorship and discovery paths all hold.** Fixing a
 regression restores a grade's existing basis rather than earning more.
 
-### The next thing this card needs
+### The two forks this pass opened, both now closed
 
-A prose-versus-prose guard, because that is now the only unguarded class of error left in a folder this
-size. It does not have to be clever: for each file that claims to be the authority on something, assert
-that no other file states a contradicting rule about the same named object. Even a narrow version —
-Wonder rules, victory conditions, hazard odds — would have caught all three of today's conflicts.
+Not by me deferring them to a later revision — they were decided in the same session, on instruction.
+
+- **Q10g · a siteless Wonder announces a count, not a coordinate.** The Shadow Realm's Assembled Frame
+  has no site, so the galaxy is told how many of the eleven fragments are recovered rather than where.
+  Most of this was already sitting in `13-wonders/12-shadow-realm.md` — *"progress is measured in
+  fragments recovered"*, *"eleven different holders who each paid for it and each know what they have"* —
+  and nobody had joined it up. The irony is the argument: the empire that refuses to be counted becomes
+  the only one the galaxy counts.
+- **Q10h · completion is the victory.** Rejected the alternative on play rather than tidiness: holding a
+  *finished* Wonder for a further N turns adds an endgame phase where the outcome is decided and the game
+  continues, and it reintroduces the captor-inherits-the-clock bug that build-is-hold removes for free.
+
+### The prose-versus-prose guard now exists — and the grade still holds at B+
+
+`tests/lore-internal-consistency.test.js`: references resolve, cited decision numbers exist, superseded
+rules stay superseded, the siteless exception keeps both its problem *and* its answer on the page, and no
+file calls a settled mechanic open. It found a dangling reference on its first run and caught a stale
+header of mine on its second.
+
+**It is not enough to restore Internal consistency, and saying otherwise would be the exact inflation
+this file exists to prevent.** What it guards is *recurrence of conflicts already found* plus *dangling
+pointers*. Nothing in it detects a **new** contradiction between two files that both sound authoritative,
+which is the failure that actually happened. Restoring a grade in the same session it was lowered, on the
+strength of a guard I wrote myself against the very conflicts I had just fixed, would be marking my own
+homework.
+
+The condition for A− is a guard that fails on a contradiction **nobody has seen yet**. A plausible shape:
+declare, per named object, which file is authoritative for it, then assert no other file states a rule
+about that object without deferring to the authority. That is real work and it is the next thing this
+card needs.
 
 ---
 
@@ -638,6 +664,15 @@ question Q10 had broken without noticing: what a **siteless Wonder announces**. 
 status in the encyclopedia and a misfiled A–Z entry. Redid one commit byte-preserving after an edit
 normalised 55 bare-LF lines. **Internal consistency A−→B+**, because every guard in this project checks
 prose against code and nothing checks prose against prose. Everything else held.
+
+**R11, second half.** Closed both forks R11 had opened. Q10g: a siteless Wonder announces a count, not a
+coordinate — the Shadow Realm is told to the galaxy as *seven of eleven*, never as a location, and the
+race that refuses to be counted becomes the only one counted. Q10h: completion is the victory; the
+hold-after-completion alternative was rejected for adding a decided-but-continuing endgame and for
+reintroducing a clock that outlives its ground. Recorded across five files and pinned by two new
+assertions, both proven to bite. **Internal consistency stays at B+** — the new guard covers recurrence
+and dangling pointers, not unseen contradictions, and restoring the grade on a guard written against the
+conflicts it had just fixed would be marking my own homework.
 
 ---
 

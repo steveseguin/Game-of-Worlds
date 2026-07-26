@@ -217,13 +217,12 @@ Build a Galactic Wonder, hold it ten turns, win. Written, switched off, waiting 
 - **Construction is announced to every player when it starts, including the sector.** The fiction does
   this for free and nothing has to leak: a Wonder is a Lamp being relit. It is a light. Everybody can see
   where it is. The `systemalert::` broadcast path already exists.
-  - **Unresolved, and it blocks this:** the Shadow Realm's Assembled Frame **has no site**
-    (`13-wonders/README.md` rule 3, where the absence is called the whole point of the race). A
-    sector announcement has nothing to announce for them. Decide what a siteless Wonder tells the
-    galaxy before building this, because the obvious implementation deletes the best exception on the
-    roster. One promising direction, unexamined: the Shadow Realm's announcement is that *somebody*
-    has begun and nobody can say where — which is more frightening than a coordinate and is exactly
-    what that race is for.
+  - **One exception, now decided (Q10g):** the Shadow Realm's Assembled Frame **has no site**
+    (`13-wonders/README.md` rule 3, where the absence is called the whole point of the race), so it
+    announces **a count instead of a coordinate** — how many of the eleven fragments are recovered,
+    updated as that changes, never where. Harder to ignore than a sector, not softer, and the empire
+    that refuses to be counted becomes the only one the galaxy counts. They are stopped by taking the
+    worlds their fragments sit on, of which there may be eleven, rather than by besieging one site.
 - **Taking the sector mid-build destroys the works.** The relics transfer with the ground, so the
   attacker gains the parts and starts over. Recorded as the writer's call and open to veto: inheriting
   progress would let a rival snipe turn nine and *steal* the win, rewarding nine turns of inactivity,

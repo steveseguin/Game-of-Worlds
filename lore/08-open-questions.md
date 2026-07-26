@@ -1,11 +1,10 @@
 # Decisions and Open Questions
 
-This is the decision record, not the current backlog. Q1–Q4, Q6–Q9 and Q10 are decided; Q5 was
-withdrawn after its premise proved false; Q5d was answered by Q10. The remaining decisions are the
-Unstable Star's mechanical truth, whether the Concord flashback merits an engine mode, and the two
-forks Q10 left open — what a **siteless Wonder announces**, and whether a finished Wonder wins outright
-or must then be held. Start with `STATUS.md` for current delivery state and priorities, then use this
-file for the reasoning.
+This is the decision record, not the current backlog. Q1–Q4, Q6–Q9 and Q10 (including Q10g and Q10h)
+are decided; Q5 was withdrawn after its premise proved false; Q5d was answered by Q10. The remaining
+decisions are the Unstable Star's mechanical truth, whether the Concord flashback merits an engine
+mode, whether `artifact = 1–5` means five kinds or five grades, and every balance number. Start with
+`STATUS.md` for current delivery state and priorities, then use this file for the reasoning.
 
 ---
 
@@ -357,11 +356,66 @@ Q10 was written without checking the Wonder rule set, and it contradicted three 
    Wonder for a further N turns, which restores Rule 6 and gives up the simplification Q10f was chosen
    for. Recorded as a live choice.
 
+### Q10g · What a siteless Wonder announces → **a count, not a coordinate. LOCKED.**
+
+Conflict 2 above, resolved. Every other empire's Wonder announces *who* and *where*. The Shadow Realm's
+Assembled Frame has no where, so it announces **how many**.
+
+The galaxy is told that the Frame is being assembled and **how many of the eleven fragments are
+recovered**, updated as that number changes. Never a location, because there is not one.
+
+**Most of this was already in `13-wonders/12-shadow-realm.md` and nobody had joined it up.** That file
+already says the Frame is *"assembled by acquisition"*, that *"progress is measured in fragments
+recovered"*, that each comes *"from eleven different holders who each paid for it and each know what they
+have"*, and that none of them will sell cheaply *"now that they know somebody wants the set."* The other
+empires were always going to find out. The only question was through what channel, and the answer is: the
+same one, made public.
+
+**Why a count is the right answer and not a weaker version of a coordinate:**
+
+- **It is a harder clock to ignore, not a softer one.** "Somebody has begun in sector 34" can be
+  discounted by anyone far away. "Seven of eleven" cannot be discounted by anybody.
+- **It fits what that race is.** The Shadow Realm refuses to be counted, and it is now the only empire in
+  the galaxy the galaxy counts. That irony is the reason this is right rather than a consolation for
+  having no site.
+- **The counterweight is already canon.** Every fragment is a negotiation with a specific empire, and
+  that empire knows what it sold. So their progress is *privately* legible to eleven separate creditors
+  before it is publicly legible to anybody, which is a distributed intelligence problem rather than an
+  exemption from one.
+- **They are still stoppable, just differently.** Under Q10b a relic is physical and transfers with the
+  ground, and the Frame's progress *is* the relics held. There is no site to besiege; there are up to
+  eleven worlds to take, each of which sets them back by one. Fine-grained instead of decisive, which
+  suits an empire nobody can find.
+
+**What this does not do:** grant a Wonder that cannot be interfered with. If a later balance pass finds
+the Shadow Realm strictly the best Wonder race, the lever is the number of fragments required or the cost
+of each negotiation — not the announcement, which is the part carrying the theme.
+
+### Q10h · Does a finished Wonder win outright? → **yes. Completion is the victory. LOCKED.**
+
+Conflict 3 above, resolved in favour of Q10f as written, and `13-wonders/README.md` rule 6 is amended
+rather than restored.
+
+- **Build time is hold time. One clock.** No separate hold phase after completion.
+- **Rule 6's intent is satisfied by the build, not by a second phase.** Construction is long, announced
+  to everybody on the turn it starts, and destroyed if the ground falls. A player with no army does not
+  finish. The requirement moved; it did not vanish.
+- **The alternative was rejected on play, not on tidiness.** Requiring a further N turns of holding a
+  *finished* Wonder adds an endgame phase in which the outcome is decided and the game continues — the
+  shape that makes players concede rather than play. It also needs a second piece of state (`held_since`
+  distinct from the build's start) and reintroduces the captor-inherits-the-clock bug that build-is-hold
+  removes for free.
+
+**Implementation consequence, so this is not rediscovered later.** `turn_built` in the `wonders` table
+should mean *the turn construction started*; completion is `started + duration`; and the row is deleted
+when the sector falls. Under those three, `victory.js`'s existing `turnsHeld = currentTurn - turnBuilt`
+arithmetic becomes correct rather than dangerous, because the clock cannot outlive the ground it stands
+on. The guard in `tests/lore-constants-match-code.test.js` still fails if the condition is enabled while
+that is untrue.
+
 ### Still open after this
 
-- **What the Shadow Realm's siteless Wonder announces.** Newly open, see above. Blocks the
-  announcement.
 - Whether `artifact = 1–5` means five kinds or five grades (Q10b, proposed).
-- Whether a finished Wonder wins outright or must then be held (conflict 3 above).
-- Every number: discovery odds, relic count per Wonder, build duration, lifter cost.
+- Every number: discovery odds, relic count per Wonder, build duration, lifter cost, and how many of the
+  eleven the Assembled Frame needs.
 - Whether the lifter needs art before it can ship.
