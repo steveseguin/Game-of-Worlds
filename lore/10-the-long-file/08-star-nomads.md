@@ -83,7 +83,7 @@ campaign asset in this folder — a real hull, in a real berth, that the player 
 inside. Undamaged is the detail that matters: it did not survive the dark, it was *unaffected* by it.
 Something brought it home.
 
-**On the corrected count.** This is the Terran story hook from `01-terran-empire.md` paid off from the
+**On the corrected count.** This is the Terran story hook from `04-factions/01-terran-empire.md` paid off from the
 other side. Note that Keth explicitly refuses to call it a lie — *"a great many careful people each
 made one small decision"* — which is a much more damning and much more adult account of institutional
 failure than a conspiracy would be.

@@ -34,3 +34,37 @@ test('registered game message prefixes are parsed by the browser and documented'
     assert.equal(formatTurnPhase('resolving', 12, 'income'), 'turnphase::resolving::12::income');
     assert.equal(formatTurnPhase('bad', 0, 'bad::phase'), 'turnphase::idle::1::badphase');
 });
+
+test('the documented namechoice payload is the payload the server sends', () => {
+    // The tests above check that a prefix is registered, parsed and mentioned in the docs. None of
+    // them look inside the payload, and that gap produced a real error: the docs listed a `deadline`
+    // field that never existed and omitted `cost`, which is the one the prompt actually renders.
+    //
+    // namechoice is guarded specifically because it is the only prefix whose documentation spells
+    // out a key list, which is what makes the drift checkable at all.
+    const serverSrc = fs.readFileSync(path.join(root, 'server', 'server.js'), 'utf8');
+    const docs = fs.readFileSync(path.join(root, 'docs', 'agents', 'server', 'websocket-protocol.md'), 'utf8');
+    const client = fs.readFileSync(path.join(root, 'public', 'js', 'name-picker.js'), 'utf8');
+
+    // Keys the server puts in the object it stringifies into the message.
+    const emitted = serverSrc.match(/namechoice::\$\{JSON\.stringify\(\{([\s\S]*?)\}\)\}/);
+    assert.ok(emitted, 'could not find the namechoice payload construction in server.js');
+    // Comment lines cannot match: `//` fails [a-zA-Z], so only real keys are captured.
+    const sent = [...emitted[1].matchAll(/^\s*([a-zA-Z]+):/gm)].map(m => m[1]);
+    assert.ok(sent.length >= 4, `extracted only ${sent.length} payload keys; the regex has drifted`);
+
+    // Keys the docs claim.
+    const documented = docs.match(/`namechoice::<json>`[^|]*\|[^|]*\|[^|]*?\{([^}]*)\}/);
+    assert.ok(documented, 'the namechoice row no longer documents its payload shape');
+    const claimed = documented[1].split(',').map(s => s.trim().replace(/`/g, '')).filter(Boolean);
+
+    assert.deepEqual([...claimed].sort(), [...new Set(sent)].sort(),
+        `the docs and the server disagree about the namechoice payload.\n  server: ${sent.join(', ')}`
+        + `\n  docs:   ${claimed.join(', ')}`);
+
+    // And every key the client reads must actually be sent, or the prompt silently renders nothing.
+    const read = [...client.matchAll(/payload\.([a-zA-Z]+)/g)].map(m => m[1]);
+    const unsent = [...new Set(read)].filter(k => !sent.includes(k));
+    assert.deepEqual(unsent, [],
+        `name-picker.js reads payload keys the server never sends: ${unsent.join(', ')}`);
+});

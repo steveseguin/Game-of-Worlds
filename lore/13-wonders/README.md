@@ -46,12 +46,30 @@ The point of a rule set is that a Wonder is a *commitment*, not a prize.
 **1. One per empire per game.** You build your own or none. You cannot capture and operate another
 race's Wonder — you can only destroy it. Wonders are not loot.
 
-**2. It requires the race's third signature technology.** Each race's unique tech line ends in a
-capstone that is the Wonder's prerequisite, and nothing else. No shortcuts, no purchase, no trade.
+**2. It requires the race's third signature technology, and relics.** Each race's unique tech line
+ends in a capstone that is one of the two prerequisites. The other is a number of **relics** —
+`08-open-questions.md` Q10, which is the authority.
 
-**3. It occupies one held sector and it cannot be hidden.** Construction is visible to any empire
-that can see the sector, from the first turn of work. There is exactly one exception — the Shadow
-Realm's, which has no site — and that exception is the whole point of the Shadow Realm.
+*Amended 2026-07-26.* This rule used to read *"and nothing else. No shortcuts, no purchase, no
+trade,"* and both halves of that are now wrong. The research gate alone meant the endgame was bought
+with economy and nothing else, so every game's Wonder race had the same shape; the relic gate adds
+geography and history, because you also have to have held and developed the right ground. And relics
+can change hands — by conquest, and physically by lifter, which means a relic can be given. So the
+prerequisite *is* partly purchasable now. That is a real departure from the original intent and it
+was accepted deliberately: a prerequisite you can be helped towards is what stops bad map luck from
+being unanswerable.
+
+**3. It occupies one held sector and it cannot be hidden.** Construction is **announced to every
+player, with its sector, on the turn it starts** — not merely visible to whoever happens to have
+line of sight. Q10f made this stronger than it was, and the fiction pays for it without any
+intelligence having to leak: a Wonder is a Lamp being relit. It is a light. Everybody can see it.
+
+There is exactly one exception — the Shadow Realm's, which has no site — and that exception is the
+whole point of the Shadow Realm. **A universal announcement has to preserve it.** Whatever the
+Shadow Realm's Assembled Frame announces, it cannot be a sector, because there is not one. Flagged
+in Q10 as unresolved; do not implement the announcement without deciding what a siteless Wonder
+tells the galaxy, because the obvious implementation deletes the best-designed exception on the
+roster.
 
 **4. Maintenance is mandatory, per-turn, and it hurts.** Every Wonder has an upkeep, and every
 upkeep is denominated in the thing that empire can least afford. Miss it and the Wonder goes
@@ -61,8 +79,22 @@ investment goes with it.
 **5. It can be attacked, and it is the highest-value military objective in the game.** A Wonder
 sector should be the thing whole wars are fought over. Nothing about a Wonder makes its owner safe.
 
-**6. It does not win by existing.** A Wonder makes a victory condition *reachable* — it is an
-accelerant, not an autowin. A player with a finished Wonder and no army still loses.
+**6. It does not win by existing — it wins by being finished under fire.** A **finished** Wonder is
+the victory (Q10f, and `victory.js`'s dormant `WONDER` condition, which is written that way). What
+this rule was protecting is nonetheless intact, because the requirement moved rather than vanished:
+construction takes many turns and is announced to everybody with its location on turn one, so
+finishing means surviving a siege the whole galaxy was invited to. A player with no army does not get
+a finished Wonder.
+
+*Amended 2026-07-26, and the amendment is worth understanding rather than skimming.* This rule used
+to read *"a Wonder makes a victory condition reachable — it is an accelerant, not an autowin. A
+player with a finished Wonder and no army still loses,"* and that was written when build time and
+hold time were separate. Q10f deliberately collapsed them into one clock. The letter of the old rule
+is therefore wrong; its intent survives, front-loaded into the build.
+
+**If that trade is not wanted**, the fix is to re-separate the clocks: require holding the *completed*
+Wonder for a further N turns before it wins. That restores this rule exactly as it was, at the cost
+of the simplification Q10f was chosen for. It is a live choice, not a settled one.
 
 **7. Every Wonder has a stated danger, and the danger is narrative, not a debuff.** It is what
 happens to the galaxy if this is the one that gets finished. The campaign uses these. Skirmish play

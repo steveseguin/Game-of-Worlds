@@ -87,6 +87,13 @@ its sector**, and whose completion wins — reviving the `WONDER` victory that h
 `enabled: false` since launch. Taking the sector mid-build destroys the works and hands the parts to the
 attacker.
 
+**Blocking, and found only on review:** the Shadow Realm's Assembled Frame **has no site**, which
+`13-wonders/README.md` calls the whole point of that race — so a universal "construction has begun in
+sector X" announcement has nothing to announce for them, and the obvious implementation quietly deletes
+the exception. Decide what a siteless Wonder tells the galaxy first. The same review found Q10 had
+contradicted three of the seven Wonder rules; all three are reconciled in `13-wonders/README.md` and
+recorded in Q10.
+
 **Still needed before any of it ships:** every number, whether `artifact = 1–5` means five kinds or five
 grades, and art for the lifter. **Fiction is now safe to write** against the locked parts, and was not
 before.

@@ -1,9 +1,11 @@
 # Decisions and Open Questions
 
-This is the decision record, not the current backlog. Q1–Q4 and Q6–Q9 are decided; Q5 was withdrawn
-after its premise proved false. The remaining decisions are the Unstable Star's mechanical truth,
-the inert `artifact` field, and whether the Concord flashback merits an engine mode. Start with
-`STATUS.md` for current delivery state and priorities, then use this file for the reasoning.
+This is the decision record, not the current backlog. Q1–Q4, Q6–Q9 and Q10 are decided; Q5 was
+withdrawn after its premise proved false; Q5d was answered by Q10. The remaining decisions are the
+Unstable Star's mechanical truth, whether the Concord flashback merits an engine mode, and the two
+forks Q10 left open — what a **siteless Wonder announces**, and whether a finished Wonder wins outright
+or must then be held. Start with `STATUS.md` for current delivery state and priorities, then use this
+file for the reasoning.
 
 ---
 
@@ -331,8 +333,35 @@ build-it-and-hold-it-ten-turns.
 gated by production capacity. A Wonder would be the first object with a duration — an acceptable place
 to introduce one, since it is a single object, once per game, and the production budget can carry it.
 
+### Three conflicts this created in `13-wonders/README.md`, found on review and reconciled there
+
+Q10 was written without checking the Wonder rule set, and it contradicted three of its seven rules.
+`13-wonders/README.md` has been amended; the substance is here so the decision record is complete.
+
+1. **Rule 2 said the research capstone was the prerequisite "and nothing else. No shortcuts, no
+   purchase, no trade."** Q10 adds a relic gate, and relics can be given — by conquest, and physically
+   by lifter. So the prerequisite is now partly purchasable. That is a genuine departure from the
+   original intent, accepted deliberately, because a prerequisite you can be *helped* towards is what
+   keeps bad map luck answerable.
+2. **Rule 3 said construction is visible to any empire that can see the sector.** Q10f is stronger: it
+   is announced to everybody with its sector. **And it left the one exception broken.** The Shadow
+   Realm's Assembled Frame **has no site**, which `13-wonders/README.md` calls the whole point of the
+   Shadow Realm. A universal sector announcement has nothing to announce for them. **This is now
+   open:** decide what a siteless Wonder tells the galaxy before implementing the announcement, because
+   the obvious implementation deletes the best-designed exception on the roster.
+3. **Rule 6 said a Wonder "does not win by existing — an accelerant, not an autowin. A player with a
+   finished Wonder and no army still loses."** Q10f makes a finished Wonder the victory. The rule's
+   *intent* survives — construction is long and publicly advertised, so finishing means surviving a
+   siege, and an army is still required — but the letter of it is wrong, and it was written when the
+   two clocks were separate. If the trade is unwanted, the fix is to require holding the *completed*
+   Wonder for a further N turns, which restores Rule 6 and gives up the simplification Q10f was chosen
+   for. Recorded as a live choice.
+
 ### Still open after this
 
+- **What the Shadow Realm's siteless Wonder announces.** Newly open, see above. Blocks the
+  announcement.
 - Whether `artifact = 1–5` means five kinds or five grades (Q10b, proposed).
+- Whether a finished Wonder wins outright or must then be held (conflict 3 above).
 - Every number: discovery odds, relic count per Wonder, build duration, lifter cost.
 - Whether the lifter needs art before it can ship.

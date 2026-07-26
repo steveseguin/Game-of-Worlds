@@ -22,8 +22,9 @@ silence**. Homeworld never visited, possibly nonexistent. No Ancient body has ev
 inheritance.
 
 **Artifact** — A field on every map sector. `lib/map.js` rolls **1–5 on 25% of all colonizable worlds**
-and persists it. **Nothing reads it.** Proposed as Trellis remnant; see `25-crystal.md` Part 6. Not canon
-until a mechanics decision is made.
+and persists it, one value per world. **Nothing reads it yet** — the field is live, the mechanic is not.
+Canon as of Q10: this is where a **relic** lies. See `27-the-unattributed.md`; `08-open-questions.md` Q10
+is the authority. Still open: whether 1–5 means five *kinds* of part or five *grades* of one.
 
 **Asteroid Belt** *(sector type 1)* ✓ — A **shoal**. `dangerLevel 0.5`. Lethal to cross, survivable to
 enter, and permanently safe once swept. Yields **4 crystal and 8 metal a turn** once secured. The only
@@ -148,6 +149,13 @@ deliberate and never pointed at.
 casualty reporting, with no authority to do so, because during the Shortening it was the only institution
 still publishing. **The race list players see is a Registry document, and it is incomplete.**
 
+**Relic** — A piece of an Unattributed mechanism, buried on a world. It does nothing alone, cannot be
+manufactured, and cannot be reverse-engineered: it is the component the old documentation assumed you
+already had. Found through *development* rather than time, at most one per world, and it **transfers with
+the ground** — so a relic world is worth defending. Bring enough together and you can build a Galactic
+Wonder. Canon as of Q10; unbuilt. The word replaced an earlier coinage, *a leaving*, which collided with
+the Void Walkers' form language.
+
 ## S
 
 **Sector types** ✓ — 0 Empty Space · 1 Asteroid Belt · 2 Black Hole · 3 Unstable Star · 4 Brown Dwarf ·
@@ -200,7 +208,11 @@ engine does not enforce. Flagged as an open question.
 
 **Victory conditions** — Five active. **Domination** 75% of colonizable worlds · **Elimination** last with
 a world · **Economic** 100,000 total resources · **Scientific** every technology available to your race ·
-**Time** most ground at turn 90 (Quick) or 120 (Epic). Two are disabled: Galactic Wonder and Alliance.
+**Time** most ground at turn 90 (Quick) or 120 (Epic). Two are disabled in code: Galactic Wonder and
+Alliance. Q10 revives the Wonder condition — build it from relics, hold it, win — but it is still
+`enabled: false` today, and do not switch it on before reading `STATUS.md` decision 3b: its clock is
+computed from the turn the Wonder was *built* while the row is found by current owner, so a captor would
+inherit the elapsed time and win instantly.
 
 **Scientific Victory is the mistake.** Completing the tree means you can relight the lanes. The game's
 own win screen is the story's climax.

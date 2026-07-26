@@ -16,6 +16,11 @@ verifiable by someone who did not make it. A grade may be **lowered** on review 
 claimed credit it did not earn. Optimism about our own work is the failure mode this file exists to
 prevent.
 
+**Revision 11 — 2026-07-26.** A review pass rather than an improvement pass. It found a **live
+map-breaking bug** on the deployed branch, three conflicts between one-day-old canon and existing canon,
+and a documented wire payload that never existed. **Internal consistency comes down, A− → B+**, and the
+reason is structural rather than incidental. Detail in R11.
+
 **Revision 10 — 2026-07-26.** Target: *Co-authorship (D)*, the lowest grade on the card and unmoved
 since R2. The naming picker is built and the map shows what the player chose. One grade moves. Detail
 in R10.
@@ -40,11 +45,11 @@ real and it did not cross any criterion's threshold, and saying so is the point 
 
 ## Grades
 
-| | Criterion | R1 | R3 | R6 | R9 | R10 | |
+| | Criterion | R1 | R3 | R6 | R10 | R11 | |
 |---|---|:---:|:---:|:---:|:---:|:---:|---|
 | **A. World** | Limitation over power | A | A | A | A | **A** | — |
 | | Material logic | A | A | A | A | **A** | — |
-| | Internal consistency | A− | A− | A− | A− | **A−** | ▼B+ in R7, ▲back to A− in R8 — now guarded by tests, not by reading |
+| | Internal consistency | A− | A− | A− | A− | **B+** | ▼ again — new canon contradicted old canon in three places. Every guard checks prose against *code*; nothing checks prose against *prose* |
 | | Causal history | A− | A− | A− | A− | **A−** | — |
 | | Sensory concreteness | A− | A− | A | A | **A** | ▲ in R6 — things are handled now, in 104 places |
 | | Restraint *(means, not end)* | D | B− | B− | B− | **B−** | held twice — the corpus still grows faster than the delivered fraction |
@@ -65,11 +70,110 @@ real and it did not cross any criterion's threshold, and saying so is the point 
 
 **Sections — World A− · Character B+ · Story B+ · Delivery B− · Overall B**
 
-*Computed, not felt: World 3.68, Character 3.20, Story 3.26, Delivery **2.83** (was 2.10 at R6),
-overall **3.29** (was 3.14). **Eleven of twenty criteria are still below A.** Delivery has gone from
-the section that could not move to the section that moved most, and it is no longer last by a wide
-margin. The lowest grades on the card are now Change within the story, Emotional range and
-Co-authorship, all at C+.*
+*Computed, not felt: World **3.62** (was 3.68 — Internal consistency lowered in R11), Character 3.20,
+Story 3.26, Delivery **2.83** (was 2.10 at R6), overall **3.26**. **Twelve of twenty criteria are still
+below A.** Delivery has gone from the section that could not move to the section that moved most, and it
+is no longer last by a wide margin. The lowest grades are Change within the story, Emotional range and
+Co-authorship, all at C+ — and the one that just fell is the one worth watching, because it fell for a
+missing guarantee rather than a specific mistake.*
+
+---
+
+## R11 — a review pass, and a grade that has to come down
+
+No new writing. The instruction was to review everything, make sense of it, and correct what was wrong.
+Four things were wrong, and one of them was live in front of players.
+
+### The live bug
+
+Chart names were added to the `mapstate::` snapshot as three extra fields. An unnamed sector encodes an
+empty chart name, which puts a literal `::` **inside its own record**:
+
+```
+mapstate::19:1:0:10:1:1::0:0,20:1:0:9:1:0::0:0,13:2:0:6:0:0::0:0
+                       ^^                 ^^                 ^^
+```
+
+The client derived its payload with `message.split('::')` and took element 1, so **every snapshot was
+truncated at the first unnamed sector** — and almost every sector is unnamed. A whole-galaxy update
+collapsed to one tile. Nothing threw. Probed sectors stayed fogged, ownership stopped updating, and the
+only symptom was a map that would not change.
+
+Fixed by stripping the known prefix instead of splitting on a delimiter that occurs inside the payload,
+which also means future field additions cannot reintroduce it. Guarded by
+`tests/mapstate-delimiter.test.js`, which pins the **hazard** rather than the fix: it asserts the encoder
+still produces `::` for unnamed sectors, so anyone tidying the parser back into a split fails with the
+reason. Writing that guard turned up a third record shape nobody had accounted for — the probe-loss
+marker is six fields, not nine, and survives only on the parser's destructure defaults, now also pinned.
+
+**The comment above the bug claimed the opposite.** It read *"Empty trailing fields preserve
+compatibility for unnamed sectors"* — describing, as a safety property, the exact thing that was breaking
+the map. A confident comment on top of a silent failure is worse than no comment.
+
+**How it was caught matters.** An end-to-end probe assertion found it: the harness probes sector 13 and
+asserts the tile leaves fog. That is an expensive way to find a string bug, and it only worked because
+the suite exercises a real game. No unit test could have seen it, and no amount of reading did.
+
+### Internal consistency A− → **B+**, and why
+
+Q10 was written yesterday and **contradicted three of the seven rules in `13-wonders/README.md`**:
+
+- Rule 2 said the research capstone was the prerequisite *"and nothing else. No shortcuts, no purchase,
+  no trade."* Relics are now also required, and relics can be given.
+- Rule 3 said construction is visible to whoever can see the sector. Q10 announces it to everybody with
+  its location — **and left the one exception broken.** The Shadow Realm's Wonder *has no site*, which
+  that file calls the whole point of the race, so a sector announcement has nothing to announce for them.
+- Rule 6 said a Wonder *"does not win by existing — an accelerant, not an autowin."* Q10 makes a finished
+  Wonder the victory.
+
+All three are reconciled and recorded. The grade still has to fall, because **the failure was structural,
+not careless.** Every canon guard built in this project checks prose against **code**. Nothing checks
+prose against **prose**. Q10 versus `13-wonders/` is precisely that gap, and it is the second time canon
+has contradicted canon without anything noticing — the first was the sector-types error in R7.
+
+Precedent applies: R7 lowered this grade for an unguarded consistency failure and R8 restored it once
+tests, not reading, did the checking. The same standard says B+ until prose-versus-prose has a guard, and
+it does not yet.
+
+**Being clear about what is and is not claimed:** the conflicts are fixed and the world is coherent
+today. What is missing is any reason to believe it will still be coherent after the next decision, and
+that is what the grade measures.
+
+### A payload documented that never existed
+
+`websocket-protocol.md` described `namechoice::` as carrying `{sector, chosen, candidates, turn,
+deadline}`. There is no `deadline`, and the field it omitted — `cost` — is the one the prompt actually
+renders, and the whole emotional point of the feature. My error, written before the field was named and
+never revisited.
+
+The contract test checked that every prefix was registered, parsed, and *mentioned* in the docs. It never
+looked inside a payload. It does now, for the one prefix whose documentation spells out a key list, and
+it also asserts the client reads no key the server does not send.
+
+### Smaller corrections
+
+- `26-encyclopedia.md` — the "start here for facts" file — still called the relic reading *"not canon
+  until a mechanics decision is made"* after that decision was made. It also gained a `Relic` entry,
+  which I first filed under **A**, in an A–Z index. Both fixed.
+- `08-open-questions.md`'s own header still listed the artifact field among the open decisions.
+- One `13-wonders/` amendment records a genuine loss rather than a tidy-up: the relic gate makes a Wonder
+  prerequisite partly purchasable, which Rule 2 explicitly forbade. That was accepted deliberately, and
+  saying so is better than quietly deleting the old sentence.
+- A commit that should have been 12 lines was 65, because an edit normalised 55 pre-existing bare-LF
+  lines in a CRLF file. Redone byte-preserving. This is the fourth time that trap has been hit.
+
+### What did not move, and why
+
+Nothing else. This pass found and fixed problems; it did not deliver anything to a player or write
+anything new, so **Restraint, Contact, Legibility, Co-authorship and discovery paths all hold.** Fixing a
+regression restores a grade's existing basis rather than earning more.
+
+### The next thing this card needs
+
+A prose-versus-prose guard, because that is now the only unguarded class of error left in a folder this
+size. It does not have to be clever: for each file that claims to be the authority on something, assert
+that no other file states a contradicting rule about the same named object. Even a narrow version —
+Wonder rules, victory conditions, hazard odds — would have caught all three of today's conflicts.
 
 ---
 
@@ -524,6 +628,16 @@ Added a `chart` event kind. Fixed the sweep announcing a name `COALESCE` had not
 comment `ee361ab` had invalidated. Strengthened the schema guard from one name-writer to two, each with
 its own rule. 268/268 units across three consecutive runs; e2e with a proven negative control.
 Co-authorship D→C+. Everything else held.
+
+**R10 → R11.** Review pass, no new writing. Fixed a live bug that collapsed the whole map snapshot to one
+sector whenever any sector was unnamed — `mapstate::` records contain `::` and the parser split the
+message on it. Guarded the hazard, not the fix, and found a third six-field record shape while doing it.
+Corrected a documented `namechoice::` field that never existed and taught the contract test to look inside
+one payload. Reconciled three conflicts between Q10 and `13-wonders/README.md`, and recorded a new open
+question Q10 had broken without noticing: what a **siteless Wonder announces**. Fixed a stale "not canon"
+status in the encyclopedia and a misfiled A–Z entry. Redid one commit byte-preserving after an edit
+normalised 55 bare-LF lines. **Internal consistency A−→B+**, because every guard in this project checks
+prose against code and nothing checks prose against prose. Everything else held.
 
 ---
 
