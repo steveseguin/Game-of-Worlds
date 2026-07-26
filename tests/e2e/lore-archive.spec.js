@@ -16,7 +16,7 @@ test.describe('public lore archive', () => {
         await expect(page).toHaveTitle(/Archive Room/);
         await expect(page.getByRole('heading', { name: /Archive Room/i, level: 1 })).toBeVisible();
         await expect(page.getByRole('link', { name: /Open the complete LORE folder/i }))
-            .toHaveAttribute('href', 'https://github.com/steveseguin/Game-of-Worlds/tree/master/lore');
+            .toHaveAttribute('href', 'https://github.com/steveseguin/Game-of-Worlds/tree/stable/lore');
 
         const images = page.locator('img');
         for (let index = 0; index < await images.count(); index += 1) {
