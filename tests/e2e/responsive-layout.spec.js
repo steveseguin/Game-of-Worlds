@@ -225,6 +225,62 @@ test.describe('HUD layout holds together at every window size', () => {
         expect(failures, `HUD problems once the game has state:\n${failures.join('\n')}`).toEqual([]);
     });
 
+    // Late-game numbers. Every check above runs with the values a young empire has: three
+    // digits of metal, one world, a short summary line. By turn 60 a player has seven-digit
+    // stockpiles and a summary listing dozens of worlds, and text that long is what pushes
+    // a panel into its neighbour. The values are written straight into the DOM because
+    // layout only cares what is rendered, and playing sixty real turns per viewport is not
+    // a test anyone would run.
+    test('the HUD survives late-game numbers, not just opening ones', async ({ page }) => {
+        test.setTimeout(240000);
+
+        await harness.signInGuest(page, `late_${Date.now().toString(36)}`);
+        await harness.waitForLobbyReady(page);
+        await harness.createGame(page, `Late ${Date.now()}`, { maxPlayers: '2' });
+        await page.getByRole('button', { name: /Fill with AI/i }).click();
+        await page.waitForURL(/game\.html/, { timeout: 30000 });
+        await page.waitForSelector('#controlPadGUI', { timeout: 30000 });
+        await harness.dismissFirstRunGuidance(page).catch(() => {});
+
+        const applyLateGame = () => page.evaluate(() => {
+            const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+            set('metalresource', '1,284,930');
+            set('crystalresource', '947,206');
+            set('researchresource', '612,884');
+            document.querySelectorAll('#resourceBar .res-rate').forEach(el => { el.textContent = '+12,480'; });
+            const summary = document.getElementById('empireSummary');
+            if (summary) {
+                summary.textContent = 'Empire: 47 worlds · 63 sectors · 284 ships · 12 turrets · 6 warp gates';
+            }
+            const victory = document.getElementById('victoryProgress');
+            if (victory) {
+                victory.textContent = 'Domination 71% of 75% · Economic 64% · Scientific 58% · Time 74/90 turns';
+            }
+            window.GameScreen?.applyResponsiveLayout?.();
+        });
+
+        const failures = [];
+        const sizes = [[1920, 1080], [1440, 900], [1366, 768], [1280, 800], [1024, 768],
+            [820, 1180], [768, 1024], [430, 932], [390, 844], [360, 640], [844, 390]];
+        for (const [width, height] of sizes) {
+            await page.setViewportSize({ width, height });
+            await applyLateGame();
+            await page.waitForTimeout(180);
+            const result = await auditLayout(page, width, height);
+            if (result.overlaps.length || result.offscreen.length) {
+                failures.push(`${width}x${height} (late game): ${[...result.overlaps, ...result.offscreen].join('; ')}`);
+            }
+        }
+
+        // Guard against the values being silently overwritten by a server update mid-test,
+        // which would quietly turn this back into a fresh-game audit.
+        const stillLarge = await page.evaluate(() =>
+            (document.getElementById('metalresource')?.textContent || '').replace(/[^0-9]/g, '').length);
+        expect(stillLarge, 'late-game values were overwritten - this test proved nothing').toBeGreaterThan(5);
+
+        expect(failures, `HUD problems with late-game numbers:\n${failures.join('\n')}`).toEqual([]);
+    });
+
     // Phones and tablets, by name, in both orientations. Named because "360x640 failed" is
     // a bug report nobody acts on, while "Galaxy S8 portrait is broken" is one they do.
     test('the HUD works on real phones and tablets, portrait and landscape', async ({ page }) => {

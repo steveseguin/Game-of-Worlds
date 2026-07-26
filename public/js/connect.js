@@ -102,6 +102,10 @@ function classifyEventMessage(text) {
     if (/coloniz|claimed sector|settled/i.test(line)) return { kind: 'movement', type: 'orders' };
     if (/fleet|arrived|moved|probe/i.test(line)) return { kind: 'movement', type: 'orders' };
     if (/battle|destroyed|attack|annihilat/i.test(line)) return { kind: 'battle', type: 'battles' };
+    // Hazard outcomes that were not losses. Deliberately after the battle check, so
+    // "Asteroids destroyed 2 ships" still reads as combat while "we navigated the belt and
+    // avoided being hit" reads as the transit it was.
+    if (/asteroid|belt|black hole|navigated/i.test(line)) return { kind: 'movement', type: 'orders' };
     return { kind: 'info', type: 'system' };
 }
 
