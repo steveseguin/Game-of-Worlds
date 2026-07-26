@@ -150,6 +150,13 @@
             minimapBottom = chatHeight + measuredControlHeight + 8;
         }
 
+        // Stacked layouts put the minimap directly above the build pad, which is exactly
+        // where the chat feed was already anchored - both sat on the same bottom edge and
+        // overlapped (caught at 390x844 and 430x932). The feed goes above the minimap.
+        if (chatFeed && stackBottomPanels && !hideMinimap) {
+            setImportant(chatFeed, 'bottom', px(minimapBottom + minimapHeight + 8));
+        }
+
         if (minimap) {
             setImportant(minimap, 'display', hideMinimap ? 'none' : 'block');
             setImportant(minimap, 'width', px(minimapWidth));
@@ -334,6 +341,33 @@
         }
 
         const statusColumnBottom = columnTop;
+
+        // The chat feed is anchored to its bottom and grows UPWARDS, and it is positioned
+        // long before the status column has been measured - so on a short landscape phone
+        // it grew straight into the resource bar (667x375, 740x360). Now that the column's
+        // real extent is known, clamp the feed to the gap between the two.
+        if (chatFeed && getComputedStyle(chatFeed).display !== 'none') {
+            // border-box first: chat.js creates this element without it, so max-height was
+            // sizing the CONTENT and the padding pushed the rendered box past the gap.
+            setImportant(chatFeed, 'box-sizing', 'border-box');
+            const feedBottom = parseFloat(getComputedStyle(chatFeed).bottom) || 0;
+            const feedRoom = viewportHeight - feedBottom - statusColumnBottom - 12;
+            // On a short landscape phone the build pad takes ~75% of the height (its own
+            // media queries win over the height this file asks for), so the band between
+            // the pad and the status column is only tens of pixels - less than one line of
+            // chat. Clamping cannot help there: the feed was already smaller than the
+            // clamp and still overlapped, because the problem is where its bottom edge
+            // sits, not how tall it is. Drop it, the same call every other panel makes
+            // when it runs out of room. The chat INPUT stays, so nothing becomes
+            // unreachable; only the transcript is hidden.
+            if (feedRoom < 40) {
+                setImportant(chatFeed, 'display', 'none');
+            } else {
+                const current = parseFloat(getComputedStyle(chatFeed).maxHeight) || feedRoom;
+                setImportant(chatFeed, 'max-height', px(Math.min(current, feedRoom)));
+                setImportant(chatFeed, 'overflow-y', 'auto');
+            }
+        }
         const sectorTop = Math.max(topReserved, statusColumnBottom);
         if (sectorDisplay) {
             const sectorMaxWidth = veryNarrow ? Math.max(132, viewportWidth * 0.48) : 300;
@@ -364,30 +398,87 @@
         // status column, and it stops above whatever occupies the lower right. If that
         // leaves too little to be readable it is hidden, the same call the minimap and the
         // legend already make.
-        const eventPanel = document.getElementById('event-panel');
-        if (eventPanel) {
-            const columnClear = Math.max(columnRight, controlWidth) + 16;
-            const eventWidth = Math.min(340, viewportWidth - columnClear - 24);
-            if (eventWidth < 200) {
-                setImportant(eventPanel, 'display', 'none');
-            } else {
-                setImportant(eventPanel, 'display', 'block');
-                setImportant(eventPanel, 'width', px(eventWidth));
-                setImportant(eventPanel, 'right', '16px');
-                const eventTop = Math.max(70, turnHeight + 12);
-                // Whatever sits in the lower right is the floor: the legend if it is
-                // showing, otherwise the minimap, otherwise the bottom of the viewport.
-                const legendBox = mapLegend && getComputedStyle(mapLegend).display !== 'none'
-                    ? mapLegend.getBoundingClientRect() : null;
-                const minimapBox = minimap && getComputedStyle(minimap).display !== 'none'
-                    ? minimap.getBoundingClientRect() : null;
-                const floor = Math.min(
-                    legendBox && legendBox.height > 0 ? legendBox.top : viewportHeight,
-                    minimapBox && minimapBox.height > 0 ? minimapBox.top : viewportHeight,
-                    viewportHeight - 12
-                );
-                setImportant(eventPanel, 'top', px(eventTop));
-                setImportant(eventPanel, 'max-height', px(Math.max(120, floor - eventTop - 12)));
+        // ---- Right-hand stack -------------------------------------------------------
+        // The event panel, the first-run checklist and the advisor all live on the right,
+        // and each used to place itself with a hard-coded top (230px, 42vh+90px) plus a
+        // `body:has(#onboardingCard)` rule that shoved the advisor LEFT into the status
+        // column. Independently-positioned panels that all grow with the game is the same
+        // mistake the left column made years ago and already solved: measure and stack.
+        //
+        // They are stacked in priority order and anything that will not fit is hidden,
+        // exactly like fitColumn does on the left. The floor is whatever occupies the
+        // lower right - the legend if it is showing, otherwise the minimap.
+        const onboardingCard = document.getElementById('onboardingCard');
+        const probeCard = document.getElementById('probeSuggestionCard');
+
+        const legendBox = mapLegend && getComputedStyle(mapLegend).display !== 'none'
+            ? mapLegend.getBoundingClientRect() : null;
+        const minimapBox = minimap && getComputedStyle(minimap).display !== 'none'
+            ? minimap.getBoundingClientRect() : null;
+        const rightFloor = Math.min(
+            legendBox && legendBox.height > 0 ? legendBox.top : viewportHeight,
+            minimapBox && minimapBox.height > 0 ? minimapBox.top : viewportHeight,
+            viewportHeight - 12
+        );
+
+        // Width available to the right of everything the left column occupies.
+        const columnClear = Math.max(columnRight, controlWidth) + 16;
+        const rightWidth = Math.min(340, viewportWidth - columnClear - 24);
+        // Must clear the turn clock AND the utility buttons, which drop onto their own row
+        // below it when they cannot share the top one - the checklist ran under them at
+        // 590x419 otherwise.
+        let rightTop = Math.max(70, turnHeight + 12, utilityRowBottom + 8);
+        let rightCrowded = rightWidth < 200;
+
+        /** Place one panel in the right stack, or hide it if there is no honest room. */
+        const fitRight = (el, { maxHeight = null, minHeight = 90 } = {}) => {
+            if (!el) return;
+            if (rightCrowded) { setImportant(el, 'display', 'none'); return; }
+            const room = rightFloor - rightTop - 12;
+            if (room < minHeight) {
+                setImportant(el, 'display', 'none');
+                rightCrowded = true;
+                return;
+            }
+            setImportant(el, 'display', 'block');
+            // max-height applies to the CONTENT box unless we say otherwise, so a padded,
+            // bordered card rendered ~20px taller than the room it was given and printed
+            // over the legend below it by about ten pixels at nearly every window size.
+            setImportant(el, 'box-sizing', 'border-box');
+            setImportant(el, 'width', px(rightWidth));
+            setImportant(el, 'right', '16px');
+            setImportant(el, 'left', 'auto');
+            setImportant(el, 'top', px(rightTop));
+            if (maxHeight !== null) {
+                setImportant(el, 'max-height', px(Math.max(minHeight, Math.min(maxHeight, room))));
+                setImportant(el, 'overflow-y', 'auto');
+            }
+            rightTop += el.getBoundingClientRect().height + 8;
+        };
+
+        // The checklist goes first while it exists: it is what a new player is following,
+        // and it retires itself once onboarding is done.
+        fitRight(onboardingCard, { maxHeight: 320, minHeight: 80 });
+        fitRight(probeCard, { maxHeight: 200, minHeight: 70 });
+        fitRight(document.getElementById('event-panel'), { maxHeight: Math.round(viewportHeight * 0.42), minHeight: 120 });
+
+        if (avatar) {
+            // The advisor is a speech bubble, not a panel: it sizes itself and must not be
+            // stretched to the stack width. It takes whatever vertical room is left.
+            const room = rightFloor - rightTop - 12;
+            setImportant(avatar, 'display', (rightCrowded || room < 90) ? 'none' : 'flex');
+            if (!rightCrowded && room >= 90) {
+                setImportant(avatar, 'top', px(rightTop));
+                setImportant(avatar, 'right', '10px');
+                setImportant(avatar, 'left', 'auto');
+                setImportant(avatar, 'max-width', px(rightWidth));
+                // Bounding where it STARTS is not enough - a long advisor line wraps and
+                // the bubble reaches down into the legend (caught on tall windows, 1030px
+                // and up). It sizes itself and clipping a speech bubble would read as a
+                // rendering fault, so if it does not fit, it does not show.
+                if (avatar.getBoundingClientRect().height > room) {
+                    setImportant(avatar, 'display', 'none');
+                }
             }
         }
 

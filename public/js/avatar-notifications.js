@@ -87,6 +87,17 @@ const AvatarNotifications = (function() {
         const style = document.createElement('style');
         style.id = 'avatar-notification-styles';
         style.textContent = `
+            /* Position is owned by applyResponsiveLayout, which stacks this under the
+               event panel and the first-run checklist and hides it when the right side
+               runs out of room. The top/right here are only a sane starting point for the
+               moment before layout first runs.
+
+               There used to be a body:has(#onboardingCard) rule that moved this to
+               right:270px while the checklist was up. That put the advisor on top of the
+               status column - it collided with the victory line, the empire summary, the
+               connection bar and the sector panel at half a dozen window sizes. Two
+               elements each guessing where the other is, is what the measured stack
+               replaces; do not reintroduce a rule like it. */
             #avatar-notification-system {
                 position: fixed;
                 top: calc(42vh + 90px);
@@ -97,13 +108,6 @@ const AvatarNotifications = (function() {
                 gap: 12px;
                 z-index: 150;
                 pointer-events: none;
-            }
-
-            /* Keep the temporary First Steps checklist and advisor readable.
-               Once onboarding is dismissed, the advisor returns beneath the event stack. */
-            body:has(#onboardingCard) #avatar-notification-system {
-                top: 100px;
-                right: 270px;
             }
 
             .avatar-container {

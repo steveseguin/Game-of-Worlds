@@ -21,7 +21,12 @@ const harness = require('./support/ui-game-harness');
 const HUD_PANELS = [
     'resourceBar', 'empireSummary', 'victoryProgress', 'sectordisplay', 'viewTitle',
     'turnTimeBar', 'utilityButtons', 'connectionInfo', 'controlPadGUI', 'chatContainer',
-    'minimapid', 'mapLegend', 'event-panel', 'avatarbox'
+    'minimapid', 'mapLegend', 'event-panel', 'avatarbox',
+    // These four were missing, and they share the event panel's signature: fixed
+    // position, created or filled at runtime, and they GROW with what has happened -
+    // chat lines accumulate, advisor text wraps, the onboarding checklist ticks along.
+    // A panel that is only ever measured empty is a panel that has never been measured.
+    'chatFeed', 'avatar-notification-system', 'onboardingCard', 'probeSuggestionCard'
 ];
 
 // Real-world shapes: desktop, laptop, 4:3, ultrawide, tablet portrait, phones, and
