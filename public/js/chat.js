@@ -1,5 +1,5 @@
 /**
- * chat.js - Client-side chat system for Game of Words
+ * chat.js - Client-side chat system for Game of Worlds
  * 
  * Handles chat message display, history navigation, and message fading.
  * Provides methods for displaying messages, managing chat history, and

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Game of Words - Developer Guide
+# Game of Worlds - Developer Guide
 
 A turn-based multiplayer space strategy game with 12 unique races, real-time WebSocket communication, and persistent MySQL state.
 

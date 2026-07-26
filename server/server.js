@@ -22,6 +22,7 @@ const securitySystem = require('./lib/security');
 const victorySystem = require('./lib/victory');
 const aiSystem = require('./lib/ai');
 const diplomacySystem = require('./lib/diplomacy');
+const sectorNames = require('./lib/sector-names');
 const { PaymentManager } = require('./lib/payments');
 const PaymentEndpoints = require('./lib/payment-endpoints');
 const gameInvariants = require('./lib/game-invariants');
@@ -801,7 +802,10 @@ function createGameTables(gameId, callback) {
             metalbonus INT DEFAULT 100,
             crystalbonus INT DEFAULT 100,
             terraformlvl INT DEFAULT 0,
-            artifact INT DEFAULT 0
+            artifact INT DEFAULT 0,
+            sectorname VARCHAR(48) DEFAULT NULL,
+            namedby INT DEFAULT NULL,
+            namedturn INT DEFAULT NULL
         )`,
         `CREATE TABLE IF NOT EXISTS ${tables.players} (
             userid INT PRIMARY KEY,
@@ -964,7 +968,7 @@ function ensureExploredSectorColumns(gameId, callback) {
         return;
     }
     if (db.isMock) {
-        callback(null);
+        ensureMapTableColumns(gameId, callback);
         return;
     }
     const columns = [
@@ -972,6 +976,44 @@ function ensureExploredSectorColumns(gameId, callback) {
         { name: 'intel_source', sql: `ALTER TABLE ${table} ADD COLUMN intel_source VARCHAR(16) DEFAULT 'exploration'` },
         { name: 'intel_json', sql: `ALTER TABLE ${table} ADD COLUMN intel_json LONGTEXT DEFAULT NULL` },
         { name: 'last_seen_turn', sql: `ALTER TABLE ${table} ADD COLUMN last_seen_turn INT DEFAULT 0` }
+    ];
+    let index = 0;
+    const next = () => {
+        if (index >= columns.length) return ensureMapTableColumns(gameId, callback);
+        const column = columns[index++];
+        db.query(`SHOW COLUMNS FROM ${table} LIKE '${column.name}'`, (showErr, rows) => {
+            if (showErr) return callback(showErr);
+            if (Array.isArray(rows) && rows.length) return next();
+            db.query(column.sql, alterErr => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') return callback(alterErr);
+                next();
+            });
+        });
+    };
+    next();
+}
+
+/**
+ * Sector naming columns (lore/18-naming-the-dark.md). New games get these from CREATE TABLE;
+ * games that already exist need the migration, or every query touching a name fails for them.
+ * Last link in the ensure* chain.
+ */
+function ensureMapTableColumns(gameId, callback) {
+    let table;
+    try {
+        table = gameTables(gameId).map;
+    } catch (error) {
+        callback(error);
+        return;
+    }
+    if (db.isMock) {
+        callback(null);
+        return;
+    }
+    const columns = [
+        { name: 'sectorname', sql: `ALTER TABLE ${table} ADD COLUMN sectorname VARCHAR(48) DEFAULT NULL` },
+        { name: 'namedby', sql: `ALTER TABLE ${table} ADD COLUMN namedby INT DEFAULT NULL` },
+        { name: 'namedturn', sql: `ALTER TABLE ${table} ADD COLUMN namedturn INT DEFAULT NULL` }
     ];
     let index = 0;
     const next = () => {
@@ -3407,7 +3449,7 @@ function colonizePlanet(connection, data) {
 
                                     const finishColonization = () => {
                                         bumpUserStat(playerId, 'total_planets_colonized');
-                                        connection.sendUTF(`Success: Colonized sector ${sectorId}`);
+                                        connection.sendUTF(`Success: Colony confirmed, ${sectorId}. First permanent structure. Somebody will be born there.`);
                                         markSectorExplored(gameId, playerId, sectorId);
                                         updateSector2(gameId, sectorId);
                                         sendVisibleMapState(gameId, connection);
@@ -3603,8 +3645,8 @@ function buyTech(data, connection) {
             if (check.nextLevel > techCap) {
                 const raceName = getRaceById(raceId).name;
                 connection.sendUTF(techCap <= 0
-                    ? `Error: ${raceName} cannot research ${tech.name} — that path is closed to them.`
-                    : `Error: ${raceName} can only research ${tech.name} to Lv${techCap}.`);
+                    ? `Error: ${raceName} will not research ${tech.name}. It is a doctrine, not a gap.`
+                    : `Error: ${raceName} take ${tech.name} to Lv${techCap} and no further. They arrived, looked at it, and declined.`);
                 return;
             }
 
@@ -3623,7 +3665,7 @@ function buyTech(data, connection) {
                     }
 
                     playersTechCache.delete(Number(gameId));
-                    connection.sendUTF(`Success: Researched ${tech.name} Lv${check.nextLevel}`);
+                    connection.sendUTF(`Success: Researched ${tech.name} Lv${check.nextLevel} - we have caught up to something that was standard in the Concord.`);
                     updateResources(connection);
                     sendTechState(connection);
                     // Economy techs change the per-turn rate immediately, but only
@@ -3676,7 +3718,7 @@ function probeSector(data, connection) {
                 [PROBE_COST_CRYSTAL, playerId, PROBE_COST_CRYSTAL],
                 (costErr, costResult) => {
                     if (costErr || !costResult || Number(costResult.affectedRows) !== 1) {
-                        failProbe(`Error: Probes cost ${PROBE_COST_CRYSTAL} crystal`);
+                        failProbe(`Error: A probe is ${PROBE_COST_CRYSTAL} crystal and we have not got it. The alternative is a fleet, and a fleet costs more.`);
                         return;
                     }
 
@@ -3701,7 +3743,7 @@ function loseProbe(gameId, playerId, targetSector, connection) {
         : `Sector ${targetSector} is now flagged probe-hostile on your map.`;
     updateResources(connection);
     connection.sendUTF(
-        `Error: Our probe was destroyed while entering sector ${targetSector}. `
+        `Error: Probe did not arrive at ${targetSector}. Three hundred of reckoning for one fact, and the fact is that we were right to send the probe and not the fleet. `
         + `Telemetry ended before the cause could be identified. ${epilogue}`
     );
     sendVisibleMapState(gameId, connection);
@@ -3906,7 +3948,7 @@ function buyShip(data, connection) {
 
             // Per-race ship access: some races simply can't build certain hulls.
             if (!raceSystem.canRaceBuildShip(player.race_id, shipType)) {
-                connection.sendUTF(`Error: ${race.name} cannot build ${shipData.name} — it's outside their doctrine.`);
+                connection.sendUTF(`Error: ${race.name} do not build the ${shipData.name}. Not cannot - will not, and they have had a long time to change their minds.`);
                 return;
             }
 
@@ -4422,9 +4464,9 @@ async function applyIntermediateRouteHazards(gameId, playerId, targetSector, rou
     }
     reports.forEach(report => {
         if (report.type === 'blackhole') {
-            connection.sendUTF(`Error: Fleet contact was lost in sector ${report.sectorId}. A black hole annihilated ${report.count} ship${report.count === 1 ? '' : 's'} on the plotted route.`);
+            connection.sendUTF(`Error: Contact lost, ${report.sectorId}. ${report.count} hull${report.count === 1 ? '' : 's'} did not arrive. There is a mouth there, and it is on the chart because of them.`);
         } else {
-            connection.sendUTF(`Error: Asteroids in sector ${report.sectorId} destroyed ${report.count} ship${report.count === 1 ? '' : 's'} during transit.`);
+            connection.sendUTF(`Error: Overnight, ${report.sectorId}: the shoal took ${report.count} hull${report.count === 1 ? '' : 's'}. Crews did not arrive. It is on the chart.`);
         }
     });
     const total = groups.reduce((n, group) => n + group.shipIds.length, 0);
@@ -4459,7 +4501,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                 })), toSector, results[0].tech, gameId);
 
             if (results[0].crystal < moveCost) {
-                connection.sendUTF(`Error: Not enough crystal for movement (need ${moveCost})`);
+                connection.sendUTF(`Error: We cannot pay for that crossing - ${moveCost} crystal. I can show you the ledger or you can take my word for it, and the ledger is duller.`);
                 complete();
                 return;
             }
@@ -4513,7 +4555,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                             if (deductErr || !deductResult || Number(deductResult.affectedRows) !== 1) {
                                 connection.sendUTF(deductErr
                                     ? "Error: Failed to charge movement"
-                                    : `Error: Not enough crystal for movement (need ${moveCost})`);
+                                    : `Error: We cannot pay for that crossing - ${moveCost} crystal. I can show you the ledger or you can take my word for it, and the ledger is duller.`);
                                 complete();
                                 return;
                             }
@@ -4657,11 +4699,11 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                     [playerId, sectorId],
                     (delErr, result) => {
                         const lostCount = (result && result.affectedRows) || 0;
-                        connection.sendUTF(`Error: Fleet arrived in sector ${sectorId}... but the sector contained a BLACK HOLE! UH-OH! Our fleet was crushed by the immense gravity!`);
+                        connection.sendUTF(`Error: There is a mouth at ${sectorId}. I know because nothing came back from ${sectorId}. That is the only way anyone has ever known.`);
                         // Notify other players
                         gameState.clients.forEach(c => {
                             if (c.gameid === gameId && Number(c.name) !== numericPlayerId) {
-                                c.sendUTF(`Error: An enemy fleet was destroyed by the black hole in sector ${sectorId}!`);
+                                c.sendUTF(`Success: An enemy fleet did not come out of ${sectorId}. They found the mouth the way everyone finds one.`);
                             }
                         });
                         finish();
@@ -4678,7 +4720,7 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                     [playerId, sectorId],
                     (shipErr, ships) => {
                         if (shipErr || !ships || ships.length === 0) {
-                            connection.sendUTF(`Success: Fleet moved into sector ${sectorId}`);
+                            connection.sendUTF(`Success: Fleet arrived, ${sectorId}. All hulls. That was a clean crossing.`);
                             return finish();
                         }
                         const totalShips = ships.length;
@@ -4693,29 +4735,44 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                         const proceed = () => {
                             let msg;
                             if (destroyedCount === 0) {
-                                msg = `Success: We navigated the asteroid belt in sector ${sectorId} and avoided being hit. Whew!`;
+                                msg = `Success: Shoal at ${sectorId} crossed clean; nothing was hit. Good crews - there is no such thing as luck out there.`;
                             } else if (destroyedCount === totalShips) {
-                                msg = `Error: Asteroids in sector ${sectorId} destroyed our entire fleet! We lost everything!`;
+                                msg = `Error: Nothing arrived at ${sectorId}. I have the manifest. I will file it.`;
                             } else {
-                                msg = `Error: We lost ${destroyedCount} ships to asteroids in sector ${sectorId}. If we can control the sector though, that won't happen again.`;
+                                msg = `Error: Fleet arrived, ${sectorId}. ${destroyedCount} did not. There is a shoal at ${sectorId} and it is on the chart now - hold it and sweep it, and we will not pay for that crossing twice.`;
                             }
                             connection.sendUTF(msg);
                             // Notify other players if there were losses
                             if (destroyedCount > 0) {
                                 gameState.clients.forEach(c => {
                                     if (c.gameid === gameId && Number(c.name) !== numericPlayerId) {
-                                        c.sendUTF(`Error: An enemy fleet lost ${destroyedCount} ships to asteroids in sector ${sectorId}!`);
+                                        c.sendUTF(`Success: An enemy fleet lost ${destroyedCount} hulls to the shoal at ${sectorId}. Their chart is worse than ours - that is worth more than the hulls.`);
                                     }
                                 });
                             }
                             // Survivors secure the belt: it becomes safe transit (and a small mine).
                             if (survivors > 0 && !sectorOwner) {
+                                // Sweeping a shoal is the one act that permanently converts a
+                                // hazard into a road, so it is also the moment the sector gets a
+                                // name - after whoever first survived it (lore/18-naming-the-dark.md).
+                                // COALESCE, because a name is permanent and survives conquest:
+                                // whoever takes this sector later inherits the name the people who
+                                // paid for it gave it, which is the entire point of the feature.
+                                const chartedName = sectorNames.defaultName(gameId, sectorId);
+                                const namedTurn = (gameState.activeGames
+                                    && gameState.activeGames[gameId]
+                                    && gameState.activeGames[gameId].turn) || 1;
                                 db.query(
-                                    `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
-                                    [playerId, sectorId],
+                                    `UPDATE map${gameId}
+                                        SET owner = ?,
+                                            sectorname = COALESCE(sectorname, ?),
+                                            namedby = COALESCE(namedby, ?),
+                                            namedturn = COALESCE(namedturn, ?)
+                                      WHERE sectorid = ?`,
+                                    [playerId, chartedName, playerId, namedTurn, sectorId],
                                     (claimErr) => {
                                         if (!claimErr) {
-                                            connection.sendUTF(`Success: We secured the asteroid belt in sector ${sectorId} - our fleets can pass safely now.`);
+                                            connection.sendUTF(`Success: Shoal at ${sectorId} swept - charted, cleared, corridored. It is a road now and it will stay one. It goes on the chart as ${chartedName}.`);
                                         }
                                         finish();
                                     }
@@ -4745,7 +4802,7 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                     `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
                     [playerId, sectorId],
                     () => {
-                        connection.sendUTF(`Success: Fleet holds sector ${sectorId}.`);
+                        connection.sendUTF(`Success: Fleet holds ${sectorId}. Nobody will have to pay for that crossing again.`);
                         finish();
                     }
                 );
@@ -4760,7 +4817,7 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                     [sectorId],
                     (tfErr, tfRows) => {
                         const needed = (!tfErr && tfRows && tfRows[0]) ? (Number(tfRows[0].terraformlvl) || 0) : 0;
-                        connection.sendUTF(`Success: Fleet arrived at an unclaimed world in sector ${sectorId} (terraform requirement ${needed}). A colony ship can settle it.`);
+                        connection.sendUTF(`Success: Fleet arrived at an unclaimed world, ${sectorId} (terraform requirement ${needed}). A colony ship settles it; a fleet only visits.`);
                         finish();
                     }
                 );
@@ -5242,7 +5299,7 @@ function preMoveFleet(data, connection) {
             const crystals = Number(resourceRows[0].crystal) || 0;
             const moveCost = calculateFleetRouteCost(moveEntries, targetSector, resourceRows[0].tech, gameId);
             if (crystals < moveCost) {
-                connection.sendUTF(`Error: Not enough crystal for movement (need ${moveCost})`);
+                connection.sendUTF(`Error: We cannot pay for that crossing - ${moveCost} crystal. I can show you the ledger or you can take my word for it, and the ledger is duller.`);
                 return;
             }
 
@@ -5303,7 +5360,7 @@ function preMoveFleet(data, connection) {
                             if (deductErr || !deductResult || Number(deductResult.affectedRows) !== 1) {
                                 connection.sendUTF(deductErr
                                     ? "Error: Failed to charge movement"
-                                    : `Error: Not enough crystal for movement (need ${moveCost})`);
+                                    : `Error: We cannot pay for that crossing - ${moveCost} crystal. I can show you the ledger or you can take my word for it, and the ledger is duller.`);
                                 return;
                             }
 

@@ -104,13 +104,17 @@ function classifyEventMessage(text) {
     }
     if (/^Success:\s*(?:Built|Upgraded|Purchased)/i.test(line)) return { kind: 'building', type: 'econ' };
     if (/\bincome\b|\bper turn\b/i.test(line)) return { kind: 'income', type: 'econ' };
-    if (/coloniz|claimed sector|settled/i.test(line)) return { kind: 'movement', type: 'orders' };
+    // "colon", not "coloniz" and not "coloni": the feed says "Colony confirmed", and Colony
+    // has neither the z nor the i. This stem covers colony, colonised and colonization.
+    if (/colon|claimed sector|settled/i.test(line)) return { kind: 'movement', type: 'orders' };
     if (/fleet|arrived|moved|probe/i.test(line)) return { kind: 'movement', type: 'orders' };
     if (/battle|destroyed|attack|annihilat/i.test(line)) return { kind: 'battle', type: 'battles' };
     // Hazard outcomes that were not losses. Deliberately after the battle check, so
-    // "Asteroids destroyed 2 ships" still reads as combat while "we navigated the belt and
-    // avoided being hit" reads as the transit it was.
-    if (/asteroid|belt|black hole|navigated/i.test(line)) return { kind: 'movement', type: 'orders' };
+    // "the shoal took 2 hulls" still reads as combat while "shoal crossed clean" reads as the
+    // transit it was. "shoal" and "mouth" are the navigator's words for a belt and a collapsar
+    // (lore/07-glossary.md) and the feed uses them throughout; the older nouns stay matched
+    // because the map legend and older strings still use them.
+    if (/asteroid|belt|black hole|navigated|shoal|mouth/i.test(line)) return { kind: 'movement', type: 'orders' };
     return { kind: 'info', type: 'system' };
 }
 

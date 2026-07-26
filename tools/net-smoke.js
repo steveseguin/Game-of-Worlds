@@ -108,13 +108,12 @@ async function main() {
     player.drain();
     player.send(`//probe:${hex(homeworldId + 1)}`);
     const probeResult = await player.waitFor(
-        m => m.startsWith(`sector::`) || m.includes('probe was destroyed') || m.startsWith('Error:'),
+        m => m.startsWith(`sector::`) || m.includes('did not arrive') || m.startsWith('Error:'),
         'probe outcome'
     );
     // A dead probe is a fine outcome here - the smoke test is checking that a fresh player
     // can afford one at all, not that it survives. Match the affordability refusal itself;
-    // "Error: Probes cost" is a phrase the server has never used, which left this check
-    // unable to fail even if the opening probe stopped being affordable.
+    // matching a phrase the server does not use makes this check unable to ever fail.
     check(!/^Error: A probe is \d+ crystal/.test(probeResult), 'opening probe affordable', probeResult.slice(0, 80));
 
     // Standing orders round-trip through real routing.

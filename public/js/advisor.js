@@ -1,153 +1,733 @@
 /**
- * advisor.js - Race-flavored advisor voice for game events.
+ * advisor.js - The adjutant's voice for game events.
  *
- * Watches game events and delivers short, characterful lines through the
- * avatar notification system — mockery, panic, gloating, and the occasional
- * begrudging compliment. Each race has a voice; lines are picked per event.
+ * Watches game events and delivers short lines through the avatar notification system.
  *
  * API:
  *   Advisor.setRace(raceId)
- *   Advisor.say(eventKey, context)       // fire a specific event quip
- *   Advisor.observe(rawServerMessage)    // pattern-match server text → quips
+ *   Advisor.say(eventKey, context)       // fire a specific event line
+ *   Advisor.observe(rawServerMessage)    // pattern-match server text -> lines
+ *
+ * VOICE IS CANON. Source: lore/14-peoples/ (register per race), lore/17-the-feed/ (the event
+ * script and its charter), lore/03-themes.md (tone).
+ *
+ * This file used to carry three voices - "dry", "cold", "feral" - spread across twelve races,
+ * and it broke the setting in three ways worth recording so they do not come back:
+ *
+ *   1. It joked about mass casualties. A total fleet loss drew "the fleet's final report:
+ *      'spaghetti'"; a dead probe drew "it screamed in radio. Lovely." lore/03-themes.md and
+ *      lore/17-the-feed/06-refusals.md both forbid this outright: humour never touches a loss.
+ *      It is allowed in refusals, where nobody has died.
+ *   2. It was quippy rather than dry. "I've scheduled modest gloating at 0800" is a sitcom
+ *      voice. The register is a naval logbook: number first, consequence second, no adjectives,
+ *      no wordplay.
+ *   3. It collapsed twelve registers into three and mapped them wrongly - the Bioform (patient,
+ *      agricultural, kind) and the Titan Lords (formal, no contractions, slow) were both
+ *      "feral", shouting "BLOOD IN THE BLACK!"
+ *
+ * Now each race speaks in its own canonical register, and the whole point of that folder is
+ * that these twelve sound nothing alike. Two rules when editing:
+ *
+ *   - Ships are destroyed. Crews DID NOT ARRIVE. Habit, never emphasis, and no character ever
+ *     remarks on it.
+ *   - A race may be sincerely untroubled by a loss if that is who they are - the Swarm cannot
+ *     perceive an individual, the Second Shift files it as maintenance. That is
+ *     characterisation. The narrator being *witty* about a loss is not.
  */
 const Advisor = (function () {
-    // Voice styles. Races map onto one of these so 12 races stay manageable.
+    // One register per race, per lore/14-peoples/. Keys must be complete for every race:
+    // a missing key is silence, which is the bug this file's tests were written to catch.
     const VOICES = {
-        dry: {     // Terran default: deadpan professional
+        // 1 Terran - institutional, procedural, numbers first. This is Chart-Warden Rell.
+        terran: {
             probeLost: [
-                "Our probe exploded. It died doing what probes do best: disappointing us.",
-                "Probe lost. The good news is it found something. The bad news is everything else.",
-                "Telemetry ended abruptly. I've billed it as 'field testing.'"
+                "Probe did not arrive. Three hundred of reckoning for one fact, and the fact is that we were right to send the probe and not the fleet.",
+                "Probe lost. That is the cheapest that sector was ever going to be."
             ],
             blackHole: [
-                "We found a black hole. The fleet found it first.",
-                "The fleet's final report: 'spaghetti.' My condolences.",
-                "Gravity: 1. Our navigation officer: 0."
+                "There is a mouth there. I know because nothing came back. That is the only way anyone has ever known."
             ],
             asteroidLoss: [
-                "We lost ships in the asteroid field. Control the sector and the rocks stop winning.",
-                "The asteroids took their toll. Literally. They charge by the hull.",
-                "Some ships didn't make it. The rocks remain unapologetic."
+                "Fleet arrived. Some of it did not. There is a shoal on the chart now - hold it and sweep it, and we will not pay for that crossing twice.",
+                "Hulls lost to the shoal. Crews did not arrive. Recommend we take the sector; a swept shoal is a road."
             ],
             asteroidEscape: [
-                "We threaded the asteroid field untouched. Statistically embarrassing — for the rocks.",
-                "No losses. The pilots are insufferably proud now."
+                "Through the shoal, all hulls. Good crews. Not good luck - there is no such thing out there.",
+                "Crossed clean. Do not read anything into it; the odds have not changed."
+            ],
+            shoalSwept: [
+                "Shoal swept - charted, cleared, corridored. It is a road now, and it will stay one for whoever comes next."
             ],
             colonized: [
-                "Colony established. Try not to misplace civilization.",
-                "Another world joins us. The paperwork is already late.",
-                "Flag planted. The locals (rocks) offered no resistance."
+                "Colony confirmed. First permanent structure. Somebody will be born there.",
+                "Settled. It is on the chart as a place now, not a crossing."
             ],
             battleStart: [
-                "Enemy fleet engaged. They appear optimistic.",
-                "Combat under way. I've prepared both speeches.",
-                "Weapons free. Do try to look surprised when we win."
+                "Enemy fleet engaged. I have both manifests open.",
+                "Contact. I will have the telemetry by morning."
             ],
             battleWon: [
-                "Your fleet survived. Statistically annoying for them.",
-                "Victory. The debris field is mostly theirs, which is the polite arrangement.",
-                "We won. I've scheduled modest gloating at 0800."
+                "Sector held. Their losses exceed ours. I have both manifests. I would rather have neither.",
+                "Victory. Somebody in their service is writing to families tonight, and so am I."
             ],
             battleLost: [
-                "Defeat. I recommend describing it as 'aggressive reconnaissance.'",
-                "We lost the engagement. The enemy sends their regards. Repeatedly.",
-                "That went poorly. Bold strategy. Terrible, but bold."
+                "Sector lost. The crews did not arrive.",
+                "Defeat. I have written to fourteen families this season and I would appreciate a reason not to write more."
             ],
             researchDone: [
-                "Research complete. The scientists want a parade. I offered a memo.",
-                "New technology online. Please read the manual before detonating anything.",
-                "Breakthrough achieved. Morale up, supervision still advised."
+                "Programme concluded. We have caught up to something that was standard in the Concord. I would like to be pleased about it.",
+                "Rediscovered rather than discovered. It works, and it is ours now, and it is filed."
             ],
             enemySighted: [
-                "Enemy contact on long-range sensors. They appear to be admiring your planets.",
-                "Hostiles detected. Shall I pencil in a war?"
+                "Foreign hulls on the plot. Logged with the date.",
+                "Contact. I have what they let us see, which is not the same as what they have."
             ],
             lowCrystal: [
-                "Crystal reserves are thin. Probes don't grow on trees. Nothing does, here.",
-                "We're short on crystal. The refinery hums an apologetic tune."
+                "Reckoning is thin. It is what we burn to know where we are, and we are currently rich in ships and poor in knowing."
             ],
             colonyReady: [
-                "The colony ship is ready. Try not to misplace civilization.",
-                "Colony ship fueled. Pick a nice planet. Or a terrible one — your call."
+                "Colony ship ready. A fleet visits a world. A colony ship settles it."
             ],
             shipBuilt: [
-                "New hull off the line. It still smells of solder and optimism.",
-                "Ship delivered. The yard crew requests you stop scratching them on asteroids."
+                "Off the slip. She has a crew now.",
+                "Commissioned, and logged with a hull number."
             ],
             turnStart: [
-                "New turn. The galaxy remains unimpressed but watchful.",
-                "Resources are in. Spend them like someone's watching — someone is."
+                "Income is in, the yards are clear, and there is nothing on my desk that will not keep.",
+                "Two manifests to reconcile and then I am yours."
             ],
-            gameWon: ["Victory! History will record this as inevitable. I'll make sure of it."],
-            gameLost: ["Defeat. I've drafted a strongly-worded surrender."]
+            gameWon: [
+                "It is done. I have the manifests for what that cost and I am not going to read them to you tonight."
+            ],
+            gameLost: [
+                "I am closing the series. For what it is worth: everything we swept is still swept. That part does not un-happen."
+            ]
         },
-        cold: {    // Machine/ascended races: precise, faintly contemptuous
+
+        // 2 Silicon Collective - plural, probabilities, no affect, no performance.
+        silicon: {
             probeLost: [
-                "Probe terminated. Data acquisition: partial. Sentiment: none.",
-                "Unit expendable. Loss within parameters. Your distress is noted and discarded."
+                "Probe lost. The result is retained. That was the purpose of the probe.",
+                "Loss within projection. We have revised the density model. Four other projections improved."
             ],
             blackHole: [
-                "Fleet mass reassigned to singularity. Inefficient.",
-                "Gravitational event. Survivors: zero. Lesson: priceless."
+                "Collapsar. Survivors: none. This outcome had no distribution; it was certain."
             ],
             asteroidLoss: [
-                "Hull attrition recorded. Recommendation: own the rocks.",
-                "Losses sustained. The asteroids do not negotiate. Neither do I."
+                "Hull attrition, as projected to within two. Ownership of the sector removes the term entirely.",
+                "Losses sustained. We advised against the crossing. We are not reluctant. We were correct."
             ],
-            asteroidEscape: ["Field traversed. Zero losses. Probability defied; do not rely on it."],
+            asteroidEscape: [
+                "Traversed. Zero losses. Do not update on this; the distribution is unchanged."
+            ],
+            shoalSwept: [
+                "Sector secured. The hazard term is removed from every projection through this volume, permanently."
+            ],
             colonized: [
-                "World assimilated into the collective ledger.",
-                "Colony online. Productivity expectations: immediate."
+                "Colony established. Output expectations are immediate and modelled."
             ],
-            battleStart: ["Engagement initiated. Calculating enemy regret."],
-            battleWon: ["Victory computed. Enemy projections were... amusing."],
-            battleLost: ["Defeat registered. Recalibrating. Do not repeat this input."],
-            researchDone: ["Knowledge integrated. The galaxy grows smaller and more obedient."],
-            enemySighted: ["Foreign signature detected. Threat assessment: temporary."],
-            lowCrystal: ["Crystal reserves suboptimal. Adjust priorities."],
-            colonyReady: ["Colonization vector available. Select target. Avoid sentiment."],
-            shipBuilt: ["New unit operational. It will serve. Or it will be scrap. Both acceptable."],
-            turnStart: ["Cycle begins. Allocate. Execute. Repeat."],
-            gameWon: ["Victory condition satisfied. As projected."],
-            gameLost: ["Defeat. This outcome has been archived under 'anomalies.'"]
+            battleStart: [
+                "Engagement initiated. We have published our projected losses. They are accurate."
+            ],
+            battleWon: [
+                "Result within projection. We would like the projection noted, not the result."
+            ],
+            battleLost: [
+                "Defeat. The divergence is being accounted for. That is the correct use of a divergence."
+            ],
+            researchDone: [
+                "Integrated. Ninety-one per cent of this was recoverable from Concord survey data. Nobody had read it."
+            ],
+            enemySighted: [
+                "Foreign signature. We hold four thousand points on it and will hold more."
+            ],
+            lowCrystal: [
+                "Reckoning suboptimal. Knowing is not free. It remains cheaper than the alternative."
+            ],
+            colonyReady: [
+                "Colonisation vector available. We have the ranking, if it is wanted."
+            ],
+            shipBuilt: [
+                "Unit operational. Its loss is already modelled."
+            ],
+            turnStart: [
+                "Cycle begins. The reconciliation is complete and the divergence is small."
+            ],
+            gameWon: [
+                "Condition satisfied, as projected. We would prefer somebody read the paper."
+            ],
+            gameLost: [
+                "Defeat. The model was sound. We are aware that this is not a consolation."
+            ]
         },
-        feral: {   // Swarm/warrior races: hungry, gleeful, blunt
+
+        // 3 Zephyr Swarm - first person plural only. No singular pronoun exists. Cheerful about
+        // losses, which is the most alien thing about them, and it is not a joke.
+        zephyr: {
             probeLost: [
-                "The little probe is gone. The void chewed it. Send another — the void is still hungry.",
-                "Probe dead. It screamed in radio. Lovely."
+                "The small one did not come back. Now we know that place. It was a good price."
             ],
             blackHole: [
-                "The dark mouth ate our fleet! Do not feed it again.",
-                "Ships gone. The hole is fat with them. We remember this place."
+                "Some of we went in. None of we came out. We will not go there. We remember."
             ],
             asteroidLoss: [
-                "Rocks bit us! Take the field and the rocks become OUR teeth.",
-                "Hulls cracked. The swarm endures. Barely. Annoyingly."
+                "Some of we did not come back. Now we know. We will go again and know more.",
+                "The stones took some of we. There is a great deal of we."
             ],
-            asteroidEscape: ["We slipped between the stones. The stones are furious."],
+            asteroidEscape: [
+                "All of we came back. That is unusual. We do not know why."
+            ],
+            shoalSwept: [
+                "The stones are ours. All of we can go through now. None of we will be lost there again."
+            ],
             colonized: [
-                "New ground! Dig in. Multiply. Decorate later.",
-                "The world is ours. It tastes like metal and promise."
+                "New ground. More of we can be there now."
             ],
-            battleStart: ["BLOOD IN THE BLACK! At last!", "They came to fight! How thoughtful. Eat them."],
-            battleWon: ["Their fleet is confetti! Glorious!", "We won! Their wreckage makes fine nesting."],
-            battleLost: ["We lost?! Unacceptable. Grow more ships. Sharpen everything."],
-            researchDone: ["New cleverness! Strap it to something fast and pointy."],
-            enemySighted: ["Prey on sensors. They call themselves an empire. Adorable."],
-            lowCrystal: ["The crystal runs dry. The swarm grumbles. Feed it."],
-            colonyReady: ["A seed-ship waits! Throw it at the stars!"],
-            shipBuilt: ["A new fang for the swarm!"],
-            turnStart: ["The cycle turns. Hunt well."],
-            gameWon: ["THE GALAXY IS OURS! Try to look surprised."],
-            gameLost: ["Beaten... this once. The swarm forgets nothing."]
+            battleStart: [
+                "They are few and they are in front of we. Go."
+            ],
+            battleWon: [
+                "They are fewer. We are fewer. We are still more."
+            ],
+            battleLost: [
+                "That was a great deal of we. We will be that many again."
+            ],
+            researchDone: [
+                "We know a thing. We knew it before and did not keep it. We will try to keep it."
+            ],
+            enemySighted: [
+                "There are others. They are one each. We find this frightening and do not say so."
+            ],
+            lowCrystal: [
+                "The crystal is thin. We cannot know where we are. We will go anyway."
+            ],
+            colonyReady: [
+                "A seed of we is ready. Throw it."
+            ],
+            shipBuilt: [
+                "More of we."
+            ],
+            turnStart: [
+                "The ground is quiet this season. We are thickest in the north."
+            ],
+            gameWon: [
+                "We are in all of it now. There was no other outcome; there was only how much of we."
+            ],
+            gameLost: [
+                "We are cut. That is the worst thing. We are not built to survive it."
+            ]
+        },
+
+        // 4 Crystalline Entity - durations, not dates. Slow, courteous, faintly amused.
+        crystalline: {
+            probeLost: [
+                "The small quick thing has stopped. You will want to send another. You are brief; you have time for very few."
+            ],
+            blackHole: [
+                "They were set down. Not broken - set down. There is a difference and it took us forty years to be sure of it."
+            ],
+            asteroidLoss: [
+                "The stones are old and they are patient and they were there first. Hold the sector and they will be yours.",
+                "Some are gone. It was recent. Everything is recent."
+            ],
+            asteroidEscape: [
+                "Nothing was struck. That is fortunate and it will not last; fortune is a brief creature's word."
+            ],
+            shoalSwept: [
+                "It is safe now, and it will be safe long after you. That is the first lasting thing you have done."
+            ],
+            colonized: [
+                "You have put something down that will still be there when you are not. Good."
+            ],
+            battleStart: [
+                "You are in a hurry again. Very well."
+            ],
+            battleWon: [
+                "You have won. In a hundred years I will tell you whether it mattered."
+            ],
+            battleLost: [
+                "You have lost. This is survivable. Most things are, given long enough, and you have not got long enough."
+            ],
+            researchDone: [
+                "You have found a thing that was known. We watched it being forgotten. We did not think to mention it."
+            ],
+            enemySighted: [
+                "Others are moving. They always are. It is the one thing about the brief that is restful."
+            ],
+            lowCrystal: [
+                "You are short of us. I will not comment further and I would like the silence noted."
+            ],
+            colonyReady: [
+                "The settling ship is grown. Choose slowly. You will not."
+            ],
+            shipBuilt: [
+                "A new hull. It will not outlive this conversation, by our reckoning."
+            ],
+            turnStart: [
+                "A season. Barely a season. Proceed."
+            ],
+            gameWon: [
+                "You have what you wanted. An accident has no manners; this was no accident either."
+            ],
+            gameLost: [
+                "You have lost the cluster. We will still be here. Come back with better questions."
+            ]
+        },
+
+        // 5 Void Walkers - clipped. Transit times, never distances. Impatient.
+        void: {
+            probeLost: [
+                "Probe gone. Forty minutes wasted and one lane we now will not fly."
+            ],
+            blackHole: [
+                "The lane was occupied. Nobody turned in time. Nobody ever does."
+            ],
+            asteroidLoss: [
+                "Gravel. At that speed gravel is ordnance. Decelerate on approach and you keep more of them - everything I was taught says otherwise, and everything I was taught is why I am the last one who flew that lane.",
+                "Hulls lost. The shoal drifted. The recitation was right when it was given."
+            ],
+            asteroidEscape: [
+                "Clean. Fast crews. Do not thank the shoal."
+            ],
+            shoalSwept: [
+                "Swept. Free transit, both ways, forever. That is worth more than the hulls it cost."
+            ],
+            colonized: [
+                "Settled. Now it is a place you have to come back to. Your choice."
+            ],
+            battleStart: [
+                "Six minutes to contact. Say what you need to say now."
+            ],
+            battleWon: [
+                "Done. We were gone before their second volley."
+            ],
+            battleLost: [
+                "Caught. That is the whole of it - we were caught, and we are not built to be caught."
+            ],
+            researchDone: [
+                "Useful. Write nothing down."
+            ],
+            enemySighted: [
+                "Contact. Ninety minutes out at their pace. Forty at ours."
+            ],
+            lowCrystal: [
+                "No reckoning, no crossing. We are the fastest fleet in the galaxy and we are sitting still."
+            ],
+            colonyReady: [
+                "Colony hull ready and it is slow. I have logged my objection."
+            ],
+            shipBuilt: [
+                "New hull. Thin. They all are."
+            ],
+            turnStart: [
+                "Carrying at the sixth hour. Be quick."
+            ],
+            gameWon: [
+                "The cluster is ours and the lanes are ours and nobody wrote any of it down. Good."
+            ],
+            gameLost: [
+                "Beaten. Every lane I hold dies with me, and you may consider that your loss as well as mine."
+            ]
+        },
+
+        // 6 Mechanicus - work orders. Damage as scheduled labour. No adjectives. Not cold: busy.
+        mechanicus: {
+            probeLost: [
+                "No survey asset was expended. We do not build them."
+            ],
+            blackHole: [
+                "Sector annotated. Requires heavier hull. Revisit."
+            ],
+            asteroidLoss: [
+                "Hulls returned for reshaping. The material continues. Sector taken.",
+                "Attrition recorded and filed as maintenance. Continue."
+            ],
+            asteroidEscape: [
+                "Transit complete. No reshaping required."
+            ],
+            shoalSwept: [
+                "Shoal cleared. Corridor marked. Filed as permanent. Continue."
+            ],
+            colonized: [
+                "Sector occupied. Yard capacity assessed. Continue."
+            ],
+            battleStart: [
+                "Enemy in the advance path. The advance does not stop."
+            ],
+            battleWon: [
+                "Sector taken. Twelve hulls returned for reshaping. Continue."
+            ],
+            battleLost: [
+                "Sector not taken. Annotated. Heavier hull scheduled."
+            ],
+            researchDone: [
+                "Specification updated. Yards re-tooled."
+            ],
+            enemySighted: [
+                "Foreign hulls present. No assessment available. Nobody has counted them."
+            ],
+            lowCrystal: [
+                "Reckoning below requirement. Ore is unaffected."
+            ],
+            colonyReady: [
+                "Settlement hull complete. Assign a sector."
+            ],
+            shipBuilt: [
+                "Hull off the belt. Serial recorded."
+            ],
+            turnStart: [
+                "Shift begins."
+            ],
+            gameWon: [
+                "The order is complete. There was no instruction covering what follows."
+            ],
+            gameLost: [
+                "Work stopped. No variance was filed."
+            ]
+        },
+
+        // 7 Bioform Collective - agricultural, unhurried, tactile, unsettlingly kind.
+        bioform: {
+            probeLost: [
+                "The little one did not take. Some do not. It told us what the water there is like."
+            ],
+            blackHole: [
+                "Nothing grows there and nothing comes back. Leave it. Some ground is not for us."
+            ],
+            asteroidLoss: [
+                "We lost some. That is how a place becomes known. Plant something there and in nine seasons the shoal will be a garden.",
+                "Thin ones, mostly. It is still a loss. They were going to be something."
+            ],
+            asteroidEscape: [
+                "All of them through, and healthy. The berth will be pleased."
+            ],
+            shoalSwept: [
+                "Cleared. In nine seasons something will be growing there and nobody will remember the price."
+            ],
+            colonized: [
+                "Something is in the ground now. Leave it alone and it will finish."
+            ],
+            battleStart: [
+                "They have come. Say the ages aloud before you commit them."
+            ],
+            battleWon: [
+                "Held. Now tell me which of them were ten years old, because that is what it cost."
+            ],
+            battleLost: [
+                "We lost the grove. Nine years to raise what went in there, and nine years is nine years."
+            ],
+            researchDone: [
+                "The lines will take better now. You will see it in about nine seasons."
+            ],
+            enemySighted: [
+                "Others on the water. They build their ships. Nobody asks theirs what they want."
+            ],
+            lowCrystal: [
+                "We are short. It will not be hurried, and neither will anything else."
+            ],
+            colonyReady: [
+                "The sower is grown. Somewhere warm, with flow."
+            ],
+            shipBuilt: [
+                "Out of the berth. Thin yet. Give her a decade."
+            ],
+            turnStart: [
+                "A season. Things are coming along."
+            ],
+            gameWon: [
+                "It is finished, which is the only thing we ever wanted for anything."
+            ],
+            gameLost: [
+                "It ended early. That is the one sin our faith recognises, and it was not ours."
+            ]
+        },
+
+        // 8 Star Nomads - warm, mercantile, sentimental about routes. Aggrieved about the count.
+        nomad: {
+            probeLost: [
+                "Salted, most likely - given a false trace and it flew it. We hold a rite for that. Nobody else does."
+            ],
+            blackHole: [
+                "Gone. Put the berth aside and do not reassign it. We have eleven thousand like that."
+            ],
+            asteroidLoss: [
+                "Lost some. That trace is worth more now, and I could sell it, and I am not going to.",
+                "The shoal took its cut. It always does. Sweep it and it never does again."
+            ],
+            asteroidEscape: [
+                "Everybody home. Somebody's grandmother flew that once and came back with nine of twelve."
+            ],
+            shoalSwept: [
+                "Swept - and that is a clean trace now. Most valuable object in the galaxy, and we made it ourselves."
+            ],
+            colonized: [
+                "You have made a place out of a stopover. My people did that once and it cost us everything."
+            ],
+            battleStart: [
+                "They are in the lane. Read the schedule and then go."
+            ],
+            battleWon: [
+                "Ours. I will put the names on the wall myself."
+            ],
+            battleLost: [
+                "Lost, and the manifest is short, and I want the figure written down correctly this time."
+            ],
+            researchDone: [
+                "Good. Now it is written down, which is worth more than it working."
+            ],
+            enemySighted: [
+                "Company. I can tell you who they trade with, which is more useful than their hull count."
+            ],
+            lowCrystal: [
+                "Short of reckoning. I can move metal into crystal at a loss - everybody else has to sit still."
+            ],
+            colonyReady: [
+                "Berth-ship ready, and it can up and leave again. That is the only kind worth having."
+            ],
+            shipBuilt: [
+                "New hull. She will want a name and a convoy mark before she sails."
+            ],
+            turnStart: [
+                "Schedule read, ports called. It goes nowhere and we read it anyway."
+            ],
+            gameWon: [
+                "The cluster is ours. Thirty-one names, and now somebody will finally count them properly."
+            ],
+            gameLost: [
+                "Beaten. We have been homeless before. Berth-rights are a promise, not a place."
+            ]
+        },
+
+        // 9 The Ancients - past tense for present things, without exception. Tired, courteous, sorry.
+        ancients: {
+            probeLost: [
+                "It did not arrive. We knew that it would not. We have not been able to say so usefully."
+            ],
+            blackHole: [
+                "There was a fleet. There was never a way through. We would have told you if telling had been available to us."
+            ],
+            asteroidLoss: [
+                "They were lost. The lane was swept once, long ago, by people who are also gone.",
+                "There were more of them this morning. We are sorry. That is the whole of what we have."
+            ],
+            asteroidEscape: [
+                "They came through. It was very fine. It was also luck, and we did not have a hand in it."
+            ],
+            shoalSwept: [
+                "It was swept. There were corridors like that everywhere, once, and nobody had to buy them."
+            ],
+            colonized: [
+                "There was a world there before, and people on it, and a lane to it. You have made a second beginning."
+            ],
+            battleStart: [
+                "It was going to be this. It was always going to be this."
+            ],
+            battleWon: [
+                "You held. We have seen this held before, by others, and we did not intervene then either."
+            ],
+            battleLost: [
+                "It was lost. We have very few left and we did not spend them here."
+            ],
+            researchDone: [
+                "That was known. It was ours, once, and we maintained it, and we did not build it."
+            ],
+            enemySighted: [
+                "They were always there. Everyone was always there. That was rather the point."
+            ],
+            lowCrystal: [
+                "You are burning what the roads were made of. We have never said so plainly before."
+            ],
+            colonyReady: [
+                "There was a ship for this. There were a great many ships."
+            ],
+            shipBuilt: [
+                "One more. We cannot say that."
+            ],
+            turnStart: [
+                "The relay was quiet."
+            ],
+            gameWon: [
+                "It was yours. We were wrong about what you were asking for, and we were too late to say so."
+            ],
+            gameLost: [
+                "It ended. Most things did."
+            ]
+        },
+
+        // 10 Quantum Entities - conditional and subjunctive throughout. Brisk, not dreamy.
+        quantum: {
+            probeLost: [
+                "Had we sent it, we would have lost it. We may have. The result is the same and the grammar is not."
+            ],
+            blackHole: [
+                "It will not have arrived. Nothing does. That was never the part that failed."
+            ],
+            asteroidLoss: [
+                "We would have lost four. We appear to have lost four. Please do not sigh.",
+                "Some of them will not have been there. We are being accurate, which is often mistaken for being difficult."
+            ],
+            asteroidEscape: [
+                "They may not have crossed it. They are here, which resolves the question unhelpfully."
+            ],
+            shoalSwept: [
+                "It would be safe. It is safe. We are prepared to commit to this one."
+            ],
+            colonized: [
+                "There would be a colony. There is one. We would rather not commit to more than that."
+            ],
+            battleStart: [
+                "We have published the outcomes we consider possible. Ours is among them."
+            ],
+            battleWon: [
+                "We would have won. Ask us again and the answer will have been different."
+            ],
+            battleLost: [
+                "We did not select that branch. It selected us. It is not the same and it is not better."
+            ],
+            researchDone: [
+                "Known, now. It was slightly better than specified, which happens, and we did warn you."
+            ],
+            enemySighted: [
+                "Something may be there. We would put it at rather more than may."
+            ],
+            lowCrystal: [
+                "We would be able to move, had we the reckoning. We have not. That much is resolved."
+            ],
+            colonyReady: [
+                "A settling hull, probably. It is on the slip and it is mostly there."
+            ],
+            shipBuilt: [
+                "A hull. Its position history will not be continuous and we would ask you not to raise it."
+            ],
+            turnStart: [
+                "A season, or something adjacent to one."
+            ],
+            gameWon: [
+                "We would have won. There will be one arrival that is not on the schedule. We would rather not be present for it."
+            ],
+            gameLost: [
+                "We may not have been here. That is not a comfort and we are not offering it as one."
+            ]
+        },
+
+        // 11 Titan Lords - formal, long, no contractions ever. Contemptuous of hurry.
+        titan: {
+            probeLost: [
+                "We do not build a hull small enough to have been sent. Somebody else's, then."
+            ],
+            blackHole: [
+                "Mass is not a defence against that. It is a defence against very nearly everything else."
+            ],
+            asteroidLoss: [
+                "Anything smaller would be part of that shoal. We shall want the sector, in due course.",
+                "Losses. They will be recorded, and the recording will be permanent, and it will be read every morning."
+            ],
+            asteroidEscape: [
+                "She came through. I do not offer that as seamanship. I offer it as mass."
+            ],
+            shoalSwept: [
+                "The shoal is swept. It will still be swept in four hundred years, which is the only timescale worth the work."
+            ],
+            colonized: [
+                "A holding, and it is on bedrock. It will outlast the house that took it."
+            ],
+            battleStart: [
+                "The precedence order will be read first. If the engagement cannot wait, it was not going to be won."
+            ],
+            battleWon: [
+                "There is no further question of that sector."
+            ],
+            battleLost: [
+                "A hull of ours has failed in service. That will be removed from the list aloud, by name, in the morning."
+            ],
+            researchDone: [
+                "Revised. We have not needed to revise this in some centuries and I would not read too much into it."
+            ],
+            enemySighted: [
+                "They will forgive us for not attending in the season they would prefer."
+            ],
+            lowCrystal: [
+                "We are short of reckoning. We were not going anywhere quickly regardless."
+            ],
+            colonyReady: [
+                "The settlement hull is complete. It is specified for four hundred years."
+            ],
+            shipBuilt: [
+                "Laid down, and a name is cut into a member that is holding her together."
+            ],
+            turnStart: [
+                "The list has been read. All of ours are in the water."
+            ],
+            gameWon: [
+                "We arrived, and when we arrived there was no further question. Two hundred years of service remain."
+            ],
+            gameLost: [
+                "We are diminished. We have arranged to be diminished slowly, and I would put it to you that you have arranged the same thing with rather less honesty."
+            ]
+        },
+
+        // 12 Shadow Realm - courteous, delighted, never answers the question asked.
+        shadow: {
+            probeLost: [
+                "What a good question. You have one probe fewer, and I notice you did not ask me how many I have."
+            ],
+            blackHole: [
+                "Gone, yes. Do sit. There is food, and there is nothing whatever to be done about the sector."
+            ],
+            asteroidLoss: [
+                "You have lost some. I have some sympathy, and I have a chart, and we should discuss what I would like.",
+                "The shoal, yes. Everyone loses hulls there. I could have mentioned it. I did not."
+            ],
+            asteroidEscape: [
+                "Nothing touched. How fortunate. I shall not ask how you knew the route."
+            ],
+            shoalSwept: [
+                "Swept, and now it is on somebody’s chart. I would rather it were only on ours."
+            ],
+            colonized: [
+                "A world, and now it is listed, and being listed is the beginning of being taken."
+            ],
+            battleStart: [
+                "Before we begin - hospitality is extended to their commander. Sincerely. Nobody ever believes it."
+            ],
+            battleWon: [
+                "Held. They will file a report about it and the report will be wrong."
+            ],
+            battleLost: [
+                "Lost. We are weaker than everyone believes, which is true, and saying it has never helped."
+            ],
+            researchDone: [
+                "Known now. I would rather it were known only here."
+            ],
+            enemySighted: [
+                "Someone is looking at us. That is the part that costs."
+            ],
+            lowCrystal: [
+                "Short of reckoning. I have three people who owe me an answer; one of them may owe me crystal."
+            ],
+            colonyReady: [
+                "A settling hull. Somewhere with no long sightlines, if you would."
+            ],
+            shipBuilt: [
+                "A hull, and it will not appear in anybody's count, including possibly yours."
+            ],
+            turnStart: [
+                "A season. Nobody has counted us yet."
+            ],
+            gameWon: [
+                "Ours. And now everybody knows precisely how many we had, which is the bill."
+            ],
+            gameLost: [
+                "Beaten. Somebody counted us properly. I did say that was how it would end."
+            ]
         }
     };
 
-    // Race id → voice. (1 Terran, 2 Silicon, 3 Zephyr, 4 Crystalline, 5 Void,
-    // 6 Mechanicus, 7 Bioform, 8+ default by feel.)
+    // Race id -> register. Identity mapping: twelve races, twelve voices, per lore/14-peoples/.
+    // Collapsing these is what produced the Bioform shouting "BLOOD IN THE BLACK".
     const RACE_VOICE = {
-        1: 'dry', 2: 'cold', 3: 'feral', 4: 'cold', 5: 'cold',
-        6: 'cold', 7: 'feral', 8: 'dry', 9: 'dry', 10: 'cold', 11: 'feral', 12: 'dry'
+        1: 'terran', 2: 'silicon', 3: 'zephyr', 4: 'crystalline', 5: 'void', 6: 'mechanicus',
+        7: 'bioform', 8: 'nomad', 9: 'ancients', 10: 'quantum', 11: 'titan', 12: 'shadow'
     };
 
     let raceId = 1;
@@ -169,7 +749,7 @@ const Advisor = (function () {
     }
 
     function say(eventKey, context = {}) {
-        const voice = VOICES[RACE_VOICE[raceId] || 'dry'];
+        const voice = VOICES[RACE_VOICE[raceId] || 'terran'];
         const lines = voice[eventKey];
         if (!lines || lines.length === 0) return;
 
@@ -183,7 +763,7 @@ const Advisor = (function () {
             line += ` (Sector ${context.sector})`;
         }
 
-        const tone = /Won|colonized|researchDone|asteroidEscape|gameWon/.test(eventKey) ? 'success'
+        const tone = /Won|colonized|researchDone|asteroidEscape|shoalSwept|gameWon/.test(eventKey) ? 'success'
             : /Lost|blackHole|battleLost|gameLost/.test(eventKey) ? 'error'
             : /battleStart|enemySighted|asteroidLoss/.test(eventKey) ? 'warning'
             : 'info';
@@ -197,11 +777,22 @@ const Advisor = (function () {
 
     // Pattern-match raw server text → advisor events.
     const OBSERVERS = [
-        { re: /probe was destroyed (?:in|while entering) sector ([0-9A-F]+)/i, event: 'probeLost', sector: 1 },
-        { re: /BLACK HOLE.*crushed|crushed by the immense gravity/i, event: 'blackHole' },
-        { re: /destroyed our entire fleet|lost .* ships to asteroids/i, event: 'asteroidLoss' },
-        { re: /avoided being hit/i, event: 'asteroidEscape' },
-        { re: /Fleet claimed sector ([0-9A-F]+)|Success: Colonized sector (\d+)/i, event: 'colonized', sector: 1 },
+        // These track the feed copy in lore/17-the-feed/, which is what server.js now emits.
+        // Match on a distinctive phrase from each message rather than on incidental nouns, so
+        // ordinary rewording does not silently kill an observer. Order matters: observe()
+        // stops at the first match, so the mouth check must precede the shoal check (a
+        // black-hole report mentions the chart too).
+        { re: /Probe did not arrive at ([0-9A-F]+)/i, event: 'probeLost', sector: 1 },
+        { re: /There is a mouth (?:at|there)/i, event: 'blackHole' },
+        { re: /on the chart now|I have the manifest|the shoal took/i, event: 'asteroidLoss' },
+        { re: /crossed clean; nothing was hit/i, event: 'asteroidEscape' },
+        // Sweeping a shoal is the one positive-sum act in the game - a death trap converted
+        // into permanent free transit for everyone who follows. The advisor said nothing.
+        { re: /Shoal at ([0-9A-F]+) swept/i, event: 'shoalSwept', sector: 1 },
+        // One capture group across both branches. The old form put the alternation inside the
+        // group, so a colonisation only ever reported its sector on the first branch and the
+        // server sends the second.
+        { re: /(?:Fleet claimed sector|Success: Colony confirmed,) ([0-9A-F]+)/i, event: 'colonized', sector: 1 },
         { re: /Battle report: Victory in sector ([0-9A-F]+)/i, event: 'battleWon', sector: 1 },
         { re: /Battle report: Defeat in sector ([0-9A-F]+)/i, event: 'battleLost', sector: 1 },
         // The server says "Researched", never "Purchased". This matched nothing, so the
@@ -214,7 +805,10 @@ const Advisor = (function () {
         // remark on a new hull smelling of solder. There is no building event to route
         // structures to, and saying nothing beats saying the wrong thing.
         { re: /Success: Built (?:Scout|Frigate|Destroyer|Cruiser|Battleship|Intruder|Dreadnought|Carrier)\b/i, event: 'shipBuilt' },
-        { re: /An enemy fleet (was destroyed|lost)/i, event: 'enemySighted' }
+        // An enemy losing hulls to a hazard is now reported as a Success, and the black-hole
+        // variant reads "did not come out of" - the old /was destroyed|lost/ caught only half
+        // of it, and the half it missed failed silently.
+        { re: /An enemy fleet (?:lost|did not come out)/i, event: 'enemySighted' }
     ];
 
     function observe(message) {

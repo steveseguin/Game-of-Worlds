@@ -322,7 +322,7 @@ async function main() {
     if (blackHole) {
         alpha.drain();
         alpha.send(`//probe:${hex(blackHole.sectorid)}`);
-        const bhProbe = await alpha.waitFor(m => m.includes('probe was destroyed'), 'probe destruction');
+        const bhProbe = await alpha.waitFor(m => m.includes('Probe did not arrive'), 'probe destruction');
         // The cause stays hidden on purpose — a black hole, an asteroid belt and an
         // enemy counter-intel net must all read the same. What the player DOES get is
         // the location, flagged on the map so the mistake is not repeated blind.
@@ -366,7 +366,7 @@ async function main() {
         await sleep(250);
         const visited = await query(db, `SELECT owner FROM map${gameId} WHERE sectorid = ?`, [neighbor.sectorid]);
         check(!Number(visited[0].owner), 'fleet arrival does NOT claim planets', `owner=${visited[0].owner}`);
-        const arrivalMsg = alpha.find(m => m.includes('colony ship can settle'));
+        const arrivalMsg = alpha.find(m => m.includes('A colony ship settles it'));
         check(Boolean(arrivalMsg), 'arrival hints at colony ships', arrivalMsg ? arrivalMsg.slice(0, 90) : 'no hint message');
         const moveSeen = alpha.find(m => m.startsWith('fleetmove::'));
         check(Boolean(moveSeen), 'fleet movement broadcast for animation', moveSeen ? moveSeen.slice(0, 60) : 'none');
@@ -381,7 +381,7 @@ async function main() {
         await query(db, `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`, [Number(alpha.name), 6, Number(neighbor.sectorid)]);
         alpha.drain();
         alpha.send(`//colonize:${hex(neighbor.sectorid)}`);
-        await alpha.waitFor(m => m.startsWith('Success: Colonized'), 'colonize success');
+        await alpha.waitFor(m => m.startsWith('Success: Colony confirmed'), 'colonize success');
         const claimed = await query(db, `SELECT owner FROM map${gameId} WHERE sectorid = ?`, [neighbor.sectorid]);
         check(Number(claimed[0].owner) === Number(alpha.name), 'colony ship colonizes planet', `owner=${claimed[0].owner}`);
         const shipGone = await query(db, `SELECT id FROM ships${gameId} WHERE owner = ? AND sectorid = ? AND type = ? LIMIT 1`, [Number(alpha.name), Number(neighbor.sectorid), 6]);
@@ -431,7 +431,13 @@ async function main() {
         }
         alpha.drain();
         alpha.send(`//move:${hex(launchpad.sectorid)}:${hex(astId)}:2:4`);
-        const asteroidMsg = await alpha.waitFor(m => m.toLowerCase().includes('asteroid') || m.toLowerCase().includes('lost') || m.toLowerCase().includes('avoided'), 'asteroid outcome');
+        // The three belt outcomes in the current voice: "Shoal at X crossed clean",
+        // "Nothing arrived at X", and "Fleet arrived, X. N did not ... there is a shoal".
+        // The word "asteroid" no longer appears in any of them.
+        const asteroidMsg = await alpha.waitFor(m => {
+            const t = m.toLowerCase();
+            return t.includes('shoal') || t.includes('nothing arrived');
+        }, 'asteroid outcome');
         check(Boolean(asteroidMsg), 'asteroid belt outcome reported', asteroidMsg.slice(0, 90));
         await sleep(200);
         const beltSurvivors = await query(db, `SELECT id FROM ships${gameId} WHERE owner = ? AND sectorid = ?`, [Number(alpha.name), astId]);
@@ -566,7 +572,7 @@ async function main() {
     const jammed = await alpha.waitFor(m => m.startsWith('Error:') || m.startsWith(`sector::${bravoRow.homeworld}`), 'counterspy outcome');
     // Same denial as terrain hazards: the probe dies and the attacker learns only that
     // the sector eats probes, never that a counter-intel net did the killing.
-    check(jammed.includes('probe was destroyed'), 'superior counter-intel destroys probes', jammed.slice(0, 120));
+    check(jammed.includes('Probe did not arrive'), 'superior counter-intel destroys probes', jammed.slice(0, 120));
     check(!/counter-intel/i.test(jammed), 'counter-intel kill stays deniable', jammed.slice(0, 120));
     const bravoAlert = bravo.find(m => m.includes('DESTROYED an enemy probe'));
     check(Boolean(bravoAlert), 'counter-spy victim is told of their win', bravoAlert ? bravoAlert.slice(0, 90) : 'no alert');

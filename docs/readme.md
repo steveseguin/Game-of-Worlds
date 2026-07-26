@@ -1,8 +1,8 @@
-# Game of Words Contributor Notes
+# Game of Worlds Contributor Notes
 
 This file is a secondary overview. For current setup and contribution workflow, start with the root `README.md` and `CONTRIBUTING.md`. For AI-readable maps of the server APIs, WebSocket protocol, state model, turn engine, deployment flow, and known risks, start with `docs/agents/README.md`.
 
-Game of Words is a multiplayer, turn-based strategy game of galactic conquest featuring:
+Game of Worlds is a multiplayer, turn-based strategy game of galactic conquest featuring:
 - Real-time turn-based gameplay with WebSocket communication
 - Technology research and evolution
 - Planetary colonization and resource management

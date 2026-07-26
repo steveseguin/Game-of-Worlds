@@ -107,9 +107,15 @@ So the endgame is not "defeat the enemy." It is: *you now have the ability to re
 galaxy, and you have just learned what that means.* And the other eleven empires are all
 racing you to it, and most of them will not believe you.
 
-**OPEN:** whether we take this ending. Two alternatives are in `08-open-questions.md`. I
-recommend this one because it converts the game's own victory screen into the story's
-climax, which is a thing almost no strategy game manages.
+**LOCKED** (2026-07-25). Chosen over entropy and theft because it converts the game's own
+victory screen into the story's climax — a thing almost no strategy game manages, and which
+this one gets for free because "research everything" already means "you can relight the lanes."
+Reasoning and rejected alternatives are recorded in `08-open-questions.md` Q1.
+
+**The discipline it obliges:** the thing behind the quarantine is never designed, never named,
+never shown. We show its effects — a docking schedule with a gap in it — and nothing else. The
+moment it acquires a shape it becomes a monster, and a monster is far less frightening than an
+absence.
 
 ### What this is not
 

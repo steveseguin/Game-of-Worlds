@@ -613,6 +613,31 @@ window.GalaxyMap = (function() {
         return { metal, crystal, research };
     }
 
+    // Sector types, named and explained, for the hover tooltip.
+    //
+    // Two problems, one table. The tooltip has never named the type at all - a player hovering a
+    // black hole was told Owner/Status/Intel/Markers/Fleet and not that it was a black hole.
+    // (sectorTypeLabel() exists, but in GUI.js, feeding the detail panel rather than this.) And the
+    // setting had no way of reaching a player who does not read a codex.
+    //
+    // So each entry carries the name and one line of why it matters. Ids and names are from
+    // SECTOR_TYPES in server/lib/map.js and are pinned by tests/lore-sector-types-match-code.test.js;
+    // the lines are condensed from lore/26-encyclopedia.md. Keep them to roughly a dozen words - this
+    // is a hover, not a panel.
+    const SECTOR_LORE = {
+        0:  { name: 'Empty Space',   line: 'Open dark. Nothing to hold, nothing to fear, nothing to gain.' },
+        1:  { name: 'Asteroid Belt', line: 'A shoal. Half your hulls crossing, a quarter arriving — and safe forever once swept.' },
+        2:  { name: 'Black Hole',    line: 'A mouth. No roll, no survivors. Every one on the chart was found by a fleet that did not come back.' },
+        3:  { name: 'Unstable Star', line: 'Throws radiation on a rhythm. The one dangerous place that can be learned instead of bought.' },
+        4:  { name: 'Brown Dwarf',   line: 'A failed star. Too dim to fight over, bright enough to fix a position by. Permanent.' },
+        5:  { name: 'Small Moon',    line: 'Worthless as ground, decisive as a position. A rock at a junction of traces is a door.' },
+        6:  { name: 'Micro Planet',  line: 'Ore, and somewhere to put a yard. Nobody is from a micro planet.' },
+        7:  { name: 'Small Planet',  line: 'It will grow something if you argue with it.' },
+        8:  { name: 'Medium Planet', line: 'Grows willingly, and hides a problem. You find the problem in year three.' },
+        9:  { name: 'Large Planet',  line: 'Good ground. Every one within reach was fought over before the Lamps went out.' },
+        10: { name: 'Homeworld',     line: 'Where you were standing when the Lamps went out. Nobody chose their capital.' }
+    };
+
     function showTooltip(evt, sectorId) {
         if (!state.tooltip) return;
         const sector = state.sectors[sectorId];
@@ -644,8 +669,12 @@ window.GalaxyMap = (function() {
             : '';
         state.tooltip.style.left = `${x}px`;
         state.tooltip.style.top = `${y}px`;
+        // The type is only shown once we actually know it. Under fog the branch above returns
+        // early, so a player is never told what is in a sector they have not reached - which is
+        // the whole point of the setting and would be undone by a helpful tooltip.
+        const lore = SECTOR_LORE[Number(sector.type)];
         state.tooltip.innerHTML = `
-            <div style="font-weight:700;margin-bottom:4px;">Sector ${sectorId}</div>
+            <div style="font-weight:700;margin-bottom:4px;">Sector ${sectorId}${lore ? ` — ${lore.name}` : ''}</div>
             <div>Owner: ${owner}</div>
             <div>Status: ${statusLabel}</div>
             <div>Intel: ${freshness}</div>
@@ -653,6 +682,7 @@ window.GalaxyMap = (function() {
             <div>Fleet: ${fleetText}</div>
             ${buildingLabel ? `<div>${buildingLabel}</div>` : ''}
             <div style="margin-top:4px;opacity:0.85;">Est. yields/turn: M ${projections.metal} · C ${projections.crystal} · R ${projections.research}</div>
+            ${lore ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.10);max-width:280px;opacity:0.72;font-style:italic;line-height:1.35;">${lore.line}</div>` : ''}
         `;
         state.tooltip.style.display = 'block';
         if (window.MediaManager?.playSfx) {

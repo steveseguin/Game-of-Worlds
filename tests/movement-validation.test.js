@@ -179,7 +179,12 @@ test('moveFleet does not move ships when the guarded crystal charge loses a race
 
     server.moveFleet('//move:1:2:3:1', connection);
 
-    assert.deepEqual(connection.sent, ['Error: Not enough crystal for movement (need 1)']);
+    // Intent: exactly one message, it is a rejection, and it names the crystal shortfall.
+    // Matched on substance rather than on the sentence, because the wording is narrator copy
+    // (lore/17-the-feed/06-refusals.md) and gets rewritten; the behaviour is what matters.
+    assert.equal(connection.sent.length, 1, `expected one rejection, got ${connection.sent.length}`);
+    assert.match(connection.sent[0], /^Error:.*crystal/i);
+    assert.match(connection.sent[0], /\b1\b/, 'the shortfall amount should be named');
     assert.equal(queries.some(sql => sql.startsWith('UPDATE ships1')), false);
 });
 

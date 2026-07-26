@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verify a deployed Game of Words server from the public status endpoints.
+ * Verify a deployed Game of Worlds server from the public status endpoints.
  *
  * Usage:
  *   node tools/verify-production-status.js

@@ -6,7 +6,7 @@ Production verification on 2026-07-11 reported service `ok`, database `connected
 
 ## Product Shape
 
-Game of Words is a browser-based, simultaneous turn strategy game. The frontend is vanilla JavaScript with a tactical map and WebSocket session. Node owns lobby/game rules; MySQL owns accounts, room rows, per-game map/player/ship/building state, history, and progression. A mock database supports local integration and Playwright journeys.
+Game of Worlds is a browser-based, simultaneous turn strategy game. The frontend is vanilla JavaScript with a tactical map and WebSocket session. Node owns lobby/game rules; MySQL owns accounts, room rows, per-game map/player/ship/building state, history, and progression. A mock database supports local integration and Playwright journeys.
 
 The current gameplay loop is usable end-to-end: authenticate, create/join, choose race, add AI, start, explore under fog, probe or risk fleets, build, research, colonize, fight, satisfy victory/end conditions, return/resume, or explicitly resign.
 

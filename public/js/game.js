@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Disable selection on game elements
     disableSelection(document.body);
     
-    console.log('Game of Words initialized');
+    console.log('Game of Worlds initialized');
 });
 
 function setupEventListeners() {
@@ -211,10 +211,18 @@ function disableSelection(element) {
 }
 
 function getSanitizedUserId() {
+    // The cookie comes first because it is the only one of these the server accepts:
+    // authorizeHttpUser compares the cookie against the :id in the URL and 403s on a
+    // mismatch. window.gameUserId is in-memory and goes stale the moment another tab
+    // signs in as somebody else; localStorage is written at login, never cleared at
+    // logout, and has no expiry while the cookie lasts a day. When they disagree the
+    // cookie is right by definition, and preferring either of the others makes every
+    // user-scoped call 403 - which leaves ownedItems empty, so the shop offers to sell
+    // you a race you already own.
     const candidates = [
+        getCookie('userId'),
         window.gameUserId,
-        localStorage.getItem('userId'),
-        getCookie('userId')
+        localStorage.getItem('userId')
     ];
     
     for (const candidate of candidates) {

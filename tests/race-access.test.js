@@ -213,7 +213,11 @@ test('buyTech: rejects researching past a race branch cap', () => {
 
     server.buyTech(`buytech:${T.LASER_WEAPONS.id}`, conn);
 
-    assert.match(conn.lastError(), /can only research .* to Lv3/);
+    // Intent: rejected, and the rejection names the cap the race actually stops at. Matched on
+    // the level rather than the sentence - the wording is narrator copy and is rewritten from
+    // lore/17-the-feed/04-research-and-doctrine.md, the Lv3 cap is the contract.
+    assert.match(conn.lastError(), /^Error:/, 'should be a rejection');
+    assert.match(conn.lastError(), /Lv3\b/, 'the rejection should name the cap level');
     assert.equal(ranWrite(db), false, 'no tech write when over the cap');
 });
 
@@ -228,7 +232,15 @@ test('buyTech: rejects entering a branch the race has locked', () => {
 
     server.buyTech(`buytech:${T.ROCKETRY.id}`, conn);
 
-    assert.match(conn.lastError(), /that path is closed to them/);
+    // Intent: rejected on the LOCKED path, not the capped one - the two have different copy and
+    // it matters which fired. A locked branch names the technology and no level, because there is
+    // no level to reach; a cap names the level it stops at. Asserting the discrimination is
+    // sturdier than asserting either sentence.
+    assert.match(conn.lastError(), /^Error:/, 'should be a rejection');
+    assert.match(conn.lastError(), /Rocketry/, 'the rejection should name the technology');
+    assert.doesNotMatch(conn.lastError(), /Lv\d/,
+        'a locked branch has no reachable level, so the copy must not quote one - '
+        + 'quoting one means the cap path fired instead of the lock path');
     assert.equal(ranWrite(db), false, 'no tech write into a locked branch');
 });
 
@@ -261,7 +273,11 @@ test('buyShip: rejects a hull outside the race doctrine (no resources spent)', (
 
     server.buyShip(`buyship:${DREADNOUGHT}`, conn);
 
-    assert.match(conn.lastError(), /cannot build Dreadnought/);
+    // Intent: rejected, and the rejection names the hull it refused. The verb is narrator copy
+    // ("do not build" rather than "cannot build" - the locks are doctrine, not incapacity, per
+    // lore/21-matchups-and-mysteries.md), so match the hull and the rejection, not the phrasing.
+    assert.match(conn.lastError(), /^Error:/, 'should be a rejection');
+    assert.match(conn.lastError(), /Dreadnought/, 'the rejection should name the hull');
     assert.equal(ranWrite(db), false, 'a disallowed ship never reaches the build/spend queries');
 });
 

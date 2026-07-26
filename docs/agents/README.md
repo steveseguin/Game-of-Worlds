@@ -1,6 +1,6 @@
 # Agent Documentation
 
-This folder is the AI-oriented operating map for Game of Words. It is meant for Codex, future agents, and contributors who need to understand the live server and gameplay flow quickly enough to make safe changes.
+This folder is the AI-oriented operating map for Game of Worlds. It is meant for Codex, future agents, and contributors who need to understand the live server and gameplay flow quickly enough to make safe changes.
 
 ## Source Of Truth
 

@@ -1,4 +1,4 @@
-# Game of Words Database and Code Analysis
+# Game of Worlds Database and Code Analysis
 
 > Status note, 2026-06-14: this document is historical analysis. The active
 > runtime now includes guest upgrades, hashed authentication, reconnection
@@ -284,7 +284,7 @@ function handleReconnection(userId, connection) {
 
 ## Conclusion
 
-The Game of Words game has a solid foundation with a working database schema and essential gameplay functions. However, several critical components need to be addressed to create a complete user experience:
+The Game of Worlds game has a solid foundation with a working database schema and essential gameplay functions. However, several critical components need to be addressed to create a complete user experience:
 
 1. **Data Integrity**: Implement transactions for complex operations
 2. **Game History**: Add tables and logic to track game outcomes and player statistics
@@ -292,4 +292,4 @@ The Game of Words game has a solid foundation with a working database schema and
 4. **Reconnection Handling**: Improve session management for dropped connections
 5. **Game Completion**: Strengthen win condition detection and end-game processing
 
-With these improvements, Game of Words will offer a more robust multiplayer experience with proper data persistence, tracking player achievements, and ensuring smooth gameplay from start to finish.
+With these improvements, Game of Worlds will offer a more robust multiplayer experience with proper data persistence, tracking player achievements, and ensuring smooth gameplay from start to finish.

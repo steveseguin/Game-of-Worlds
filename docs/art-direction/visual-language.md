@@ -2,7 +2,7 @@
 
 ## Intended Feel
 
-Game of Words should feel like the player is operating a durable command station, not browsing a modern web app. The interface can still be built with HTML, CSS, Canvas, and WebGL, but the visible result should feel physical, fixed, and deliberate.
+Game of Worlds should feel like the player is operating a durable command station, not browsing a modern web app. The interface can still be built with HTML, CSS, Canvas, and WebGL, but the visible result should feel physical, fixed, and deliberate.
 
 Think:
 

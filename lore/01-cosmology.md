@@ -146,7 +146,9 @@ nothing and can only trip us later.
 | 0 | Empty Space | Open dark. Nothing to hold, nothing to fear, nothing to gain. |
 | 1 | Asteroid Belt | A **shoal**. Lethal to cross, survivable to enter, safe once swept. |
 | 2 | Black Hole | A **mouth**. Absolute, permanent, unownable in any real sense. |
-| 3–5 | *(other hazards)* | **OPEN** — unassigned. See `08-open-questions.md`; there are three free slots here and I have candidates. |
+| 3 | Unstable Star | *"An unstable star that emits dangerous radiation."* Not colonizable. **5% of every map.** Currently carries no `hazardous` flag, so it is mechanically inert — the danger is fiction the engine does not yet enforce. |
+| 4 | Brown Dwarf | *"A failed star with no planets."* Not colonizable, not hazardous, **5% of every map.** The galaxy's navigational marks: too dim to fight over, bright enough to fix a position by, permanent. |
+| 5 | Small Moon | *"A small moon without an atmosphere."* Not colonizable, not hazardous, **5% of every map.** Worthless as ground and decisive as a position, because a rock at a junction of four traces is a door. |
 | 6–9 | Colonizable Planets | Worlds, in ascending order of what they will give and what they demand. |
 | 10 | Homeworld | Where you were standing when the Lamps went out. |
 

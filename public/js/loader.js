@@ -13,7 +13,7 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     if (window.__gameInitialized) {
-        console.log('Game of Words modules loaded successfully');
+        console.log('Game of Worlds modules loaded successfully');
         return;
     }
 
@@ -28,5 +28,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     window.__gameInitialized = true;
-    console.log('Game of Words modules loaded successfully (fallback mode)');
+    console.log('Game of Worlds modules loaded successfully (fallback mode)');
 });

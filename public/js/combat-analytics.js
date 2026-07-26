@@ -46,6 +46,14 @@ const CombatAnalytics = (function() {
     }
 
     function getUserId() {
+        // Cookie first: it is what the server authenticates against, so a disagreement
+        // with the in-memory or localStorage copy means those are the stale ones. Same
+        // ordering as getSanitizedUserId in game.js.
+        const fromCookie = Number.parseInt(getCookie('userId'), 10);
+        if (Number.isFinite(fromCookie) && fromCookie > 0) {
+            return fromCookie;
+        }
+
         const fromWindow = Number.parseInt(window.gameUserId, 10);
         if (Number.isFinite(fromWindow) && fromWindow > 0) {
             return fromWindow;
@@ -54,11 +62,6 @@ const CombatAnalytics = (function() {
         const fromStorage = Number.parseInt(localStorage.getItem('userId'), 10);
         if (Number.isFinite(fromStorage) && fromStorage > 0) {
             return fromStorage;
-        }
-
-        const fromCookie = Number.parseInt(getCookie('userId'), 10);
-        if (Number.isFinite(fromCookie) && fromCookie > 0) {
-            return fromCookie;
         }
 
         return null;

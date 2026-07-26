@@ -1,6 +1,6 @@
 # Art Direction Reference
 
-This folder captures the visual direction Steve described for future Game of Words UI work. Treat it as a shared target, not a rigid style bible.
+This folder captures the visual direction Steve described for future Game of Worlds UI work. Treat it as a shared target, not a rigid style bible.
 
 The direction is a fixed, intentional command-station presentation: a mostly static 2D bitmap-like interface that feels alive through animated hotspots, layered effects, and event-driven status panels.
 

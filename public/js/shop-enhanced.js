@@ -757,6 +757,11 @@ const Shop = (function() {
     
     // Load owned items
     async function loadOwnedItems() {
+        // Same guard as loadUserBalance: without an id this fetches /api/user/null/... ,
+        // which matches no route. Worse here than for the balance - a failed load leaves
+        // ownedItems empty, and purchaseRace only refuses a duplicate when that set says
+        // you already own it.
+        if (!userId) return;
         try {
             const response = await fetch(`/api/user/${userId}/owned-items`, {
                 credentials: 'include'
@@ -773,6 +778,7 @@ const Shop = (function() {
     
     // Load purchase history
     async function loadPurchaseHistory() {
+        if (!userId) return;
         try {
             const response = await fetch(`/api/user/${userId}/purchase-history`, {
                 credentials: 'include'
