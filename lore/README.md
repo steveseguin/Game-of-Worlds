@@ -121,6 +121,7 @@ rituals in `04-factions/`.
 | `23-interludes.md` | Three comic scenes that broaden the emotional register. |
 | `24-anthology/` | 106 pieces tied to game objects and systems. 104 are Codex-shaped. Two are long: `24-anthology/15-they-could-not-be-moved.md` pays off the turret piece in `24-anthology/05-buildings.md`, and `24-anthology/16-the-first-clean-run.md` is the only piece in the elevated register licensed by `03-themes.md`. |
 | `28-through-lines.md` | **Read before adding or editing any story piece.** The eight lines that run across the whole folder, each plant in order and where it lands — so a new piece joins a line instead of starting a new loose one. Payoffs are test-guarded. |
+| `29-borrowed-machinery.md` | What the best D&D adventures, game writing and SF do structurally, what we already have, and seven ranked proposals for reusing the rest. **DESIGN**  six of them are delivery mechanisms for prose that already exists. |
 
 The two testimony series are finished forms, not race-reference authorities. When a story disagrees
 with the spine, repair the story.
