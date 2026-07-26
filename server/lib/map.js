@@ -9,7 +9,7 @@
  * It's a core game mechanic module used by the server.
  * 
  * Dependencies:
- * - Used by server.js and init.js for map operations
+ * - Used by server.js for map operations, and by the map-generation tests
  */
 /**
  * Sector types with their properties
