@@ -24,7 +24,9 @@ inheritance.
 **Artifact** — A field on every map sector. `lib/map.js` rolls **1–5 on 25% of all colonizable worlds**
 and persists it, one value per world. **Nothing reads it yet** — the field is live, the mechanic is not.
 Canon as of Q10: this is where a **relic** lies. See `27-the-unattributed.md`; `08-open-questions.md` Q10
-is the authority. Still open: whether 1–5 means five *kinds* of part or five *grades* of one.
+is the authority. A Wonder needs **five relics**, every relic is unique, and the 1–5 value is an
+identity axis for flavour rather than a grade or a kind (Q10b). A standard map carries about 17 relic
+worlds, so at most three Wonders can ever be built on one.
 
 **Asteroid Belt** *(sector type 1)* ✓ — A **shoal**. `dangerLevel 0.5`. Lethal to cross, survivable to
 enter, and permanently safe once swept. Yields **4 crystal and 8 metal a turn** once secured. The only

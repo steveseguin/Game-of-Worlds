@@ -66,15 +66,21 @@ intelligence having to leak: a Wonder is a Lamp being relit. It is a light. Ever
 
 There is exactly one exception — the Shadow Realm's, which has no site — and that exception is the
 whole point of the Shadow Realm. **It announces a count instead of a coordinate** (Q10g): the galaxy
-is told how many of the eleven fragments the Assembled Frame has recovered, updated as that changes,
+is told how many of the Assembled Frame's five relics are held, updated as that changes,
 and never where. That is a harder clock to ignore than a sector, not a softer one — *"somebody has
-begun in sector 34"* can be discounted by anyone far away; *"seven of eleven"* cannot be discounted
+begun in sector 34"* can be discounted by anyone far away; *"four of five"* cannot be discounted
 by anybody. And the race that refuses to be counted becomes the only empire the galaxy counts, which
 is the reason it is right rather than a consolation for having no site.
 
 They remain stoppable, differently: the Frame's progress **is** the relics held, and a relic transfers
-with the ground, so there is no site to besiege and up to eleven worlds to take, each setting them
-back by one.
+with the ground, so there is no site to besiege and up to five worlds to take, each setting them
+back by one. A lifter convoy is the other opening — an empire with no fixed site still has to carry
+things, and that is when it can be caught.
+
+**The "eleven fragments" in the table above are a different object and are not relics.** They are
+frames of *imagery* — pieces of a recording sold off over seventy years — and buying them back is the
+story of that race's research capstone. Their Wonder takes five relics like everybody else's. Q10g
+records the conflation and its correction.
 
 **4. Maintenance is mandatory, per-turn, and it hurts.** Every Wonder has an upkeep, and every
 upkeep is denominated in the thing that empire can least afford. Miss it and the Wonder goes

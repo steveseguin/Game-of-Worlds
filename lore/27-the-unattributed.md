@@ -127,7 +127,7 @@ right — and never asserted.
 
 ## The mechanic, as decided
 
-The owner's model, which replaced this document's. The original proposed a **per-empire fragment
+The owner's model, which replaced this document's. The original proposed a **per-empire relic
 counter**, which made map luck a private misfortune needing a trade mechanic to soften it. The version
 below makes relics **objects on the board**, and it is materially better.
 
@@ -141,7 +141,18 @@ below makes relics **objects on the board**, and it is materially better.
 | An unlucky empire needs **an army**, not compensation | The trade-as-mitigation argument in the original is **withdrawn**; conquest does that work better |
 | **Colonizable worlds only** | No map-generator change, no second discovery mechanism for undevelopable ground |
 
-**Proposed, not locked:** read `artifact = 1–5` as **five kinds of part**, not five grades of quantity.
+**Decided: you need five relics, and every relic is unique.** Not grades — explicitly rejected, so
+`artifact = 1` is not a smaller relic than `artifact = 5`. Not a set of kinds to complete either; five
+relics is five relics. That leaves the 1–5 value free, and the right use for it is **identity**: which of
+several unique relics this world holds, for flavour and art, derived deterministically from
+`(gameId, sectorId)` the way `sector-names.js` derives chart names, so uniqueness per map is automatic.
+
+**The map is already finite, and the number is good.** Measured over 200 generations of a standard 14×8
+map: **67 colonizable worlds, 16.7 relic worlds.** At five per Wonder that is **at most three Wonders per
+map**, and in a six-player game most empires cannot build one without taking relics off somebody who
+already has them. No new scarcity mechanism is needed.
+
+*The line this replaced proposed reading `artifact = 1–5` as five kinds of part.*
 Then "hold five relics" means one of each, and the victory condition becomes literally assembling the
 mechanism. It also uses the shipped generator precisely as it already behaves.
 
@@ -189,9 +200,13 @@ losing one in transit is a disaster.
 a lifter can carry it, then flying one to another empire's world and unloading it is a gift — physical,
 slow, and interceptable, with no trade menu and no new code. That is a better version of trade than the
 abstract one this document originally asked for, and it makes the Star Nomad brokerage real rather than
-fictional. It also rescues a piece of existing canon: the Shadow Realm's Assembled Frame is already
-described as a buy-back of eleven fragments from eleven empires, which had no mechanism behind it until
-now.
+fictional.
+
+*An earlier version of this paragraph also claimed the lifter "rescues" the Shadow Realm's Assembled
+Frame, which is described as a buy-back of eleven fragments from eleven empires. **Withdrawn — that was a
+conflation.** Those eleven fragments are **frames of imagery**, pieces of a recording sold off over
+seventy years, not objects in the ground. Nothing carries them and nothing needs to. The buy-back is the
+story of that race's research capstone; their Wonder takes five relics like everybody else's. See Q10g.*
 
 ---
 
@@ -219,10 +234,10 @@ Build a Galactic Wonder, hold it ten turns, win. Written, switched off, waiting 
   where it is. The `systemalert::` broadcast path already exists.
   - **One exception, now decided (Q10g):** the Shadow Realm's Assembled Frame **has no site**
     (`13-wonders/README.md` rule 3, where the absence is called the whole point of the race), so it
-    announces **a count instead of a coordinate** — how many of the eleven fragments are recovered,
-    updated as that changes, never where. Harder to ignore than a sector, not softer, and the empire
+    announces **a count instead of a coordinate** — how many of its five relics are held, updated as
+    that changes, never where. Harder to ignore than a sector, not softer, and the empire
     that refuses to be counted becomes the only one the galaxy counts. They are stopped by taking the
-    worlds their fragments sit on, of which there may be eleven, rather than by besieging one site.
+    worlds their relics sit on, of which there may be five, rather than by besieging one site.
 - **Taking the sector mid-build destroys the works.** The relics transfer with the ground, so the
   attacker gains the parts and starts over. Recorded as the writer's call and open to veto: inheriting
   progress would let a rival snipe turn nine and *steal* the win, rewarding nine turns of inactivity,
@@ -278,7 +293,7 @@ Wonder costing several hundred production drains many turns of the existing per-
 ## Risks, honestly
 
 **1. RNG on an identity object — now solved twice over.** The original risk was a low-probability roll
-gating a once-per-game object, locking a player out of their own doctrine by luck. Fragments fixed the
+gating a once-per-game object, locking a player out of their own doctrine by luck. Relics-as-objects fixed the
 first half; relics-as-territory fixed the second, because a player with bad luck can *take* one. If a
 later balance pass ever converts relics back into a private counter, both mitigations vanish together.
 
@@ -299,7 +314,7 @@ any of it. That is a real feature, not a copy change.
 
 ## Still open
 
-- **Five kinds or five grades** for `artifact = 1–5` (proposed above, not locked).
+- ~~Five kinds or five grades~~ — **decided.** Five relics, each unique, no grades and no set of kinds.
 - **Every number.** Discovery odds per trigger, relics per Wonder, build duration, lifter cost and speed.
 - **Whether the lifter needs art before it can ship**, and whether an existing hull silhouette can stand
   in.

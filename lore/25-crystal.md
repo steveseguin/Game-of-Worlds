@@ -267,11 +267,17 @@ that were already occupied.
 value is where a **relic** lies. Design in `27-the-unattributed.md`; Q10 is the authority. Fiction is safe
 to write against the locked parts, and the numbers are still placeholders.
 
-The reading this section proposed survived and is now canon in outline: **the artifact field is where the
-Trellis remnant sits on the map.** A world with artifact 1 holds a hand-sized piece of something that is
-not metal and is not crystal and has no seam. A world with artifact 5 holds a **structure**: nine
-kilometres of it, dark, intact, and unreadable, of the kind Deputy Warden Halloway once stood under and
-came away understanding that eleven empires are illiterate.
+The reading this section proposed survived and is now canon in outline: **the artifact field is where a
+relic lies.** Every relic is a unique object — one to a world, most worlds none — and a Wonder needs five
+of them.
+
+**One relic is not a bigger version of another.** Grades were explicitly rejected in Q10b: `artifact = 1`
+is not a smaller find than `artifact = 5`. So the range is an *identity* axis rather than a size, and
+what varies between two relics is what they are, not how much of one you got. One might be a hand-sized
+thing that is not metal and is not crystal and has no seam. Another might be nine kilometres of dark,
+intact, unreadable structure, of the kind Deputy Warden Halloway once stood under and came away
+understanding that eleven empires are illiterate. Both count as one relic, and that is the point: what
+the Concord's requisition form asked for was *a part*, not a quantity of substance.
 
 It costs nothing, uses a field that already exists at a distribution that already works, gives every Lamp
 programme in the galaxy a physical reason to want particular worlds, and explains why the highest-grade
@@ -282,7 +288,7 @@ reverse-engineered** — it is the part the documentation took for granted, not 
 so no piece may show anybody making one or working out what it is. And the fiction must never state that
 a relic caused the Unarriving, only leave it derivable.
 
-**Still open, and it changes what a relic is:** whether 1–5 means five *kinds* of part or five *grades* of
-the same thing. The prose above assumes grades. If Q10's proposed five-kinds reading is adopted, this
-paragraph needs rewriting and the nine-kilometre structure becomes a different part rather than a bigger
-one.
+**Vocabulary, and it matters here more than anywhere.** In story prose call it whatever the speaker would
+— *artifact*, *relic*, *the ancient thing*, a Registry classification. **When describing a rule, it is a
+relic, every time** (Q10i). `artifact` is the code and column name and stays internal, the way
+`sectorname` sits under the player-facing "chart name."

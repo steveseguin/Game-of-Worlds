@@ -3,7 +3,7 @@
 This is the decision record, not the current backlog. Q1–Q4, Q6–Q9 and Q10 (including Q10g and Q10h)
 are decided; Q5 was withdrawn after its premise proved false; Q5d was answered by Q10. The remaining
 decisions are the Unstable Star's mechanical truth, whether the Concord flashback merits an engine
-mode, whether `artifact = 1–5` means five kinds or five grades, and every balance number. Start with
+mode, and every balance number. Start with
 `STATUS.md` for current delivery state and priorities, then use this file for the reasoning.
 
 ---
@@ -139,9 +139,15 @@ it**: not income, not combat, not victory, not the client. No lore document ment
    distribution and the storage already exist and work.
 
 **The proposal, marked as one** (`25-crystal.md` Part 6): the artifact field is where **Trellis remnant**
-sits on the map. Artifact 1 is a fragment; artifact 5 is nine kilometres of intact, dark, unreadable
-structure. It uses a working distribution, gives every Lamp programme a physical reason to want particular
-worlds, and explains why the oldest ruins and the highest-grade reckoning are the same substance.
+sits on the map. Artifact 1 is a hand-sized piece; artifact 5 is nine kilometres of intact, dark,
+unreadable structure. It uses a working distribution, gives every Lamp programme a physical reason to want
+particular worlds, and explains why the oldest ruins and the highest-grade reckoning are the same
+substance.
+
+> **The half of that proposal reading 1–5 as sizes was rejected.** Q10b locked *no grades*: `artifact = 1`
+> is not a smaller find than `artifact = 5`. The field survives as an identity axis, and the "hand-sized
+> piece versus nine kilometres" contrast survives as a difference between two *unique relics* rather than
+> between a small one and a big one. Kept here because the rest of the proposal was adopted.
 
 **No pieces have been written claiming artifacts do anything**, deliberately. Writing fiction for a
 mechanic that does not exist is exactly the error that put a Wreck Field into an occupied sector slot.
@@ -246,27 +252,42 @@ did. And it costs no rewriting.
 correct choice and cannot explain it. Not the people who broke the galaxy by accident. That second
 version was considered and rejected precisely because it makes them pitiable instead of unknowable.
 
-### Q10b · How does discovery pay out? → **fragments, and they are objects on the board**
+### Q10b · How does discovery pay out? → **relics, and they are objects on the board**
 
 This is the answer that changed the design most, and the owner's version is materially better than the
-one proposed. The proposal had a per-empire fragment counter, which made map luck a private misfortune
+one proposed. The proposal had a per-empire relic counter, which made map luck a private misfortune
 requiring a trade mechanic to soften. Instead:
 
-- A fragment is a **physical thing on a world**, like a building — not a number in a player's ledger.
+- A relic is a **physical thing on a world**, like a building — not a number in a player's ledger.
 - **One per world at most**, and most worlds have none.
-- Discovery odds stay **small even under heavy development**, so a fragment world rewards sustained
+- Discovery odds stay **small even under heavy development**, so a relic world rewards sustained
   investment rather than a lucky first turn.
-- **It transfers with the ground.** Lose the planet and the invader has your fragment.
+- **It transfers with the ground.** Lose the planet and the invader has your relic.
 - Therefore **a planet becomes worth defending** — something this game has never had. Until now every
   world was interchangeable and you defended whichever was cheapest.
 - And an unlucky empire needs **an army, not a consolation mechanic**. The trade-as-mitigation
   argument in `27-the-unattributed.md` is withdrawn; conquest does that work better.
 
-**Reading `artifact = 1–5` as five kinds of part, not five quantities.** Proposed, not locked. It makes
-"hold five fragments" mean one of each, which turns the victory condition into literally assembling the
-mechanism. It also uses the shipped generator exactly as it already behaves.
+**How many, and what the 1–5 means → decided. You need five relics, and every relic is unique.**
 
-### Q10c · Can a fragment be moved? → **yes, by a dedicated hull available to every race**
+- **A Wonder needs five relics.** Not one of each of something; just five.
+- **Every relic is a unique object.** No two are the same thing, so "all five must be different" is a
+  property of the world rather than a rule the player has to be taught.
+- **Not grades.** Explicitly rejected. `artifact = 1` is not a smaller relic than `artifact = 5`.
+- **Not kinds either, in the mechanical sense.** There is no set to complete and no "you are missing a
+  type 3." Five relics is five relics.
+- **So the 1–5 value is not a mechanical axis at all.** It is free, and the right use for it is *identity*
+  — which of several unique relics this world holds, for flavour and art. Derive the specific relic
+  deterministically from `(gameId, sectorId)` the way `server/lib/sector-names.js` derives chart names,
+  and uniqueness per map is automatic with no bookkeeping.
+
+**On "maybe there is a finite number per map" — there already is, and the number is good.** Measured over
+200 generations of a standard 14×8 map: **67 colonizable worlds and 16.7 relic worlds.** At five relics
+per Wonder that is **at most three Wonders per map, ever**, and in a six-player game most empires cannot
+build one without taking relics off somebody who already has them. The scarcity the design wanted is
+already in the shipped generator and needs no new mechanism.
+
+### Q10c · Can a relic be moved? → **yes, by a dedicated hull available to every race**
 
 Moving one requires a purpose-built transport. Checking "Carrier-class or larger" against
 `RACE_ACCESS` found that **the Zephyr Swarm and the Shadow Realm can field neither a Carrier nor a
@@ -276,12 +297,12 @@ So: a dedicated lifter, **exempt from race doctrine exactly as the Colony Ship a
 (`races.js`: *"Colony (6) is always allowed"*). Expensive, slow, and defenceless, so committing one is
 a real decision and losing one in transit is a disaster.
 
-### Q10d · Do fragments appear anywhere but worlds? → **colonizable worlds only**
+### Q10d · Do relics appear anywhere but worlds? → **colonizable worlds only**
 
 Matches the shipped generator, needs no map change, and needs no second discovery mechanism for ground
 nobody can develop. It also protects Q10b's whole point: the thing worth defending is a *planet*.
 
-The shoal and small-moon versions were judged better fiction and deferred on scope — a fragment on a
+The shoal and small-moon versions were judged better fiction and deferred on scope — a relic on a
 rock the Codex already calls *"worthless as ground, decisive as a position"* is a good later extension,
 not a launch requirement.
 
@@ -356,40 +377,63 @@ Q10 was written without checking the Wonder rule set, and it contradicted three 
    Wonder for a further N turns, which restores Rule 6 and gives up the simplification Q10f was chosen
    for. Recorded as a live choice.
 
+### Q10i · Vocabulary discipline → **"relic" is the mechanical term. LOCKED.**
+
+Two axes, and confusing them is what made a reader ask *"artifact?? you mean relic or something else?"*
+
+- **When describing game mechanics — rules, costs, prerequisites, UI, protocol, tests — the word is
+  `relic`.** One word, everywhere, no synonyms. Age of Empires established it; a player already knows what
+  a relic is and does not need to learn a house term.
+- **In story prose, use whatever the speaker would use.** *Artifact*, *relic*, *the ancient thing*, *that
+  bloody object*, a Registry classification, a navigator's obscenity. It is fiction; characters do not
+  share a glossary.
+- **`artifact` remains the code and column name.** It is a live schema column and renaming it buys
+  nothing. Treat it as internal, exactly as `sectorname` sits under the player-facing "chart name."
+
+**Withdrawn: "fragment" as a mechanical term.** It was the working word through Q10's drafting and it has
+been replaced by *relic* wherever it described a rule. It survives only in story prose, where it means an
+ordinary broken piece of something and carries no mechanical meaning.
+
 ### Q10g · What a siteless Wonder announces → **a count, not a coordinate. LOCKED.**
 
 Conflict 2 above, resolved. Every other empire's Wonder announces *who* and *where*. The Shadow Realm's
 Assembled Frame has no where, so it announces **how many**.
 
-The galaxy is told that the Frame is being assembled and **how many of the eleven fragments are
-recovered**, updated as that number changes. Never a location, because there is not one.
+The galaxy is told that the Frame is being assembled and **how many of its five relics are held**,
+updated as that number changes. Never a location, because there is not one.
 
-**Most of this was already in `13-wonders/12-shadow-realm.md` and nobody had joined it up.** That file
-already says the Frame is *"assembled by acquisition"*, that *"progress is measured in fragments
-recovered"*, that each comes *"from eleven different holders who each paid for it and each know what they
-have"*, and that none of them will sell cheaply *"now that they know somebody wants the set."* The other
-empires were always going to find out. The only question was through what channel, and the answer is: the
-same one, made public.
+**Correction, and it was my error.** The first version of this decision said the announcement counted
+*"the eleven fragments"* and that the Frame's progress **is** those fragments. It is not.
+`13-wonders/12-shadow-realm.md` is talking about **frames of imagery** — *"a frame here, a frame there,
+eleven buyers, eleven fragments"* — pieces of a recording of eleven Ancient vessels, sold off over seventy
+years. Film frames, not objects in the ground. I conflated them with relics while writing Q10 and
+compounded it in Q10g.
+
+The clean separation, which changes nothing that was already written:
+
+- **The imagery buy-back is the story of their research capstone**, `3 · The Assembled Frame (Intel)`,
+  which is where that file already puts it. Buying back the footage *is* how that race researches.
+- **The relic gate is uniform.** Their Wonder needs five relics like everybody else's. No second currency
+  and no exception, which is also why the announcement is a count out of five rather than out of eleven —
+  uniform with every other empire's progress.
 
 **Why a count is the right answer and not a weaker version of a coordinate:**
 
 - **It is a harder clock to ignore, not a softer one.** "Somebody has begun in sector 34" can be
-  discounted by anyone far away. "Seven of eleven" cannot be discounted by anybody.
+  discounted by anyone far away. "Four of five" cannot be discounted by anybody.
 - **It fits what that race is.** The Shadow Realm refuses to be counted, and it is now the only empire in
   the galaxy the galaxy counts. That irony is the reason this is right rather than a consolation for
   having no site.
-- **The counterweight is already canon.** Every fragment is a negotiation with a specific empire, and
-  that empire knows what it sold. So their progress is *privately* legible to eleven separate creditors
-  before it is publicly legible to anybody, which is a distributed intelligence problem rather than an
-  exemption from one.
 - **They are still stoppable, just differently.** Under Q10b a relic is physical and transfers with the
-  ground, and the Frame's progress *is* the relics held. There is no site to besiege; there are up to
-  eleven worlds to take, each of which sets them back by one. Fine-grained instead of decisive, which
-  suits an empire nobody can find.
+  ground, and the Frame's progress *is* the five relics held. There is no site to besiege; there are up to
+  five worlds to take, each of which sets them back by one. Fine-grained instead of decisive, which suits
+  an empire nobody can find.
+- **And a lifter convoy is the other opening.** Relics move only by a slow, defenceless dedicated hull
+  (Q10c). An empire with no fixed site still has to *carry* things, and that is when it can be caught.
 
 **What this does not do:** grant a Wonder that cannot be interfered with. If a later balance pass finds
-the Shadow Realm strictly the best Wonder race, the lever is the number of fragments required or the cost
-of each negotiation — not the announcement, which is the part carrying the theme.
+the Shadow Realm strictly the best Wonder race, the lever is the relic count or the cost of their
+research capstone — not the announcement, which is the part carrying the theme.
 
 ### Q10h · Does a finished Wonder win outright? → **yes. Completion is the victory. LOCKED.**
 
@@ -415,7 +459,7 @@ that is untrue.
 
 ### Still open after this
 
-- Whether `artifact = 1–5` means five kinds or five grades (Q10b, proposed).
+- Nothing about relics: Q10b settled five, unique, not grades and not kinds.
 - Every number: discovery odds, relic count per Wonder, build duration, lifter cost, and how many of the
   eleven the Assembled Frame needs.
 - Whether the lifter needs art before it can ship.

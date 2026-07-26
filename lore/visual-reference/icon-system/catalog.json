@@ -1,0 +1,543 @@
+{
+  "status": "REFERENCE",
+  "version": 1,
+  "displayRule": "Show the alias as the primary label and the canonical mechanic immediately beneath it.",
+  "counts": {
+    "researchLevels": 108,
+    "buildingStates": 9,
+    "shipTypes": 9,
+    "actions": 16,
+    "totalIcons": 142
+  },
+  "technologies": [
+    {
+      "id": 1,
+      "key": "METAL_EXTRACTION",
+      "branch": "ECONOMY",
+      "canonicalName": "Metal Extraction",
+      "mechanic": "+10% metal income per level",
+      "aliases": [
+        "Surface Claims",
+        "Standard Fasteners",
+        "Deep Shafts",
+        "Load-Bearing Cuts",
+        "Automated Drills",
+        "Pressure Mines",
+        "Seam Cartography",
+        "Autonomous Pits",
+        "Planetary Works",
+        "Coreward Extraction"
+      ]
+    },
+    {
+      "id": 2,
+      "key": "CRYSTAL_REFINING",
+      "branch": "ECONOMY",
+      "canonicalName": "Crystal Refining",
+      "mechanic": "+10% crystal income per level",
+      "aliases": [
+        "Raw Sorting",
+        "Clean Cut",
+        "Optical Grading",
+        "Resonance Wash",
+        "Instrument Stock",
+        "Reckoning Standard",
+        "Lossless Facets",
+        "Deep-Grade Refining",
+        "Concord Purity",
+        "Perfect Reckoning"
+      ]
+    },
+    {
+      "id": 3,
+      "key": "RESEARCH_NETWORKS",
+      "branch": "ECONOMY",
+      "canonicalName": "Research Networks",
+      "mechanic": "+10% research income per level",
+      "aliases": [
+        "Recovered Papers",
+        "Shared Index",
+        "Relay Library",
+        "Concordance Office",
+        "Distributed Academy",
+        "Open Archive",
+        "Cross-World Method",
+        "Live Peer Network",
+        "Total Bibliography",
+        "Reconstructed Practice"
+      ]
+    },
+    {
+      "id": 4,
+      "key": "LASER_WEAPONS",
+      "branch": "WEAPONS",
+      "canonicalName": "Laser Weapons",
+      "mechanic": "+10% fleet damage per level",
+      "aliases": [
+        "First Gun",
+        "Stabilized Emitter",
+        "Coherent Array",
+        "Predictive Tracking",
+        "Steady Service"
+      ]
+    },
+    {
+      "id": 10,
+      "key": "PLASMA_CANNONS",
+      "branch": "WEAPONS",
+      "canonicalName": "Plasma Cannons",
+      "mechanic": "+15% fleet damage per level",
+      "aliases": [
+        "Magnetic Bottle",
+        "Pulsed Bolt",
+        "Wound Channel",
+        "Cascade Chamber",
+        "Starfire Battery"
+      ]
+    },
+    {
+      "id": 11,
+      "key": "ANTIMATTER_WARHEADS",
+      "branch": "WEAPONS",
+      "canonicalName": "Antimatter Warheads",
+      "mechanic": "+25% fleet damage per level",
+      "aliases": [
+        "Pinch Containment",
+        "Caged Void",
+        "Zero-Contact Warhead"
+      ]
+    },
+    {
+      "id": 15,
+      "key": "ROCKETRY",
+      "branch": "MISSILES",
+      "canonicalName": "Rocketry",
+      "mechanic": "Partially bypasses enemy shields per level",
+      "aliases": [
+        "Volume Aim",
+        "Guided Salvo",
+        "Shield-Bypass Doctrine"
+      ]
+    },
+    {
+      "id": 16,
+      "key": "HYPERV_MISSILES",
+      "branch": "MISSILES",
+      "canonicalName": "Hyper-V Missiles",
+      "mechanic": "Heavy shield-piercing ordnance",
+      "aliases": [
+        "Acceleration Rail",
+        "Terminal Correction",
+        "Irrevocable Flight"
+      ]
+    },
+    {
+      "id": 5,
+      "key": "REINFORCED_HULLS",
+      "branch": "ARMOR",
+      "canonicalName": "Reinforced Hulls",
+      "mechanic": "+10% ship durability per level",
+      "aliases": [
+        "Two-Centimetre Plate",
+        "Braced Spine",
+        "Compartmental Frame",
+        "Fortress Keel",
+        "Yard-Four Standard"
+      ]
+    },
+    {
+      "id": 12,
+      "key": "REACTIVE_ARMOR",
+      "branch": "ARMOR",
+      "canonicalName": "Reactive Armor",
+      "mechanic": "+15% ship durability per level",
+      "aliases": [
+        "Ablative Skin",
+        "Layered Sacrifice",
+        "Reactive Cells",
+        "Shaped Countercharge",
+        "Battle-Shedding Armor"
+      ]
+    },
+    {
+      "id": 13,
+      "key": "ADAPTIVE_PLATING",
+      "branch": "ARMOR",
+      "canonicalName": "Adaptive Plating",
+      "mechanic": "+25% ship durability per level",
+      "aliases": [
+        "Sensor Plate",
+        "Learning Laminate",
+        "Second-Shot Plating"
+      ]
+    },
+    {
+      "id": 6,
+      "key": "DEFLECTOR_SHIELDS",
+      "branch": "SHIELDS",
+      "canonicalName": "Deflector Shields",
+      "mechanic": "Makes enemy shots more likely to miss per level",
+      "aliases": [
+        "Near-Miss Field",
+        "Vector Bias",
+        "Deflection Grid",
+        "Layered Envelope",
+        "Missing by Design"
+      ]
+    },
+    {
+      "id": 14,
+      "key": "PHASE_SHIELDS",
+      "branch": "SHIELDS",
+      "canonicalName": "Phase Shields",
+      "mechanic": "Advanced deflection that stacks with Deflector Shields",
+      "aliases": [
+        "Phase Offset",
+        "Split Envelope",
+        "Conditional Screen",
+        "Silent Interval"
+      ]
+    },
+    {
+      "id": 17,
+      "key": "ION_DRIVES",
+      "branch": "PROPULSION",
+      "canonicalName": "Ion Drives",
+      "mechanic": "-8% fleet movement cost per level",
+      "aliases": [
+        "Ion Torch",
+        "Field Shaping",
+        "Eight-Percent Drive",
+        "Sustained Burn",
+        "Fleet Economy"
+      ]
+    },
+    {
+      "id": 18,
+      "key": "WARP_DRIVES",
+      "branch": "PROPULSION",
+      "canonicalName": "Warp Drives",
+      "mechanic": "A further -8% fleet movement cost per level",
+      "aliases": [
+        "Blind Geometry",
+        "Fold Calibration",
+        "Last Honest Improvement"
+      ]
+    },
+    {
+      "id": 19,
+      "key": "MILITARY_SHIPYARDS",
+      "branch": "SHIPS",
+      "canonicalName": "Military Shipyards",
+      "mechanic": "Unlocks heavier ship classes",
+      "aliases": [
+        "Line Yard",
+        "Heavy Slip",
+        "Grand Yard"
+      ]
+    },
+    {
+      "id": 20,
+      "key": "ORBITAL_ENGINEERING",
+      "branch": "ORBITAL",
+      "canonicalName": "Orbital Engineering",
+      "mechanic": "Level 1 unlocks Warp Gates; turrets gain +20% power per level",
+      "aliases": [
+        "Gate Geometry",
+        "Targeting Lattice",
+        "Hardened Battery",
+        "Defense Network",
+        "Orbital Command"
+      ]
+    },
+    {
+      "id": 7,
+      "key": "TERRAFORMING",
+      "branch": "TERRAFORM",
+      "canonicalName": "Terraforming",
+      "mechanic": "Allows colonization at or below the researched requirement",
+      "aliases": [
+        "Seal and Scrub",
+        "Pressure Chain",
+        "Open-Air Tolerance",
+        "Living Weather",
+        "Nobody Alive"
+      ]
+    },
+    {
+      "id": 8,
+      "key": "ESPIONAGE",
+      "branch": "INTEL",
+      "canonicalName": "Espionage Networks",
+      "mechanic": "Out-spy an empire to reveal increasingly sensitive intelligence",
+      "aliases": [
+        "Port Rumours",
+        "Paid Hands",
+        "Provisioning Ledger",
+        "Rubbed-Out Charts",
+        "Bought Traces",
+        "Reading Their Charts",
+        "Fleet Ledgers",
+        "Inner Registry"
+      ]
+    },
+    {
+      "id": 9,
+      "key": "COUNTER_INTEL",
+      "branch": "INTEL",
+      "canonicalName": "Counter-Intelligence",
+      "mechanic": "Blinds enemy intelligence; sufficient advantage destroys probes",
+      "aliases": [
+        "Quiet Audit",
+        "Closed Ledger",
+        "Probe Intercept",
+        "Salting",
+        "False Provenance",
+        "Blind Office",
+        "Hostile Silence",
+        "Unreadable Empire"
+      ]
+    }
+  ],
+  "buildings": [
+    {
+      "type": 0,
+      "key": "METAL_EXTRACTOR",
+      "canonical": "Metal Extractor",
+      "alias": "Seamhead Extractor",
+      "actual": "Building type 0; repeated installation, not a level",
+      "icon": "buildings/metal-extractor.png"
+    },
+    {
+      "type": 1,
+      "key": "CRYSTAL_REFINERY",
+      "canonical": "Crystal Refinery",
+      "alias": "Reckoning Refinery",
+      "actual": "Building type 1; repeated installation, not a level",
+      "icon": "buildings/crystal-refinery.png"
+    },
+    {
+      "type": 2,
+      "key": "RESEARCH_ACADEMY",
+      "canonical": "Research Academy",
+      "alias": "Recovery Academy",
+      "actual": "Building type 2; repeated installation, not a level",
+      "icon": "buildings/research-academy.png"
+    },
+    {
+      "type": 3,
+      "key": "SPACEPORT",
+      "canonical": "Spaceport",
+      "level": 1,
+      "alias": "Field Spaceport",
+      "actual": "Spaceport level 1; 12 production per turn",
+      "icon": "buildings/spaceport-level-01.png"
+    },
+    {
+      "type": 3,
+      "key": "SPACEPORT",
+      "canonical": "Spaceport",
+      "level": 2,
+      "alias": "Expanded Yard",
+      "actual": "Spaceport level 2; 20 production per turn",
+      "icon": "buildings/spaceport-level-02.png"
+    },
+    {
+      "type": 3,
+      "key": "SPACEPORT",
+      "canonical": "Spaceport",
+      "level": 3,
+      "alias": "Fleet Foundry",
+      "actual": "Spaceport level 3; 32 production per turn",
+      "icon": "buildings/spaceport-level-03.png"
+    },
+    {
+      "type": 3,
+      "key": "SPACEPORT",
+      "canonical": "Spaceport",
+      "level": 4,
+      "alias": "Grand Fleetworks",
+      "actual": "Spaceport level 4; 48 production per turn",
+      "icon": "buildings/spaceport-level-04.png"
+    },
+    {
+      "type": 4,
+      "key": "ORBITAL_TURRET",
+      "canonical": "Orbital Turret",
+      "alias": "Sector Battery",
+      "actual": "Building type 4; repeated installation, not a level",
+      "icon": "buildings/orbital-turret.png"
+    },
+    {
+      "type": 5,
+      "key": "WARP_GATE",
+      "canonical": "Warp Gate",
+      "alias": "Blindspan Gate",
+      "actual": "Building type 5; one per sector",
+      "icon": "buildings/warp-gate.png"
+    }
+  ],
+  "ships": [
+    {
+      "id": 1,
+      "canonical": "Frigate",
+      "alias": "First Line",
+      "actual": "Ship type 1; no shipyard research required",
+      "icon": "ships/01-frigate.png"
+    },
+    {
+      "id": 2,
+      "canonical": "Destroyer",
+      "alias": "Middleweight",
+      "actual": "Ship type 2; Military Shipyards level 1",
+      "icon": "ships/02-destroyer.png"
+    },
+    {
+      "id": 3,
+      "canonical": "Scout",
+      "alias": "Cheapest Fact",
+      "actual": "Ship type 3; no shipyard research required",
+      "icon": "ships/03-scout.png"
+    },
+    {
+      "id": 4,
+      "canonical": "Cruiser",
+      "alias": "Commitment",
+      "actual": "Ship type 4; Military Shipyards level 1",
+      "icon": "ships/04-cruiser.png"
+    },
+    {
+      "id": 5,
+      "canonical": "Battleship",
+      "alias": "Line of Battle",
+      "actual": "Ship type 5; Military Shipyards level 2",
+      "icon": "ships/05-battleship.png"
+    },
+    {
+      "id": 6,
+      "canonical": "Colony Ship",
+      "alias": "Seedship",
+      "actual": "Ship type 6; no shipyard research required; consumed on settlement",
+      "icon": "ships/06-colony-ship.png"
+    },
+    {
+      "id": 7,
+      "canonical": "Dreadnought",
+      "alias": "War-Ender",
+      "actual": "Ship type 7; Military Shipyards level 3",
+      "icon": "ships/07-dreadnought.png"
+    },
+    {
+      "id": 8,
+      "canonical": "Intruder",
+      "alias": "Unlisted Knife",
+      "actual": "Ship type 8; Military Shipyards level 2",
+      "icon": "ships/08-intruder.png"
+    },
+    {
+      "id": 9,
+      "canonical": "Carrier",
+      "alias": "Recovery Harbour",
+      "actual": "Ship type 9; Military Shipyards level 3; requires a local Warp Gate",
+      "icon": "ships/09-carrier.png"
+    }
+  ],
+  "actions": [
+    {
+      "key": "INSPECT_SECTOR",
+      "alias": "Read the Contact",
+      "actual": "Inspect selected sector",
+      "icon": "actions/inspect-sector.png"
+    },
+    {
+      "key": "SEND_PROBE",
+      "alias": "Buy One Fact",
+      "actual": "Send probe; costs 300 crystal",
+      "icon": "actions/send-probe.png"
+    },
+    {
+      "key": "PLOT_MOVEMENT",
+      "alias": "Plot the Blind Line",
+      "actual": "Request fleet movement options and route preflight",
+      "icon": "actions/plot-movement.png"
+    },
+    {
+      "key": "MOVE_FLEET",
+      "alias": "Commit the Crossing",
+      "actual": "Move selected fleet",
+      "icon": "actions/move-fleet.png"
+    },
+    {
+      "key": "WARP_TRANSIT",
+      "alias": "Take the Lit Span",
+      "actual": "Move between paired owned Warp Gates",
+      "icon": "actions/warp-transit.png"
+    },
+    {
+      "key": "COLONIZE",
+      "alias": "Settle This World",
+      "actual": "Colonize selected eligible world; consumes one Colony Ship",
+      "icon": "actions/colonize.png"
+    },
+    {
+      "key": "BUILD_STRUCTURE",
+      "alias": "Raise an Installation",
+      "actual": "Construct selected building",
+      "icon": "actions/build-structure.png"
+    },
+    {
+      "key": "UPGRADE_SPACEPORT",
+      "alias": "Cut the Next Slip",
+      "actual": "Upgrade local Spaceport one level",
+      "icon": "actions/upgrade-spaceport.png"
+    },
+    {
+      "key": "BUILD_SHIP",
+      "alias": "Lay Down a Hull",
+      "actual": "Build selected ship at local Spaceport",
+      "icon": "actions/build-ship.png"
+    },
+    {
+      "key": "RESEARCH",
+      "alias": "Recover the Method",
+      "actual": "Research the next technology level",
+      "icon": "actions/research.png"
+    },
+    {
+      "key": "READY_TURN",
+      "alias": "File the Turn",
+      "actual": "Mark ready for the next turn",
+      "icon": "actions/ready-turn.png"
+    },
+    {
+      "key": "STANDING_ORDERS",
+      "alias": "Leave Written Orders",
+      "actual": "Configure standing orders",
+      "icon": "actions/standing-orders.png"
+    },
+    {
+      "key": "APPLY_ORDERS",
+      "alias": "Run Orders Now",
+      "actual": "Apply standing orders immediately",
+      "icon": "actions/apply-orders.png"
+    },
+    {
+      "key": "NAME_SHOAL",
+      "alias": "Write It on the Chart",
+      "actual": "Choose the permanent curated name for a swept shoal",
+      "icon": "actions/name-shoal.png"
+    },
+    {
+      "key": "CHAT",
+      "alias": "Use the Whisper",
+      "actual": "Send game chat",
+      "icon": "actions/chat.png"
+    },
+    {
+      "key": "SURRENDER",
+      "alias": "Strike the Registry",
+      "actual": "Surrender and remove this empire from the match",
+      "icon": "actions/surrender.png"
+    }
+  ]
+}

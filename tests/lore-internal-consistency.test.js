@@ -197,6 +197,66 @@ test('a finished Wonder wins, and no file still calls that an open choice', () =
         'Q10h no longer records that completion is the victory');
 });
 
+test('relic is the mechanical term, and grades stay rejected', () => {
+    // Q10i: one word for the rule, freedom in the prose. A reader asked "artifact?? you mean relic or
+    // something else?" because three words were in play for one object - artifact, fragment, relic.
+    //
+    // This checks the two things that are cheap to check and were actually wrong: the decision record
+    // must not describe the mechanic in the withdrawn vocabulary, and no file may present grades as
+    // live. It deliberately does NOT police story prose, where any word is correct.
+    const files = loreFiles().filter(f => !NOT_CANON.has(f.name));
+
+    // Grades were explicitly rejected. Any file still offering them as an option is stale - but a file
+    // recording the rejection has to QUOTE the option to reject it, which is the same trap this suite
+    // has now hit three times. Look around the match for a marker before calling it an offence.
+    const REJECTED = /decided|rejected|no grades|~~|withdrawn|superseded|not locked.{0,40}(?:rejected|decided)/i;
+    const gradesLive = [];
+    for (const f of files) {
+        for (const m of f.flat.matchAll(/five \*?kinds\*? (?:of part )?or five \*?grades\*?|means five kinds or five grades/gi)) {
+            const context = f.flat.slice(Math.max(0, m.index - 200), m.index + m[0].length + 200);
+            if (REJECTED.test(context)) continue;
+            gradesLive.push(f.file);
+        }
+    }
+    assert.deepEqual([...new Set(gradesLive)], [],
+        `these files still present grades as an open option:\n  ${[...new Set(gradesLive)].join('\n  ')}`);
+
+    // The mechanical rules in the decision record and the design doc should read "relic", not
+    // "fragment". Story files are exempt, and so are the passages that record the withdrawal itself.
+    const mechanicsFiles = ['lore/08-open-questions.md', 'lore/27-the-unattributed.md', 'lore/STATUS.md'];
+    const RECORDING = /withdrawn|conflation|working word|superseded|imagery|frames of|a frame here|per-empire relic|rejected/i;
+    const stale = [];
+    for (const want of mechanicsFiles) {
+        const f = files.find(x => x.file === want);
+        assert.ok(f, `${want} is missing`);
+        for (const m of f.flat.matchAll(/\bfragments?\b/gi)) {
+            const context = f.flat.slice(Math.max(0, m.index - 300), m.index + 300);
+            if (RECORDING.test(context)) continue;
+            stale.push(`${f.file}: ...${f.flat.slice(Math.max(0, m.index - 60), m.index + 40)}...`);
+        }
+    }
+    assert.deepEqual(stale, [],
+        `these describe the mechanic as "fragment" rather than "relic" (Q10i):\n  ${stale.join('\n  ')}`);
+
+    // And the count is five, recorded.
+    const record = files.find(f => f.name === '08-open-questions.md');
+    assert.match(record.flat, /A Wonder needs five relics/i,
+        'Q10b no longer states that a Wonder needs five relics');
+});
+
+test('the Shadow Realm imagery is not confused with relics', () => {
+    // The eleven "fragments" of the Assembled Frame are frames of a recording, not objects in the
+    // ground. Q10 conflated them once and it took a measurement pass to notice. Any file that
+    // mentions both has to keep them apart.
+    const files = loreFiles().filter(f => !NOT_CANON.has(f.name));
+    const wrong = files
+        .filter(f => /eleven fragments[^.]{0,80}relic|relics[^.]{0,40}eleven fragments/i.test(f.flat))
+        .filter(f => !/different object|not relics|conflation/i.test(f.flat))
+        .map(f => f.file);
+    assert.deepEqual(wrong, [],
+        `these files treat the Assembled Frame's eleven imagery fragments as relics:\n  ${wrong.join('\n  ')}`);
+});
+
 test('no file claims the artifact field is still undecided', () => {
     // Q5d asked whether the field should do anything and Q10 answered it. The encyclopedia - the
     // "start here for facts" file - still said "not canon until a mechanics decision is made" a full
