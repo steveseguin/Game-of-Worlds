@@ -734,6 +734,98 @@ const Advisor = (function () {
     const recent = new Map(); // eventKey -> timestamp, basic anti-spam
     const COOLDOWN_MS = { turnStart: 240000, lowCrystal: 180000, default: 8000 };
 
+    // --- The advisor's memory (lore/29-borrowed-machinery.md B3) --------------------------------
+    //
+    // Until now this module was stateless apart from `raceId`: it reacted to WHAT HAPPENED and never
+    // to WHAT HAS BEEN HAPPENING TO YOU. The device is Disco Elysium's micro-reactivity - a game that
+    // remembers trivial things and mentions them - and the received account of why that game could
+    // afford it is that its critical path was linear. Multiplayer has no critical path, so the rule
+    // here is: cheap per line, and NEVER information the player needs. Advisory colour only.
+    //
+    // Deliberately client-side and deliberately per-session. The players table has no history columns
+    // and this does not justify a schema migration; the advisor already sees every event, so it can
+    // count them itself for nothing. It resets on reload, which is an acceptable price for a remark.
+    const memory = {
+        sweeps: 0,          // shoals this player has secured
+        losses: 0,          // events in which hulls did not arrive
+        probes: 0,          // probes dispatched
+        turn: 0,            // last turn number seen
+        lastLossTurn: null, // turn of the most recent loss
+        avoided: 0,         // times a hazard was crossed without securing it
+        named: 0            // chart names this player has chosen
+    };
+
+    // Recall lines are PER VOICE, and they have to be.
+    //
+    // The first version of this returned one shared set, which would have had a Bioform tender saying
+    // "I had stopped writing the preamble" - a Terran Registry sentence. That is precisely the collapse
+    // that produced the original defect this whole module was rewritten to fix, and it slipped past
+    // tests/advisor-voice-canon.test.js because that test inspects VOICES and knew nothing about this
+    // table. It does now.
+    //
+    // Two situations only, for all twelve, because rarity is the entire effect:
+    //   thirdSweep  - the third shoal secured. The player has become somebody who pays.
+    //   longQuiet   - twelve turns without losing a hull.
+    const RECALL = {
+        terran:      { thirdSweep: 'Third one. That is a pattern now, and the Registry will notice before the enemy does.',
+                       longQuiet:  'Twelve turns, nothing lost. I have stopped writing the preamble.' },
+        silicon:     { thirdSweep: 'Third. The model did not predict a third. The model has been amended.',
+                       longQuiet:  'Twelve turns without a divergence. That is not skill. That is a sample size.' },
+        zephyr:      { thirdSweep: 'Three roads. We are more of us on the far side than we were.',
+                       longQuiet:  'Nothing lost, twelve turns. It feels like holding a breath in.' },
+        crystalline: { thirdSweep: 'The third. These will outlast the argument that made them.',
+                       longQuiet:  'Twelve turns is not long. We have simply not been hurried.' },
+        void:        { thirdSweep: 'Third clean. Somebody will recite these lanes to somebody else one day.',
+                       longQuiet:  'Twelve turns and every hull came home. Do not slow down to admire it.' },
+        mechanicus:  { thirdSweep: 'Third corridor certified. Standing order updated. No further comment required.',
+                       longQuiet:  'Twelve turns, no attrition. The variance is favourable and unexplained.' },
+        bioform:     { thirdSweep: 'Three, and each one was raised rather than taken. That is a garden.',
+                       longQuiet:  'Twelve turns and nothing we grew has been lost. Say it quietly.' },
+        nomad:       { thirdSweep: 'Third! Somebody put the kettle on — that is three routes nobody pays for twice.',
+                       longQuiet:  'Twelve turns, everybody home, and not one rite to conduct. Long may it bore us.' },
+        ancients:    { thirdSweep: 'The third. We did this before, at greater scale, and it was also worth doing.',
+                       longQuiet:  'Twelve turns. We have seen longer quiets end worse.' },
+        quantum:     { thirdSweep: 'A third, in most accountings. In one of them you have already finished.',
+                       longQuiet:  'Twelve turns without a loss, so far as anybody has resolved it.' },
+        titan:       { thirdSweep: 'Three. In an age this will be a road and nobody will know it was bought.',
+                       longQuiet:  'Twelve turns is not a duration. It is a pause between them.' },
+        shadow:      { thirdSweep: 'Third. Others have counted it too, which is the part worth minding.',
+                       longQuiet:  'Twelve turns unblemished. Somebody is keeping that number besides us.' }
+    };
+
+    /**
+     * A remark about the player's own history, in the player's own register, or null. Rare on purpose:
+     * an advisor that comments on every event stops being a character and becomes a widget.
+     */
+    function recall(eventKey, voiceName) {
+        const set = RECALL[voiceName];
+        if (!set) return null;
+
+        if (eventKey === 'shoalSwept' && memory.sweeps === 3) return set.thirdSweep;
+
+        if (eventKey === 'turnStart') {
+            const quiet = memory.lastLossTurn === null ? memory.turn : memory.turn - memory.lastLossTurn;
+            if (quiet >= 12 && memory.turn > 12 && memory.losses > 0) return set.longQuiet;
+        }
+        return null;
+    }
+
+    /** Fold an event into the memory. Called before the line is chosen so counts include this event. */
+    function remember(eventKey, context) {
+        if (eventKey === 'shoalSwept') memory.sweeps += 1;
+        if (eventKey === 'asteroidLoss' || eventKey === 'shipLost' || eventKey === 'blackHole') {
+            memory.losses += 1;
+            memory.lastLossTurn = memory.turn;
+        }
+        if (eventKey === 'probeSent') memory.probes += 1;
+        if (eventKey === 'asteroidEscape') memory.avoided += 1;
+        if (eventKey === 'sectorNamed') memory.named += 1;
+        if (eventKey === 'turnStart') {
+            const t = Number(context && context.turn);
+            memory.turn = Number.isFinite(t) && t > 0 ? t : memory.turn + 1;
+        }
+    }
+
     function setRace(id) {
         const numeric = Number(id);
         if (Number.isFinite(numeric) && numeric > 0) {
@@ -753,12 +845,19 @@ const Advisor = (function () {
         const lines = voice[eventKey];
         if (!lines || lines.length === 0) return;
 
+        // Fold into memory even if the line is about to be suppressed by the cooldown: the count is
+        // a fact about the player, not about whether we mentioned it.
+        remember(eventKey, context);
+
         const now = Date.now();
         const cooldown = COOLDOWN_MS[eventKey] || COOLDOWN_MS.default;
         if (recent.has(eventKey) && now - recent.get(eventKey) < cooldown) return;
         recent.set(eventKey, now);
 
-        let line = pick(lines);
+        // A remark about the player's own history replaces the generic line when there is one. It is
+        // deliberately not appended - two sentences reads as a widget explaining itself, and the
+        // register in 03-themes.md is one dry observation at a time.
+        let line = recall(eventKey, RACE_VOICE[raceId] || 'terran') || pick(lines);
         if (context.sector) {
             line += ` (Sector ${context.sector})`;
         }

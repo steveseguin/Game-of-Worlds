@@ -84,11 +84,27 @@
         // count goes first and the housekeeping goes second. A clean sweep gets its own line
         // rather than "0 hulls", because nothing lost is a different thing, not a smaller one.
         const cost = Number(payload.cost);
-        const paid = !Number.isFinite(cost) || cost <= 0
-            ? `Sector ${sectorToken(sector)} is swept, and every hull came home.`
-            : `${cost} hull${cost === 1 ? '' : 's'} did not arrive at ${sectorToken(sector)}. `
+        const token = sectorToken(sector);
+        let paid;
+        if (payload.memorial) {
+            // Nothing came back and the ground is not theirs. This must not read as an
+            // achievement, and it must not read as consolation either - the name is the only
+            // thing the crossing bought, and it is permanent, and strangers will inherit it.
+            paid = `Nothing arrived at ${token}. The shoal is on the chart and it is not ours.`;
+        } else if (!Number.isFinite(cost) || cost <= 0) {
+            paid = `Sector ${token} is swept, and every hull came home.`;
+        } else {
+            paid = `${cost} hull${cost === 1 ? '' : 's'} did not arrive at ${token}. `
                 + 'The shoal is swept. It is a road now and it will stay one.';
-        blurb.textContent = `${paid} Whoever holds it after you will use the name you choose.`;
+        }
+        const inherits = payload.memorial
+            ? 'Whoever takes it will use the name you give it.'
+            : 'Whoever holds it after you will use the name you choose.';
+        blurb.textContent = `${paid} ${inherits}`;
+
+        // The heading changes too. "Name the shoal" is wrong for a place you failed to take.
+        const heading = prompt.querySelector('[data-name-heading]');
+        if (heading) heading.textContent = payload.memorial ? 'Enter it on the chart' : 'Name the shoal';
 
         options.innerHTML = '';
         candidates.forEach((candidate, index) => {

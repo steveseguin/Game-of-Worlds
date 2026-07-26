@@ -36,7 +36,11 @@ been B− for five revisions) and short of **reactivity** — which is what Part
 
 ## Part 2 — The borrows worth making, ranked
 
-### B1 · The Reading — *Curse of Strahd*, and it solves a problem we actually have
+**Build state, 2026-07-26.** B1, B2, B3, B4 and B7 are **built**. B5 and B6 are not, and are honestly
+scoped rather than half-done — both are real features and the notes below say what they would cost.
+What shipped is recorded in `../lore/REPORT-CARD.md` R13 and each section carries a build note.
+
+### B1 · The Reading — *Curse of Strahd*, and it solves a problem we actually have · **BUILT**
 
 **The device.** A 54-card Tarokka deck is drawn at the start of the campaign and determines where the key
 artifact, the ally and the enemy are. Nothing about the plot changes; *everything* about the run does. The
@@ -67,9 +71,17 @@ lines, drawn deterministically, that frame the match without changing a rule:
 
 **Cost:** small. Text plus a deterministic draw. This is the highest value-per-line item in this document.
 
+**BUILT.** `server/lib/standing-advisory.js`, broadcast as four `systemalert::` lines at game start.
+Every figure is counted off the map array that was just written to the table, so it cannot contradict the
+board; the phrasing is a hash of the game id, so a reconnect reads the same advisory back. It names no
+positions and never mentions relics. `tests/standing-advisory.test.js` (5) checks all of that — and caught
+a real defect on its first run: the poor-yield thresholds were set at `< 95` while real maps run 130–167,
+so two of three branches were **dead code** and every advisory ended on the same line. Thresholds are now
+measured, and a test fails if a generator change makes them unreachable again.
+
 ---
 
-### B2 · Arc words — *Planescape: Torment*
+### B2 · Arc words — *Planescape: Torment* · **BUILT**
 
 **The device.** One question, asked over and over, answered differently by every companion, and finally by
 the player: *what can change the nature of a man?* The received reading is that the player's answers are a
@@ -90,9 +102,13 @@ hull in `races.js` is one of the twelve answering it, and paying for the answer.
 
 **Cost:** zero. Editorial. This is a pass over existing files, not new writing.
 
+**BUILT** as a charter section in `03-themes.md` with three rules: never print it as a thesis, every race
+answers in its own grammar once and never explains, and the player answers it mechanically and is never
+asked. The editorial pass over `12-civilisations/` and `14-peoples/` is still to do.
+
 ---
 
-### B3 · Micro-reactivity — *Disco Elysium*
+### B3 · Micro-reactivity — *Disco Elysium* · **BUILT, in part**
 
 **The device.** The game remembers trivial things and responds to them. The consensus account is that this
 is what elevates the writing, and that ZA/UM could afford it *because the critical path is linear* —
@@ -126,9 +142,23 @@ colour, never information a player needs.
 
 **Cost:** medium. A per-player counter block plus lines. Highest emotional return of anything in Part 2.
 
+**BUILT, in part, and the scope reduction is deliberate.** The memory lives in `advisor.js` client-side
+and per-session, not in the schema: the players table has no history columns, the advisor already sees
+every event, and a remark does not justify a migration. It resets on reload, which is the price.
+
+Two situations only — the third shoal secured, and twelve turns without a loss — because rarity is the
+whole effect.
+
+**And it nearly shipped broken in the exact way this module was rewritten to fix.** The first version
+returned ONE shared set of recall lines, which would have had a Bioform tender saying *"I have stopped
+writing the preamble"* — a Terran Registry sentence. It passed `advisor-voice-canon.test.js` because every
+assertion there inspects `VOICES` and knew nothing about the new table. Recall is now twelve registers,
+and that test has an eighth assertion covering it. A guard only ever covers the structure it was told
+about.
+
 ---
 
-### B4 · Failure is content — *Disco Elysium*, and it is a two-line change here
+### B4 · Failure is content — *Disco Elysium*, and it is a two-line change here · **BUILT**
 
 **The device.** A failed roll in Disco produces *writing*, not a wall. Failure is where the game gets
 interesting.
@@ -154,9 +184,18 @@ is the feature this proposal is about.*
 **Cost:** small, and it is the best value in this document after B1. It also raises **Co-authorship**,
 currently C+, because it doubles the occasions on which a player writes on the shared map.
 
+**BUILT.** One condition changed from `survivors > 0` to `!sectorOwner && totalShips > 0`, and ownership
+is now written as `owner = COALESCE(?, owner)` so a total loss passes null and names the sector without
+claiming it. The prompt reads differently — *"Nothing arrived at C8. The shoal is on the chart and it is
+not ours"* — and the heading changes from *Name the shoal* to *Enter it on the chart*.
+
+The safety property is guarded, because it is one character wide: with a bare `owner = ?` a total wipe
+would **hand the player the sector**, which is both an exploit and the exact opposite of the intended
+feeling. `tests/map-naming-schema.test.js` fails if that reverts, proven by reverting it.
+
 ---
 
-### B5 · The Registry of your own crossings — *Outer Wilds*
+### B5 · The Registry of your own crossings — *Outer Wilds* · **NOT BUILT**
 
 **The device.** Nothing in Outer Wilds levels up. The only thing that progresses is *the player's
 knowledge*, and the ship's log is the interface for it. The received account stresses show-don't-tell and
@@ -178,7 +217,7 @@ in this shape. Worth scoping before promising.
 
 ---
 
-### B6 · Correspondents, not companions — *Mass Effect* loyalty arcs, constrained by Law 11
+### B6 · Correspondents, not companions — *Mass Effect* loyalty arcs, constrained by Law 11 · **NOT BUILT**
 
 **The device.** A small cast who talk to you between missions, have their own wants, and whose regard
 changes. It is the most reliably beloved structure in modern RPGs.
@@ -197,7 +236,7 @@ never stood in a room* (24 · 15).
 
 ---
 
-### B7 · The calendar — *Harry Potter*, and it is the least obvious one
+### B7 · The calendar — *Harry Potter*, and it is the least obvious one · **BUILT**
 
 **The device.** The school year. It is not the magic that makes those books work structurally — it is that
 a repeating annual frame lets the same beats recur and escalate: term, sport, exams, summer. Recurrence is
@@ -211,6 +250,11 @@ seasons and the Nomads their rites, and you get anniversaries, deadlines, and th
 in B1 to say *"third quarter and the amendments are still not in."*
 
 **Cost:** small to define, and it unlocks a lot of small things. Genuinely optional.
+
+**BUILT** as a calendar section in `07-glossary.md`: four quarters, *the return*, and *arrears* — which
+is retroactively what killed Halloway’s fourteen crews. One constraint recorded with it: turns are the
+engine’s time and the calendar is the fiction’s, so a piece may date itself and nothing may require the
+player to track a quarter.
 
 ---
 

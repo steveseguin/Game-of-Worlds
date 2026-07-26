@@ -118,6 +118,39 @@ test('nobody is funny about a loss', () => {
         `loss events must carry no exclamation:\n  ${levity.join('\n  ')}`);
 });
 
+test('the advisor memory speaks in twelve registers too, not one', () => {
+    // RECALL is a second table of lines, added after this test was written, and it very nearly shipped
+    // as ONE shared set - which would have had a Bioform tender saying "I have stopped writing the
+    // preamble", a Terran Registry sentence. That is the same collapse this whole file exists to
+    // prevent, and it would have passed every assertion above, because they all inspect VOICES.
+    //
+    // The lesson generalises: a guard only covers the structure it was told about. A new table needs a
+    // new assertion, and the honest place to notice that is when adding the table.
+    const recall = lift('RECALL', /const RECALL = \{[\s\S]*?\n {4}\};/);
+
+    const missing = Object.keys(VOICES).filter(v => !recall[v]);
+    assert.deepEqual(missing, [],
+        `these registers have no recall lines, so their players get none: ${missing.join(', ')}`);
+
+    // Every entry needs both situations, or a player hits a branch with nothing in it.
+    const incomplete = Object.entries(recall)
+        .filter(([, set]) => !set.thirdSweep || !set.longQuiet)
+        .map(([name]) => name);
+    assert.deepEqual(incomplete, [], `incomplete recall sets: ${incomplete.join(', ')}`);
+
+    // And no line may be shared between two races - the same rule the VOICES table obeys.
+    const seen = new Map();
+    const shared = [];
+    for (const [name, set] of Object.entries(recall)) {
+        for (const line of Object.values(set)) {
+            const key = line.trim().toLowerCase();
+            if (seen.has(key)) shared.push(`"${line}" in both ${seen.get(key)} and ${name}`);
+            else seen.set(key, name);
+        }
+    }
+    assert.deepEqual(shared, [], `recall lines shared between registers:\n  ${shared.join('\n  ')}`);
+});
+
 test('the Terran register is the narrator, and it keeps the tic', () => {
     // Rell's verbal habit, per lore/05-characters.md: ships are destroyed, crews DID NOT ARRIVE.
     // It is the single most characterising choice in the project and it lives in ordinary copy,

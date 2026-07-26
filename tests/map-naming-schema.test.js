@@ -156,6 +156,31 @@ test('a name is preserved rather than overwritten', () => {
         'sectorname must be written with COALESCE so an existing name is never overwritten');
 });
 
+test('a total loss names the shoal without claiming it', () => {
+    // The memorial path shares one UPDATE with the sweep, and the only thing separating "I hold this
+    // road" from "I died here and it is on the chart" is that ownership is passed as null.
+    //
+    // If `owner = COALESCE(?, owner)` is ever simplified back to `owner = ?`, losing an entire fleet
+    // at a shoal would HAND the player the sector - a total wipe would become a free claim, which is
+    // both an exploit and the exact opposite of the intended feeling. Nothing else in the statement
+    // distinguishes the two cases, so this assertion is the whole safety margin.
+    const { sweep } = nameWrites();
+    assert.match(sweep[1], /owner\s*=\s*COALESCE\(\s*\?\s*,\s*owner\s*\)/i,
+        'the sweep UPDATE no longer writes ownership conditionally. A memorial (total loss) passes '
+        + 'null for the owner; with a bare `owner = ?` it would claim the sector instead. See '
+        + 'lore/29-borrowed-machinery.md B4.');
+
+    // And the caller must actually pass null rather than the player id on the loss path.
+    const guard = serverSrc.match(/const claimed = survivors > 0;/);
+    assert.ok(guard, 'the sweep no longer distinguishes a claim from a total loss');
+    assert.match(serverSrc, /\[claimed \? playerId : null,/,
+        'the sweep passes an unconditional owner; a total loss would claim the ground');
+
+    // The gate has to admit total losses at all - it used to be `survivors > 0`.
+    assert.match(serverSrc, /if \(!sectorOwner && totalShips > 0\)/,
+        'the naming write is gated on survival again, so a fleet that dies records nothing');
+});
+
 test('the player picker can only rename what the chart credits to that player', () => {
     // The picker is the one statement in the game allowed to overwrite a name, which makes its
     // WHERE clause the whole of its safety. Without `namedby = ?` any player who could reach the

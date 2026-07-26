@@ -86,6 +86,54 @@ which is the longest-standing unaddressed criticism on this card.*
 
 ---
 
+## R13 — five borrowed devices, built
+
+`29-borrowed-machinery.md` audited the field, found that six of its strongest devices were already
+load-bearing here, and proposed seven borrows. Five are now built. **No grade is claimed for this pass
+until the next review** — the work is code and it wants playing before anybody credits it.
+
+| | Device | What shipped |
+|---|---|---|
+| **B4** | *Failure is content* | A shoal that **kills** a fleet is named too. One condition and one `COALESCE` |
+| **B1** | *Curse of Strahd*'s Tarokka | `standing-advisory.js` — a per-cluster reading, true and deterministic |
+| **B3** | *Disco Elysium*'s micro-reactivity | The advisor has a memory, in twelve registers |
+| **B2** | *Planescape*'s arc words | Charter section: one question, three rules |
+| **B7** | *Harry Potter*'s calendar | Four quarters, *the return*, *arrears* |
+
+### Two defects the work found, both mine, both silent
+
+**The advisory's thresholds were dead code.** The poor-yield branches were written as `crystalAvg < 95`.
+Across 300 generated maps the real range is **130–167**, so two of three branches could never fire and
+every advisory in every match would have ended on the same line — a reading that does not vary, which is
+not a reading. Found by measuring rather than by reading. Thresholds are now derived from the observed
+distribution and a test fails if a generator change makes them unreachable again.
+
+**The advisor's memory nearly shipped in one voice.** The first version returned a single shared set of
+recall lines, so a Bioform tender would have said *"I have stopped writing the preamble"* — a Terran
+Registry sentence. That is the precise collapse this module was rewritten to fix in R2, and it passed
+`advisor-voice-canon.test.js` because every assertion in that file inspects `VOICES` and knew nothing
+about the new table.
+
+**The lesson is worth more than the fix: a guard only ever covers the structure it was told about.** Adding
+a table means adding an assertion, and the moment to notice that is while adding the table, not at review.
+Recall is now twelve registers and that test has an eighth assertion.
+
+### One safety property worth naming
+
+B4's memorial path is one character away from an exploit. The sweep and the memorial share a single
+`UPDATE`, and the only thing separating *"I hold this road"* from *"I died here"* is that ownership is
+passed as `null`. With a bare `owner = ?` a **total wipe would claim the sector** — a reward for losing
+everything, and the exact opposite of the intended feeling. Guarded, and proven by reverting it.
+
+### What was not built, and why that is recorded rather than attempted
+
+**B5** (a persistent personal record across matches) and **B6** (twelve correspondents who write and never
+arrive) are the two best ideas in that document and both are real features — cross-match persistence the
+schema does not currently do, and a substantial body of new text. Half-building either would have been
+worse than leaving them scoped. They stay in Part 2 marked **NOT BUILT**.
+
+---
+
 ## R12 — Emotional range was capped by the tone charter, not by a shortage of pieces
 
 **Emotional range C+ → B.** Six revisions of writing had not moved it past C+, and the note kept saying

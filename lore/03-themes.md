@@ -96,6 +96,33 @@ No.
 Also no. That is a different, excellent game, and copying its register would make ours look
 like a tribute act.
 
+### The arc words — one question, asked of everybody
+
+**Added 2026-07-26** (`29-borrowed-machinery.md` B2). *Planescape: Torment* asks *"what can change the
+nature of a man?"* over and over, every companion answers differently, and the received reading is that
+the player's answer is a reflection of **the player** rather than of the protagonist. That is the most
+efficient unifying device in the medium and it costs nothing but discipline.
+
+**We already had the question and were not using it as arc words.** It is in the shipped Codex, in the
+Twelve tab:
+
+> **How do you cross a dark you cannot see into?**
+
+Every locked branch and forbidden hull in `races.js` is one of the twelve answering it, and paying for the
+answer. Every character in `10-the-long-file/` and `15-series-twelve/` answers it with what they did.
+
+**From now on it is the folder's spine, under three rules:**
+
+1. **Never print it as a thesis.** It appears as a question, in somebody's mouth, or not at all. A
+   document that states *"the theme of this setting is…"* has stopped being the setting.
+2. **Every race answers it in its own grammar, once, and never explains.** Terra writes it down. The
+   Zephyr send enough that some arrive. The Bioform decline the premise. Several files already do this
+   by accident; the next editorial pass on `12-civilisations/` and `14-peoples/` should make it
+   deliberate.
+3. **The player answers it mechanically, and is never asked.** Probe or send a fleet. Sweep it or route
+   around it. Hold the shoal or take the planet. That is the Planescape trick done properly — the answer
+   is assembled out of decisions rather than dialogue options, and it is *theirs*.
+
 ### The one licensed elevation — and why the charter needs it
 
 **Added 2026-07-26.** The register above is correct and stays locked, and it has a cost that was

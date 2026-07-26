@@ -23,6 +23,7 @@ const victorySystem = require('./lib/victory');
 const aiSystem = require('./lib/ai');
 const diplomacySystem = require('./lib/diplomacy');
 const sectorNames = require('./lib/sector-names');
+const standingAdvisory = require('./lib/standing-advisory');
 const { PaymentManager } = require('./lib/payments');
 const PaymentEndpoints = require('./lib/payment-endpoints');
 const gameInvariants = require('./lib/game-invariants');
@@ -1937,6 +1938,19 @@ async function initializeGame(gameId, connection, game = {}) {
         broadcastToGame(gameId, "The game has started!");
         broadcastToGame(gameId, "startgame::");
         broadcastToGame(gameId, `newturn::${gameState.turns[gameId]}`);
+
+        // The Standing Advisory: this cluster's reading, dealt once (lore/29-borrowed-machinery.md B1).
+        // Every figure in it is counted off `map`, the array that was just written to the table, so it
+        // cannot contradict the board - and the phrasing is a hash of the game id, so a reconnect reads
+        // the same advisory back. It reveals no positions; the map is fogged and this is not intel.
+        try {
+            standingAdvisory.compose(gameId, map).forEach(line => {
+                broadcastToGame(gameId, `systemalert::${line}`);
+            });
+        } catch (advisoryError) {
+            // Flavour must never be able to stop a game starting.
+            console.warn(`Standing advisory failed for game ${gameId}:`, advisoryError && advisoryError.message);
+        }
     } catch (error) {
         if (session) {
             try { await session.rollback(); } catch (rollbackError) {
@@ -4766,7 +4780,24 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                                 });
                             }
                             // Survivors secure the belt: it becomes safe transit (and a small mine).
-                            if (survivors > 0 && !sectorOwner) {
+                            //
+                            // A TOTAL LOSS secures nothing and still goes on the chart. Until now the
+                            // whole naming write was gated on `survivors > 0`, so the worst moment in
+                            // the game recorded nothing at all: a fleet died, a feed line scrolled
+                            // past, and the sector stayed an anonymous hex. A shoal that kills a fleet
+                            // now gets a name too, chosen by the player who paid for it, and the
+                            // ground stays unowned - which puts a status on the chart that did not
+                            // exist before: a named sector nobody holds. See
+                            // lore/29-borrowed-machinery.md B4 and lore/28-through-lines.md T7, which
+                            // this makes symmetrical - the bet that pays leaves a road, and the bet
+                            // that fails leaves a name.
+                            //
+                            // `owner = COALESCE(?, owner)` rather than two statements: passing null
+                            // leaves ownership untouched, so one SQL statement covers both cases and
+                            // there is still exactly one COALESCE writer of sectorname for
+                            // tests/map-naming-schema.test.js to find.
+                            if (!sectorOwner && totalShips > 0) {
+                                const claimed = survivors > 0;
                                 // Sweeping a shoal is the one act that permanently converts a
                                 // hazard into a road, so it is also the moment the sector gets a
                                 // name - after whoever first survived it (lore/18-naming-the-dark.md).
@@ -4777,12 +4808,12 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                                 const namedTurn = parseTurnNumber(gameState.turns[gameId], 1);
                                 db.query(
                                     `UPDATE map${gameId}
-                                        SET owner = ?,
+                                        SET owner = COALESCE(?, owner),
                                             sectorname = COALESCE(sectorname, ?),
                                             namedby = COALESCE(namedby, ?),
                                             namedturn = COALESCE(namedturn, ?)
                                       WHERE sectorid = ?`,
-                                    [playerId, chartedName, playerId, namedTurn, sectorId],
+                                    [claimed ? playerId : null, chartedName, playerId, namedTurn, sectorId],
                                     (claimErr) => {
                                         if (claimErr) {
                                             finish();
@@ -4801,7 +4832,16 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                                             (readErr, rows) => {
                                                 const row = (!readErr && rows && rows[0]) || {};
                                                 const actualName = sectorNames.sectorLabel(sectorId, row.sectorname);
-                                                connection.sendUTF(`Success: Shoal at ${sectorId} swept - charted, cleared, corridored. It is a road now and it will stay one. It goes on the chart as ${actualName}.`);
+                                                if (claimed) {
+                                                    connection.sendUTF(`Success: Shoal at ${sectorId} swept - charted, cleared, corridored. It is a road now and it will stay one. It goes on the chart as ${actualName}.`);
+                                                } else {
+                                                    // Nothing was secured and something is still owed.
+                                                    // The name is the only thing this crossing bought,
+                                                    // and it is permanent, and it is on everybody's
+                                                    // chart including the people who take the ground
+                                                    // later.
+                                                    connection.sendUTF(`Error: The shoal at ${sectorId} is on the chart now and it is called ${actualName}. We do not hold it. Somebody else will, and they will use that name.`);
+                                                }
 
                                                 // Offer the choice only to the player the chart
                                                 // credits, and only for a sweep that just happened.
@@ -4820,7 +4860,14 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                                                         // what it cost, at the instant they learn it
                                                         // was worth it. Zero is a real answer and a
                                                         // good one - a clean sweep reads differently.
-                                                        cost: destroyedCount
+                                                        cost: destroyedCount,
+                                                        // False: they hold the ground and are naming a
+                                                        // road. True: nothing came back and they are
+                                                        // naming a place they do not own. The prompt
+                                                        // has to read completely differently, and the
+                                                        // choice is worth offering in both cases -
+                                                        // it is the same act and it costs the same.
+                                                        memorial: !claimed
                                                     })}`);
                                                 }
                                                 finish();

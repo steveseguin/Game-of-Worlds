@@ -145,6 +145,29 @@ and inheritable · **repairs** *(Ancients)* — they fix a thing for you, and th
 
 ---
 
+## The calendar
+
+Added 2026-07-26 (`29-borrowed-machinery.md` B7). The device is the school year: *Harry Potter*'s
+structural engine is not the magic, it is that a repeating annual frame lets the same beats recur — term,
+sport, exams, summer — and **recurrence is what makes escalation legible.** This folder had turns and no
+seasons, so nothing could recur, so nothing could escalate except the clock at 9-D.
+
+Deliberately minimal. Four divisions and one deadline are enough to hang anniversaries, arrears and
+*"still, in the third quarter"* on.
+
+**the quarter** — a year is **First, Second, Third and Fourth**, and dates are written *"the eleventh of
+Third."* Nobody says "quarter one"; that is a Registry usage and the Registry does not talk to people ·
+**a season** — one quarter, and the word everybody actually uses. *"Seasons to arrive"* is a real duration,
+not a figure of speech · **the return** — the end of Fourth, when the Registry's amendments for the year
+are due and are always late. The reason a chart can be eight years stale and still certified · **arrears**
+— an amendment past its return. Halloway's fourteen crews died on a corridor in arrears and nobody had
+filed it, which is the whole of `15-series-twelve/01-terran.md`.
+
+**The one thing this must not become:** an in-game clock. Turns are the engine's time and the calendar is
+the fiction's. A piece may date itself; nothing may require the player to track a quarter.
+
+---
+
 ## Rites, practices and factions
 
 One line each; the civilisation files hold the detail.
