@@ -3166,6 +3166,13 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
         });
 
         const sectorLabel = Number(sectorId);
+        // Credit the winner. Exactly one side wins a resolved battle, so this cannot
+        // double-count, and a draw credits neither.
+        if (battleLog.result === 'attackerVictory') {
+            bumpUserStat(attackerId, 'total_battles_won');
+        } else if (battleLog.result === 'defenderVictory') {
+            bumpUserStat(defenderId, 'total_battles_won');
+        }
         notifyPlayer(
             attackerId,
             battleLog.result === 'attackerVictory'
@@ -3399,6 +3406,7 @@ function colonizePlanet(connection, data) {
                                     }
 
                                     const finishColonization = () => {
+                                        bumpUserStat(playerId, 'total_planets_colonized');
                                         connection.sendUTF(`Success: Colonized sector ${sectorId}`);
                                         markSectorExplored(gameId, playerId, sectorId);
                                         updateSector2(gameId, sectorId);
@@ -3988,6 +3996,8 @@ async function persistShipPurchase({ gameId, playerId, shipType, buildSector, sh
             [playerId, shipType, buildSector]
         );
         await session.commit();
+        // After commit: a counter must never be credited for a build that rolled back.
+        bumpUserStat(playerId, 'total_ships_built');
         connection.sendUTF(`Success: Built ${shipData.name} in sector ${buildSector} (${productionCost} production)`);
         updateResources(connection);
         updateSector2(gameId, buildSector);
@@ -4888,13 +4898,60 @@ function canPlayerSeeSector(gameId, playerId, sectorId, callback) {
         .catch(() => callback(false));
 }
 
+/**
+ * Lifetime per-account counters behind the achievement race unlocks.
+ *
+ * These columns have existed in user_stats since the schema was written, races.js reads
+ * them to decide what a player has earned, and the landing page advertises the exact
+ * thresholds ("BUILD 500 SHIPS", "EXPLORE 100 SECTORS"). Nothing ever incremented them, so
+ * they sat at 0 forever and five of the twelve races could not be unlocked by anybody, no
+ * matter how much they played. Only `wins` and `games_played` were ever written, by
+ * victory.js at the end of a match.
+ *
+ * Fire and forget on purpose: a counter is never worth failing a player's actual order
+ * for. Column names are whitelisted because they are interpolated into the statement.
+ */
+const TRACKED_USER_STATS = Object.freeze([
+    'total_planets_colonized',
+    'total_crystal_earned',
+    'total_ships_built',
+    'total_battles_won',
+    'total_sectors_explored'
+]);
+
+function bumpUserStat(userId, column, amount = 1) {
+    const id = Number(userId);
+    const step = Number(amount);
+    if (!Number.isSafeInteger(id) || id <= 0) return;
+    if (!TRACKED_USER_STATS.includes(column)) return;
+    if (!Number.isFinite(step) || step <= 0) return;
+    db.query(
+        `UPDATE user_stats SET ${column} = ${column} + ? WHERE user_id = ?`,
+        [Math.floor(step), id],
+        err => {
+            // A guest with no stats row, or a race with the table absent, must not turn a
+            // successful build into an error the player sees.
+            if (err) console.warn(`Unable to record ${column} for user ${id}:`, err.message || err);
+        }
+    );
+}
+
 function markSectorExplored(gameId, playerId, sectorId) {
     // Mark sector as explored by player (ignore if already explored)
     db.query(
         `INSERT IGNORE INTO explored_sectors${gameId} (playerid, sectorid) VALUES (?, ?)`,
         [playerId, sectorId],
-        (err) => {
-            if (err) console.error('Error marking sector explored:', err);
+        (err, result) => {
+            if (err) {
+                console.error('Error marking sector explored:', err);
+                return;
+            }
+            // INSERT IGNORE reports 0 affected rows when the sector was already known, so
+            // this counts each sector once per player per game rather than once per visit.
+            // Re-entering a sector you have already seen has explored nothing.
+            if (result && Number(result.affectedRows) > 0) {
+                bumpUserStat(playerId, 'total_sectors_explored');
+            }
         }
     );
 }

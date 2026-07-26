@@ -403,6 +403,24 @@ class MockDatabase {
             }
 
             if (/^UPDATE user_stats SET/i.test(normalized)) {
+                // Actually apply `col = col + ?` increments. This used to report success
+                // without storing anything, which meant the lifetime counters behind the
+                // achievement race unlocks could not be tested at all — and they turned
+                // out to have never been incremented in production either.
+                const bumps = [...normalized.matchAll(/([a-z_]+)\s*=\s*\1\s*\+\s*\?/gi)];
+                if (bumps.length) {
+                    const userId = Number(params[params.length - 1]);
+                    const stats = this._userStats.get(userId);
+                    if (stats) {
+                        bumps.forEach((m, i) => {
+                            const column = m[1];
+                            const amount = Number(params[i]) || 0;
+                            stats[column] = (Number(stats[column]) || 0) + amount;
+                        });
+                        return this._async(callback, null, { affectedRows: 1 });
+                    }
+                    return this._async(callback, null, { affectedRows: 0 });
+                }
                 return this._async(callback, null, { affectedRows: 1 });
             }
 

@@ -37,7 +37,10 @@
         const stackBottomPanels = veryNarrow && !shortLandscape;
 
         document.documentElement.style.setProperty('--game-scale', scale.toFixed(3));
-        document.body.classList.toggle('game-compact', compact);
+        // No `game-compact` body class: it was toggled on every layout pass and nothing in
+        // any stylesheet or script ever read it. A state marker with no consumer is worse
+        // than nothing, because it reads as though compact styling exists somewhere.
+        // Compact behaviour is applied directly below from the `compact` flag.
         document.body.style.zoom = '';
         document.body.style.width = '';
         document.body.style.height = '';

@@ -678,6 +678,15 @@ td {
     color: #ffb4a8;
 }
 
+/* Four states are set by combat-analytics.js - idle, good, warn, error - but only three
+   had a rule. Idle worked by accident: game.html carries an inline colour on that element
+   which shows through because no class overrides it. That means the idle colour lives in
+   a different file from its three siblings and disappears the moment someone tidies the
+   inline style away. Stated here with the others so the set is complete. */
+.analytics-status-idle {
+    color: #bdd5ff !important;
+}
+
 .analytics-status-good {
     color: #7ff0c4 !important;
 }
