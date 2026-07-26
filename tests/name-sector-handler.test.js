@@ -58,6 +58,7 @@ function fakeConnection() {
  */
 function run(command, db, connection = fakeConnection()) {
     serverLogic.setDatabase(db);
+    serverLogic.gameState.turns[GAME_ID] = 1;
     serverLogic.nameSector(command, connection);
     const deadline = Date.now() + 2000;
     return new Promise((resolve, reject) => {
@@ -83,11 +84,30 @@ test('a valid index becomes the name the offer showed, and only that', async () 
 
     assert.equal(db.calls.length, 1, 'expected exactly one write');
     const { sql, params } = db.calls[0];
-    assert.match(sql, /^UPDATE map42 SET sectorname = \? WHERE sectorid = \? AND namedby = \? AND namedturn >= \?$/);
+    assert.match(sql, /^UPDATE map42 SET sectorname = \?, namechosen = 1 WHERE sectorid = \? AND namedby = \? AND namedturn >= \? AND namechosen = 0$/);
     assert.deepEqual(params, [expected, SECTOR, PLAYER, 0]);
     assert.ok(connection.sent.some(m => m.includes(expected)),
         `the confirmation should name the choice; got ${JSON.stringify(connection.sent)}`);
     assert.ok(connection.sent.every(m => !m.startsWith('Error:')), 'should not report an error');
+});
+
+test('the naming window follows the authoritative game turn, not active-game metadata', async () => {
+    const db = stubDb();
+    serverLogic.setDatabase(db);
+    serverLogic.gameState.turns[GAME_ID] = 12;
+    // This tempting field is not authoritative and was the source of the original bug.
+    serverLogic.gameState.activeGames[GAME_ID] = { turn: 3 };
+    serverLogic.nameSector(`//namesector:${hex(SECTOR)}:1`, fakeConnection());
+
+    const deadline = Date.now() + 2000;
+    while (db.calls.length === 0 && Date.now() <= deadline) {
+        await new Promise(resolve => setTimeout(resolve, 2));
+    }
+
+    assert.equal(db.calls.length, 1, 'expected the naming write');
+    assert.equal(db.calls[0].params[3], 11,
+        'a one-turn window at turn 12 should accept names from turn 11 onward');
+    delete serverLogic.gameState.activeGames[GAME_ID];
 });
 
 test('the player id is passed through without being coerced to a number', async () => {

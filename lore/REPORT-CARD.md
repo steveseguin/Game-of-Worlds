@@ -4,6 +4,13 @@ A standing, honest assessment of `lore/` and the shipped game against a rubric d
 craft, worldbuilding theory, tabletop design, comics serial structure, and empirical work on
 narrative engagement.
 
+**Current-use note (2026-07-26).** This file is an audit history: each revision records what was
+believed and verified at that time. Use `STATUS.md` for the current backlog and `README.md` for
+authority and navigation. Later review found three defects in R10's first implementation — an
+incorrect turn source, repeat choices inside the grace window, and chart identity missing from compact
+map snapshots. They are now fixed and guarded; the historical R10 text below remains as the record of
+that pass.
+
 **Rules for this document.** Grades go up only when something material changed, and the change must be
 verifiable by someone who did not make it. A grade may be **lowered** on review if an earlier pass
 claimed credit it did not earn. Optimism about our own work is the failure mode this file exists to
@@ -116,9 +123,9 @@ empire. That is a categorical change and it is worth two and a half steps.
    being a moment and becomes the texture of a game, and it is the highest-value thing left on this
    card.
 
-There is also a narrower limit worth recording: the tooltip only knows a name once a `sector::` detail
-has arrived for that sector, because the compact `mapstate::` packing has no room for a string. In
-practice the sweeper sees it immediately and others see it when they look, and it is not nothing.
+The first implementation had a narrower delivery defect: the tooltip only knew a name after focused
+`sector::` detail arrived because compact `mapstate::` omitted chart identity. The map snapshot now
+carries the URI-encoded name, namer and turn for both live and remembered sectors.
 
 ### Two defects found on the way, both pre-existing
 

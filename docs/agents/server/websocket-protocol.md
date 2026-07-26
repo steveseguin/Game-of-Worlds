@@ -78,7 +78,7 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//standingorders:get` | `handleStandingOrders` | Reads automation settings. |
 | `//standingorders:<json>` | `handleStandingOrders` | Updates automation settings. |
 | `//applyorders` | `handleApplyStandingOrders` | Runs standing orders immediately. |
-| `//namesector:<sectorHex>:<index>` | `nameSector` | Sets the chart name of a shoal this player swept, from the curated candidate list. Accepts an index only, never text. Rejected unless `namedby` is this player and the sweep was this turn or last turn. |
+| `//namesector:<sectorHex>:<index>` | `nameSector` | Makes the one permanent chart-name choice for a shoal this player swept, from the curated candidate list. Accepts an index only, never text. Rejected unless `namedby` is this player, the sweep was this turn or last turn, and no choice was already made. |
 | `//surrender` | `handleSurrender` | Ends/removes player and may end game. |
 
 Messages that do not begin with `//` are treated as chat text and broadcast to the sender's current game.
@@ -109,7 +109,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `empire::<json>` | game | Owned sectors/buildings/fleets summary. |
 | `victoryprogress::<json>` | game | Victory progress. |
 | `mapconfig::<width>::<height>` | game | Map dimensions. |
-| `mapstate::<csv>` | game | Visible map snapshot. Each entry is `id:status:fleet:type:vis:flags`; `vis` 1=live/0=memory; `flags` bitmask HOMEWORLD=1, TURRET=2, COLONY_SHIP=4, WARPGATE=8, ENEMY_FLEET=16, PROBE_LOSS=32. |
+| `mapstate::<csv>` | game | Visible map snapshot. Each entry is `id:status:fleet:type:vis:flags:chartName:namedBy:namedTurn`; `vis` 1=live/0=memory; `flags` bitmask HOMEWORLD=1, TURRET=2, COLONY_SHIP=4, WARPGATE=8, ENEMY_FLEET=16, PROBE_LOSS=32. `chartName` is URI-encoded; the three chart fields are empty/zero for unnamed sectors. |
 | `sector::<sectorId>::<json>` | game | Full authoritative detail for a sector the player owns, occupies, or has just successfully probed. |
 | `sectorcontact::<sectorId>::<json>` | game | Passive one-tile sensor contact: terrain, controller, and total presence only. |
 | `sectorintel::<sectorId>::<json>` | game | Persisted, dated probe memory returned outside current live coverage. |

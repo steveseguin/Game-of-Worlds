@@ -1,6 +1,6 @@
 # Naming the Dark — the co-authorship proposal
 
-Status: **SHIPPED, in part.** 2026-07-26. The proposal below is preserved as written; the section
+Status: **SHIPPED.** 2026-07-26. The proposal below is preserved as written; the section
 immediately after it records what the engine actually does and where it departs from this document.
 Where the two disagree, the code wins and this file is wrong.
 
@@ -10,7 +10,7 @@ Where the two disagree, the code wins and this file is wrong.
 
 The feature is live: `nameSector` in `server/server.js`, `public/js/name-picker.js`, the prompt markup in
 `game.html`, and the `namechoice::` / `//namesector` pair in `server/lib/websocket-protocol.js`. It is
-covered by `tests/name-sector-handler.test.js` (10), `tests/map-naming-schema.test.js` (8) and
+covered by `tests/name-sector-handler.test.js` (11), `tests/map-naming-schema.test.js` (10) and
 `tests/e2e/name-picker.spec.js` in a real browser.
 
 **Kept as proposed:**
@@ -20,30 +20,35 @@ covered by `tests/name-sector-handler.test.js` (10), `tests/map-naming-schema.te
   document and the reason for the feature. A clean sweep gets its own line rather than "0 hulls".
 - The name survives conquest. Enforced with `COALESCE` in the sweep's UPDATE, and pinned by a test
   whose only job is to fail if somebody writes a bare `SET sectorname`.
-- The namer and turn are recorded (`namedby`, `namedturn`).
+- The namer and authoritative game turn are recorded (`namedby`, `namedturn`) and shown in the map
+  tooltip.
+- The chart identity travels in both focused `sector::` detail and compact `mapstate::` snapshots, so
+  every player who can see or remember the sector sees the same permanent entry.
 
-**Four deliberate departures, in descending order of how much they matter:**
+**One deliberate departure:**
 
 1. **You choose from six names; you do not type one.** The proposal says *"you name it"*, which reads as
    free text. Free text on a permanent, shared, stranger-visible object is a moderation queue with a game
    attached, and this project has no moderation. So the server generates six candidates from the charting
    vocabulary, the wire carries an **index**, and no string a client sends can ever become a name. The
    creative act is smaller and it is real; the alternative was not shipping. See `server/lib/sector-names.js`.
-2. **"One name, no edits" is one name, no edits *after the turn*.** The sweep writes a default immediately,
-   so a swept sector is never a bare hex number even if the player ignores the prompt, and the player may
-   replace it during that turn and the next. A turn boundary can land while the prompt is still on screen,
-   and silently eating somebody's choice is worse than letting them answer slightly late. After the window
-   the chart is fixed.
-3. **The namer is recorded but not yet shown.** Rule 4's *"Named by the Terran Empire, turn 34"* is in the
-   database and in no UI. The map tooltip is the obvious home for it and it is not there yet.
-4. **Rell uses the name in the sweep confirmation, and nowhere else.** `sectorLabel()` exists and is used
-   at the naming moment; the rest of the feed still says the hex. Rule 5 — *"after twenty turns the
-   player's own event log is written in their own vocabulary"* — is the part of this proposal with the most
-   value left in it, and it is unbuilt.
 
-**One bug this feature exposed and fixed:** the sweep announced the freshly generated default name even
+The sweep writes a default immediately, so ignoring the prompt never leaves a bare hex. The player gets
+one curated replacement during the grace window; `namechosen` closes the choice permanently as soon as it
+is used. The grace window is measured from `gameState.turns`, the engine's authoritative turn counter.
+
+**One valuable extension remains:** Rell uses the name in the sweep confirmation, but the rest of the
+feed still says the hex. Rule 5 — *"after twenty turns the player's own event log is written in their own
+vocabulary"* — is where this feature could stop being a moment and become the texture of a campaign.
+
+**Bugs found and fixed during delivery:** the sweep announced the freshly generated default name even
 when `COALESCE` had kept an older one. Harmless while the default was the only name a sector could have,
 and a lie the moment players started choosing. The confirmation now reads the name back out of the table.
+The first picker implementation also read a nonexistent `activeGames[gameId].turn`, which recorded every
+name on turn 1 and left the intended window open forever; both the sweep and picker now use
+`gameState.turns`. Finally, the first picker allowed repeated changes inside that window and only sent
+chart identity in focused sector detail. `namechosen` makes the choice one-shot, and `mapstate::` now
+carries the permanent chart identity to every entitled map.
 
 ---
 
@@ -108,7 +113,7 @@ instant you find out it was worth it.
 ## What it costs, honestly
 
 **Schema — DONE, 2026-07-26.** `map${gameId}` now carries `sectorname VARCHAR(48)`,
-`namedby INT` and `namedturn INT`.
+`namedby INT`, `namedturn INT` and `namechosen TINYINT`.
 
 **And a correction to what this document originally said.** It instructed a future implementer to
 add the columns to *both* `server/server.js` and `server/setup.js` "which must be changed
@@ -124,10 +129,12 @@ link in the chain — and `tests/map-naming-schema.test.js` asserts they agree, 
 is actually reachable, and that the sweep writes `sectorname` with `COALESCE` so a name is never
 overwritten on recapture.
 
-**Wire.** One extra field on the existing `sector::` and `mapstate::` payloads. No new message type.
+**Wire — DONE.** The server offers six curated candidates with `namechoice::`; the client submits their
+index with `//namesector`. Existing `sector::` and `mapstate::` payloads carry the chosen name, namer and
+turn. No client-supplied name is accepted.
 
-**Client.** Render the name where the hex label currently renders, with the hex as a subtitle. One prompt
-dialog on the sweep event.
+**Client — DONE.** The tooltip renders the chart name, hex, classification, namer and turn. The prompt
+leads with the cost of the sweep.
 
 **Feed.** `17-the-feed/` lines take `${sectorId}` today. They would need a resolver that returns the name
 when one exists and the hex otherwise — one helper function, called from the message composition sites.

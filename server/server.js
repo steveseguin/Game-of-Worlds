@@ -818,7 +818,8 @@ function createGameTables(gameId, callback) {
             artifact INT DEFAULT 0,
             sectorname VARCHAR(48) DEFAULT NULL,
             namedby INT DEFAULT NULL,
-            namedturn INT DEFAULT NULL
+            namedturn INT DEFAULT NULL,
+            namechosen TINYINT DEFAULT 0
         )`,
         `CREATE TABLE IF NOT EXISTS ${tables.players} (
             userid INT PRIMARY KEY,
@@ -1026,7 +1027,8 @@ function ensureMapTableColumns(gameId, callback) {
     const columns = [
         { name: 'sectorname', sql: `ALTER TABLE ${table} ADD COLUMN sectorname VARCHAR(48) DEFAULT NULL` },
         { name: 'namedby', sql: `ALTER TABLE ${table} ADD COLUMN namedby INT DEFAULT NULL` },
-        { name: 'namedturn', sql: `ALTER TABLE ${table} ADD COLUMN namedturn INT DEFAULT NULL` }
+        { name: 'namedturn', sql: `ALTER TABLE ${table} ADD COLUMN namedturn INT DEFAULT NULL` },
+        { name: 'namechosen', sql: `ALTER TABLE ${table} ADD COLUMN namechosen TINYINT DEFAULT 0` }
     ];
     let index = 0;
     const next = () => {
@@ -4772,9 +4774,7 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                                 // whoever takes this sector later inherits the name the people who
                                 // paid for it gave it, which is the entire point of the feature.
                                 const chartedName = sectorNames.defaultName(gameId, sectorId);
-                                const namedTurn = (gameState.activeGames
-                                    && gameState.activeGames[gameId]
-                                    && gameState.activeGames[gameId].turn) || 1;
+                                const namedTurn = parseTurnNumber(gameState.turns[gameId], 1);
                                 db.query(
                                     `UPDATE map${gameId}
                                         SET owner = ?,
@@ -4796,7 +4796,7 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                                         // name that is not on the chart. Harmless while the default
                                         // was the only possible name; a lie the moment players pick.
                                         db.query(
-                                            `SELECT sectorname, namedby, namedturn FROM map${gameId} WHERE sectorid = ?`,
+                                            `SELECT sectorname, namedby, namedturn, namechosen FROM map${gameId} WHERE sectorid = ?`,
                                             [sectorId],
                                             (readErr, rows) => {
                                                 const row = (!readErr && rows && rows[0]) || {};
@@ -4806,7 +4806,8 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                                                 // Offer the choice only to the player the chart
                                                 // credits, and only for a sweep that just happened.
                                                 if (String(row.namedby) === String(playerId)
-                                                    && Number(row.namedturn) === Number(namedTurn)) {
+                                                    && Number(row.namedturn) === Number(namedTurn)
+                                                    && Number(row.namechosen) === 0) {
                                                     connection.sendUTF(`namechoice::${JSON.stringify({
                                                         sector: Number(sectorId),
                                                         chosen: actualName,
@@ -4917,8 +4918,9 @@ function updateSector(data, connection) {
  *   - The UPDATE is conditional on `namedby`, so only the empire the chart credits can name the
  *     place. A conqueror inherits the name the people who paid for it gave it - that is the
  *     point of the feature, not an incidental restriction (lore/18-naming-the-dark.md).
- *   - It is conditional on `namedturn` too, so the window closes. Naming happens at the moment
- *     of survival; a shoal is not renameable furniture.
+ *   - It is conditional on `namedturn` too, so the window closes, and on `namechosen`, so the
+ *     one permitted choice cannot be edited repeatedly inside that window. Naming happens at
+ *     the moment of survival; a shoal is not renameable furniture.
  *
  * The name already exists when this arrives - the sweep wrote a default - so every failure mode
  * here leaves a correctly named sector behind. Nothing is riding on this succeeding.
@@ -4940,17 +4942,16 @@ function nameSector(data, connection) {
         return;
     }
 
-    const currentTurn = (gameState.activeGames
-        && gameState.activeGames[gameId]
-        && gameState.activeGames[gameId].turn) || 1;
+    const currentTurn = parseTurnNumber(gameState.turns[gameId], 1);
     const earliestTurn = currentTurn - NAME_CHOICE_TURNS;
 
     db.query(
         `UPDATE map${gameId}
-            SET sectorname = ?
+            SET sectorname = ?, namechosen = 1
           WHERE sectorid = ?
             AND namedby = ?
-            AND namedturn >= ?`,
+            AND namedturn >= ?
+            AND namechosen = 0`,
         [chosen, sectorId, playerId, earliestTurn],
         (err, result) => {
             if (err) {
@@ -4958,9 +4959,9 @@ function nameSector(data, connection) {
                 return;
             }
             // A conditional UPDATE that matches nothing is not an error - it is the answer.
-            // Either this player never swept the sector or the window has closed, and both
-            // deserve the same reply, because distinguishing them would tell a player
-            // something about a sector they may not be able to see.
+            // Either this player never swept the sector, the one choice was already used, or
+            // the window has closed. They deserve the same reply, because distinguishing
+            // those states would tell a player something about a sector they may not see.
             if (!result || !result.affectedRows) {
                 connection.sendUTF('Error: That sector is already on the chart under its own name.');
                 return;
@@ -5711,7 +5712,12 @@ function sendVisibleMapState(gameId, connection) {
             if (!isLive) {
                 // Dim memory: terrain only, no fleets, no ownership.
                 const memoryFlags = lostProbe ? MAP_FLAG_PROBE_LOSS : 0;
-                entries.push(`${sectorId}:${sectorMemoryStatus(sectorType)}:0:${sectorType}:0:${memoryFlags}`);
+                const chartName = typeof sector.sectorname === 'string' && sector.sectorname.trim()
+                    ? encodeURIComponent(sector.sectorname.trim())
+                    : '';
+                const namedBy = Number(sector.namedby) || 0;
+                const namedTurn = Number(sector.namedturn) || 0;
+                entries.push(`${sectorId}:${sectorMemoryStatus(sectorType)}:0:${sectorType}:0:${memoryFlags}:${chartName}:${namedBy}:${namedTurn}`);
                 return;
             }
 
@@ -5728,7 +5734,12 @@ function sendVisibleMapState(gameId, connection) {
             if (theirs > 0) flags |= MAP_FLAG_ENEMY_FLEET;
             if (lostProbe) flags |= MAP_FLAG_PROBE_LOSS;
             const fleetShown = mine > 0 ? mine : theirs;
-            entries.push(`${sectorId}:${status}:${fleetShown}:${sectorType}:1:${flags}`);
+            const chartName = typeof sector.sectorname === 'string' && sector.sectorname.trim()
+                ? encodeURIComponent(sector.sectorname.trim())
+                : '';
+            const namedBy = Number(sector.namedby) || 0;
+            const namedTurn = Number(sector.namedturn) || 0;
+            entries.push(`${sectorId}:${status}:${fleetShown}:${sectorType}:1:${flags}:${chartName}:${namedBy}:${namedTurn}`);
         });
 
         // Seeing a sector commits it to memory.

@@ -1557,6 +1557,7 @@ function updateSectorInfo(message) {
                     live: true,
                     chartName,
                     namedBy,
+                    namedById: namerId || null,
                     namedTurn,
                     buildings: sectorData.buildings
                     // No indicator here: the map badge letters (H/C/T/W/E) are derived
@@ -1764,7 +1765,10 @@ function updateMapConfig(message) {
 }
 
 function updateMapState(message) {
-    // Format: mapstate::sectorId:status:fleetSize:sectorType:live:flags,...
+    // Format:
+    // mapstate::sectorId:status:fleetSize:sectorType:live:flags:chartName:namedBy:namedTurn,...
+    // chartName is URI-encoded. Empty trailing fields preserve compatibility for unnamed
+    // sectors and snapshots produced by an older server.
     const parts = message.split('::');
     if (parts.length < 2) return;
 
@@ -1784,17 +1788,46 @@ function updateMapState(message) {
 
     const sectorData = parts[1] ? parts[1].split(',') : [];
     sectorData.forEach(data => {
-        const [sectorId, status, fleetSize, sectorType, liveFlag, flagsRaw] = data.split(':');
+        const [
+            sectorId,
+            status,
+            fleetSize,
+            sectorType,
+            liveFlag,
+            flagsRaw,
+            chartNameRaw = '',
+            namedByRaw = '0',
+            namedTurnRaw = '0'
+        ] = data.split(':');
         const id = parseInt(sectorId, 10);
         if (!Number.isFinite(id)) return;
         const fleet = parseInt(fleetSize, 10) || 0;
         const numericStatus = statusMap[status] !== undefined ? statusMap[status] : 0;
         const flags = parseInt(flagsRaw, 10) || 0;
         const live = liveFlag !== '0';
+        let chartName = null;
+        if (chartNameRaw) {
+            try {
+                chartName = decodeURIComponent(chartNameRaw);
+            } catch (_error) {
+                chartName = null;
+            }
+        }
+        const namedById = parseInt(namedByRaw, 10) || null;
+        const namedTurn = parseInt(namedTurnRaw, 10) || null;
+        const namedBy = namedById
+            ? (Number(getCookie('userId')) === namedById
+                ? 'you'
+                : (GAME_STATE.players?.[namedById]?.name || null))
+            : null;
         const details = {
             fleetSize: fleet,
             live,
             flags,
+            chartName,
+            namedBy,
+            namedById,
+            namedTurn,
             indicator: mapFlagsToIndicator(flags, status)
         };
         const parsedType = parseInt(sectorType, 10);
@@ -1810,6 +1843,9 @@ function updateMapState(message) {
             type: Number.isFinite(parsedType) ? parsedType : null,
             live,
             flags,
+            chartName,
+            namedById,
+            namedTurn,
             seen: true
         };
         if (flags & 1) {

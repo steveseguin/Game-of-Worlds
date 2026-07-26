@@ -1,7 +1,8 @@
 # Production Scope — Artwork and Voice
 
-Status: **PROPOSED**, except voice scope, which is **LOCKED** 2026-07-25 to **Rell only** —
-see `08-open-questions.md` Q4. Honest estimates, not encouraging ones.
+Status: **PROPOSED.** Q4 locked the authored Terran campaign to Rell, but the shipped multiplayer
+advisor now has twelve race-specific text registers. Decide the channel boundary in `STATUS.md`
+before commissioning voice work. Honest estimates, not encouraging ones.
 
 You asked for artwork and voice-over. Both are achievable. Both are also where narrative
 projects quietly die, because the writing is cheap and the assets are not. This document exists
@@ -15,14 +16,14 @@ so that when we commit, we commit to a *list* rather than to a vibe.
 
 | Item | Lines | Notes |
 |---|---|---|
-| Rell — event feed | 300–450 | Every event the engine already emits, with 2–3 variants each so it doesn't loop audibly |
+| Rell — event feed | ~108 | About 36 events, generally three written variants; rare events use one |
 | Rell — mission briefings | 60–90 | 11 missions, opening and closing beats |
 | Rell — campaign beats | 30–50 | Scripted story moments, including the slip in mission 10 |
-| **Rell total** | **~400–600** | **One performer. LOCKED as the entire scope.** |
-| Race hails | — | *Cut.* Rell reports first contact and diplomacy |
-| Named cast | — | *Cut.* Vance, Ito, Fourth, Keth, Nine and the Emissary are **quoted by Rell** |
+| **Written Rell baseline** | **~200–250** | One performer if Rell remains the campaign and feed voice |
+| Multiplayer adjutants | **decision required** | Twelve text registers ship today; do not record all twelve by accident |
+| Named cast | — | *Cut from the baseline.* Rell quotes Vance, Ito, Fourth, Keth, Nine and the Emissary |
 
-Most of Rell's lines are one sentence. A competent performer records 400 short utterances in
+Most of Rell's lines are one sentence. A competent performer can record this baseline in
 well under a day given a clean script and a good director; the expensive part is not the studio,
 it is **the script being finished before the session.** Rewriting after recording is where
 budgets go.
@@ -108,13 +109,15 @@ entire civilisation in one image:
 If narrative production starts, this is the sequence that fails most gracefully — each step is
 useful even if the next one never happens.
 
-1. **Answer Q1–Q4** in `08-open-questions.md`. Costs nothing. Blocks everything.
-2. **Write Rell's event-feed script.** ~400 lines against the events the engine already emits.
-   This is pure text, needs no art, no audio, and no engine work — and it improves the *shipped
-   game* immediately, silent, as better event copy. Highest return per hour in the entire plan.
-3. **Draw Rell.** Four states. The game now has a narrator.
-4. **Build campaign missions 1, 2 and 4.** Proves the scenario format. See `06-campaign.md`.
-5. **Record Rell.** Only after 2 and 4 are stable, because that is when the script stops moving.
+1. **Decide the voice-channel boundary.** Rell-only campaign and faction adjutants in multiplayer is
+   the least destructive reconciliation of canon and shipped UI.
+2. **Integrate one event-feed slice as data.** Use the written variants in `17-the-feed/`, with
+   `sectorLabel()` resolving chart names, and prove rotation without scattering more literals.
+3. **Build one vertical campaign slice.** Missions 1, 2 and 4 are already scripted in
+   `06-campaign.md`; choose one actual delivery target before producing assets.
+4. **Draw Rell.** Four states. The campaign now has a narrator.
+5. **Lock the script, then record.** Recording before the event and mission paths are stable turns
+   every copy edit into a paid pickup.
 6. **Everything else.**
 
 Note what step 2 means: **the first deliverable of this entire story project is better text in

@@ -1,7 +1,9 @@
 # Decisions and Open Questions
 
-Q1–Q4 are **decided** (2026-07-25) and recorded below with reasoning, so that a future pass can
-see not just what was chosen but what was rejected and why. Q5 onward remain open.
+This is the decision record, not the current backlog. Q1–Q4 and Q6–Q9 are decided; Q5 was withdrawn
+after its premise proved false. The remaining decisions are the Unstable Star's mechanical truth,
+the inert `artifact` field, and whether the Concord flashback merits an engine mode. Start with
+`STATUS.md` for current delivery state and priorities, then use this file for the reasoning.
 
 ---
 
@@ -63,8 +65,10 @@ mechanics, which is what good campaign design is.
 
 ## Q4 · Voice-over scope → **ONE VOICE. RELL ONLY. LOCKED.**
 
-400–600 short lines: every event the engine emits, plus mission briefings and campaign beats.
-One performer.
+Originally estimated at 400–600 short lines; the engine audit reduced the written baseline to roughly
+200–250 event, briefing, and campaign lines. One performer remains the locked campaign baseline.
+The twelve faction text registers that later shipped in multiplayer create a channel decision, not an
+automatic twelve-performer commitment; see `STATUS.md`.
 
 **The craft consequence, which matters more than the budget:** if Rell is the only voice, then
 **every other character is quoted by Rell.** Vance, Ito, Keth, Fourth and the Emissary all reach
@@ -78,7 +82,7 @@ how radio drama has always done this. Written into `05-characters.md` as a rule.
 
 ---
 
-# Part 2 — Still open
+# Part 2 — Withdrawn, decided, and the questions that remain
 
 ## Q5 · **WITHDRAWN — the premise was false.** Types 3, 4 and 5 were never free
 

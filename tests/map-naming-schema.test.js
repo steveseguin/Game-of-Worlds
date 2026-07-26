@@ -19,8 +19,10 @@ const path = require('node:path');
 
 const serverSrc = fs.readFileSync(
     path.join(__dirname, '..', 'server', 'server.js'), 'utf8');
+const connectSrc = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'js', 'connect.js'), 'utf8');
 
-const NAMING_COLUMNS = ['sectorname', 'namedby', 'namedturn'];
+const NAMING_COLUMNS = ['sectorname', 'namedby', 'namedturn', 'namechosen'];
 
 /** The body of the live `CREATE TABLE ... ${tables.map}` statement. */
 function createTableBody() {
@@ -39,7 +41,8 @@ function createTableBody() {
  *     survives conquest;
  *   - the PICKER replaces it with the player's choice and must therefore NOT use COALESCE - it
  *     is the one statement allowed to overwrite - which is why it has to be fenced by namedby
- *     instead, so only the empire the chart credits can do it.
+ *     instead, so only the empire the chart credits can do it, and by namechosen so the
+ *     one permitted choice cannot be edited later.
  *
  * A third writer would be a bug: it would mean some code path can rename a sector without
  * satisfying either rule. Hence the count assertion.
@@ -164,6 +167,41 @@ test('the player picker can only rename what the chart credits to that player', 
         'the picker UPDATE must be fenced by namedby, or it can rename any sector on the map');
     assert.match(whereClause, /AND\s+namedturn\s*>=\s*\?/i,
         'the picker UPDATE must be fenced by namedturn, or the naming window never closes');
+    assert.match(whereClause, /AND\s+namechosen\s*=\s*0/i,
+        'the picker UPDATE must be fenced by namechosen, or one player can rename repeatedly');
+    assert.match(picker[1], /namechosen\s*=\s*1/i,
+        'the picker must close the one-time choice when it writes the selected name');
+});
+
+test('the sweep records the authoritative turn counter', () => {
+    const sweepContext = serverSrc.match(
+        /const chartedName = sectorNames\.defaultName\(gameId, sectorId\);([\s\S]*?)db\.query\(/);
+    assert.ok(sweepContext, 'could not find the sweep naming write');
+    assert.match(sweepContext[1], /parseTurnNumber\(gameState\.turns\[gameId\],\s*1\)/,
+        'the sweep must record gameState.turns; activeGames has no authoritative turn field');
+    assert.doesNotMatch(sweepContext[1], /activeGames[\s\S]*?\.turn/,
+        'the sweep reads activeGames.turn, which stays undefined and records every name on turn 1');
+});
+
+test('visible map snapshots carry and decode permanent chart identity', () => {
+    const sender = serverSrc.match(
+        /function sendVisibleMapState\(gameId, connection\) \{([\s\S]*?)\n\}/);
+    assert.ok(sender, 'could not find sendVisibleMapState in server.js');
+    assert.match(sender[1], /encodeURIComponent\(sector\.sectorname\.trim\(\)\)/,
+        'mapstate must encode chart names so separators cannot corrupt the wire payload');
+    assert.match(sender[1], /sector\.namedby/,
+        'mapstate must carry who named a charted sector');
+    assert.match(sender[1], /sector\.namedturn/,
+        'mapstate must carry when a charted sector was named');
+
+    const receiver = connectSrc.match(/function updateMapState\(message\) \{([\s\S]*?)\n\}/);
+    assert.ok(receiver, 'could not find updateMapState in connect.js');
+    assert.match(receiver[1], /decodeURIComponent\(chartNameRaw\)/,
+        'the client must decode chart names received in mapstate');
+    assert.match(receiver[1], /namedById/,
+        'the client must retain the namer id even if the player roster has not arrived yet');
+    assert.match(receiver[1], /namedTurn/,
+        'the client must retain the charting turn from mapstate');
 });
 
 test('the picker resolves an index and never trusts a name off the wire', () => {

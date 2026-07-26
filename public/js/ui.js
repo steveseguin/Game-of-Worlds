@@ -486,16 +486,17 @@ window.GalaxyMap = (function() {
         if (details.flags !== undefined) {
             sector.flags = Number(details.flags) || 0;
         }
-        // Chart name, and who put it there. Only the `sector::` detail message carries these -
-        // the compact `mapstate::` packing has no room for a string - so they are written when a
-        // sector is looked at and then left alone. Do NOT clear them on a mapstate refresh: the
-        // name is permanent and forgetting it on the next tick would be worse than never showing
-        // it. Hence the explicit `!== undefined` guards rather than a blanket assignment.
+        // Chart name, and who put it there. Both `mapstate::` and focused `sector::` detail can
+        // carry these. Do not clear a known name when an older server or stale optional payload
+        // omits it: the name is permanent.
         if (details.chartName !== undefined && details.chartName) {
             sector.chartName = String(details.chartName);
         }
         if (details.namedBy !== undefined && details.namedBy) {
             sector.namedBy = String(details.namedBy);
+        }
+        if (details.namedById !== undefined && details.namedById) {
+            sector.namedById = Number(details.namedById) || null;
         }
         if (details.namedTurn !== undefined && details.namedTurn) {
             sector.namedTurn = Number(details.namedTurn) || null;
@@ -708,9 +709,14 @@ window.GalaxyMap = (function() {
         // it from a fixed word list so it cannot currently contain markup, but "cannot currently"
         // is not a property worth relying on inside an innerHTML template.
         const named = sector.chartName ? escapeText(sector.chartName) : '';
-        const credit = named && (sector.namedBy || sector.namedTurn)
+        const namerId = Number(sector.namedById) || null;
+        const resolvedNamer = sector.namedBy
+            || (namerId && typeof getCookie === 'function' && Number(getCookie('userId')) === namerId
+                ? 'you'
+                : (namerId && window.GAME_STATE?.players?.[namerId]?.name) || null);
+        const credit = named && (resolvedNamer || sector.namedTurn)
             ? [
-                sector.namedBy ? `named by ${escapeText(sector.namedBy)}` : 'named',
+                resolvedNamer ? `named by ${escapeText(resolvedNamer)}` : 'named',
                 sector.namedTurn ? `turn ${sector.namedTurn}` : ''
             ].filter(Boolean).join(', ')
             : '';

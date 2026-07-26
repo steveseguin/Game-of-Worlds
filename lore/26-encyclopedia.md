@@ -245,6 +245,7 @@ lane · What the Ancients eat.
 
 | For | Read |
 |---|---|
+| Current canon and delivery status | `STATUS.md` |
 | Hard rules and what is impossible | `11-laws-of-the-world.md` |
 | Any date, sequence or number | `20-master-timeline.md` |
 | What is fixed versus what a match decides | `19-canon-and-variance.md` |

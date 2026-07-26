@@ -155,14 +155,14 @@ test.describe('The chart-naming prompt', () => {
             tile.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 200, clientY: 200 }));
         }, sectorId);
 
+        // Exercise the ordinary compact map snapshot, not a hand-written call into the map.
+        // This is how reconnects and other empires learn a permanent chart identity.
         await page.evaluate(id => {
-            window.GalaxyMap.updateSectorStatus(id, window.GalaxyMap.SECTOR_STATUS.OWNED, {
-                type: 1,
-                live: true,
-                chartName: "the Vail Shoal",
-                namedBy: 'you',
-                namedTurn: 12
-            });
+            const userId = Number(getCookie('userId')) || 0;
+            const chartName = encodeURIComponent('the Vail Shoal');
+            window.updateMapState(
+                `mapstate::${id}:owned:0:1:1:0:${chartName}:${userId}:12`
+            );
         }, sectorId);
 
         await hover();
@@ -171,9 +171,9 @@ test.describe('The chart-naming prompt', () => {
         await expect(tooltip).toContainText('Asteroid Belt');   // the type still classifies it
         await expect(tooltip).toContainText('named by you, turn 12');
 
-        // A later mapstate refresh carries no name - it is a compact packing with no room for a
-        // string. The name must survive that, because it is permanent; dropping it on the next
-        // tick would be worse than never having shown it.
+        // A snapshot from an older server may omit the new optional fields. The known name must
+        // survive that compatibility path; dropping it on the next tick would be worse than
+        // never having shown it.
         await page.evaluate(id => {
             window.GalaxyMap.updateSectorStatus(id, window.GalaxyMap.SECTOR_STATUS.OWNED, {
                 type: 1, live: true, flags: 0

@@ -1,7 +1,8 @@
 # The Feed — Rell's Event Script
 
-Status: **READY TO USE.** This is the one folder in `lore/` that is not reference material. It is
-replacement copy for strings the shipped game already sends.
+Status: **PRODUCTION SOURCE, PARTIALLY SHIPPED.** These files are keyed replacement copy for events
+the game already emits. Some wording and the advisor presentation are live, but the full variant set
+has not been integrated as a data layer and should not be described as delivered.
 
 ---
 
@@ -56,5 +57,10 @@ message is composed. A variant rotation needs one helper — pick one of three b
 not worth writing, ship variant **a** everywhere and the copy is still a large improvement on what is
 there now.
 
-**This is the cheapest thing in the entire `lore/` folder and the only part of it a player would ever
-notice.**
+The shipped client also has twelve race-specific advisor registers in `public/js/advisor.js`. That is a
+real player-facing path, but it conflicts with the locked campaign rule that Rell is the only voice.
+Resolve that channel boundary before recording: the current recommendation is Rell for the authored
+Terran campaign and faction adjutants for ordinary multiplayer. See `../STATUS.md`.
+
+This remains one of the cheapest ways to move lore into play. It is not the only delivered lore surface:
+the Codex, map vocabulary, advisor, and chart naming are also player-facing.
