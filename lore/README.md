@@ -119,7 +119,7 @@ rituals in `04-factions/`.
 | `16-rell.md` | Rell's protagonist arc and on-page scenes. |
 | `22-act-one.md` | Three production-shaped mission scripts. |
 | `23-interludes.md` | Three comic scenes that broaden the emotional register. |
-| `24-anthology/` | 104 Codex-shaped pieces tied to game objects and systems. |
+| `24-anthology/` | 105 pieces tied to game objects and systems. 104 are Codex-shaped; `24-anthology/15-they-could-not-be-moved.md` is one long heroic account and pays off the turret piece in `24-anthology/05-buildings.md`. |
 | `28-through-lines.md` | **Read before adding or editing any story piece.** The six lines that run across the whole folder, each plant in order and where it lands — so a new piece joins a line instead of starting a new loose one. Payoffs are test-guarded. |
 
 The two testimony series are finished forms, not race-reference authorities. When a story disagrees

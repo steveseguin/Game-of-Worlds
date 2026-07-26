@@ -316,6 +316,21 @@ test('every through-line still has all of its plants and its payoff', () => {
         /P3 · Yard Nine's variance was accepted/, /P4 · Halloway's cost is what arms Rell/]);
     need('15-series-twelve/06-mechanicus.md', [/variance to the variance/i, /accepted/i]);
 
+    // 24-15 is the payoff for the turret argument, and its two load-bearing beats are the two most
+    // likely to be trimmed: Law 11 letting the fleet listen and not return, and the first face-to-face
+    // meeting between species in living memory.
+    need('24-anthology/15-they-could-not-be-moved.md', [
+        /no demonstrated engagement value/i,   // the mistake, in her own words, on the record
+        /blocked the moons/i,                  // the image
+        /could not be moved/i,                 // the thesis
+        /you are very small/i                  // the first contact
+    ]);
+    need('24-anthology/05-buildings.md', [/15-they-could-not-be-moved/]);   // the forward pointer
+
+    // T7's three decelerations. Wren, then the player's own navigator in Act One, then P2. A fourth
+    // would make it a gimmick, which is why the map says so and why this counts them.
+    need('22-act-one.md', [/decelerated inside the crossing/i]);
+
     // And the map itself must still name every line it claims to.
     need('28-through-lines.md', [/T1 · The Consideration/, /T2 · The clock/, /T3 ·/, /T4 · The fifth code/,
         /T5 · The count/, /T6 · Thirty-one refusals/, /T7 · The bet/, /T8 · Two doctrines, one decay/]);

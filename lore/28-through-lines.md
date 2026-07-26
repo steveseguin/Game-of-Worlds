@@ -3,7 +3,7 @@
 Status: **REFERENCE**, and it is the one file in this folder whose job is to stop other files from
 becoming lost threads.
 
-`lore/` has twenty-four testimonies, four scenes, three mission scripts and a hundred and four
+`lore/` has twenty-four testimonies, four scenes, three mission scripts and a hundred and five
 anthology pieces. Every one of them is finished on its own, which is a strength and is also exactly how
 a folder this size ends up as a pile of good writing that does not accumulate. A reader should be able
 to feel a shape building across a whole playthrough, and the only way that survives forty more pieces
@@ -15,7 +15,7 @@ somebody's payoff. `tests/lore-internal-consistency.test.js` asserts each payoff
 it will fail if one is quietly deleted, which is the failure mode this file exists for.
 
 **One rule that outranks everything here.** Law 25: the thing behind the quarantine is never designed,
-named, or shown. Two of the six through-lines below are *about* that thing, and they stay legal
+named, or shown. Two of the eight through-lines below are *about* that thing, and they stay legal
 because they only ever record **behaviour**. A shape would break the setting. Manners will not.
 
 ---
@@ -188,7 +188,11 @@ That is not a theme applied to the mechanics. It is the mechanics, read as chara
 | **Dep. Warden Halloway** (12 · 01) | A certified corridor, safe eight years and forty-one transits | **Cost.** Eleven hulls into gravel on the forty-second, and fourteen letters, and no code for why |
 | **The Mechanicus** (9 · 06, 12 · 06) | Declined to look. Four heavy hulls into 9-D in AU 12 | **Cost, and still compounding.** Seven more are on their way, and the order still does not say look |
 | **Every probe ever flown** | Three hundred of reckoning against a sector's truth | Thirty-three turns of a small planet's crystal for one fact — **and it is still the cheap option** |
+| **Navigator Sesse** (`22-act-one.md`) | Decelerated inside a crossing. Nobody ordered it; doctrine forbids it | **Saved.** Two seconds, and she used them. Three of four came back; at crossing speed the plot said two |
+| **Battery Warden Arran** (24 · 15) | Costed a warship at fourteen batteries and sent the ships away | **Cost, and it nearly took a world.** A hundred and eighteen dead and twenty-two batteries still able to fire |
+| **Every probe ever flown** | Three hundred of reckoning against a sector's truth | Thirty-three turns of a small planet's crystal for one fact — **and it is still the cheap option** |
 | **Every swept shoal** | Hulls, once | **The only good rate in the galaxy.** Law 6: charted, cleared, corridored, safe *forever* |
+| **Every orbital turret** | Eighty metal, sixty crystal, and it will never go anywhere | **The only purchase that is not a wager at all.** It is standing on the ground it is a fact about |
 
 **Why this is worth naming rather than leaving implicit.** It gives every new piece a position to
 occupy: a character is either paying for knowledge, refusing to pay for it, or living off knowledge
@@ -197,8 +201,25 @@ that generates tragedy, because of T8.
 
 **The rule for writing it.** A bet that pays must cost something anyway, and a bet that fails must
 have been *reasonable when it was taken*. Wren survived and is the only witness who will not describe
-what she saw. Halloway's chart was accurate at date of filing and she says so in the margin. Nobody in
+what she saw. Halloway's chart was accurate at date of filing and she says so in the margin. Arran's
+minority assessment was honest work from the figures she had, and she refuses to repudiate it. Nobody in
 this folder is punished for stupidity — that is a different and much cheaper kind of story.
+
+**Three decelerations, and this was not planned.** Wren broke doctrine and decelerated blind inside a
+transition in AU 0 and lived. **Navigator Sesse does the same thing in Act One, mission 4** — *"Nobody
+ordered it; doctrine forbids it… she says she caught the leading edge and had about two seconds, and she
+used them. Three of four came back. At crossing speed the plot said two."* And plant P2 is Sten's
+refusal, which is the same act pointed at somebody else.
+
+So the one thing that reliably saves a life in this galaxy is a Void Walker heresy performed by people
+who are not Void Walkers, and it works because slowing down buys sight, and sight is the only currency
+Law 1 accepts. **Do not let a fourth character do it.** Three is a pattern a player can feel; four is a
+gimmick, and the third one is already the player's own navigator.
+
+**The inversion at the end of the line.** Everything above is a wager on knowledge you cannot verify. A
+turret is the one thing in the game that is not, for exactly the reason a swept shoal is permanent — it
+is *standing on* the ground it is a fact about (24 · 15). Arran costed the only line item that cannot be
+wrong and marked it poor value, and the game agrees with her right up until it does not.
 
 ---
 
@@ -283,7 +304,7 @@ colour.
 Not everything is woven and it should not all be. Recorded so the next pass picks a real target
 instead of re-solving what is done.
 
-- **`24-anthology/`, 104 pieces.** Deliberately standalone — one per hull, building, tech level and
+- **`24-anthology/`, 105 pieces.** Deliberately standalone — one per hull, building, tech level and
   sector type, because they are codex-shaped and a codex entry cannot depend on reading another. Four
   of them touch T1 and T3; the rest are texture, correctly.
 - **`23-interludes.md`, three comic scenes.** Unattached on purpose. Comedy that carries plot stops

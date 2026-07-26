@@ -60,8 +60,11 @@ setting from these should end up curious, not briefed.
 | `12-leadership.md` | From the top, and from the ranks | 7 |
 | `13-wonders.md` | The twelve Wonders, in myth form | 12 |
 | `14-race-weapons.md` | The signature weapons, as their own people tell them | 12 |
+| `15-they-could-not-be-moved.md` | **One long piece.** An invasion stopped by fixed batteries, told by the deputy who costed them as poor value | 1 |
 
-**104 pieces, all fourteen files complete.** Each file states its own count in its header.
+**105 pieces across fifteen files.** Each file states its own count in its header. `15-` is the one
+deliberate exception to the 350-500 word rule: it is a single long account, because the argument it pays
+off took nine years and the morning it pays off took four minutes.
 
 *(The index above says 9 for `01-sectors.md`; it has 8 headings covering 9 sector types, because the four
 colonizable grades are one piece. Nine types, eight pieces, no gap.)*

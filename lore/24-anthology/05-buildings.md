@@ -129,6 +129,10 @@ by doctrine. Deshan has thought about this a great deal.
 "They think a fixed emplacement is a kind of death. I think it is the only apology an empire ever makes
 in advance."
 
+*Deshan is right, and `15-they-could-not-be-moved.md` is the morning he is right about — told by the
+costing deputy who wrote **no demonstrated engagement value** about the northern chain in AU 63 and had
+to watch it work. Read this piece first. It is the argument; that one is the bill.*
+
 ---
 
 ## Warp Gate — "Two Hundred Metal, a Hundred and Fifty Crystal, and a Confession"
