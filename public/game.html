@@ -798,6 +798,31 @@
 
         <!-- Analytics Tab -->
         <div id="analytics" class="tab-panel hidden">
+            <!-- Standing orders. The server has run these every turn for a long time and
+                 there was no way to see or change them, so an Epic player had metal spent
+                 on their behalf by settings they could not reach. Off unless asked for. -->
+            <div style="font-weight:bold;margin-bottom:6px;">Standing Orders</div>
+            <div id="standingOrdersStatus" class="local-order-context">Automation is off. Nothing is built without your order.</div>
+            <div style="display:grid;gap:7px;margin:8px 0 14px;font-size:13px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="soAutoRebuild" style="width:16px;height:16px;cursor:pointer;">
+                    <span>Rebuild home economy — replace a missing Metal Extractor or Crystal Refinery on your homeworld</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="soAutoScout" style="width:16px;height:16px;cursor:pointer;">
+                    <span>Keep scouts flying — build scouts up to the number below</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;padding-left:24px;color:rgba(232,236,255,0.72);">
+                    <span>Scouts to maintain</span>
+                    <input type="number" id="soTargetScouts" min="0" max="6" value="2"
+                           style="width:56px;padding:4px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(20,25,40,0.9);color:#e8ecff;">
+                </label>
+                <div style="font-size:12px;color:rgba(232,236,255,0.55);">
+                    Orders run at the start of each turn and only spend what you can afford.
+                    Anything they do is reported in Recent events.
+                </div>
+            </div>
+
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
                 <div style="font-weight:bold;">Combat Analytics</div>
                 <button id="combatAnalyticsRefresh" class="ghost" type="button" style="padding:7px 10px;">Refresh</button>
@@ -925,7 +950,7 @@
     <script type="module" src="js/galaxy3d.js?v=20260725n"></script>
     <script type="module" src="js/battle3d.js?v=20260725c"></script>
     <script src="js/onboarding.js?v=20260725a"></script>
-    <script src="js/connect.js?v=20260725o"></script>
+    <script src="js/connect.js?v=20260726a"></script>
     <script src="js/tour.js?v=20260712c"></script>
     <script src="js/game.js?v=20260712e"></script>
     <script src="js/loader.js?v=20251105"></script>

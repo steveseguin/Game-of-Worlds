@@ -6745,7 +6745,10 @@ function setStandingOrders(gameId, playerId, incoming = {}) {
         autoScout: Boolean(incoming.autoScout),
         targetScouts: Number.isFinite(incoming.targetScouts)
             ? Math.max(0, Math.min(6, incoming.targetScouts))
-            : (current.targetScouts || 2)
+            : (current.targetScouts || 2),
+        // Marks these as chosen rather than inherited. A human is only automated after
+        // saying so; see applyStandingOrdersForPlayer.
+        configured: true
     };
     return state.standingOrders[playerId];
 }
@@ -6757,13 +6760,26 @@ async function applyStandingOrdersForPlayer(gameId, playerId) {
 
     try {
         const playerRows = await queryDb(
-            `SELECT metal, crystal, homeworld FROM players${gameId} WHERE userid = ? LIMIT 1`,
+            `SELECT metal, crystal, homeworld, is_ai FROM players${gameId} WHERE userid = ? LIMIT 1`,
             [playerId]
         );
         if (!playerRows || playerRows.length === 0) {
             return summary;
         }
         const player = playerRows[0];
+        // A human's resources are not ours to spend uninvited. The mode defaults turn
+        // auto-rebuild and auto-scout ON in Epic, and applyStandingOrdersForGame runs over
+        // EVERY player, not just AI - so an Epic player had metal and crystal spent on
+        // their behalf with no panel showing it and no way to stop it. The only notice was
+        // a systemalert, which until recently arrived with the wire prefix still attached.
+        //
+        // AI keeps its mode defaults, which is what "kept for AI" in the client was always
+        // meant to mean. A human gets automation only after explicitly asking for it in
+        // the Standing Orders panel, which sets `configured`.
+        const isAi = Number(player.is_ai) === 1;
+        if (!isAi && !orders.configured) {
+            return summary;
+        }
         let metal = Number(player.metal) || 0;
         let crystal = Number(player.crystal) || 0;
         const homeworld = Number(player.homeworld);

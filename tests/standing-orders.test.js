@@ -45,7 +45,11 @@ test('standing orders build econ and scouts when resources allow', async () => {
     server.gameState.activeGames[gameId] = {
         mode: 'epic',
         standingOrders: {
-            1: { autoRebuild: true, autoScout: true, targetScouts: 2 }
+            // `configured` is what setStandingOrders stamps when a player chooses these in
+            // the Standing Orders panel. A human without it is left alone — see the
+            // consent tests below — so seeding orders as if they had been chosen is what
+            // this test means by "a player who has standing orders".
+            1: { autoRebuild: true, autoScout: true, targetScouts: 2, configured: true }
         }
     };
 
@@ -77,4 +81,85 @@ test('standing orders build econ and scouts when resources allow', async () => {
         });
     });
     assert.ok(ships >= 1, 'built scout for vision');
+});
+
+// Consent. applyStandingOrdersForGame runs over EVERY player, and defaultStandingOrders
+// turns autoRebuild and autoScout ON in Epic — so before this rule a human in an Epic game
+// had metal and crystal spent for them by settings with no panel and no off switch. The
+// client comment claimed the feature was "kept for AI", but nothing had ever restricted it
+// to AI. AI still runs on mode defaults; a human is left alone until they choose.
+
+/** Stand up an Epic game with one player, seeded orders, and a spaceport. */
+async function seedGame(gameId, { isAi, orders }) {
+    const db = new MockDatabase();
+    server.setDatabase(db);
+    const run = (sql, params) => new Promise(res => db.query(sql, params, res));
+
+    await run('INSERT INTO games (name, creator, maxplayers, status, mode) VALUES (?, ?, ?, ?, ?)',
+        ['Consent', 1, 4, 'waiting', 'epic']);
+    await run(`INSERT INTO players${gameId} (userid, race_id, metal, crystal, research, is_ai) VALUES (?, ?, ?, ?, ?, ?)`,
+        [1, 1, 500, 200, 50, isAi ? 1 : 0]);
+    await run(`UPDATE players${gameId} SET homeworld = ?, currentsector = ? WHERE userid = ?`, [1, 1, 1]);
+    await run(`UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`, [1, 1]);
+    await run(`INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`, [1, 3, 1]);
+
+    server.gameState.activeGames[gameId] = { mode: 'epic', standingOrders: { 1: orders } };
+    return db;
+}
+
+function spentMetal(db, gameId) {
+    return new Promise((resolve, reject) => {
+        db.query(`SELECT metal FROM players${gameId} WHERE userid = ?`, [1], (err, rows) => {
+            if (err) reject(err); else resolve(500 - Number(rows[0].metal));
+        });
+    });
+}
+
+test('a human is not automated until they ask for it', async () => {
+    const gameId = 41;
+    // Exactly what the Epic mode defaults produce, but never chosen by the player.
+    const db = await seedGame(gameId, {
+        isAi: false,
+        orders: { autoRebuild: true, autoScout: true, targetScouts: 2 }
+    });
+
+    const summary = await server.applyStandingOrdersForPlayer(gameId, 1);
+
+    assert.deepEqual(summary, [], 'nothing should be built for a human who never opted in');
+    assert.equal(await spentMetal(db, gameId), 0, 'no resources may be spent uninvited');
+});
+
+test('a human who configures standing orders does get them', async () => {
+    const gameId = 42;
+    const db = await seedGame(gameId, {
+        isAi: false,
+        orders: { autoRebuild: true, autoScout: true, targetScouts: 2, configured: true }
+    });
+
+    const summary = await server.applyStandingOrdersForPlayer(gameId, 1);
+
+    assert.ok(summary.length > 0, 'a player who asked for automation should get it');
+    assert.ok(await spentMetal(db, gameId) > 0, 'and it should spend their resources');
+});
+
+test('AI still runs on mode defaults without configuring anything', async () => {
+    const gameId = 43;
+    const db = await seedGame(gameId, {
+        isAi: true,
+        orders: { autoRebuild: true, autoScout: true, targetScouts: 2 }
+    });
+
+    const summary = await server.applyStandingOrdersForPlayer(gameId, 1);
+
+    assert.ok(summary.length > 0, 'the AI must keep its automation - it has no panel to click');
+    assert.ok(await spentMetal(db, gameId) > 0);
+});
+
+test('setStandingOrders stamps consent, so the panel is the way in', () => {
+    const gameId = 44;
+    server.gameState.activeGames[gameId] = { mode: 'quick', standingOrders: {} };
+    const saved = server.setStandingOrders(gameId, 1, { autoRebuild: true, autoScout: false, targetScouts: 3 });
+    assert.equal(saved.configured, true, 'choosing orders must mark them as chosen');
+    assert.equal(saved.autoRebuild, true);
+    assert.equal(saved.targetScouts, 3);
 });

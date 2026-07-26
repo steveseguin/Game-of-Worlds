@@ -32,14 +32,35 @@ const LOBBY_PREFIXES = new Set([
  * Prefixes the server actually writes to a socket. Only sendUTF calls count — a prefix
  * appearing in a comment or a parser is not the server speaking.
  */
+// There is more than one send path. The first version of this looked at sendUTF alone and
+// therefore could not see newturn::, startgame::, turnclock:: or any other core message,
+// all of which go through broadcastToGame. A guard that misses the busiest traffic in the
+// game is worse than none, because it reads as coverage.
+const SEND_CALLS = ['sendUTF', 'broadcastToGame', 'notifyPlayer'];
+
 function emittedPrefixes() {
     const found = new Set();
     for (const file of ['server/server.js', 'server/index.js']) {
         const src = fs.readFileSync(path.join(root, file), 'utf8');
-        for (const m of src.matchAll(/sendUTF\(\s*[`'"]([a-z_]+)::/gi)) found.add(`${m[1]}::`);
+        SEND_CALLS.forEach(fn => {
+            // sendUTF(`x::`)  |  broadcastToGame(gameId, `x::`)
+            const re = new RegExp(`${fn}\\(\\s*(?:[A-Za-z0-9_.]+\\s*,\\s*)?[\`'"]([a-z_]+)::`, 'gi');
+            for (const m of src.matchAll(re)) found.add(`${m[1]}::`);
+        });
     }
     return [...found].sort();
 }
+
+test('the harvest sees messages sent through the broadcast helpers, not just sendUTF', () => {
+    // Guards the guard. These go exclusively through broadcastToGame; if a refactor moves
+    // sending behind a new helper, this fails rather than the audit silently shrinking.
+    const emitted = emittedPrefixes();
+    ['newturn::', 'startgame::'].forEach(prefix => {
+        assert.ok(emitted.includes(prefix),
+            `${prefix} is broadcast every turn but the harvest missed it - SEND_CALLS is `
+            + 'out of date, so this whole file is now checking a fraction of the traffic');
+    });
+});
 
 /** Every client script, since lobby and game traffic are handled in different files. */
 function allClientSource() {

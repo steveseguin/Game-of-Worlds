@@ -63,7 +63,12 @@ let currentGameModeLabel = 'Quick Match';
 let lastTurnDigest = [];
 let eventPanel;
 let countdownOverlay;
-let standingOrdersState = { autoRebuild: false, autoScout: false, targetScouts: 2 }; // Kept for AI, UI removed for humans
+// Mirrors the server's standing orders for this player. The panel lives in the Analytics
+// tab; see syncStandingOrdersUI. Humans are only automated once they configure it.
+let standingOrdersState = { autoRebuild: false, autoScout: false, targetScouts: 2 };
+// True while we are writing server state into the controls, so the resulting change
+// events do not bounce straight back to the server as a fresh order.
+let standingOrdersSyncing = false;
 let eventFilter = 'all';
 let eventEntries = [];
 
@@ -1086,6 +1091,11 @@ function handleWebSocketMessage(message) {
             window.GameUI.initialize();
         }
 
+        // Wire the Standing Orders panel and ask what our orders actually are, so it opens
+        // showing the truth rather than its markup defaults.
+        wireStandingOrdersUI();
+        requestStandingOrders();
+
         // Exploration underway: switch from menu music to the campaign theme.
         if (window.SoundSystem?.playContextualMusic) {
             window.SoundSystem.playContextualMusic('game');
@@ -2022,8 +2032,71 @@ function handleCountdownMessage(payload) {
 }
 
 // Standing orders UI removed for human players - AI players use server-side automation
+/**
+ * Push server state into the Standing Orders controls.
+ *
+ * This was a no-op stub for a long time ("UI panel removed"), but the SERVER never stopped
+ * running the orders - and it ran them for humans too, with mode defaults that turn
+ * auto-rebuild and auto-scout on in Epic. So the automation was live and invisible. The
+ * panel is back, and the server now ignores un-configured humans.
+ */
 function syncStandingOrdersUI() {
-    // No-op: UI panel removed, keeping function stub for message handler compatibility
+    const rebuild = document.getElementById('soAutoRebuild');
+    const scout = document.getElementById('soAutoScout');
+    const target = document.getElementById('soTargetScouts');
+    const status = document.getElementById('standingOrdersStatus');
+    if (!rebuild || !scout || !target) return;
+
+    // Guard against writing back what we are in the middle of reading.
+    standingOrdersSyncing = true;
+    rebuild.checked = Boolean(standingOrdersState.autoRebuild);
+    scout.checked = Boolean(standingOrdersState.autoScout);
+    target.value = Number.isFinite(Number(standingOrdersState.targetScouts))
+        ? Number(standingOrdersState.targetScouts) : 2;
+    target.disabled = !scout.checked;
+    standingOrdersSyncing = false;
+
+    if (status) {
+        const active = [];
+        if (rebuild.checked) active.push('rebuilding home economy');
+        if (scout.checked) active.push(`keeping ${target.value} scout${target.value === '1' ? '' : 's'} flying`);
+        status.textContent = active.length
+            ? `Automation on: ${active.join(', ')}.`
+            : 'Automation is off. Nothing is built without your order.';
+    }
+}
+
+function sendStandingOrders() {
+    if (standingOrdersSyncing) return;
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+    const rebuild = document.getElementById('soAutoRebuild');
+    const scout = document.getElementById('soAutoScout');
+    const target = document.getElementById('soTargetScouts');
+    if (!rebuild || !scout || !target) return;
+    const payload = {
+        autoRebuild: rebuild.checked,
+        autoScout: scout.checked,
+        targetScouts: Math.max(0, Math.min(6, Number(target.value) || 0))
+    };
+    standingOrdersState = { ...standingOrdersState, ...payload };
+    websocket.send(`//standingorders:${JSON.stringify(payload)}`);
+    syncStandingOrdersUI();
+}
+
+function wireStandingOrdersUI() {
+    ['soAutoRebuild', 'soAutoScout', 'soTargetScouts'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.soWired) return;
+        el.dataset.soWired = '1';
+        el.addEventListener('change', sendStandingOrders);
+    });
+    syncStandingOrdersUI();
+}
+
+/** Ask the server what our orders currently are, so the panel opens truthful. */
+function requestStandingOrders() {
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+    websocket.send('//standingorders:get');
 }
 
 function formatShipSummary(map) {
@@ -2585,6 +2658,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('homeworldBtn')?.addEventListener('click', focusHomeworld);
     document.getElementById('colonizeBtn')?.addEventListener('click', colonizeSelectedSector);
     document.getElementById('sectorMoveShips')?.addEventListener('click', requestSelectedSectorMove);
-    // Standing orders panel removed - human players manage their empire manually
-    // AI players use server-side automation instead
+
+    // Standing orders. Wired here rather than in the startgame:: handler, because that
+    // message only arrives for a game you watched START - land on game.html for a match
+    // already in progress and it never fires, leaving the panel inert. The controls are
+    // static markup, so DOMContentLoaded is always the right moment.
+    wireStandingOrdersUI();
+    // Refresh from the server whenever the panel is opened, so it shows what the server
+    // actually holds rather than whatever it was last left displaying.
+    document.getElementById('analyticstab')?.addEventListener('click', requestStandingOrders);
 });
