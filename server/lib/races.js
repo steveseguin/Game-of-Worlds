@@ -5,6 +5,10 @@
  * tech trees, unit modifications, and unlock requirements.
  */
 
+// Hull id -> the key unitModifiers is written under. Callers pass ids; the data is keyed
+// by name, and for a long time nothing bridged the two. See applyShipModifiers.
+const { SHIP_TYPE_MODIFIER_KEYS } = require('./config/constants');
+
 const RACE_TYPES = {
     // Starter race (always unlocked)
     TERRAN: {
@@ -569,8 +573,20 @@ function applyShipModifiers(raceId, shipType, baseStats) {
     modifiedStats.attack = baseStats.attack * race.bonuses.shipAttack;
     modifiedStats.defense = baseStats.defense * race.bonuses.shipDefense;
 
-    // Apply specific unit modifiers
-    const unitMod = race.unitModifiers[shipType] || race.unitModifiers.all || {};
+    // Apply specific unit modifiers.
+    //
+    // unitModifiers is keyed by hull NAME ('battleship', 'scout'), but both production
+    // callers pass a NUMBER: buyShip does `parseInt(parts[1])` and the access summary
+    // passes `ship.id`. `unitModifiers[5]` is undefined, so every per-hull modifier fell
+    // through to `all` and none of them ever applied to a real ship. Mechanicus's
+    // battleships came out at 1.4 defence instead of 2.1, Silicon's scouts at speed 1.0
+    // instead of 1.2, and the Nomads' colony ships were never faster at all.
+    //
+    // It survived because the unit tests call this with the STRING, which works - the
+    // function was correct and nothing ever handed it what production hands it. Accept
+    // either form rather than fixing the callers, so the next caller cannot get it wrong.
+    const shipKey = SHIP_TYPE_MODIFIER_KEYS[shipType] || shipType;
+    const unitMod = race.unitModifiers[shipKey] || race.unitModifiers.all || {};
 
     Object.keys(unitMod).forEach(key => {
         if (key === 'cost') {
