@@ -257,24 +257,32 @@ schemas.
 **Nothing reads it.** Not the income calculation, not combat, not victory, not the client. It is
 generated, persisted, and inert, and no document in `lore/` has ever mentioned it in 150,000 words.
 
-### The fiction it is asking for
+### The fiction it is asking for → **decided, 2026-07-26**
 
-I am not going to write pieces claiming artifacts *do* something, because they do not, and that is the
-exact error that put a Wreck Field into two sector slots that were already occupied. What follows is a
-**proposal**, marked as one.
+This section used to end by refusing to write anything, because artifacts did nothing and inventing
+fiction for a mechanic that does not exist is the exact error that put a Wreck Field into two sector slots
+that were already occupied.
 
-The obvious and best reading is that the artifact field is where the **Trellis remnant** sits on the map.
+**That refusal is now lifted.** `08-open-questions.md` **Q10** locks the field as a system: the artifact
+value is where a **relic** lies. Design in `27-the-unattributed.md`; Q10 is the authority. Fiction is safe
+to write against the locked parts, and the numbers are still placeholders.
 
-A world with artifact 1 has a fragment — a hand-sized piece of something that is not metal and is not
-crystal and has no seam. A world with artifact 5 has a **structure**: nine kilometres of it, dark,
-intact, and unreadable, of the kind Deputy Warden Halloway once stood under and came away understanding
-that eleven empires are illiterate.
+The reading this section proposed survived and is now canon in outline: **the artifact field is where the
+Trellis remnant sits on the map.** A world with artifact 1 holds a hand-sized piece of something that is
+not metal and is not crystal and has no seam. A world with artifact 5 holds a **structure**: nine
+kilometres of it, dark, intact, and unreadable, of the kind Deputy Warden Halloway once stood under and
+came away understanding that eleven empires are illiterate.
 
-That reading costs nothing, uses a field that already exists at a distribution that already works, and
-gives every Lamp programme in the galaxy a physical reason to want particular worlds. It also explains why
-the highest-grade reckoning and the oldest ruins are the same substance.
+It costs nothing, uses a field that already exists at a distribution that already works, gives every Lamp
+programme in the galaxy a physical reason to want particular worlds, and explains why the highest-grade
+reckoning and the oldest ruins are the same substance.
 
-**What it needs before it is canon:** a decision about whether artifacts do anything mechanically. If they
-never will, the field should be documented as decorative and the fiction should stay quiet. If they
-should, this is the cheapest story-per-line-of-code available anywhere in the game — the distribution and
-the storage already exist. Logged in `08-open-questions.md`.
+**Two things to write carefully, now that this is live.** A relic **cannot be manufactured or
+reverse-engineered** — it is the part the documentation took for granted, not a shortcut to a technology —
+so no piece may show anybody making one or working out what it is. And the fiction must never state that
+a relic caused the Unarriving, only leave it derivable.
+
+**Still open, and it changes what a relic is:** whether 1–5 means five *kinds* of part or five *grades* of
+the same thing. The prose above assumes grades. If Q10's proposed five-kinds reading is adopted, this
+paragraph needs rewriting and the nine-kilometre structure becomes a different part rather than a bigger
+one.

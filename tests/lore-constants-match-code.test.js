@@ -172,10 +172,110 @@ test('this game still has no build time, and no lore file claims otherwise', () 
 
     // And the false claim, matched case-insensitively across line breaks - which is how the one
     // real instance escaped a hand-written grep.
+    //
+    // 27-the-unattributed.md is exempt, and the exemption is narrow on purpose. Q10 decided that a
+    // Galactic Wonder takes several turns to build, which makes it the FIRST object in the game with
+    // a duration. That file is the design document for an unbuilt feature and is allowed to propose
+    // the mechanic; every other file describes things that exist. Without the exemption the next
+    // person to write "the Wonder takes ten turns to build" sees a failure, assumes they made a
+    // mistake, and either deletes a correct line or weakens this guard - and this guard has already
+    // caught two real errors, so weakening it is the worse outcome.
+    const BUILD_TIME_MAY_PROPOSE = new Set(['lore/27-the-unattributed.md']);
     const offenders = loreFiles()
+        .filter(f => !BUILD_TIME_MAY_PROPOSE.has(f.file))
         .filter(f => /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+) turns? to (?:build|complete)\b/i.test(f.flat))
         .map(f => f.file);
     assert.deepEqual(offenders, [],
         'these files describe a build duration, which this game does not have:\n  '
         + offenders.join('\n  '));
+
+    // The exemption is only safe while that file keeps saying the mechanic is new. If a build time
+    // ever ships, this sentence has to go - and its going is the signal to revisit the prose the
+    // assertion above protects.
+    const unattributed = loreFiles().find(f => f.file === 'lore/27-the-unattributed.md');
+    if (unattributed) {
+        assert.match(unattributed.flat, /nothing in this game currently has a build time/i,
+            '27-the-unattributed.md no longer flags a Wonder build time as a first for this engine; '
+            + 'either the mechanic shipped (update the prose everywhere) or the caveat was lost');
+    }
+});
+
+// --- Q10: relics, the Unattributed, and the Wonder victory ------------------------------------
+// These are DESIGN, not shipped, and the design leans on four facts about the current code. Each is
+// quoted in lore/27-the-unattributed.md and lore/STATUS.md as a reason for a decision, which makes
+// them exactly the kind of claim that rots without anybody noticing.
+
+test('the artifact distribution the relic design is built on is unchanged', () => {
+    // One value per world, 1-5, on a quarter of colonizable worlds. Q10's "one relic per world at
+    // most, and most worlds have none" is a description of this roll, not a new requirement.
+    const mapSrc = fs.readFileSync(path.join(root, 'server', 'lib', 'map.js'), 'utf8');
+    assert.match(mapSrc, /artifact\s*=\s*Math\.floor\(\s*random\(\)\s*\*\s*5\s*\)\s*\+\s*1/,
+        'the artifact roll is no longer 1-5; lore/25-crystal.md Part 6 and Q10 both describe 1-5');
+    assert.match(mapSrc, /random\(\)\s*<\s*0\.25/,
+        'the 25% artifact chance changed; two lore files quote "twenty-five per cent"');
+
+    const { SECTOR_TYPES } = require('../server/lib/map');
+    const gated = mapSrc.match(/sectorType >= SECTOR_TYPES\.(\w+)\.id && random\(\) < 0\.25/);
+    assert.ok(gated, 'the artifact roll is no longer gated on a sector type floor');
+    assert.equal(SECTOR_TYPES[gated[1]].id, 6,
+        'artifacts no longer start at the first colonizable type; Q10d locked "colonizable worlds '
+        + 'only" against this exact gate');
+});
+
+test('the Wonder victory is still dormant, and cannot be enabled with the clock bug intact', () => {
+    // victory.js has carried a WONDER condition with enabled:false since launch. Q10f revives it,
+    // and flagged a real defect: turnsHeld = currentTurn - turnBuilt, selected on WHERE owner = ?,
+    // hands a captor the full elapsed clock the instant they take a ten-turn-old Wonder.
+    const victorySrc = fs.readFileSync(path.join(root, 'server', 'lib', 'victory.js'), 'utf8');
+    const block = victorySrc.match(/WONDER:\s*\{[\s\S]*?\n {4}\}/);
+    assert.ok(block, 'the WONDER victory condition has gone from victory.js');
+
+    const dormant = /enabled:\s*false/.test(block[0]);
+    const clockFromBuild = /currentTurn\s*-\s*turnBuilt/.test(block[0]);
+
+    if (!dormant) {
+        // Someone turned it on. That is fine and expected eventually - but not with this arithmetic.
+        assert.ok(!clockFromBuild,
+            'the WONDER victory has been enabled while it still measures currentTurn - turnBuilt. '
+            + 'Under the decided design a Wonder stands on ground that can be taken, so whoever '
+            + 'captures a ten-turn-old Wonder wins instantly. See lore/STATUS.md decision 3b.');
+    } else {
+        assert.ok(clockFromBuild || true, 'dormant; nothing to enforce yet');
+        assert.match(block[0], /wonders\$\{gameId\}/,
+            'the dormant check no longer reads the wonders table; Q10f is written against it');
+    }
+});
+
+test('two races still cannot field a Carrier or a Dreadnought', () => {
+    // This is the entire justification for the relic lifter being exempt from race doctrine. If
+    // either race gains a heavy hull, the exemption stops being necessary and Q10c should be
+    // revisited rather than silently kept.
+    const { RACE_TYPES, RACE_ACCESS } = require('../server/lib/races');
+    const HEAVY = [7, 9];   // Dreadnought, Carrier
+    const nameOf = {};
+    Object.values(RACE_TYPES).forEach(r => { nameOf[r.id] = r.name; });
+
+    const excluded = [];
+    for (let id = 1; id <= 12; id += 1) {
+        const allowed = (RACE_ACCESS[id] || {}).ships;   // absent = all ships
+        if (allowed && !HEAVY.some(s => allowed.includes(s))) excluded.push(nameOf[id]);
+    }
+    assert.deepEqual(excluded.sort(), ['Shadow Realm', 'Zephyr Swarm'],
+        'the set of races that can field no heavy hull changed. lore/27-the-unattributed.md and '
+        + 'Q10c cite exactly these two as the reason the relic lifter ignores race doctrine');
+});
+
+test('the Colony Ship doctrine exemption the lifter copies still exists', () => {
+    // Q10c's precedent: "Colony (6) is always allowed". If that stops being true, the lifter has no
+    // pattern to follow and needs its own justification.
+    assert.match(racesSrc, /Colony \(6\) is always allowed/,
+        'races.js no longer documents the Colony Ship as exempt from race ship restrictions; the '
+        + 'relic lifter in Q10c is designed on that precedent');
+
+    const { RACE_ACCESS } = require('../server/lib/races');
+    const barred = Object.entries(RACE_ACCESS)
+        .filter(([, acc]) => acc.ships && !acc.ships.includes(6))
+        .map(([id]) => id);
+    assert.deepEqual(barred, [],
+        `these races list ships without the Colony Ship, contradicting the exemption: ${barred.join(', ')}`);
 });

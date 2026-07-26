@@ -116,7 +116,12 @@ that exists. If a **new** sector type is ever added, start here.
 
 ---
 
-## Q5d · **NEW — the `artifact` field is generated and inert**
+## Q5d · The `artifact` field is generated and inert → **ANSWERED by Q10. It becomes a system.**
+
+*Superseded 2026-07-26. See Q10 below, which is the authority. The record of the question is kept because
+it is the third finding that came from reading the engine rather than the documents, and that pattern is
+worth preserving.*
+
 
 Found by reading `lib/map.js` rather than the documents, which is now the third time that has produced a
 finding.
@@ -125,7 +130,7 @@ finding.
 homeworld — and writes it to the map table. There is a column for it in the live schema. **Nothing reads
 it**: not income, not combat, not victory, not the client. No lore document mentioned it in 150,000 words.
 
-**The question is one of two things, and it needs an answer before any fiction commits:**
+**The question was one of two things, and Q10 chose the second:**
 
 1. **Is it decorative?** If artifacts will never do anything, the field should be documented as vestigial
    and the fiction should stay quiet about it.
@@ -207,3 +212,127 @@ Monetisation becomes worldbuilding rather than fighting it, and no player is eve
   nothing can hurt you, played *before* the player knows what they are looking at. It needs an
   engine flag that disables hazard rolls, which does not exist. If that flag is ever cheap,
   build this mission.
+
+---
+
+## Q10 · Relics, the Unattributed, and the Wonder victory → **DECIDED. LOCKED.**
+
+Answered directly by the project owner, 2026-07-26, in five questions plus two follow-ups. This
+supersedes the recommendations in `27-the-unattributed.md`, several of which were overruled in favour
+of better ones. It resolves `STATUS.md` decision 3 ("Does `artifact` become a system?"): **yes.**
+
+### Q10a · What connects the buried things to the Unarriving? → **a relic was used by someone who did not understand it**
+
+The trigger was **ignorance, not malice**. Somebody dug up a relic and operated it, and that is how
+the lanes came to be running both ways.
+
+**This refines Q1; it does not replace it, and Q1 stands unchanged.** The shutdown remains what Q1
+says it is — deliberate, informed, from the inside, by the Ancients, with no message left. What is now
+accidental is the **breach**, not the response. The Ancients did not fire the gun. They shut the doors
+afterwards, on purpose, and have said nothing for seventy-four years.
+
+**Who used it is never specified.** Possibly one of the twelve, possibly somebody long before them.
+Naming them would create the villain Q1 deliberately declined, and Law 25's discipline applies to the
+cause as much as to the thing itself.
+
+**Why this is the strongest version.** It makes the relic mechanic the direct cause of the setting's
+catastrophe rather than a decoration on it. A player who digs up a relic and bolts it into a Wonder is
+not doing something *like* the original mistake — they are doing the original mistake, with better
+funding. It also explains, at last, why the Ancients say nothing when you find one: they know what one
+did. And it costs no rewriting.
+
+**The Ancients' character is unchanged and must stay unchanged:** grim custodians who made an appalling
+correct choice and cannot explain it. Not the people who broke the galaxy by accident. That second
+version was considered and rejected precisely because it makes them pitiable instead of unknowable.
+
+### Q10b · How does discovery pay out? → **fragments, and they are objects on the board**
+
+This is the answer that changed the design most, and the owner's version is materially better than the
+one proposed. The proposal had a per-empire fragment counter, which made map luck a private misfortune
+requiring a trade mechanic to soften. Instead:
+
+- A fragment is a **physical thing on a world**, like a building — not a number in a player's ledger.
+- **One per world at most**, and most worlds have none.
+- Discovery odds stay **small even under heavy development**, so a fragment world rewards sustained
+  investment rather than a lucky first turn.
+- **It transfers with the ground.** Lose the planet and the invader has your fragment.
+- Therefore **a planet becomes worth defending** — something this game has never had. Until now every
+  world was interchangeable and you defended whichever was cheapest.
+- And an unlucky empire needs **an army, not a consolation mechanic**. The trade-as-mitigation
+  argument in `27-the-unattributed.md` is withdrawn; conquest does that work better.
+
+**Reading `artifact = 1–5` as five kinds of part, not five quantities.** Proposed, not locked. It makes
+"hold five fragments" mean one of each, which turns the victory condition into literally assembling the
+mechanism. It also uses the shipped generator exactly as it already behaves.
+
+### Q10c · Can a fragment be moved? → **yes, by a dedicated hull available to every race**
+
+Moving one requires a purpose-built transport. Checking "Carrier-class or larger" against
+`RACE_ACCESS` found that **the Zephyr Swarm and the Shadow Realm can field neither a Carrier nor a
+Dreadnought**, which would have locked two of twelve races out of an entire mechanic by accident.
+
+So: a dedicated lifter, **exempt from race doctrine exactly as the Colony Ship already is**
+(`races.js`: *"Colony (6) is always allowed"*). Expensive, slow, and defenceless, so committing one is
+a real decision and losing one in transit is a disaster.
+
+### Q10d · Do fragments appear anywhere but worlds? → **colonizable worlds only**
+
+Matches the shipped generator, needs no map change, and needs no second discovery mechanism for ground
+nobody can develop. It also protects Q10b's whole point: the thing worth defending is a *planet*.
+
+The shoal and small-moon versions were judged better fiction and deferred on scope — a fragment on a
+rock the Codex already calls *"worthless as ground, decisive as a position"* is a good later extension,
+not a launch requirement.
+
+### Q10e · Naming → **the Unattributed** for the builders, **relic** for the object
+
+- **The Unattributed** stands. The Registry files them under an administrative negative because
+  seventy-four years of scholarship produced nothing better, and a galaxy that cannot name them is
+  worth more than any name would be. Load-bearing: they must never be called *the Ancients*, who are
+  race 9, playable, present tense, and whose entire distinction is that **maintainers are not makers**.
+- **Relic** for the object. My proposed coinage *a leaving* is **withdrawn**. Relic is instantly legible
+  to anyone who has played a 4X, and the setting has already spent its coinage budget on *shoal*,
+  *mouth*, *trace*, *reckoning* and *the Whisper* — one more invented noun on the object players click
+  most is a tax that word did not earn. Its fantasy connotations are a real cost and were accepted.
+
+### Q10f · The Wonder is how a relic collection wins → **build time IS hold time**
+
+The owner's proposal, and it turns a dead code path back on rather than adding anything.
+`server/lib/victory.js` has carried a **WONDER victory since launch with `enabled: false`** and the
+comment *"Disabled until Galactic Wonder construction is implemented"*. Its check is already
+build-it-and-hold-it-ten-turns.
+
+- A Wonder costs **resources plus relics** and takes **multiple turns**.
+- **Building it and holding it are the same clock.** There is no separate hold phase after completion;
+  the construction period *is* the vulnerable window.
+- **Construction is announced to every player when it starts, including the sector.** The fiction does
+  this for free and no intelligence has to leak: a Wonder is a Lamp being relit. It is a light.
+- **Taking the sector mid-build destroys the works.** The relics transfer with the ground, so the
+  attacker gains the parts and starts over. Inheriting progress would let a rival snipe turn nine and
+  *steal* the win, rewarding nine turns of inactivity; destroying it means the snipe *denies* the win,
+  which is the intended tension. Recorded as the writer's call, open to veto.
+- This also removes a latent bug: the dormant check computes `turnsHeld = currentTurn - turnBuilt` while
+  selecting on `WHERE owner = ?`, so a captor would inherit the full elapsed clock and win instantly on
+  taking a ten-turn-old Wonder. Under build-is-hold the clock resets with the ground and the bug cannot
+  occur.
+
+### What the code already provides, verified rather than assumed
+
+| Already there | State |
+|---|---|
+| `lib/map.js` rolls `artifact = 1–5` on 25% of colonizable worlds, one per world, persisted | works, read by nothing |
+| `SECTOR_STATUS.ARTIFACT` in `public/js/ui.js`, cyan `#40C0FF` | defined, never used |
+| `wonders` table — `owner`, `type`, `turn_built` | created for every game, written by nothing; needs a sector column |
+| `WONDER` victory in `victory.js`, build-and-hold-ten-turns | present, `enabled: false` |
+| `production_turn` / `production_used` per-turn production budget | live; can express "multiple turns" without inventing a timer |
+| `systemalert::` broadcast to all players | live, two emissions |
+
+**One notable first:** nothing in this game currently has a build time. Everything completes on payment,
+gated by production capacity. A Wonder would be the first object with a duration — an acceptable place
+to introduce one, since it is a single object, once per game, and the production budget can carry it.
+
+### Still open after this
+
+- Whether `artifact = 1–5` means five kinds or five grades (Q10b, proposed).
+- Every number: discovery odds, relic count per Wonder, build duration, lifter cost.
+- Whether the lifter needs art before it can ship.

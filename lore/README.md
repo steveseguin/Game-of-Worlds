@@ -139,7 +139,7 @@ with the spine, repair the story.
 | `09-production.md` | Art and voice scope. Needs reconciliation with current shipped text before recording. |
 | `13-wonders/` | Proposed Wonders, technologies, hulls, and placeholder balance numbers. |
 | `25-crystal.md` | Locked mechanical facts plus proposed interpretation and stories. |
-| `27-the-unattributed.md` | Proposed origin/discovery design around the currently inert `artifact` field. |
+| `27-the-unattributed.md` | Relics, the builders, and the Wonder victory. Canon **locked** (`08-open-questions.md` Q10); mechanics unbuilt, every number a placeholder. |
 
 No Wonder or artifact proposal is implemented merely because its fiction is complete.
 

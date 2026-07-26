@@ -40,7 +40,8 @@ unclear.
 ### Design only
 
 - Wonders and their exclusive technologies/hulls (`13-wonders/`).
-- Artifact discovery and the Unattributed (`27-the-unattributed.md`).
+- Relics, the Unattributed, and the Wonder victory (`27-the-unattributed.md`). Canon **locked** as of
+  2026-07-26 (`08-open-questions.md` Q10); mechanics unbuilt and uncosted.
 - Most campaign structure, voice recording, and narrative art production.
 
 ## Decisions needed
@@ -71,11 +72,36 @@ has no hazard flag and applies no damage. Decide one:
 
 Until then, the player-facing wording overpromises a mechanic.
 
-### 3. Does `artifact` become a system?
+### 3. Does `artifact` become a system? → **ANSWERED: yes.** 2026-07-26
 
-The map generator stores artifact values on some worlds, but nothing consumes them. `25-crystal.md` and
-`27-the-unattributed.md` offer a strong interpretation, not an implemented fact. Approve a mechanic and
-cost it before promoting any artifact fiction into player-facing copy.
+Decided by the owner in `08-open-questions.md` **Q10**, which is now the authority;
+`27-the-unattributed.md` was rewritten to match and no longer proposes alternatives.
+
+In one paragraph: a relic is a **physical object on a world**, one world in four at most, found through
+*development* rather than time, and it **transfers with the ground** — so a planet becomes worth
+defending, and an unlucky empire needs an army rather than a consolation mechanic. Relics can be moved
+only by a **dedicated lifter available to every race** (the Colony Ship's doctrine exemption is the
+precedent; two races can field neither a Carrier nor a Dreadnought). Bring enough together and you can
+build a **Galactic Wonder**, whose construction takes several turns, is **announced to every player with
+its sector**, and whose completion wins — reviving the `WONDER` victory that has sat in `victory.js` with
+`enabled: false` since launch. Taking the sector mid-build destroys the works and hands the parts to the
+attacker.
+
+**Still needed before any of it ships:** every number, whether `artifact = 1–5` means five kinds or five
+grades, and art for the lifter. **Fiction is now safe to write** against the locked parts, and was not
+before.
+
+**Cheapest first step, well short of the whole feature:** show on the map that a colonised world holds
+something, without saying what. `SECTOR_STATUS.ARTIFACT` already exists in `public/js/ui.js` in cyan and
+has never been used, and the generator already assigns the values. That alone makes worlds unequal.
+
+### 3b. One bug this decision exposed
+
+`victory.js`'s dormant `WONDER` check computes `turnsHeld = currentTurn - turnBuilt` while selecting on
+`WHERE owner = ?`. If a Wonder can change hands — and under the decided design it can, because it stands
+on ground that can be taken — **whoever captures a ten-turn-old Wonder wins the instant they take it.**
+Build-is-hold removes it by resetting the clock with the ground. Do not enable that condition without
+fixing this.
 
 ### 4. Is the campaign a real product target?
 
