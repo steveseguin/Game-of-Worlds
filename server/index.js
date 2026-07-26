@@ -932,6 +932,11 @@ function handleCommand(data, connection) {
                 serverLogic.sendEmpireSummary(connection);
                 serverLogic.sendVictoryProgress(connection);
                 serverLogic.updateAllSectors(connection.gameid, connection);
+                // The cluster reading, once per player. This is the first `//update` after the game
+                // screen authenticates, which is the earliest moment the client is listening - the
+                // advisory cannot be broadcast at game start because `startgame::` navigates the
+                // browser to game.html and anything sent after it is lost.
+                serverLogic.deliverStandingAdvisory(connection);
             }
             break;
         case "joingame":

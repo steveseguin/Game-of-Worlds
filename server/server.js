@@ -1943,10 +1943,17 @@ async function initializeGame(gameId, connection, game = {}) {
         // Every figure in it is counted off `map`, the array that was just written to the table, so it
         // cannot contradict the board - and the phrasing is a hash of the game id, so a reconnect reads
         // the same advisory back. It reveals no positions; the map is fogged and this is not intel.
+        //
+        // COMPOSED HERE, DELIVERED LATER, and that is not a stylistic choice. The first version
+        // broadcast it right here, immediately after `startgame::` - and `startgame::` is what makes
+        // lobby.js run `window.location.href = '/game.html'`. Every line arrived at a page that was
+        // already being torn down, so the advisory reached nobody, ever, and nothing failed anywhere
+        // because it is wrapped in a try/catch so flavour cannot stop a game starting. It is stored on
+        // the active game and handed to each player on their first `//update` after they authenticate
+        // on the game screen, which is the first moment anybody is listening.
         try {
-            standingAdvisory.compose(gameId, map).forEach(line => {
-                broadcastToGame(gameId, `advisory::${line}`);
-            });
+            gameState.activeGames[gameId].advisory = standingAdvisory.compose(gameId, map);
+            gameState.activeGames[gameId].advisoryDelivered = new Set();
         } catch (advisoryError) {
             // Flavour must never be able to stop a game starting.
             console.warn(`Standing advisory failed for game ${gameId}:`, advisoryError && advisoryError.message);
@@ -5019,6 +5026,30 @@ function nameSector(data, connection) {
     );
 }
 
+/**
+ * Hand this player the cluster's Standing Advisory, once.
+ *
+ * Called from the `//update` dispatch rather than broadcast at game start, because `startgame::` sends
+ * the browser to game.html and nothing broadcast after it survives the navigation. The first `//update`
+ * from an authenticated game screen is the earliest point anybody is listening.
+ *
+ * Idempotent per player: a reconnect, a second `//update`, or two tabs get it once. Deliberately does
+ * not persist - if a player refreshes after the set is gone the reading is not re-read, which is the
+ * correct trade for something that is a moment rather than a record.
+ */
+function deliverStandingAdvisory(connection) {
+    const gameId = connection && connection.gameid;
+    const active = gameId && gameState.activeGames[gameId];
+    if (!active || !Array.isArray(active.advisory) || active.advisory.length === 0) return;
+
+    if (!active.advisoryDelivered) active.advisoryDelivered = new Set();
+    const who = String(connection.name);
+    if (active.advisoryDelivered.has(who)) return;
+    active.advisoryDelivered.add(who);
+
+    active.advisory.forEach(line => connection.sendUTF(`advisory::${line}`));
+}
+
 function requestMoveOptions(data, connection) {
     const parts = typeof data === 'string' ? data.split(':') : [];
     const targetSector = parseSectorToken(parts[1]);
@@ -7784,6 +7815,7 @@ module.exports = {
     moveFleet,
     updateSector,
     nameSector,
+    deliverStandingAdvisory,
     requestMoveOptions,
     surroundShips,
     preMoveFleet,
