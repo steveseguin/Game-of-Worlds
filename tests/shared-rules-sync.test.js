@@ -23,7 +23,12 @@ test('server-oriented legacy modules are not shipped from the public web root', 
     const forbiddenPublicModules = [
         path.join(repoRoot, 'public', 'js', 'events.js'),
         path.join(repoRoot, 'public', 'js', 'game_logic_ext.js'),
-        path.join(repoRoot, 'public', 'js', 'mechanics.js')
+        path.join(repoRoot, 'public', 'js', 'mechanics.js'),
+        // Node code that sat in the web root and answered 200 with the map table's column
+        // list. Removing it from git was not enough - the deploy never prunes, so it kept
+        // serving until it was added to deploy.js DELETE_FILES, which is what the second
+        // half of this test enforces.
+        path.join(repoRoot, 'public', 'js', 'init.js')
     ];
 
     forbiddenPublicModules.forEach(modulePath => {

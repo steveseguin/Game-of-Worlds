@@ -24,11 +24,18 @@ const REPO = path.resolve(__dirname, '..');
 const REMOTE_ROOT = '/opt/game-of-worlds';
 const DEPLOY_TMP = path.join(REPO, '.deploy-tmp');
 
+// Deleting a file from the repo does NOT remove it from production - the upload is a
+// manifest and nothing prunes. This list is the removal mechanism: every deploy rm -f's
+// each entry, so a retired file stays retired even if the box is rebuilt or an older
+// checkout is deployed over it.
 const DELETE_FILES = [
     'public/index.html',
     'public/js/events.js',
     'public/js/game_logic_ext.js',
-    'public/js/mechanics.js'
+    'public/js/mechanics.js',
+    // Server-side Node in the web root: required ./lib/database and ./lib/map, was loaded
+    // by no page, and served the map<gameId> INSERT column list to anyone who asked.
+    'public/js/init.js'
 ];
 
 function walkFiles(rootDir) {
