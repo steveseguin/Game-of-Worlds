@@ -128,7 +128,7 @@ Asked, and left open. Here is a decisive answer.
 **No — but every mission should be owned by a character.**
 
 One mission per character, starring that character, would fragment the one thing the campaign has locked:
-Rell is the only voice, and everybody else is quoted by Rell (`05-characters.md`). Twelve missions with
+Rell is the only voice **in the campaign**, and everybody else is quoted by Rell (`05-characters.md`). Multiplayer uses the player's own faction register, in text (Q4). Twelve missions with
 twelve leads means twelve introductions and no relationship.
 
 **The structure that works instead:**

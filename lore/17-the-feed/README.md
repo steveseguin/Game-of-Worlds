@@ -58,7 +58,7 @@ not worth writing, ship variant **a** everywhere and the copy is still a large i
 there now.
 
 The shipped client also has twelve race-specific advisor registers in `public/js/advisor.js`. That is a
-real player-facing path, but it conflicts with the locked campaign rule that Rell is the only voice.
+real player-facing path, and Q4 has since resolved it: Rell is the only voice **in the campaign**, and multiplayer speaks in the player's own faction register, in text.
 Resolve that channel boundary before recording: the current recommendation is Rell for the authored
 Terran campaign and faction adjutants for ordinary multiplayer. See `../STATUS.md`.
 

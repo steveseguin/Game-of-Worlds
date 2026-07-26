@@ -402,6 +402,36 @@ test('the Law 25 constraint travels with the Consideration line', () => {
     }
 });
 
+test('no file claims Rell is the only voice without saying "in the campaign"', () => {
+    // The contradiction this guards actually shipped and sat there. Five canon files said Rell was the
+    // only voice; public/js/advisor.js gives all twelve races their own register, to players, now.
+    // Precedence rule 1 is that shipped code wins, so the canon was the thing that was wrong.
+    //
+    // Q4 resolved it as two channels - Rell voiced in the campaign, faction registers in text for
+    // multiplayer - and the failure mode from here is somebody trimming the qualifier back out,
+    // because "Rell is the only voice" is the shorter and more quotable sentence.
+    const files = loreFiles().filter(f => !NOT_CANON.has(f.name));
+    const offenders = [];
+    for (const f of files) {
+        for (const m of f.flat.matchAll(/Rell is the only voice|only voice is Rell|one voice[,.]? Rell only/gi)) {
+            const after = f.flat.slice(m.index, m.index + 160);
+            if (/in the campaign|campaign only|campaign channel/i.test(after)) continue;
+            offenders.push(`${f.file}: "${f.flat.slice(m.index, m.index + 70)}…"`);
+        }
+    }
+    assert.deepEqual(offenders, [],
+        'these state the campaign rule as a global one, which contradicts the twelve faction registers '
+        + `that are shipped and live:\n  ${offenders.join('\n  ')}`);
+
+    // And the decision itself must remain findable, with both channels named.
+    const record = files.find(f => f.name === '08-open-questions.md');
+    assert.match(record.flat, /Q4 · Voice-over scope → \*\*TWO CHANNELS/,
+        'Q4 no longer records the two-channel resolution');
+    assert.match(record.flat, /text only|Text only/,
+        'Q4 no longer records that the multiplayer registers are text and carry no performer cost - '
+        + 'which is the whole reason the voice budget did not grow');
+});
+
 test('no file claims the artifact field is still undecided', () => {
     // Q5d asked whether the field should do anything and Q10 answered it. The encyclopedia - the
     // "start here for facts" file - still said "not canon until a mechanics decision is made" a full

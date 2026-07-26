@@ -59,7 +59,7 @@ const Codex = (function () {
                             ['Empty Space', 'Nothing to hold, nothing to fear, nothing to gain.'],
                             ['Asteroid Belt', 'A <em>shoal</em>. Half your hulls crossing, a quarter arriving — and safe forever once swept. Yields ore once secured.'],
                             ['Black Hole', 'A <em>mouth</em>. No roll, no survivors. Every one on the chart was found by a fleet that did not come back.'],
-                            ['Unstable Star', 'Throws radiation on a rhythm. The one dangerous place that can be learned instead of bought.'],
+                            ['Unstable Star', 'Free to cross, impossible to keep &mdash; the exact inverse of a shoal. Nothing here will touch a fleet and nothing here will ever be yours.'],
                             ['Brown Dwarf', 'A failed star. Too dim to fight over, bright enough to fix a position by. Permanent.'],
                             ['Small Moon', 'Worthless as ground, decisive as a position. A rock at a junction of traces is a door.'],
                             ['Micro Planet', 'Ore, and somewhere to put a yard. Nobody is from a micro planet.'],

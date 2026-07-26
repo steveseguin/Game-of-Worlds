@@ -2,7 +2,7 @@
 
 Status: **PROPOSED**. Structure is mine; every mechanic referenced already exists in the engine.
 
-**LOCKED** 2026-07-25: the player is **always Terran**, and **Rell is the only voice** — every
+**LOCKED** 2026-07-25: the player is **always Terran**, and **Rell is the only voice in the campaign** (multiplayer uses faction registers in text  Q4) — every
 other character reaches the player through Rell reading their messages aloud (`05-characters.md`).
 Both decisions apply to every mission below.
 

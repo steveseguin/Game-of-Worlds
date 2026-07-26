@@ -59,31 +59,46 @@ unclear.
 
 ## Decisions needed
 
-### 1. Who is the advisor?
+### 1. Who is the advisor? → **ANSWERED: two channels, one voice.** 2026-07-26
 
-**Conflict:** `05-characters.md`, `06-campaign.md`, `08-open-questions.md`, `09-production.md`, and
-`19-canon-and-variance.md` lock Rell as the only voice. The shipped `public/js/advisor.js` instead gives
-all twelve races distinct faction registers.
+Recorded in `08-open-questions.md` **Q4**, which is the authority. Five canon files said Rell was the only
+voice; the shipped `public/js/advisor.js` gives all twelve races distinct registers. Precedence rule 1 is
+*shipped code wins*, so the canon was the thing that was wrong.
 
-Both choices are coherent, but they imply different products:
+- **Campaign: Rell, voiced, and nobody else.** One performer, ~200–250 lines. Every other character is
+  quoted *by* Rell, which is a stronger device than voicing them and is unchanged by this decision.
+- **Multiplayer: the player's own faction register, text only.** Twelve of them, already shipped. A
+  Mechanicus player should not be narrated at by a Terran.
 
-- **Rell-only:** strongest authored protagonist and cheapest voice production; best fit for the
-  Terran-only campaign.
-- **Faction adjutants in multiplayer, Rell in campaign:** respects player race identity and the shipped
-  implementation, but the canon and production plan must explicitly separate the two channels.
+**The voice-over commitment did not grow.** Twelve text registers cost nothing to perform because nobody
+performs them. Reading the shipped code as an implied twelve-performer budget is what made this look like
+a conflict instead of a division of labour, and it is safe to record voice against the campaign baseline
+now.
 
-Recommendation: adopt the second model. It preserves Rell's authored campaign role without making a
-Mechanicus or Bioform player sound Terran. Do not record voice until this is explicit.
+### 2. Is the Unstable Star dangerous? → **ANSWERED: no, and the copy is fixed.** 2026-07-26
 
-### 2. Is the Unstable Star dangerous?
+**It was worse than an open question — it was shipped copy that promised a mechanic.** The tooltip and
+the Codex both said *"Throws radiation on a rhythm. The one dangerous place that can be learned instead
+of bought."* That is not vague flavour; it is a strategic promise that observation substitutes for paying
+in hulls. Type 3 has no `hazardous` flag, no `dangerLevel`, and applies no damage. There was nothing to
+observe and nothing to avoid.
 
-`server/lib/map.js` describes dangerous radiation, and the Codex/tooltips call it dangerous, but type 3
-has no hazard flag and applies no damage. Decide one:
+**Decided: type 3 stays mechanically inert, and the copy now says something true and better.** Free to
+cross, impossible to keep — **the exact inverse of a shoal.** A belt is lethal to cross and safe forever
+once held; an unstable star will not touch a fleet and can never be owned. Both halves of that are
+`SECTOR_TYPES` facts (`hazardous` absent, `colonizable: false`), so the line is checkable, and
+`tests/lore-sector-types-match-code.test.js` now fails if any non-hazardous type's player-facing line
+claims harm again. Proven to bite.
 
-- implement a distinct radiation mechanic with clear counterplay; or
-- make the description atmospheric and explicitly non-damaging.
+**Why not implement the radiation.** A periodic hazard on 5% of every map is a live balance change to a
+running game that nobody asked for, and it would be a second damage source competing with the belt
+rather than a distinct idea. The inverse-of-a-shoal reading is better design and costs nothing.
 
-Until then, the player-facing wording overpromises a mechanic.
+**The good line is not lost — it was never the problem.** *"The only dangerous place in the galaxy that
+can be learned instead of bought"* is Osk's report in `24-anthology/01-sectors.md` § 3, "Forty-One
+Minutes", and that file already noted the type is mechanically inert. **The error was lifting story into
+player-facing copy without carrying the caveat**, which is the most likely way this folder does damage,
+and it is now the thing the guard exists to catch.
 
 ### 3. Does `artifact` become a system? → **ANSWERED: yes.** 2026-07-26
 

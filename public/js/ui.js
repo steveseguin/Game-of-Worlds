@@ -656,7 +656,7 @@ window.GalaxyMap = (function() {
         0:  { name: 'Empty Space',   line: 'Open dark. Nothing to hold, nothing to fear, nothing to gain.' },
         1:  { name: 'Asteroid Belt', line: 'A shoal. Half your hulls crossing, a quarter arriving — and safe forever once swept.' },
         2:  { name: 'Black Hole',    line: 'A mouth. No roll, no survivors. Every one on the chart was found by a fleet that did not come back.' },
-        3:  { name: 'Unstable Star', line: 'Throws radiation on a rhythm. The one dangerous place that can be learned instead of bought.' },
+        3:  { name: 'Unstable Star', line: 'Free to cross, impossible to keep. The inverse of a shoal: it will not touch a fleet, and it will never be yours.' },
         4:  { name: 'Brown Dwarf',   line: 'A failed star. Too dim to fight over, bright enough to fix a position by. Permanent.' },
         5:  { name: 'Small Moon',    line: 'Worthless as ground, decisive as a position. A rock at a junction of traces is a door.' },
         6:  { name: 'Micro Planet',  line: 'Ore, and somewhere to put a yard. Nobody is from a micro planet.' },

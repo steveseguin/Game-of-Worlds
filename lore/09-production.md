@@ -30,6 +30,8 @@ budgets go.
 
 ### Why one voice is the right answer
 
+*Scope note: this concerns the CAMPAIGN, which is the only voiced channel. Multiplayer's twelve faction registers are text and carry no performer cost  `08-open-questions.md` Q4.*
+
 A single recurring narrator attached to an event feed is the highest-return narrative device
 available to a project this size. It requires no cutscene system, no lip-sync, no animation
 budget, and no new UI — the commander feed already exists in the art direction with idle,
@@ -37,7 +39,7 @@ talking, alert and static states. Rell is the difference between an event log an
 reading you an event log*, and that difference is most of what people will remember.
 
 And the constraint pays a creative dividend rather than costing one. Because Rell is the only
-voice, **every other character is quoted by Rell** — which gives us the player's read on Vance,
+voice in the campaign, **every other character is quoted by Rell** — which gives us the player's read on Vance,
 Ito, Keth, Fourth and the Emissary filtered through an adjutant who has an opinion about all of
 them. That is more characterisation per line than voicing them would buy, and it is how radio
 drama has always handled a large cast on one microphone. The rule and its writing constraints

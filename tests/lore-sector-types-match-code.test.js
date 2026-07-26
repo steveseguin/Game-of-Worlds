@@ -150,6 +150,61 @@ test('the codex lists all twelve races', () => {
     assert.deepEqual(absent, [], `the codex omits these races: ${absent.join(', ')}`);
 });
 
+test('player-facing copy only claims danger for types the engine makes dangerous', () => {
+    // This is the guard for a defect that shipped. The tooltip and the Codex both told players the
+    // Unstable Star "throws radiation on a rhythm" and was "the one dangerous place that can be learned
+    // instead of bought" - a specific strategic promise, that observation substitutes for paying in
+    // hulls. Type 3 has no `hazardous` flag, no `dangerLevel`, and applies no damage. There was nothing
+    // to observe and nothing to avoid.
+    //
+    // The line came from 24-anthology/01-sectors.md, where it is good and where that file explicitly
+    // notes the type is mechanically inert. The error was lifting story into player-facing copy without
+    // carrying the caveat, which is the most likely way this whole folder does damage.
+    //
+    // So: exactly two types are hazardous, and only those two may be described as harmful to a fleet.
+    const hazardous = new Set(Object.values(SECTOR_TYPES).filter(t => t.hazardous).map(t => t.id));
+    assert.deepEqual([...hazardous].sort(), [1, 2], 'the hazardous set changed; revisit every sector line');
+
+    const uiSrc = fs.readFileSync(path.join(root, 'public', 'js', 'ui.js'), 'utf8');
+    const block = uiSrc.match(/const SECTOR_LORE = \{[\s\S]*?\n {4}\};/);
+    assert.ok(block, 'SECTOR_LORE has gone from ui.js');
+    const lore = new Function(`${block[0]}; return SECTOR_LORE;`)();
+
+    const codexSrc = fs.readFileSync(path.join(root, 'public', 'js', 'codex.js'), 'utf8');
+    const codexSectors = codexSrc.match(/id: 'sectors'[\s\S]*?id: 'twelve'/)[0];
+
+    // Words that assert a fleet can be harmed here. "Dangerous" alone is the one that shipped.
+    const CLAIMS_HARM = /\bdangerous\b|\bhazard(?:ous)?\b|will (?:kill|destroy)|takes? a dose|damages? (?:a |your )?(?:fleet|hull)|lose (?:hulls|ships)/i;
+
+    const wrong = [];
+    for (const [id, entry] of Object.entries(lore)) {
+        const claims = CLAIMS_HARM.test(entry.line);
+        if (claims && !hazardous.has(Number(id))) {
+            wrong.push(`tooltip type ${id} (${entry.name}) claims harm, but the engine applies none`);
+        }
+        if (!claims && hazardous.has(Number(id))) {
+            // Belt and Black Hole describe their odds instead of using the word "dangerous", which is
+            // better writing - so only fail if they stop conveying loss at all.
+            if (!/hulls|survivors|loss|did not come back|swept/i.test(entry.line)) {
+                wrong.push(`tooltip type ${id} (${entry.name}) is hazardous and its line conveys no risk`);
+            }
+        }
+    }
+
+    // The Codex carries the same eleven lines; check the one that shipped wrong cannot come back.
+    const starLine = codexSectors.match(/\['Unstable Star', '([^']*)'\]/);
+    assert.ok(starLine, 'the Codex no longer has an Unstable Star row');
+    if (CLAIMS_HARM.test(starLine[1])) {
+        wrong.push(`codex Unstable Star claims harm: "${starLine[1]}"`);
+    }
+    assert.doesNotMatch(starLine[1], /learned instead of bought/i,
+        'the Codex has taken back the "learned instead of bought" promise. That line belongs to '
+        + '24-anthology/01-sectors.md as a story about Osk, and it describes a mechanic that does not '
+        + 'exist. If a radiation rhythm is ever implemented, delete this assertion deliberately.');
+
+    assert.deepEqual(wrong, [], wrong.join('\n  '));
+});
+
 test('colonizable types are still 6 through 10', () => {
     // Victory conditions query `type BETWEEN 6 AND 10`, and the anthology's "ladder" piece is
     // written against four grades plus a homeworld.

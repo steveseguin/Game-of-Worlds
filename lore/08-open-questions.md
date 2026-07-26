@@ -64,15 +64,31 @@ doctrine. *Write everything down. Never lose a fact twice. Expand only onto grou
 understand.* The player is not roleplaying Terran values; they are being taught them by the
 mechanics, which is what good campaign design is.
 
-## Q4 · Voice-over scope → **ONE VOICE. RELL ONLY. LOCKED.**
+## Q4 · Voice-over scope → **TWO CHANNELS. ONE VOICE. LOCKED.**
 
-Originally estimated at 400–600 short lines; the engine audit reduced the written baseline to roughly
-200–250 event, briefing, and campaign lines. One performer remains the locked campaign baseline.
-The twelve faction text registers that later shipped in multiplayer create a channel decision, not an
-automatic twelve-performer commitment; see `STATUS.md`.
+**Amended 2026-07-26, and the amendment is the resolution of a live contradiction.** This question was
+decided as *Rell only* before `public/js/advisor.js` shipped twelve distinct faction registers to
+players. Five canon files said one voice; the running game said twelve. Precedence rule 1 is *shipped
+code wins*, so the canon was the thing that was wrong, and had been for some time.
 
-**The craft consequence, which matters more than the budget:** if Rell is the only voice, then
-**every other character is quoted by Rell.** Vance, Ito, Keth, Fourth and the Emissary all reach
+**The decision, stated so nothing has to infer it again — the two are different channels:**
+
+| | **Campaign** | **Multiplayer** |
+|---|---|---|
+| Who speaks | **Chart-Warden Rell, and nobody else** | The player's own faction register — twelve of them, shipped |
+| Delivery | **Voiced.** One performer, ~200–250 lines | **Text only.** No performer, no budget |
+| Why | A Terran-only campaign with an authored protagonist. Rell *is* the narrative surface | A Mechanicus player should not be narrated at by a Terran |
+
+**So there is still exactly one voice-over commitment and it did not grow.** Twelve text registers cost
+nothing to perform because nobody performs them. The thing that would have been expensive — twelve
+performers — was never implied by the code, and reading it that way is what made this look like a
+conflict rather than a division of labour.
+
+**The consequence to hold on to:** it means the campaign's rule below is untouched, and multiplayer gets
+race identity, and neither channel is a compromise of the other.
+
+**The craft consequence, which matters more than the budget:** if Rell is the only voice in the campaign,
+then **every other character is quoted by Rell.** Vance, Ito, Keth, Fourth and the Emissary all reach
 the player through their adjutant reading their messages aloud — *"Registrar's office asks after
 you. That means they have started counting."*
 
