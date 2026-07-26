@@ -5040,14 +5040,27 @@ function nameSector(data, connection) {
 function deliverStandingAdvisory(connection) {
     const gameId = connection && connection.gameid;
     const active = gameId && gameState.activeGames[gameId];
-    if (!active || !Array.isArray(active.advisory) || active.advisory.length === 0) return;
+    if (!active || !Array.isArray(active.advisory) || active.advisory.length === 0) return false;
+    if (!connection || typeof connection.sendUTF !== 'function') return false;
 
     if (!active.advisoryDelivered) active.advisoryDelivered = new Set();
     const who = String(connection.name);
-    if (active.advisoryDelivered.has(who)) return;
-    active.advisoryDelivered.add(who);
+    if (!who || who === 'unknown' || who === 'undefined') return false;
+    if (active.advisoryDelivered.has(who)) return false;
 
-    active.advisory.forEach(line => connection.sendUTF(`advisory::${line}`));
+    try {
+        active.advisory.forEach(line => connection.sendUTF(`advisory::${line}`));
+    } catch (error) {
+        // A socket can close between //update and the four sends. Do not consume the player's
+        // one reading unless the complete set was accepted by the connection; their next
+        // authenticated socket may retry it.
+        console.warn(`Standing advisory delivery failed for player ${who} in game ${gameId}:`,
+            error && error.message);
+        return false;
+    }
+
+    active.advisoryDelivered.add(who);
+    return true;
 }
 
 function requestMoveOptions(data, connection) {
