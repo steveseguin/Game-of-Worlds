@@ -9,6 +9,15 @@ verifiable by someone who did not make it. A grade may be **lowered** on review 
 claimed credit it did not earn. Optimism about our own work is the failure mode this file exists to
 prevent.
 
+**Revision 10 — 2026-07-26.** Target: *Co-authorship (D)*, the lowest grade on the card and unmoved
+since R2. The naming picker is built and the map shows what the player chose. One grade moves. Detail
+in R10.
+
+**Revision 9 — 2026-07-26.** Target: the Delivery block, which had been the four lowest grades for six
+revisions and was the one section no amount of writing could move. Three grades move, two are held
+down, and for the first time a grade moved on evidence from **production** rather than from the
+repository. Detail in R9.
+
 **Revision 6 — 2026-07-26.** `24-anthology/` — **104 short pieces, ~21,000 words**, one per hull,
 building, technology level, sector type, Wonder and signature weapon, plus colonists, terraforming,
 travel, spying, battle from both sides, and leadership from the top and the ranks. Three grades move;
@@ -24,34 +33,209 @@ real and it did not cross any criterion's threshold, and saying so is the point 
 
 ## Grades
 
-| | Criterion | R1 | R3 | R6 | |
-|---|---|:---:|:---:|:---:|---|
-| **A. World** | Limitation over power | A | A | **A** | — |
-| | Material logic | A | A | **A** | — |
-| | Internal consistency | A− | A− | **A−** | ▼B+ in R7, ▲back to A− in R8 — now guarded by tests, not by reading |
-| | Causal history | A− | A− | **A−** | — |
-| | Sensory concreteness | A− | A− | **A** | ▲ things are handled now, in 104 places |
-| | Restraint *(means, not end)* | D | B− | **B−** | held — 2,960 more words, ratio unchanged |
-| **B. Character** | Distinct voice | A | A | **A** | con retired; not inflating to A+ on three scenes |
-| | Contradiction / flaw-as-strength | A− | A− | **A** | ▲ Zephyr and Quantum fixed — the exact stated con |
-| | Want, obstacle, cost | B− | B− | **B** | ▲ ~40 people now want something and pay for it |
-| | Change within the story | C | C | **C+** | ▲ Rell and Sesse now develop *within* the story |
-| | Agency | D+ | D+ | **B−** | ▲ 104 pieces in which somebody does something |
-| **C. Story** | Theme carried by structure | A | A | **A** | — |
-| | Setup and payoff | A− | A− | **A** | ▲ new planting, and some pays off to a *player* |
-| | Causality *(therefore / but)* | B | B | **B+** | ▲ Act One chains therefore/but explicitly |
-| | Escalation | C+ | C+ | **B−** | ▲ the galaxy finally has a clock |
-| | Emotional range | D | D+ | **C+** | ▲ range across 104 pieces; still short on comedy |
-| **D. Delivery** | Redundant discovery paths | B− | C | **C** | needs code |
-| | Legibility to a newcomer | C− | B− | **B−** | needs code |
-| | Co-authorship | C | D | **D** | needs code (the picker) |
-| | Contact with the audience | F | B− | **B−** | needs code (deploy) |
+| | Criterion | R1 | R3 | R6 | R9 | R10 | |
+|---|---|:---:|:---:|:---:|:---:|:---:|---|
+| **A. World** | Limitation over power | A | A | A | A | **A** | — |
+| | Material logic | A | A | A | A | **A** | — |
+| | Internal consistency | A− | A− | A− | A− | **A−** | ▼B+ in R7, ▲back to A− in R8 — now guarded by tests, not by reading |
+| | Causal history | A− | A− | A− | A− | **A−** | — |
+| | Sensory concreteness | A− | A− | A | A | **A** | ▲ in R6 — things are handled now, in 104 places |
+| | Restraint *(means, not end)* | D | B− | B− | B− | **B−** | held twice — the corpus still grows faster than the delivered fraction |
+| **B. Character** | Distinct voice | A | A | A | A | **A** | con retired; not inflating to A+ on three scenes |
+| | Contradiction / flaw-as-strength | A− | A− | A | A | **A** | ▲ in R6 — Zephyr and Quantum fixed |
+| | Want, obstacle, cost | B− | B− | B | B | **B** | ▲ in R6 — ~40 people want something and pay for it |
+| | Change within the story | C | C | C+ | C+ | **C+** | Rell and Sesse develop *within* the story |
+| | Agency | D+ | D+ | B− | B− | **B−** | ▲ in R6 — 104 pieces in which somebody does something |
+| **C. Story** | Theme carried by structure | A | A | A | A | **A** | — |
+| | Setup and payoff | A− | A− | A | A | **A** | ▲ in R6 — some of it now pays off to a *player* |
+| | Causality *(therefore / but)* | B | B | B+ | B+ | **B+** | Act One chains therefore/but explicitly |
+| | Escalation | C+ | C+ | B− | B− | **B−** | the galaxy finally has a clock |
+| | Emotional range | D | D+ | C+ | C+ | **C+** | range across 104 pieces; still short on comedy |
+| **D. Delivery** | Redundant discovery paths | B− | C | C | B− | **B−** | ▲ in R9 — the core conceit is learnable three ways |
+| | Legibility to a newcomer | C− | B− | B− | B+ | **B+** | ▲ in R9 — the tooltip names the sector; the panel states the premise |
+| | Co-authorship | C | D | D | D | **C+** | ▲ the player names the shoals they sweep, and the map shows it |
+| | Contact with the audience | F | B− | B− | B | **B** | ▲ in R9 — verified live on gameofworlds.com, byte-identical |
 
-**Sections — World A− · Character B+ · Story B+ · Delivery C · Overall B**
+**Sections — World A− · Character B+ · Story B+ · Delivery B− · Overall B**
 
-*Computed, not felt: World 3.68, Character 3.20, Story 3.26, Delivery 2.10, overall 3.14. **Thirteen of
-twenty criteria are still below A**, and every one of the four lowest is in Delivery, which no amount of
-writing can move.*
+*Computed, not felt: World 3.68, Character 3.20, Story 3.26, Delivery **2.83** (was 2.10 at R6),
+overall **3.29** (was 3.14). **Eleven of twenty criteria are still below A.** Delivery has gone from
+the section that could not move to the section that moved most, and it is no longer last by a wide
+margin. The lowest grades on the card are now Change within the story, Emotional range and
+Co-authorship, all at C+.*
+
+---
+
+## R10 — the player writes on the map
+
+`lore/18-naming-the-dark.md` had sat as a design proposal for five revisions with a note saying it was
+the only item from the craft audit needing engine work. R4 built its foundations —
+`server/lib/sector-names.js`, the three schema columns, the deterministic candidate generator — and
+then honestly refused to raise the grade, because the server still picked the name and the player had
+no say. That was the right call and it left the work half-finished for six revisions.
+
+### What shipped
+
+**The player names the shoals they sweep.** On a successful sweep the server sends `namechoice::` to
+the one player entitled to name the place, with six candidates and *what the crossing cost*. The prompt
+leads with the cost — **"4 hulls did not arrive at C8"** — which is the beat the whole proposal was
+built around: you are asked to name a place after what it took, at the instant you learn it was worth
+it. A clean sweep gets its own line rather than "0 hulls", because nothing lost is a different thing
+and not a smaller one.
+
+**The map shows it.** This is the half that decides whether the feature is real. The client had been
+receiving `sectorname`, `namedby` and `namedturn` on every sector detail since R4 and reading none of
+them, so a player would have chosen a name and then never seen it again. The tooltip now leads with the
+chart name, keeps the type as its classification, and credits the namer and the turn: *"the Vail Shoal
+— sector C8, Asteroid Belt / named by you, turn 12"*. Charting also gets its own feed icon and the only
+distinct hue in the palette, because it is the one event that leaves something permanent behind.
+
+**Nothing a player types can reach another player's map.** The wire carries an index into a
+server-generated list, never a name, so there is no moderation surface — which is the only reason a
+permanent shared label was shippable at all. The `UPDATE` is fenced by `namedby`, so a conqueror
+inherits the name the people who paid for it gave it. That was the best detail in the proposal and it
+is now enforced by SQL rather than intention.
+
+### Co-authorship — D → **C+**
+
+Before this pass the player added nothing to the world, ever, in any form. Now they make one permanent,
+visible, credited mark, at the emotional climax of the game's signature mechanic, and it outlives their
+empire. That is a categorical change and it is worth two and a half steps.
+
+**Why not B−, honestly.** Three real limits, and none of them is small:
+
+1. **It is gated behind an act a player may never perform.** Asteroid belts are 10% of the map. A
+   player who never sweeps one co-authors nothing all game, and the grade has to describe that player
+   too.
+2. **Choosing one of six is a small creative act.** The proposal said *"you name it"*, which reads as
+   free text; what shipped is a menu. That was a deliberate trade for shippability and it is still less
+   than the proposal promised.
+3. **Rule 5 is unbuilt, and it was the pervasive half.** *"After twenty turns the player's own event
+   log is written in their own vocabulary"* — the feed uses the chart name in the naming confirmation
+   and nowhere else. Every other message still prints a hex token. That is where this feature stops
+   being a moment and becomes the texture of a game, and it is the highest-value thing left on this
+   card.
+
+There is also a narrower limit worth recording: the tooltip only knows a name once a `sector::` detail
+has arrived for that sector, because the compact `mapstate::` packing has no room for a string. In
+practice the sweeper sees it immediately and others see it when they look, and it is not nothing.
+
+### Two defects found on the way, both pre-existing
+
+**The sweep announced a name that was not on the chart.** The confirmation printed the freshly generated
+default while the three `COALESCE` clauses beside it could have kept an older one — reachable when a
+sector's owner is cleared and it is swept again. Harmless while the default was the only name a sector
+could have, and a lie the moment players started choosing. It now reads the name back out of the table.
+
+**A code comment had gone stale in the opposite direction.** The note explaining Quick Help's colonize
+line said it had been corrected *to* the Build tab; commit `ee361ab` then moved ship production into
+Fleet and made the explanation wrong. Verified against `git log -L` rather than from memory before
+rewriting — the line has now been wrong in both directions, which is what the comment says.
+
+### On the guards
+
+Ten handler tests, eight schema tests, two browser tests. Two things are worth noting because they are
+the kind of thing that makes a suite worth having rather than just long:
+
+- The schema guard **failed on this change and was right to**. It asserted exactly one statement writes
+  `sectorname`; there are now two. Rather than relax the count, it now finds both and holds each to its
+  own rule — the sweep must use `COALESCE` and never overwrite, the picker must not use it and must
+  therefore be fenced by `namedby` instead. A third writer still fails.
+- One of my own tests was a **race, not a test**: it waited 5ms for an async callback, passed in
+  isolation, and failed inside the full suite where a dozen processes compete. It now waits for the
+  reply, which is the actual completion signal. Three consecutive full runs at 268/268.
+
+---
+
+## R9 — the setting reaches a player
+
+Every previous revision improved the writing. This one changed **who can read it.** For six revisions
+the four lowest grades on this card were all in Delivery and every one carried the same note — *needs
+code* — while the corpus grew to ~159,000 words that no player could reach by any means. That was the
+real defect, and it was not a writing defect.
+
+### What shipped
+
+**1. The map tooltip names the sector.** `SECTOR_LORE` in `public/js/ui.js` — eleven entries, each a
+code-verified type name plus one line of under 24 words. Before this the hover panel showed a sector
+number and its yields and **never once said what kind of place it was.** A player could hover a black
+hole and a large planet and read the same shape of box. This was the largest single legibility hole in
+the product and it had nothing to do with lore: the game was failing to name its own terrain.
+
+**2. A codex, in the panel that already existed.** `public/js/codex.js` — four tabs (The Galaxy,
+Sectors, The Twelve, Words), ~740 words, added to the help overlay that was already built, already
+styled and already wired to a button. Quick Help stays the default tab, so the new-player path is
+unchanged. The Galaxy tab states the premise in five short paragraphs; Sectors explains all eleven
+terrain types; Words is the ten terms a player will meet in the feed and cannot otherwise decode.
+
+**3. It is verified as a player, not as a file.** `tests/e2e/codex.spec.js` drives a real browser into
+a real game, clicks the `?` button, switches every tab, and reads what a player would read — including
+that Quick Help is default, that going back works, that reopening does not duplicate the tab bar, that
+nothing overflows the panel horizontally, and that **Law 25 holds on the delivered surface** (no
+*quarantine*, no *sealed*, no *containment*). Proven to bite: pointing the script tag at a filename
+that does not exist takes the spec from 5 tabs to 0. The two unit assertions added alongside it
+(`lore-sector-types-match-code.test.js`) would both still have passed against that broken build, which
+is exactly why the spec exists.
+
+### Contact with the audience — B− → **B**
+
+This is the first grade on this card ever moved on production evidence. All ten client files from
+commit `93fe06e` were fetched from `https://gameofworlds.com` and compared to local: **ten of ten
+byte-identical**, `codex.js` 11,623 bytes matching on md5, and the live `ui.js` containing
+`SECTOR_LORE` and naming Unstable Star, Brown Dwarf and Small Moon. The writing is in front of players
+now.
+
+**Why not higher.** Exposure is not response. There is no telemetry on the help panel, so the honest
+claim is *a player can reach it*, not *a player read it*. And what they can reach is 740 words of
+roughly 159,000 — the anthology, the twelve race bibles, the Wonders and the timeline remain
+unreachable by any route. B is "it arrives"; A would need evidence it landed.
+
+### Legibility to a newcomer — B− → **B+**
+
+Someone who has never read a word of `lore/` can now open one button and learn the premise, and can
+learn what any square on the map is by pointing at it. Those are the two questions a new player
+actually has, and until this pass the product answered neither.
+
+**Why not A−.** The Twelve tab chooses voice over information: *"Decline to have crossed it"* is a good
+line and it does not teach anybody what the Quantum Entities do. Nothing in the panel explains Wonders,
+the Emissary, the clock, or why the twelve are at each other's throats. And there is no path from the
+panel to the corpus — a player whose interest the codex successfully catches has nowhere to go next.
+That last one is the cheapest remaining improvement on this whole card.
+
+### Redundant discovery paths — C → **B−**
+
+The load-bearing conceit of the setting — *FTL is blind, which is why a gravel bank kills you* — is now
+learnable three independent ways: from the feed at the moment it happens to you, from the tooltip on
+the sector before it happens, and from the codex if you go looking. Two of the three are player-pulled
+rather than pushed past you in a scrolling log.
+
+**Why not B.** Only the core conceit is genuinely redundant. Everything else is still single-path or
+no-path. A player can complete a game without encountering a Wonder, a race's doctrine, or the
+Unarriving as anything but a phrase.
+
+### Restraint — held at **B−**, and the reason is uncomfortable
+
+This pass delivered 740 words to players and wrote roughly 2,500 new ones for the folder
+(`27-the-unattributed.md`). The ratio the con has always described — enormous corpus, tiny delivered
+fraction — is essentially unchanged, and rounding it up because delivery finally started would be
+exactly the inflation this document exists to prevent.
+
+One real win to bank, though: Law 25 used to be a rule I intended to follow. On the delivered surface
+it is now a test that fails if I do not.
+
+### Co-authorship — held at **D**
+
+Unmoved since R2, still the lowest grade on the card, and still blocked on the same thing: the server
+picks sector names and the player has no say. Nothing in this pass touched it.
+
+### One defect found and fixed, in code rather than canon
+
+The inline comment on Quick Help's instruction list described the colonize line's tab as having been
+corrected *to* Build — which commit `ee361ab` then made wrong by moving ship production into Fleet. The
+player-facing text was correct (the user's commit updated it); my comment explaining it was stale and
+would have misled the next reader into "fixing" a correct line. Verified against
+`git log -L` before rewriting rather than from memory: the line has now been wrong in both directions,
+which the comment says. The user's own `tests/build-and-fleet-tabs.test.js` guards the text.
 
 ---
 
@@ -319,6 +503,20 @@ co-authorship C→D as inflated.
 **R2 → R3.** Installed 23 feed strings into `server.js`. Repaired both prose consumers. Fixed two
 latent observer bugs. Added `shoalSwept` across twelve voices. Rewrote three tests to assert intent.
 216/216. Contact C→B−, Restraint C−→B−, Legibility C+→B−. Corrected an R2 mis-attribution.
+
+**R8 → R9.** Named the sector type in the map tooltip (`SECTOR_LORE`, eleven entries) and added a
+four-tab codex to the existing help overlay. Verified in a real browser by `tests/e2e/codex.spec.js`,
+with a negative control, plus two unit assertions. Confirmed live on `gameofworlds.com` — ten of ten
+client files from `93fe06e` byte-identical. Fixed a stale code comment that `ee361ab` had invalidated.
+Indexed `27-the-unattributed.md`. Contact B−→B, Legibility B−→B+, discovery paths C→B−. Held Restraint
+at B− and co-authorship at D.
+
+**R9 → R10.** Built the naming picker: `nameSector` in server.js, `public/js/name-picker.js`, the
+`namechoice::` / `//namesector` pair, and the chart name on the map tooltip with its namer and turn.
+Added a `chart` event kind. Fixed the sweep announcing a name `COALESCE` had not written, and a stale
+comment `ee361ab` had invalidated. Strengthened the schema guard from one name-writer to two, each with
+its own rule. 268/268 units across three consecutive runs; e2e with a proven negative control.
+Co-authorship D→C+. Everything else held.
 
 ---
 

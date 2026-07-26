@@ -91,6 +91,10 @@ const EVENT_KINDS = {
     battle:    { icon: '⚔', color: '#ffb4a8' },
     problem:   { icon: '!', color: '#ffb4a8' },
     income:    { icon: '⛁', color: '#ffd3a8' },
+    // Charting gets its own mark and its own hue - the only one in this palette - because it is
+    // the only event in the game that leaves something permanent behind with the player's
+    // decision in it. Naming a swept shoal is rare, and it should not look like a fleet move.
+    chart:     { icon: '⌖', color: '#d7c4ff' },
     info:      { icon: '·', color: 'rgba(232,236,255,0.66)' }
 };
 
@@ -104,6 +108,10 @@ function classifyEventMessage(text) {
     }
     if (/^Success:\s*(?:Built|Upgraded|Purchased)/i.test(line)) return { kind: 'building', type: 'econ' };
     if (/\bincome\b|\bper turn\b/i.test(line)) return { kind: 'income', type: 'econ' };
+    // Charting. Must sit above the movement and hazard checks below, because a naming
+    // confirmation is about the chart rather than the crossing and the hazard rule would
+    // otherwise claim it - "goes on the chart as the Vail Shoal" contains "shoal".
+    if (/on the chart as|entered on the chart/i.test(line)) return { kind: 'chart', type: 'orders' };
     // "colon", not "coloniz" and not "coloni": the feed says "Colony confirmed", and Colony
     // has neither the z nor the i. This stem covers colony, colonised and colonization.
     if (/colon|claimed sector|settled/i.test(line)) return { kind: 'movement', type: 'orders' };
@@ -1000,6 +1008,16 @@ function handleWebSocketMessage(message) {
         if (text) pushEventFeed(text, 'system', classifyEventMessage(text).kind);
         return;
     }
+    // Only the player who just swept a shoal gets this, and only for a turn. The sector is
+    // already named by the time it arrives, so a dropped or ignored prompt costs nothing.
+    if (message.indexOf("namechoice::") === 0) {
+        try {
+            window.NamePicker?.offer(JSON.parse(message.slice("namechoice::".length)));
+        } catch (err) {
+            // Malformed payload: skip the prompt rather than break the message pump.
+        }
+        return;
+    }
     if (message.indexOf("standingorders::error::") === 0) {
         const text = message.replace("standingorders::error::", "") || 'Unable to update standing orders';
         if (window.NotificationSystem?.notify) {
@@ -1414,6 +1432,22 @@ function updateSectorInfo(message) {
         const crystalBonus = Number(rawSector.crystalBonus ?? rawSector.crystalbonus ?? 100);
         const terraformLevel = Number(rawSector.terraformLevel ?? rawSector.terraformlvl ?? 0);
 
+        // The chart name, if somebody has swept this shoal and named it. The row has carried
+        // these three columns since the naming feature shipped and nothing on the client read
+        // them, so a player chose a name and then never saw it again - which is most of the
+        // point of letting them choose. `namedby` is a player id; resolve it to whatever this
+        // client knows that empire as, and fall back to nothing rather than to "Player 4".
+        const chartName = typeof rawSector.sectorname === 'string' && rawSector.sectorname.trim()
+            ? rawSector.sectorname.trim()
+            : null;
+        const namerId = Number(rawSector.namedby);
+        const namedBy = chartName && Number.isFinite(namerId) && namerId > 0
+            ? (Number(getCookie('userId')) === namerId
+                ? 'you'
+                : (GAME_STATE.players?.[namerId]?.name || null))
+            : null;
+        const namedTurn = Number(rawSector.namedturn) || null;
+
         // Parse sector data
         const sectorData = {
             id: sectorId,
@@ -1521,6 +1555,9 @@ function updateSectorInfo(message) {
                     fleetSize,
                     type: sectorType,
                     live: true,
+                    chartName,
+                    namedBy,
+                    namedTurn,
                     buildings: sectorData.buildings
                     // No indicator here: the map badge letters (H/C/T/W/E) are derived
                     // from mapstate flags. Forcing 'C' for any sector you own made the

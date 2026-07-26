@@ -1,7 +1,49 @@
 # Naming the Dark — the co-authorship proposal
 
-Status: **DESIGN PROPOSAL.** The only item from the craft audit that needs engine work. Everything else
-in `16-` and `17-` is text.
+Status: **SHIPPED, in part.** 2026-07-26. The proposal below is preserved as written; the section
+immediately after it records what the engine actually does and where it departs from this document.
+Where the two disagree, the code wins and this file is wrong.
+
+---
+
+## What shipped, and where it differs from the proposal
+
+The feature is live: `nameSector` in `server/server.js`, `public/js/name-picker.js`, the prompt markup in
+`game.html`, and the `namechoice::` / `//namesector` pair in `server/lib/websocket-protocol.js`. It is
+covered by `tests/name-sector-handler.test.js` (10), `tests/map-naming-schema.test.js` (8) and
+`tests/e2e/name-picker.spec.js` in a real browser.
+
+**Kept as proposed:**
+
+- Naming fires on the sweep, and only on a sweep. Rule 1 holds exactly.
+- The cost leads the prompt — *"4 hulls did not arrive at C8"* — which was the best beat in this
+  document and the reason for the feature. A clean sweep gets its own line rather than "0 hulls".
+- The name survives conquest. Enforced with `COALESCE` in the sweep's UPDATE, and pinned by a test
+  whose only job is to fail if somebody writes a bare `SET sectorname`.
+- The namer and turn are recorded (`namedby`, `namedturn`).
+
+**Four deliberate departures, in descending order of how much they matter:**
+
+1. **You choose from six names; you do not type one.** The proposal says *"you name it"*, which reads as
+   free text. Free text on a permanent, shared, stranger-visible object is a moderation queue with a game
+   attached, and this project has no moderation. So the server generates six candidates from the charting
+   vocabulary, the wire carries an **index**, and no string a client sends can ever become a name. The
+   creative act is smaller and it is real; the alternative was not shipping. See `server/lib/sector-names.js`.
+2. **"One name, no edits" is one name, no edits *after the turn*.** The sweep writes a default immediately,
+   so a swept sector is never a bare hex number even if the player ignores the prompt, and the player may
+   replace it during that turn and the next. A turn boundary can land while the prompt is still on screen,
+   and silently eating somebody's choice is worse than letting them answer slightly late. After the window
+   the chart is fixed.
+3. **The namer is recorded but not yet shown.** Rule 4's *"Named by the Terran Empire, turn 34"* is in the
+   database and in no UI. The map tooltip is the obvious home for it and it is not there yet.
+4. **Rell uses the name in the sweep confirmation, and nowhere else.** `sectorLabel()` exists and is used
+   at the naming moment; the rest of the feed still says the hex. Rule 5 — *"after twenty turns the
+   player's own event log is written in their own vocabulary"* — is the part of this proposal with the most
+   value left in it, and it is unbuilt.
+
+**One bug this feature exposed and fixed:** the sweep announced the freshly generated default name even
+when `COALESCE` had kept an older one. Harmless while the default was the only name a sector could have,
+and a lie the moment players started choosing. The confirmation now reads the name back out of the table.
 
 ---
 

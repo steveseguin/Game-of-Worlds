@@ -100,6 +100,10 @@ test('the messages that matter most are classified as the right thing', () => {
         ['Success: Fleet moved into sector 19', 'movement'],
         ['Asteroids in sector 11 destroyed 2 ships during transit.', 'battle'],
         ['Success: We navigated the asteroid belt in sector 19 and avoided being hit', 'movement'],
+        // Both naming lines contain "shoal", so the hazard rule below them would happily take
+        // them and call a permanent chart entry a fleet movement. This pins the ordering.
+        ['Success: Shoal at 19 swept - charted, cleared, corridored. It goes on the chart as the Vail Shoal.', 'chart'],
+        ['Success: Entered on the chart as Ames\'s Reach. It will carry that name after we are gone.', 'chart'],
         ['Error: Not enough crystal for movement (need 240)', 'problem'],
         ['Turn 14 income: +182 metal', 'income']
     ];

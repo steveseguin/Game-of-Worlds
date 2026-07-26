@@ -40,6 +40,7 @@ Read `00-premise.md` first. It is two pages and it contains the whole world in m
 | `24-anthology/` | **104 short pieces.** One per hull, building, tech level, sector type, Wonder and signature weapon — plus colonists, terraforming, travel, spying, battle from both sides, leadership from top and ranks. Codex-shaped. |
 | `25-crystal.md` | **Crystal in full.** What the code says it is, what it looks like (from the shipped art), how it is obtained, four stories, and the inert `artifact` field. |
 | `26-encyclopedia.md` | **★ START HERE for facts.** The ten-minute version: 50 A–Z entries, 23 figures verified against code. Read this before writing anything. |
+| `27-the-unattributed.md` | **PROPOSED, and a design doc rather than a fiction one.** Who was here millions of years before anyone: the naming, what a *leaving* is, how discovery would work off the inert `artifact` field, and why it gates Wonders but never a race weapon. Five open questions at the end. |
 
 ---
 

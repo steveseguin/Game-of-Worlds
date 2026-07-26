@@ -14,8 +14,9 @@
  * WHY THE SERVER CHOOSES FROM A CURATED SET rather than accepting free text: a name is
  * permanent, shared, and visible to strangers, so free text is a moderation queue with a game
  * attached. Generating the candidates here means nothing a player types ever reaches another
- * player's map. When a picker UI exists it will offer `candidates()` and send back an index,
- * so that property survives.
+ * player's map. The picker exists now and preserves that property: it renders `candidates()` and
+ * sends back an index, which `nameSector` in server.js resolves through `nameByIndex`. No string
+ * a client sends is ever a name.
  *
  * Determinism matters: the same sector must offer the same candidates on every call, or a
  * reconnect changes the menu and a client's selected index means something else.
@@ -80,9 +81,9 @@ function candidates(gameId, sectorId, count = 6) {
 }
 
 /**
- * The name a sector gets when nobody chose one - the first candidate. Used on the sweep path
- * today; a picker will replace it with the player's selection and must accept only an index
- * into `candidates()`.
+ * The name a sector gets when nobody chose one - the first candidate. The sweep writes this
+ * immediately, so a swept sector is never nameless and ignoring the picker costs nothing; the
+ * player's choice, if they make one, replaces it.
  */
 function defaultName(gameId, sectorId) {
     return candidates(gameId, sectorId, 1)[0];

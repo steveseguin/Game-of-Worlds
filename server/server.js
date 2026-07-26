@@ -117,6 +117,19 @@ const COLONY_SHIP_ID = combatSystem.SHIP_TYPES?.COLONY_SHIP?.id || 6;
 const BELT_LOSS_CHANCE_TRANSIT = 0.5;
 const BELT_LOSS_CHANCE_ARRIVAL = 0.25;
 const PROBE_COST_CRYSTAL = 300;
+// How many chart names a player is offered when they sweep a shoal. Six is enough to feel
+// like a choice and few enough to read at a glance. It must match on both ends: the client
+// sends back an INDEX, so if the server ever generated a different-length list than the one
+// it offered, an index would resolve to a name the player did not pick. sector-names.js is
+// deterministic per (gameId, sectorId) for the same reason.
+const NAME_CHOICE_COUNT = 6;
+// How long the player has to choose. The name is written immediately at the sweep, so the
+// map is never nameless and nothing is lost by ignoring the prompt; this window only governs
+// how long they may REPLACE it. One turn of grace past the sweep, because a turn can resolve
+// while the prompt is still on screen and silently eating somebody's choice is worse than
+// letting them answer slightly late. After that the chart is fixed, including through
+// conquest - see lore/18-naming-the-dark.md.
+const NAME_CHOICE_TURNS = 1;
 const INTEL_LEVEL_TERRAIN = 1;
 const INTEL_LEVEL_PROBE = 2;
 const UNIQUE_LOCAL_BUILDINGS = new Set([3, 5]); // Spaceport and Warp Gate have existence-only effects.
@@ -4771,10 +4784,47 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                                       WHERE sectorid = ?`,
                                     [playerId, chartedName, playerId, namedTurn, sectorId],
                                     (claimErr) => {
-                                        if (!claimErr) {
-                                            connection.sendUTF(`Success: Shoal at ${sectorId} swept - charted, cleared, corridored. It is a road now and it will stay one. It goes on the chart as ${chartedName}.`);
+                                        if (claimErr) {
+                                            finish();
+                                            return;
                                         }
-                                        finish();
+                                        // Read the name back rather than announcing chartedName.
+                                        // The three COALESCE clauses above mean the write may have
+                                        // kept an OLDER name - a sector can reach this branch a
+                                        // second time if its owner was cleared - and announcing the
+                                        // freshly generated default in that case tells the player a
+                                        // name that is not on the chart. Harmless while the default
+                                        // was the only possible name; a lie the moment players pick.
+                                        db.query(
+                                            `SELECT sectorname, namedby, namedturn FROM map${gameId} WHERE sectorid = ?`,
+                                            [sectorId],
+                                            (readErr, rows) => {
+                                                const row = (!readErr && rows && rows[0]) || {};
+                                                const actualName = sectorNames.sectorLabel(sectorId, row.sectorname);
+                                                connection.sendUTF(`Success: Shoal at ${sectorId} swept - charted, cleared, corridored. It is a road now and it will stay one. It goes on the chart as ${actualName}.`);
+
+                                                // Offer the choice only to the player the chart
+                                                // credits, and only for a sweep that just happened.
+                                                if (String(row.namedby) === String(playerId)
+                                                    && Number(row.namedturn) === Number(namedTurn)) {
+                                                    connection.sendUTF(`namechoice::${JSON.stringify({
+                                                        sector: Number(sectorId),
+                                                        chosen: actualName,
+                                                        candidates: sectorNames.candidates(gameId, sectorId, NAME_CHOICE_COUNT),
+                                                        turn: namedTurn,
+                                                        // What the crossing cost, so the prompt can
+                                                        // lead with it. This is the whole point of
+                                                        // the moment (lore/18-naming-the-dark.md):
+                                                        // the player is asked to name a place after
+                                                        // what it cost, at the instant they learn it
+                                                        // was worth it. Zero is a real answer and a
+                                                        // good one - a clean sweep reads differently.
+                                                        cost: destroyedCount
+                                                    })}`);
+                                                }
+                                                finish();
+                                            }
+                                        );
                                     }
                                 );
                                 return;
@@ -4852,6 +4902,73 @@ function updateSector(data, connection) {
             connection.sendUTF(`probeonly:${formatSectorToken(sectorId)}`);
         });
     });
+}
+
+/**
+ * //namesector:<sectorHex>:<index> - the player who swept a shoal chooses what goes on the chart.
+ *
+ * This is the only place in the game where a player writes something every other player will
+ * read, on a shared object, permanently. That makes it the one place worth being paranoid:
+ *
+ *   - The wire carries an INDEX, never a name. `sectorNames.nameByIndex` resolves it against
+ *     the same deterministic candidate list the offer was generated from, and returns null for
+ *     anything out of range or of the wrong type. So no string a client sends can become a
+ *     name, which means there is no moderation surface here at all.
+ *   - The UPDATE is conditional on `namedby`, so only the empire the chart credits can name the
+ *     place. A conqueror inherits the name the people who paid for it gave it - that is the
+ *     point of the feature, not an incidental restriction (lore/18-naming-the-dark.md).
+ *   - It is conditional on `namedturn` too, so the window closes. Naming happens at the moment
+ *     of survival; a shoal is not renameable furniture.
+ *
+ * The name already exists when this arrives - the sweep wrote a default - so every failure mode
+ * here leaves a correctly named sector behind. Nothing is riding on this succeeding.
+ */
+function nameSector(data, connection) {
+    const parts = String(data || '').split(':');
+    const sectorId = parseSectorToken(parts[1]);
+    const gameId = connection.gameid;
+    const playerId = connection.name;
+
+    if (!gameId || !isPositiveSafeInteger(sectorId)) {
+        connection.sendUTF('Error: Invalid sector');
+        return;
+    }
+
+    const chosen = sectorNames.nameByIndex(gameId, sectorId, parts[2], NAME_CHOICE_COUNT);
+    if (!chosen) {
+        connection.sendUTF('Error: That name is not on the list the survey offered.');
+        return;
+    }
+
+    const currentTurn = (gameState.activeGames
+        && gameState.activeGames[gameId]
+        && gameState.activeGames[gameId].turn) || 1;
+    const earliestTurn = currentTurn - NAME_CHOICE_TURNS;
+
+    db.query(
+        `UPDATE map${gameId}
+            SET sectorname = ?
+          WHERE sectorid = ?
+            AND namedby = ?
+            AND namedturn >= ?`,
+        [chosen, sectorId, playerId, earliestTurn],
+        (err, result) => {
+            if (err) {
+                connection.sendUTF('Error: The chart could not be amended.');
+                return;
+            }
+            // A conditional UPDATE that matches nothing is not an error - it is the answer.
+            // Either this player never swept the sector or the window has closed, and both
+            // deserve the same reply, because distinguishing them would tell a player
+            // something about a sector they may not be able to see.
+            if (!result || !result.affectedRows) {
+                connection.sendUTF('Error: That sector is already on the chart under its own name.');
+                return;
+            }
+            connection.sendUTF(`Success: Entered on the chart as ${chosen}. It will carry that name after we are gone.`);
+            updateSector2(gameId, sectorId);
+        }
+    );
 }
 
 function requestMoveOptions(data, connection) {
@@ -7608,6 +7725,7 @@ module.exports = {
     buyBuilding,
     moveFleet,
     updateSector,
+    nameSector,
     requestMoveOptions,
     surroundShips,
     preMoveFleet,

@@ -545,6 +545,21 @@
         <button id="surrenderBtn" style="height:36px;border:1px solid rgba(255,126,126,0.5);background:rgba(70,22,32,0.94);color:#ffb6b6;font-weight:800;font-size:12px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0 10px;border-radius:7px;" title="Surrender this game">Surrender</button>
     </div>
     <div id="viewTitle" style="position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:60;color:rgba(232,236,255,0.6);font-weight:600;letter-spacing:1.5px;font-size:11px;text-transform:uppercase;background:rgba(12,16,33,0.7);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:4px 14px;pointer-events:none;">Galaxy Map</div>
+    <!-- Chart-naming prompt. Appears only for the player who just swept a shoal, and only for
+         a turn: see nameSector() in server/server.js. It is the one place a player writes
+         something onto the shared map, so the options are generated server-side and the reply
+         carries an index, never text. Deliberately NOT a blocking modal - the sector already
+         has a name, so ignoring this is a valid answer. -->
+    <div id="namePrompt" style="display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:2998;max-width:min(520px,calc(100vw - 32px));background:#0f1424;border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:14px 16px;color:#e8ecff;box-shadow:0 18px 40px rgba(0,0,0,0.5);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+            <div>
+                <div style="font-weight:700;font-size:14px;">Name the shoal</div>
+                <div id="namePromptBlurb" style="opacity:0.7;font-size:12px;margin-top:2px;line-height:1.4;"></div>
+            </div>
+            <button id="namePromptClose" style="background:transparent;border:none;color:#cfd7ff;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;" title="Leave it as it is">✕</button>
+        </div>
+        <div id="namePromptOptions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:11px;"></div>
+    </div>
     <div id="helpOverlay" style="display:none;position:fixed;inset:0;background:rgba(5,8,16,0.78);backdrop-filter:blur(6px);z-index:2999;align-items:center;justify-content:center;padding:20px;">
         <div style="max-width:720px;width:100%;background:#0f1424;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px;color:#e8ecff;box-shadow:0 18px 40px rgba(0,0,0,0.45);">
             <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -558,12 +573,15 @@
             <div id="codexBody" style="display:none;margin-top:12px;max-height:min(58vh,440px);overflow-y:auto;line-height:1.55;color:rgba(232,236,255,0.85);font-size:13px;"></div>
             <ul id="codexHelp" style="line-height:1.6;margin:12px 0 0 16px;color:rgba(232,236,255,0.8);">
                 <!-- Every instruction here has to name a control that exists and a tab that
-                     holds it. This list previously said "the Next Turn button" (it is
-                     labelled End Turn), sent players to the Fleet tab to build a colony
-                     ship (every ship button lives in Build; Fleet only shows and moves
-                     what you already have), and stated 3 minutes as fact when that is the
-                     Quick cadence only — an Epic turn is a day. Getting a new player's
-                     first colony wrong is the worst place in the product to be vague. -->
+                     holds it. This list has been wrong twice: it said "the Next Turn button"
+                     (it is labelled End Turn), and it stated 3 minutes as fact when that is
+                     the Quick cadence only - an Epic turn is a day. It also named the wrong
+                     tab for building a colony ship, twice and in opposite directions: it
+                     said Fleet while ships were in Build, was corrected to Build, and then
+                     ee361ab moved ship production into Fleet, which made the correction
+                     wrong. Ships are in Fleet now. If they move again, this line moves with
+                     them - getting a new player's first colony wrong is the worst place in
+                     the product to be vague. -->
                 <li>Turns advance on the clock in the top right; press End Turn to finish yours early.</li>
                 <li>Resources: build extractors/refineries on owned sectors; research unlocks tech and better ships.</li>
                 <li>Colonize: build a colony ship in the Fleet tab, move it to an unowned planet, then settle it from the Colonize tab.</li>
@@ -955,10 +973,11 @@
     <script type="module" src="js/galaxy3d.js?v=20260725n"></script>
     <script type="module" src="js/battle3d.js?v=20260725c"></script>
     <script src="js/onboarding.js?v=20260725a"></script>
-    <script src="js/connect.js?v=20260726a"></script>
+    <script src="js/connect.js?v=20260726b"></script>
     <script src="js/tour.js?v=20260712c"></script>
     <script src="js/game.js?v=20260726a"></script>
     <script src="js/codex.js?v=20260726a"></script>
+    <script src="js/name-picker.js?v=20260726a"></script>
     <script src="js/loader.js?v=20251105"></script>
     <script>
         (function() {

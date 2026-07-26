@@ -486,6 +486,20 @@ window.GalaxyMap = (function() {
         if (details.flags !== undefined) {
             sector.flags = Number(details.flags) || 0;
         }
+        // Chart name, and who put it there. Only the `sector::` detail message carries these -
+        // the compact `mapstate::` packing has no room for a string - so they are written when a
+        // sector is looked at and then left alone. Do NOT clear them on a mapstate refresh: the
+        // name is permanent and forgetting it on the next tick would be worse than never showing
+        // it. Hence the explicit `!== undefined` guards rather than a blanket assignment.
+        if (details.chartName !== undefined && details.chartName) {
+            sector.chartName = String(details.chartName);
+        }
+        if (details.namedBy !== undefined && details.namedBy) {
+            sector.namedBy = String(details.namedBy);
+        }
+        if (details.namedTurn !== undefined && details.namedTurn) {
+            sector.namedTurn = Number(details.namedTurn) || null;
+        }
         
         // Update colors. Unknown tiles remain selectable, but they do not reveal
         // labels or terrain until the server marks them explored.
@@ -624,6 +638,19 @@ window.GalaxyMap = (function() {
     // SECTOR_TYPES in server/lib/map.js and are pinned by tests/lore-sector-types-match-code.test.js;
     // the lines are condensed from lore/26-encyclopedia.md. Keep them to roughly a dozen words - this
     // is a hover, not a panel.
+    /**
+     * Minimal HTML escape for wire strings that end up inside an innerHTML template. The tooltip
+     * is built as markup, and the chart name is the one piece of it that comes off the socket.
+     */
+    function escapeText(value) {
+        return String(value === null || value === undefined ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     const SECTOR_LORE = {
         0:  { name: 'Empty Space',   line: 'Open dark. Nothing to hold, nothing to fear, nothing to gain.' },
         1:  { name: 'Asteroid Belt', line: 'A shoal. Half your hulls crossing, a quarter arriving — and safe forever once swept.' },
@@ -673,8 +700,25 @@ window.GalaxyMap = (function() {
         // early, so a player is never told what is in a sector they have not reached - which is
         // the whole point of the setting and would be undone by a helpful tooltip.
         const lore = SECTOR_LORE[Number(sector.type)];
+        // The chart name is the sector's identity and the type is its classification, so the name
+        // leads and the type follows it. This is the only place a player's own decision is shown
+        // back to them on the map, which is the whole reason the naming feature is not cosmetic.
+        //
+        // escapeText, not raw interpolation: the name arrives over the socket. The server composes
+        // it from a fixed word list so it cannot currently contain markup, but "cannot currently"
+        // is not a property worth relying on inside an innerHTML template.
+        const named = sector.chartName ? escapeText(sector.chartName) : '';
+        const credit = named && (sector.namedBy || sector.namedTurn)
+            ? [
+                sector.namedBy ? `named by ${escapeText(sector.namedBy)}` : 'named',
+                sector.namedTurn ? `turn ${sector.namedTurn}` : ''
+            ].filter(Boolean).join(', ')
+            : '';
         state.tooltip.innerHTML = `
-            <div style="font-weight:700;margin-bottom:4px;">Sector ${sectorId}${lore ? ` — ${lore.name}` : ''}</div>
+            <div style="font-weight:700;margin-bottom:4px;">${named
+                ? `${named}<span style="opacity:0.6;font-weight:400;"> — sector ${sectorId}${lore ? `, ${lore.name}` : ''}</span>`
+                : `Sector ${sectorId}${lore ? ` — ${lore.name}` : ''}`}</div>
+            ${credit ? `<div style="opacity:0.6;margin:-2px 0 4px;">${credit}</div>` : ''}
             <div>Owner: ${owner}</div>
             <div>Status: ${statusLabel}</div>
             <div>Intel: ${freshness}</div>

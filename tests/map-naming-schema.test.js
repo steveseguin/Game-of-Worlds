@@ -30,18 +30,37 @@ function createTableBody() {
 }
 
 /**
- * The SET clause of the sweep's UPDATE. server.js contains many `UPDATE map${gameId} SET ...`
- * statements, so match them all and pick the one that writes a name - taking the first would
- * silently test an unrelated statement and pass for the wrong reason.
+ * Every map UPDATE that writes a sector name, with its full statement text.
+ *
+ * There are exactly two, and they are allowed to exist for opposite reasons, so this returns
+ * both and the tests below check each against its own rule:
+ *
+ *   - the SWEEP writes the default name and must use COALESCE, because a name is permanent and
+ *     survives conquest;
+ *   - the PICKER replaces it with the player's choice and must therefore NOT use COALESCE - it
+ *     is the one statement allowed to overwrite - which is why it has to be fenced by namedby
+ *     instead, so only the empire the chart credits can do it.
+ *
+ * A third writer would be a bug: it would mean some code path can rename a sector without
+ * satisfying either rule. Hence the count assertion.
  */
-function sweepUpdate() {
+function nameWrites() {
     const all = [...serverSrc.matchAll(
-        /UPDATE map\$\{gameId\}\s*\n?\s*SET([\s\S]*?)WHERE sectorid = \?/g)];
-    const sweep = all.filter(m => /sectorname/i.test(m[1]));
-    assert.equal(sweep.length, 1,
-        `expected exactly one map UPDATE that writes sectorname, found ${sweep.length} `
-        + `(of ${all.length} map updates)`);
-    return sweep[0];
+        /UPDATE map\$\{gameId\}\s*\n?\s*SET([\s\S]*?)WHERE sectorid = \?([^,;`]*)/g)];
+    const writes = all.filter(m => /sectorname/i.test(m[1]));
+    assert.equal(writes.length, 2,
+        `expected exactly two map UPDATEs that write sectorname - the sweep and the picker - `
+        + `found ${writes.length} (of ${all.length} map updates)`);
+
+    const sweep = writes.find(m => /COALESCE/i.test(m[1]));
+    const picker = writes.find(m => !/COALESCE/i.test(m[1]));
+    assert.ok(sweep, 'neither sectorname write uses COALESCE, so the sweep can rename on recapture');
+    assert.ok(picker, 'both sectorname writes use COALESCE, so the player picker can never apply');
+    return { sweep, picker };
+}
+
+function sweepUpdate() {
+    return nameWrites().sweep;
 }
 
 /** The body of ensureMapTableColumns. */
@@ -132,4 +151,30 @@ test('a name is preserved rather than overwritten', () => {
     assert.ok(m, 'could not find the sweep UPDATE');
     assert.match(m[1], /sectorname\s*=\s*COALESCE\(\s*sectorname\s*,/i,
         'sectorname must be written with COALESCE so an existing name is never overwritten');
+});
+
+test('the player picker can only rename what the chart credits to that player', () => {
+    // The picker is the one statement in the game allowed to overwrite a name, which makes its
+    // WHERE clause the whole of its safety. Without `namedby = ?` any player who could reach the
+    // command could rename any sector on the map, including one they had just taken from the
+    // person who paid for it - which is precisely the thing the feature exists to prevent.
+    const { picker } = nameWrites();
+    const whereClause = picker[2];
+    assert.match(whereClause, /AND\s+namedby\s*=\s*\?/i,
+        'the picker UPDATE must be fenced by namedby, or it can rename any sector on the map');
+    assert.match(whereClause, /AND\s+namedturn\s*>=\s*\?/i,
+        'the picker UPDATE must be fenced by namedturn, or the naming window never closes');
+});
+
+test('the picker resolves an index and never trusts a name off the wire', () => {
+    // sector-names.js exists so that nothing a player types can land on a shared map. That
+    // property is only real if the handler uses nameByIndex; a well-meaning change to
+    // isAllowedName(proposed) would reintroduce player text into the pipeline, and it would
+    // look correct because isAllowedName does validate.
+    const handler = serverSrc.match(/function nameSector\(data, connection\) \{([\s\S]*?)\n\}/);
+    assert.ok(handler, 'could not find nameSector in server.js');
+    assert.match(handler[1], /sectorNames\.nameByIndex\(/,
+        'nameSector must resolve the choice with nameByIndex');
+    assert.doesNotMatch(handler[1], /isAllowedName/,
+        'nameSector should take an index, not validate a name supplied by the client');
 });

@@ -78,6 +78,7 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//standingorders:get` | `handleStandingOrders` | Reads automation settings. |
 | `//standingorders:<json>` | `handleStandingOrders` | Updates automation settings. |
 | `//applyorders` | `handleApplyStandingOrders` | Runs standing orders immediately. |
+| `//namesector:<sectorHex>:<index>` | `nameSector` | Sets the chart name of a shoal this player swept, from the curated candidate list. Accepts an index only, never text. Rejected unless `namedby` is this player and the sweep was this turn or last turn. |
 | `//surrender` | `handleSurrender` | Ends/removes player and may end game. |
 
 Messages that do not begin with `//` are treated as chat text and broadcast to the sender's current game.
@@ -121,6 +122,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `gameover::...` | game/lobby | Game end. |
 | `standingorders::state::<json>` / `standingorders::applied::<json>` / `standingorders::error::<msg>` / `standingorders::noop` | game | Standing order state/results/errors. |
 | `systemalert::<msg>` | game | Important narrative/system update. |
+| `namechoice::<json>` | game | Sent only to the player who just swept a shoal: `{sector, chosen, candidates, turn, deadline}`. They reply with `//namesector`. Candidates come from `server/lib/sector-names.js` and the server accepts only an index into them, so no player-supplied text ever reaches another player's map. |
 | `maxbuild::`, `ownsector:`, `fleet:`, `tech:`, `ub:`, `info:` | game | Legacy/current compatibility messages still parsed by `public/js/connect.js`. |
 
 ## Protocol Risks

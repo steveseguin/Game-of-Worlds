@@ -3,7 +3,7 @@ const CLIENT_COMMANDS = Object.freeze([
     'changerace', 'surrender', 'colonize', 'buytech', 'techstate',
     'victoryprogress', 'probe', 'buyship', 'buybuilding', 'move', 'sector', 'moveoptions',
     'mmove', 'sendmmf', 'update', 'joingame', 'getunlockedraces',
-    'standingorders', 'applyorders'
+    'standingorders', 'applyorders', 'namesector'
 ]);
 
 const FROZEN_GAMEPLAY_COMMANDS = Object.freeze([
@@ -22,7 +22,11 @@ const GAME_MESSAGE_PREFIXES = Object.freeze([
     // only checks prefixes it has been told about. The client had no handler, so an
     // elimination notice reached the player as the literal text
     // "systemalert::A rival empire has been wiped out of the galaxy."
-    'systemalert::'
+    'systemalert::',
+    // Offered to the one player who just swept a shoal, so they choose what goes on the
+    // chart. Curated candidates only - see server/lib/sector-names.js for why the server
+    // never accepts free text for a name that every player will see forever.
+    'namechoice::'
 ]);
 
 function formatTurnPhase(state, turn, phase = '') {
