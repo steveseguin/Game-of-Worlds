@@ -168,7 +168,8 @@ the only school that wants to go is the one prepared to end itself doing it.
 ## Canon anchors
 
 `races.js`: research ×1.3, crystal ×1.1, metal ×0.9, hulls −10%, attack ×0.95, defence ×1.05.
-`RACE_ACCESS[2]`: `ARMOR: 3`, `MISSILES: 0`, no Dreadnought. Scout `speed 1.2, vision 1.5`.
+`RACE_ACCESS[2]`: `ARMOR: 3`, `MISSILES: 0`, no Dreadnought. Scouts receive `speed 1.2`;
+their exceptional instruments are fiction rather than a separate vision-radius mechanic.
 
 **Missiles locked** is the load-bearing one: a warhead goes where it was aimed rather than where it
 should go, and a mind that models every outcome will not carry ordnance it cannot recall. **No

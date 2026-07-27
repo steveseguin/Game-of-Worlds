@@ -163,7 +163,9 @@ hours, at the far end, like a door being checked. Neither witness knows the othe
 ## Canon anchors
 
 `races.js`: research ×1.4, crystal ×1.3, attack ×1.3, speed ×1.2, hulls +30% cost, durability ×1.1.
-`RACE_ACCESS[10]`: `ARMOR: 2`, no Dreadnought. `all: { teleport: true, phase: 0.2 }`.
+`RACE_ACCESS[10]`: `ARMOR: 2`, no Dreadnought. Their live advantages are research ×1.4,
+crystal ×1.3, attack ×1.3, speed ×1.2, and durability ×1.1; there is no teleport command or
+combat-avoidance modifier.
 
 Per **Law 21**, which is the hard one: positional uncertainty is bounded to **one sector**, cannot
 evade a hazard roll, cannot phase past defences into held space, and cannot be used on a hull carrying

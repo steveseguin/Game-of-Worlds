@@ -121,4 +121,4 @@ Important arrival rules:
 - Client parser missing a new server message prefix.
 - Battle pause failing to resume the timer.
 - Economic/resource victory timing changing because income writes are asynchronous.
-- A hard process loss in the middle of one battle's multi-query survivor replacement is still not a database transaction; the persisted phase lets startup revisit conflicts, but this is not equivalent to atomic combat persistence.
+- Battle writes are atomic, but a rolled-back retry can generate a different random outcome because the battle seed/result is not yet persisted.

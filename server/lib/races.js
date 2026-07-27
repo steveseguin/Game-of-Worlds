@@ -2,7 +2,7 @@
  * lib/races.js - Race definitions and unlock system
  *
  * Defines the 12 playable races with their unique characteristics,
- * tech trees, unit modifications, and unlock requirements.
+ * enforced access profiles, unit modifications, and unlock requirements.
  */
 
 // Hull id -> the key unitModifiers is written under. Callers pass ids; the data is keyed
@@ -36,7 +36,6 @@ const RACE_TYPES = {
         // Its real identity is the one thing no other race has: not a single value below
         // 1.0 anywhere. Every other doctrine buys its strength with a weakness somewhere.
         specialAbility: "Adaptable - no weaknesses in any discipline, and full access to every technology and hull",
-        techTreeModifiers: {},
         unitModifiers: {}
     },
 
@@ -57,11 +56,8 @@ const RACE_TYPES = {
             shipDefense: 1.05
         },
         specialAbility: "Neural Network - research output +30% and hulls 10% cheaper, bought with weaker metal output and softer guns",
-        techTreeModifiers: {
-            "advancedAI": { cost: 0.8, prereq: null }
-        },
         unitModifiers: {
-            "scout": { speed: 1.2, vision: 1.5 }
+            "scout": { speed: 1.2 }
         }
     },
 
@@ -81,12 +77,9 @@ const RACE_TYPES = {
             shipDefense: 0.9
         },
         specialAbility: "Swarm - Ships cost 30% less but are 20% weaker",
-        techTreeModifiers: {
-            "swarmTactics": { cost: 0.5, unlocked: true }
-        },
         unitModifiers: {
-            "frigate": { cost: 0.6, attack: 0.8, count: 1.5 },
-            "destroyer": { cost: 0.6, attack: 0.8, count: 1.5 }
+            "frigate": { cost: 0.6, attack: 0.8 },
+            "destroyer": { cost: 0.6, attack: 0.8 }
         }
     },
 
@@ -106,11 +99,8 @@ const RACE_TYPES = {
             shipDefense: 1.3
         },
         specialAbility: "Crystal Matrix - Ships have +30% shields",
-        techTreeModifiers: {
-            "crystalTech": { unlocked: true, cost: 0.7 }
-        },
         unitModifiers: {
-            "all": { shields: 1.3, cost_crystal: 1.5 }
+            "all": { shields: 1.3 }
         }
     },
 
@@ -130,11 +120,8 @@ const RACE_TYPES = {
             shipDefense: 0.9
         },
         specialAbility: "Phase Shift - Ships move 50% faster",
-        techTreeModifiers: {
-            "warpTech": { cost: 0.5, unlocked: true }
-        },
         unitModifiers: {
-            "all": { speed: 1.5, warpRange: 2 }
+            "all": { speed: 1.5 }
         }
     },
 
@@ -154,9 +141,6 @@ const RACE_TYPES = {
             shipDefense: 1.4
         },
         specialAbility: "Forge Doctrine - the galaxy's strongest metal output and +40% ship defence, on slow and costly hulls",
-        techTreeModifiers: {
-            "nanotech": { cost: 0.8, unlocked: true }
-        },
         unitModifiers: {
             "battleship": { defense: 1.5 },
             "dreadnought": { defense: 1.5 }
@@ -179,9 +163,6 @@ const RACE_TYPES = {
             shipDefense: 1.0
         },
         specialAbility: "Living Hulls - ships grown 10% cheaper on strong crystal output, at the cost of metal",
-        techTreeModifiers: {
-            "bioEngineering": { cost: 0.9, unlocked: true }
-        },
         unitModifiers: {}
     },
 
@@ -201,11 +182,8 @@ const RACE_TYPES = {
             shipDefense: 0.9
         },
         specialAbility: "Nomadic - the fastest and cheapest fleet in the galaxy, paid for with thin armour and poor metal",
-        techTreeModifiers: {
-            "mobileBase": { unlocked: true }
-        },
         unitModifiers: {
-            "colony": { speed: 1.5, mobile_base: true }
+            "colony": { speed: 1.5 }
         }
     },
 
@@ -225,9 +203,6 @@ const RACE_TYPES = {
             shipDefense: 1.5
         },
         specialAbility: "Precursor Tech - the fastest research and the deadliest hulls, at 50% more per ship and a weak economy",
-        techTreeModifiers: {
-            "all": { unlocked: true, cost: 1.5 }
-        },
         unitModifiers: {
             "all": { attack: 1.5, defense: 1.5, cost: 1.5 }
         }
@@ -250,12 +225,7 @@ const RACE_TYPES = {
             shipDefense: 1.1
         },
         specialAbility: "Quantum Entanglement - superior research, crystal and firepower, paid for with 30% dearer hulls",
-        techTreeModifiers: {
-            "quantumPhysics": { unlocked: true, exclusive: true }
-        },
-        unitModifiers: {
-            "all": { teleport: true, phase: 0.2 }
-        }
+        unitModifiers: {}
     },
 
     TITAN: {
@@ -274,11 +244,8 @@ const RACE_TYPES = {
             shipDefense: 2.0
         },
         specialAbility: "Colossal - Ships are 2x stronger but 2x more expensive",
-        techTreeModifiers: {
-            "titanEngineering": { unlocked: true, exclusive: true }
-        },
         unitModifiers: {
-            "all": { size: 2.0, attack: 2.0, defense: 2.0, cost: 2.0, speed: 0.6 }
+            "all": { attack: 2.0, defense: 2.0, cost: 2.0, speed: 0.6 }
         }
     },
 
@@ -303,12 +270,9 @@ const RACE_TYPES = {
         // only a summary of the fight instead of the full telemetry. Worded to say what it
         // actually does rather than "avoid detection", which sounded like evasion.
         specialAbility: "Cloak - a stealth signature that hides your fleet's composition from enemies whose scouts cannot see through it",
-        techTreeModifiers: {
-            "stealthTech": { unlocked: true, exclusive: true }
-        },
         unitModifiers: {
             "scout": { stealth: 0.5 },
-            "intruder": { stealth: 0.8, attack_bonus_stealth: 1.5 },
+            "intruder": { stealth: 0.8 },
             "all": { stealth: 0.3 }
         }
     }
@@ -593,7 +557,7 @@ function applyShipModifiers(raceId, shipType, baseStats) {
         } else if (modifiedStats[key] !== undefined) {
             modifiedStats[key] = modifiedStats[key] * unitMod[key];
         } else {
-            // Add new properties (like stealth, teleport, etc.)
+            // Add enforced derived properties such as shields or stealth.
             modifiedStats[key] = unitMod[key];
         }
     });

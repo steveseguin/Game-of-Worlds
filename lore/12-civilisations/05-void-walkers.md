@@ -5,7 +5,7 @@
 | **Registry name** | Void Walkers |
 | **Homeworld** | Bell. Thin, dry, poor, and perfectly placed |
 | **What made it** | A junction of the longest lanes, and nothing else |
-| **Explains** | Speed ×1.5, warp range +2, armour cap 2, economy ×0.9/0.9 |
+| **Explains** | Speed ×1.5, armour cap 2, economy ×0.9/0.9 |
 
 ---
 
@@ -169,7 +169,7 @@ lose everything, on schedule, predictably, while arguing about it.
 ## Canon anchors
 
 `races.js`: speed ×1.5, research ×1.2, hulls +10% cost, durability ×0.9, metal and crystal ×0.9.
-`RACE_ACCESS[5]`: `ARMOR: 2, WEAPONS: 3`, no Dreadnought. `all: { speed: 1.5, warpRange: 2 }`.
+`RACE_ACCESS[5]`: `ARMOR: 2, WEAPONS: 3`, no Dreadnought. `all: { speed: 1.5 }`.
 
 **Armour cap 2** because armour is a confession that you were not fast enough. **No Dreadnought**
 because there is no Void Walker word for a hull that slow that is not an insult. Per Law 22: no

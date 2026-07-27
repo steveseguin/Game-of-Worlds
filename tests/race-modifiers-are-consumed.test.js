@@ -93,32 +93,20 @@ test('the races with a hull specialisation actually get it', () => {
 /** Keys that reach a consumer: stats via applyShipModifiers, plus shields and stealth. */
 const CONSUMED_KEYS = new Set(['cost', 'speed', 'attack', 'defense', 'shields', 'stealth']);
 
-/**
- * Declared and read by nothing. applyShipModifiers copies unknown keys onto the result, so
- * they exist on the object - but no consumer looks at them. Listed so a NEW inert key
- * fails this test at the moment someone writes it, rather than being discovered later from
- * a balance report that does not add up.
- */
-const KNOWN_INERT = new Set([
-    'vision', 'count', 'cost_crystal', 'warpRange',
-    'mobile_base', 'teleport', 'phase', 'size',
-    'attack_bonus_stealth'
-]);
-
-test('every declared modifier key is consumed or knowingly inert', () => {
+test('every declared modifier key reaches a gameplay consumer', () => {
     const surprises = [];
     Object.values(RACE_TYPES).forEach(race => {
         Object.entries(race.unitModifiers || {}).forEach(([group, mods]) => {
             Object.keys(mods || {}).forEach(key => {
-                if (CONSUMED_KEYS.has(key) || KNOWN_INERT.has(key)) return;
+                if (CONSUMED_KEYS.has(key)) return;
                 surprises.push(`${race.name} ${group}.${key}`);
             });
         });
     });
 
     assert.deepEqual(surprises, [],
-        'these modifier keys are declared and nothing reads them - wire them up, delete '
-        + 'them, or add them to KNOWN_INERT deliberately:\n  ' + surprises.join('\n  '));
+        'these modifier keys are declared but no gameplay system reads them; implement '
+        + 'the mechanic before adding the runtime claim:\n  ' + surprises.join('\n  '));
 });
 
 test('the turn engine has no race doctrine calls that silently do nothing', () => {
@@ -128,18 +116,12 @@ test('the turn engine has no race doctrine calls that silently do nothing', () =
         'race data must not advertise modifier keys that no gameplay consumer reads');
 });
 
-test('techTreeModifiers is still read by nobody, and still names techs that do not exist', () => {
-    // Recorded rather than fixed: deleting it would throw away design intent, and wiring
-    // it up is a balance change. If either happens, this fails and the note gets rewritten.
+test('race definitions do not expose the retired fake technology tree', () => {
     assert.equal(/techTreeModifiers/.test(serverSrc), false,
-        'server.js now reads techTreeModifiers - these discounts have started applying');
-
-    const realTechs = new Set(Object.keys(require('../server/lib/tech').TECHNOLOGIES));
-    const declared = new Set();
-    Object.values(RACE_TYPES).forEach(r => Object.keys(r.techTreeModifiers || {}).forEach(k => declared.add(k)));
-    const matching = [...declared].filter(k => k !== 'all' && realTechs.has(k.toUpperCase()));
-
-    assert.deepEqual(matching, [],
-        'a techTreeModifiers key now names a real technology, so a discount may have '
-        + 'started applying: ' + matching.join(', '));
+        'server.js must use the enforced RACE_ACCESS profiles, not retired prototype discounts');
+    const exposed = Object.values(RACE_TYPES)
+        .filter(race => Object.prototype.hasOwnProperty.call(race, 'techTreeModifiers'))
+        .map(race => race.name);
+    assert.deepEqual(exposed, [],
+        'runtime race data must not publish nonexistent technologies: ' + exposed.join(', '));
 });

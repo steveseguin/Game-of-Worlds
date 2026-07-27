@@ -74,9 +74,10 @@ other well enough to close a ledger. Terra could have built this. Terra had no r
 
 ## Signature hulls
 
-**Ninefold** — A mobile berth. A colony vessel that can **decolonise and move on**, carrying its
-settlement with it, which is the `mobile_base` flag taken to its conclusion. It is named for the convoy
-lineage that lost the *Ninefold Patience*, and Nomad hulls are always named for routes or losses.
+**Ninefold** — A proposed mobile berth. A colony vessel that can **decolonise and move on**, carrying its
+settlement with it. This would be a new Wonder mechanic, not an extension of any live colony-ship flag.
+It is named for the convoy lineage that lost the *Ninefold Patience*, and Nomad hulls are always named
+for routes or losses.
 
 **Hallam's Ring** — A fast, cheap runner that **generates income while under way** rather than while
 docked. A Nomad fleet in motion is a Nomad fleet earning, and standing still is the only thing that

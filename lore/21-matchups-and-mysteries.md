@@ -41,7 +41,7 @@ anyway. They advance on a filed schedule into space they have not surveyed, and 
 ambiguous is still in the way.
 
 **Void Walkers over Titan Lords**
-Speed ×1.5 against speed ×0.6, and `PROPULSION: 1` against warp range +2. The Titans win every battle they
+Speed ×1.5 against speed ×0.6, and the Titans' `PROPULSION: 1` cap. The Titans win every battle they
 reach and the Walkers never let them reach one. This is the cleanest asymmetry on the roster and both
 peoples know it: Titan strategists have written it down, said so publicly, and changed nothing, because the
 alternative is building something that does not last.

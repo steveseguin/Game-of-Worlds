@@ -1,8 +1,8 @@
 # Current App And Service State
 
-Last code review update: 2026-07-12. Runtime status must still be verified through production `/health` and `/status` after every release.
+Last code review update: 2026-07-26. Runtime status must still be verified through production `/health` and `/status` after every release.
 
-Production verification on 2026-07-11 reported service `ok`, database `connected`, and a clean checkout. The exact deployed revision is intentionally read from `/status.deploy.commit` after each release rather than copied here. Stripe webhook setup is explicitly deferred while gameplay readiness is the priority; core gameplay does not depend on it.
+Production verification on 2026-07-26 reported service `ok`, database `connected`, and a clean checkout. The exact deployed revision is intentionally read from `/status.deploy.commit` after each release rather than copied here. Stripe webhook setup is explicitly deferred while gameplay readiness is the priority; core gameplay does not depend on it.
 
 ## Product Shape
 
@@ -36,7 +36,7 @@ Environment variables can override turn intervals and mode multipliers; do not h
 | Movement/warp | Implemented | Whole-order validation, guarded spend, rollback/refund, visible movement events. |
 | Economy/build/research | Implemented | Guarded balances/state; construction is sector-local. Spaceports have four tiers and 12/20/32/48 immediate production capacity per turn; advanced hulls require both empire research and the corresponding local tier. Capacity and resources roll back on failed insertion. |
 | Colonization | Implemented | Terraform and colony-ship checks with conditional ownership claim. |
-| Combat/theater | Implemented | Race/tech/turret resolution, visibility-scoped reports, clock pause, and E2E paths. A surviving attacking victor now captures the sector and infrastructure; captured Spaceports lose one tier. Fully transactional/idempotent battle persistence remains open. |
+| Combat/theater | Implemented | Race/tech/turret resolution, visibility-scoped reports, clock pause, and E2E paths. A surviving attacking victor captures the sector and infrastructure; captured Spaceports lose one tier. Survivor replacement, turret loss, conquest, and captured buildings commit in one transaction. Deterministic/idempotent replay remains open. |
 | Race doctrines | Implemented where state exists | Mechanicus capital defence and Bioform cost/economy modifiers are live. Field repair and veteran growth remain design-only because ships do not persist damage or age; the engine no longer fires no-op turn hooks or exposes inert modifier keys. |
 | Diplomacy | Design module only | No live command/UI path instantiates it. Unsupported treaty types fail closed; its isolated non-aggression rule is covered for any future integration. |
 | Victory/surrender/cleanup | Implemented | Victory module, explicit resignation, abandonment rules, runtime cleanup tests. |
@@ -58,7 +58,7 @@ Environment variables can override turn intervals and mode multipliers; do not h
 
 ## Known Material Risks
 
-1. A hard process loss during one battle's multi-query survivor replacement is not yet a single database transaction.
+1. A rolled-back battle retry can generate a different random outcome because its seed/result is not yet persisted for deterministic replay.
 2. Older dynamic-table call sites still rely on server-derived ids; new and migrated critical paths use the validated table helper.
 3. The monolithic `server/server.js` increases cross-feature regression risk.
 4. Server/client tech definitions remain duplicated, with byte-sync coverage preventing drift.

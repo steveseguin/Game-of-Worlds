@@ -111,7 +111,7 @@ capped for a related reason: to a Collective, plating is an admission the model 
 > the Registry filed it. Four hulls did not arrive. We would like that noted.
 
 **Mechanics:** research ×1.3, hulls 10% cheaper, metal ×0.9, attack ×0.95. Missiles **locked**,
-armour capped at 3, no Dreadnought. Scouts +20% speed, +50% vision.
+armour capped at 3, no Dreadnought. Scouts +20% speed.
 **Unlock:** 3 wins.
 
 ---
@@ -194,7 +194,7 @@ is no Void Walker word for a Dreadnought that is not an insult.
 > Six-B is forty minutes. Was forty minutes. I have not flown it since the Lamps, so now it
 > is a guess, and I do not deal in guesses. Get out of my way.
 
-**Mechanics:** speed ×1.5, warp range +2, research ×1.2, durability ×0.9, hulls 10% dearer.
+**Mechanics:** speed ×1.5, research ×1.2, durability ×0.9, hulls 10% dearer.
 Armour capped 2, weapons 3, no Dreadnought.
 **Unlock:** 25 games played.
 
@@ -263,8 +263,8 @@ out, the Nomads were the one civilisation with almost nobody at home, because ho
 schedule. They lost more of their population in nine days than any other power lost in the
 whole Shortening, and they have never once been offered a figure they consider honest.
 
-Now they are the galaxy's fastest cheap fleet, the best colony-ship handlers, mobile-base
-specialists — and they will not seriously terraform, because wanting a planet is the thing
+Now they are the galaxy's fastest cheap fleet, the best colony-ship handlers, and a culture
+that treats every convoy as home — and they will not seriously terraform, because wanting a planet is the thing
 that killed everyone they knew. They have full access to every hull class in the game and the
 worst possible reason to use it.
 
@@ -278,8 +278,8 @@ are the only ones who do.
 > nine of twelve, and that nine bought this chart, so mind what you offer me for it.
 
 **Mechanics:** speed ×1.3, hulls 20% cheaper, attack ×1.1, metal ×0.8, durability ×0.9.
-Colony ships +50% speed and mobile-base capable. Orbital capped 1, terraforming 2. **All nine
-hulls.**
+Colony ships +50% speed. Orbital capped 1, terraforming 2. **All nine hulls.** Mobile
+settlements remain a future Wonder concept, not a live colony-ship action.
 **Unlock:** explore 100 sectors.
 
 ---
@@ -332,8 +332,8 @@ their lines short or it becomes unreadable.
 > Had we gone to six-B, we would have lost four. We may have. Ask us again and the answer will
 > have been different.
 
-**Mechanics:** research ×1.4, crystal ×1.3, attack ×1.3, speed ×1.2, hulls 30% dearer. Phase
-and teleport. Armour capped 2, no Dreadnought.
+**Mechanics:** research ×1.4, crystal ×1.3, attack ×1.3, speed ×1.2, hulls 30% dearer.
+Armour capped 2, no Dreadnought. Their discontinuous-motion language is fiction, not a teleport action.
 **Unlock:** premium. Listed by the Registry as *unverified*, which they find funny.
 
 ---

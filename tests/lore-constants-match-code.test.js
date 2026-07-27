@@ -200,6 +200,32 @@ test('this game still has no build time, and no lore file claims otherwise', () 
     }
 });
 
+test('lore does not present retired prototype race modifiers as live mechanics', () => {
+    // These identifiers and phrases previously came directly from inert fields in races.js.
+    // Fiction may still describe extraordinary instruments, discontinuous motion, or mobile
+    // cultures; the guarded forms are the code-shaped/stat-line claims that falsely told a
+    // reader those ideas already had gameplay consumers.
+    const retiredClaims = [
+        /\bvision\s*1\.5\b/i,
+        /\+50%\s+vision\b/i,
+        /\bwarpRange\b/i,
+        /\bwarp range\s*\+2\b/i,
+        /\bmobile_base\b/i,
+        /\bmobile-base capable\b/i,
+        /\bteleport:\s*true\b/i,
+        /\bphase:\s*0\.2\b/i
+    ];
+    const offenders = [];
+    for (const file of loreFiles()) {
+        for (const pattern of retiredClaims) {
+            if (pattern.test(file.flat)) offenders.push(`${file.file}: ${pattern}`);
+        }
+    }
+    assert.deepEqual(offenders, [],
+        'these lore files present retired, nonfunctional race modifiers as live mechanics:\n  '
+        + offenders.join('\n  '));
+});
+
 // --- Q10: relics, the Unattributed, and the Wonder victory ------------------------------------
 // These are DESIGN, not shipped, and the design leans on four facts about the current code. Each is
 // quoted in lore/27-the-unattributed.md and lore/STATUS.md as a reason for a decision, which makes

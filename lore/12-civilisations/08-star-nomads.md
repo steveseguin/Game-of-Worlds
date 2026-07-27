@@ -177,4 +177,5 @@ and the count is the setting's argument that the worst injuries are administrati
 They are the only non-Terran race with the full hull roster and the worst reason to use it. **Terraform
 cap 2** is a political refusal, not a technical limit — three failed council motions since AU 30.
 **Orbital cap 1** because fortifying a place means intending to be at it. Colony ships at +50% speed
-and mobile-base capable is nine centuries of living aboard, expressed as a stat line.
+are nine centuries of living aboard, expressed as a stat line. A colony that can leave again is a
+future Wonder proposal rather than a shipped race modifier.

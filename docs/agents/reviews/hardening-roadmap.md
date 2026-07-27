@@ -16,7 +16,7 @@ This is the canonical plan for the post-audit work. Update its status and implem
 - Added backward-compatible Spaceport persistence (`level`, `production_turn`, and `production_used`).
 - Activated four Spaceport tiers, dual research/local-tier hull gates, immediate per-turn local production capacity, guarded reservations, and resource/capacity rollback.
 - Added live sector/build UI for Spaceport tier, capacity remaining, upgrade requirements, and hull production weight.
-- Added focused unit, integration, and browser coverage. Multi-party battle continuation and fully transactional/idempotent combat remain open under Milestones 2 and 4.
+- Added focused unit, integration, and browser coverage. Multi-party battle continuation and atomic combat persistence are implemented; deterministic/idempotent replay remains open under Milestone 4.
 
 ## Product Principles
 
@@ -81,7 +81,7 @@ The browser must show local tier, capacity remaining, upgrade cost/research, hul
 - Generate a private random seed for each battle/hazard resolution.
 - Resolve randomness through a deterministic PRNG and record the rules version.
 - Give battles stable idempotency keys.
-- Commit survivors, turret loss, ownership, captured infrastructure, and completion in one transaction.
+- Preserve the existing single transaction for survivors, turret loss, ownership, captured infrastructure, and completion.
 - Return the recorded result when a resolution is retried.
 - Persist `turn_ends_at`; restore it after restart and apply a documented downtime grace rule instead of granting an entire new turn.
 
