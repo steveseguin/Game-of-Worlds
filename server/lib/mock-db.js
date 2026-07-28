@@ -4,6 +4,60 @@ function toLower(value) {
     return typeof value === 'string' ? value.toLowerCase() : value;
 }
 
+/**
+ * Split a SQL clause on commas that are NOT inside parentheses.
+ *
+ * A plain `.split(',')` shreds any function call in a SET clause:
+ * `owner = COALESCE(?, owner)` became the two fragments `owner = COALESCE(?`
+ * and `owner)`, neither of which matches an assignment pattern, so the whole
+ * write was dropped in silence. That hid the belt-securing claim AND the entire
+ * sector-naming feature from tools/full-game-sim.js — the sim reported
+ * "survivors secure the asteroid belt - owner=null" against a server that does
+ * it correctly on real MariaDB.
+ */
+function splitTopLevel(clause) {
+    const parts = [];
+    let depth = 0;
+    let current = '';
+    for (const ch of String(clause)) {
+        if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        if (ch === ',' && depth === 0) {
+            parts.push(current);
+            current = '';
+            continue;
+        }
+        current += ch;
+    }
+    parts.push(current);
+    return parts;
+}
+
+/**
+ * Evaluate `COALESCE(a, b, ...)` for the mock's row model: the first argument
+ * that is neither null nor undefined wins. Placeholders are consumed in order
+ * whether or not they win, because the caller's parameter cursor has to stay in
+ * step with the real driver's.
+ */
+function evalCoalesce(argsText, row, takeParam) {
+    let resolved;
+    let found = false;
+    for (const raw of splitTopLevel(argsText)) {
+        const arg = raw.trim();
+        let candidate;
+        if (arg === '?') candidate = takeParam();
+        else if (/^NULL$/i.test(arg)) candidate = null;
+        else if (/^-?\d+(\.\d+)?$/.test(arg)) candidate = Number(arg);
+        else if (/^'([^']*)'$/.test(arg) || /^"([^"]*)"$/.test(arg)) candidate = arg.slice(1, -1);
+        else candidate = row[arg.replace(/^`|`$/g, '')];
+        if (!found && candidate !== null && candidate !== undefined) {
+            resolved = candidate;
+            found = true;
+        }
+    }
+    return { value: found ? resolved : null, found };
+}
+
 class MockDatabase {
     constructor() {
         this.isOffline = false;
@@ -1086,11 +1140,11 @@ class MockDatabase {
 
                 if (/^UPDATE `?map\d+`? SET/i.test(normalized)) {
                     const paramsCopy = Array.isArray(params) ? [...params] : [];
-                    const assignments = normalized
-                        .replace(/^UPDATE `?map\d+`? SET /i, '')
-                        .split(' WHERE ')[0]
-                        .split(',')
-                        .map(part => part.trim());
+                    const assignments = splitTopLevel(
+                        normalized
+                            .replace(/^UPDATE `?map\d+`? SET /i, '')
+                            .split(' WHERE ')[0]
+                    ).map(part => part.trim());
                     const setParamCount = assignments.reduce(
                         (count, assignment) => count + ((assignment.match(/\?/g) || []).length),
                         0
@@ -1125,6 +1179,19 @@ class MockDatabase {
                         const entry = map.get(id) || this._buildMapRow(id);
                         let setParamIndex = 0;
                         assignments.forEach(assignment => {
+                            // COALESCE first: `col = COALESCE(?, col)` is how the server
+                            // writes a value that must not clobber an existing one, and it
+                            // has to be matched before the plainer patterns below.
+                            const coalesceMatch = assignment.match(/^([a-z_]+)\s*=\s*COALESCE\((.*)\)\s*$/i);
+                            if (coalesceMatch) {
+                                const { value } = evalCoalesce(
+                                    coalesceMatch[2],
+                                    entry,
+                                    () => setParams[setParamIndex++]
+                                );
+                                entry[coalesceMatch[1]] = value;
+                                return;
+                            }
                             const qMatch = assignment.match(/^([a-z_]+) = \?/i);
                             if (qMatch) {
                                 entry[qMatch[1]] = setParams[setParamIndex++];
