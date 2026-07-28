@@ -5,7 +5,10 @@ body {
     overflow: hidden;
     background: #0c1021 url('../images/spacebak.jpg');
     color: #e8ecff;
-    font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+    /* Rajdhani is the product's UI face: the login, lobby, landing and now the
+       in-game HUD all load it. Space Grotesk is no longer fetched by either page
+       that includes this sheet, so naming it here only produced a silent fallback. */
+    font-family: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
     width: 100vw;
     height: 100vh;
     position: relative;
@@ -258,10 +261,16 @@ td {
     cursor: pointer;
 }
 
+/* Sensor coverage. This was a 3px cyan stroke with a 4px cyan drop-shadow on
+   every tile inside sensor range, which is where the chart's turquoise bloom
+   came from — six haloed tiles were the brightest thing in the frame and the
+   only cyan in a steel-and-amber HUD. It is still a functional marker (which is
+   why it is allowed an outline at all), so it keeps the outline and loses the
+   glow: pale steel, no filter, no light spilling onto the neighbours. */
 [data-sensor-neighbor="true"] {
-    stroke: #78dfd2 !important;
-    stroke-width: 3px !important;
-    filter: drop-shadow(0 0 4px rgba(120, 223, 210, .75));
+    stroke: #b7c7dd !important;
+    stroke-width: 2.5px !important;
+    stroke-opacity: 0.85;
 }
 
 .hex-tile polygon {
@@ -358,9 +367,15 @@ td {
     background-color: #287a50;
 }
 
+/* Colour is NOT declared here any more. This rule carried `color: #d9f8e6
+   !important`, which out-specified every `.game-page .cost-metal` /
+   `.cost-crystal` rule below and painted every build cost mint green — which is
+   how a HUD briefed as "steel + amber" ended up with a green cost column. The
+   `!important` was invisible from the console section, because the console
+   section is where the intended colour lives. Legacy geometry stays; legacy
+   colour is gone. */
 .building-button small,
 .building-button span {
-    color: #d9f8e6 !important;
     text-shadow: none;
 }
 
@@ -387,10 +402,8 @@ td {
     background-color: #b84236;
 }
 
-.defense-button small,
-.defense-button span {
-    color: #ffd8d1 !important;
-}
+/* Same story as .building-button above: the `!important` salmon here beat the
+   console's cost colours. Removed, not overridden. */
 
 .defense-button:disabled,
 .defense-button.disabled {
@@ -670,12 +683,14 @@ td {
     text-align: left;
 }
 
+/* Kills and losses, on the locked palette: gains are the emphasis role, losses
+   the alert role. Mint and salmon were two more hues on a HUD that had eight. */
 .analytics-ship-positive {
-    color: #7ff0c4;
+    color: #ffce80;
 }
 
 .analytics-ship-negative {
-    color: #ffb4a8;
+    color: #ff9a80;
 }
 
 /* Four states are set by combat-analytics.js - idle, good, warn, error - but only three
@@ -684,19 +699,19 @@ td {
    a different file from its three siblings and disappears the moment someone tidies the
    inline style away. Stated here with the others so the set is complete. */
 .analytics-status-idle {
-    color: #bdd5ff !important;
+    color: #98a3b6 !important;
 }
 
 .analytics-status-good {
-    color: #7ff0c4 !important;
+    color: #ffce80 !important;
 }
 
 .analytics-status-warn {
-    color: #ffd27a !important;
+    color: #f0a233 !important;
 }
 
 .analytics-status-error {
-    color: #ff9f9f !important;
+    color: #ff9a80 !important;
 }
 
 /* Multi-move dialog */
@@ -835,6 +850,7 @@ td {
         gap: 8px;
         align-items: center;
     }
+
 
     #turnTimeBar {
         width: auto;
@@ -1078,6 +1094,3425 @@ td {
         max-height: calc(60vh - 60px);
     }
 }
+
+/* ======================================================================
+   IN-GAME HUD — beveled riveted metal ship console (WC2 / SC1 era)
+   ======================================================================
+
+   The login, lobby and landing pages were converted to this language years
+   ago; the in-game HUD — the surface a player stares at for hours — was
+   never converted and stayed flat translucent rounded rectangles. This is
+   that conversion, sharing the exact token values with auth.css and
+   lobby.html so the product reads as one machine.
+
+   Everything is scoped under `.game-page`. That is deliberate and load
+   bearing: lobby.html loads this same stylesheet, and an unscoped `button`
+   or `input` rule here would silently restyle the lobby.
+
+   THREE RULES THIS FILE OBEYS, because breaking them breaks the layout:
+
+   1. game-screen.js lays out every fixed HUD panel by MEASURING it and
+      writing width/height/top/left/right/bottom/display/max-height/font-size
+      with `!important`. Nothing here may use `!important` on those
+      properties for those elements, or the measured stack stops working
+      and panels start printing over each other.
+   2. Panels that gained a title bar (#sectordisplay, #mapLegend,
+      #event-panel) are ones the layout gives an explicit max-height plus
+      overflow, or that are bottom-anchored and grow away from their
+      neighbours. The title bar is `position: sticky` so it survives the
+      scroll it now sits above.
+   3. --pad-tabs-h is the single source of truth for the command pad's tab
+      strip height. .tab-panel's max-height is derived from it. Two numbers
+      describing one measurement is how the old `calc(100% - 44px)` drifted.
+
+   MATERIAL. A plate is four layers, not a gradient:
+     - four corner rivets  (radial-gradient, no-repeat, pinned to corners)
+     - brushed grain       (1px repeating-linear-gradient, ~2% alpha)
+     - the steel face      (vertical three-stop gradient)
+   plus a 2px ink border, a light inset bevel top-left, a dark inset bevel
+   bottom-right, a solid lip underneath (`0 4px 0 ink`) and a cast shadow.
+   The grain is what makes it read as metal rather than as a gradient, and
+   it costs one extra CSS gradient — no texture memory, no draw calls.
+
+   NO decorative accent-coloured edge borders or stripes anywhere: every
+   border is ink (near-black). Colour appears in type, in instrument faces,
+   in LEDs and in the amber primary keys — never as an edge. Focus rings
+   are functional and are amber on purpose.
+   ====================================================================== */
+
+.game-page {
+    --void:    #070a10;
+    --steel-1: #3a4458;
+    --steel-hi:#445064;
+    --steel-2: #2b3447;
+    --steel-3: #1d2433;
+    --steel-4: #141a26;
+    --ink:     #05070d;
+    --well:    #090d15;
+    --bevel-hi: rgba(176,198,232,0.22);
+    --bevel-lo: rgba(0,0,0,0.62);
+
+    /* THREE COLOUR ROLES, and nothing else.
+       An audit of one frame counted amber, acid yellow, mint, cyan, rose,
+       crimson, sky blue and a green-tinted container band — eight saturated
+       hues with no dominant, on a brief that says "steel + amber/bronze".
+       The palette is now:
+         structure  — steel (--steel-*, --text/--muted/--faint)
+         emphasis   — amber/bronze (--amber*, --bronze), ALL headings and every
+                      "this matters" value
+         alert      — crimson (--red*), danger ONLY, never decoration
+       Where two things must be told apart inside one role they differ by
+       LUMINANCE and by pattern, not by hue: that survives greyscale and
+       colour-blind viewing, which a seven-hue scheme does not.
+       The green and blue tokens are kept only because a handful of legacy
+       selectors still name them; both now sit inside the bronze/steel family
+       so a stray reference cannot reintroduce a stray hue.
+       (Do not write a token list as "--green<slash>--blue-hi" here: that
+       sequence closes the comment, and the declaration immediately after it
+       gets eaten. It ate --amber, every amber gradient in the HUD became
+       `background: none`, and End Turn shipped as an empty outline.) */
+    --amber:    #f0a233;
+    --amber-hi: #ffce80;
+    --amber-lo: #9a5d11;
+    --bronze:   #c79a47;
+    --red:      #b8392a;
+    --red-hi:   #ff7f63;
+    --green:    #b98a3c;
+    --green-hi: #e8c07a;
+    --blue-hi:  #aab8cc;
+
+    --text:  #cdd6e6;
+    --bright:#eef3fb;
+    --muted: #8b94a8;
+    --faint: #5e6678;
+
+    /* Treasury identity. The NUMERALS are all --bright; only these small marks
+       carry the difference, and they differ by warm/cool inside the one family
+       rather than by tan / sky blue / mint. */
+    --metal-ink:   #d8a469;
+    --crystal-ink: #9fb2cb;
+    --science-ink: #c9a45f;
+
+    --font-head: 'Russo One', 'Segoe UI', sans-serif;
+    --font-ui:   'Rajdhani', 'Segoe UI', system-ui, sans-serif;
+    --font-mono: 'Share Tech Mono', ui-monospace, monospace;
+
+    /* Tab strip height. .tab-panel's max-height is derived from this. */
+    --pad-tabs-h: 34px;
+
+    /* --- material recipes, referenced by every plate below --------------- */
+    --rivets:
+        radial-gradient(circle 2.2px at 9px 9px,                        rgba(190,206,232,0.55), rgba(10,14,22,0.9) 72%),
+        radial-gradient(circle 2.2px at calc(100% - 9px) 9px,           rgba(190,206,232,0.55), rgba(10,14,22,0.9) 72%),
+        radial-gradient(circle 2.2px at 9px calc(100% - 9px),           rgba(190,206,232,0.55), rgba(10,14,22,0.9) 72%),
+        radial-gradient(circle 2.2px at calc(100% - 9px) calc(100% - 9px), rgba(190,206,232,0.55), rgba(10,14,22,0.9) 72%);
+    --grain: repeating-linear-gradient(90deg,
+        rgba(255,255,255,0.028) 0 1px, rgba(0,0,0,0.032) 1px 3px);
+    --face:  linear-gradient(180deg, var(--steel-2), var(--steel-3) 52%, var(--steel-4));
+    --plate-shadow:
+        inset 2px 2px 0 var(--bevel-hi),
+        inset -2px -2px 0 var(--bevel-lo),
+        0 4px 0 var(--ink),
+        0 12px 26px rgba(0,0,0,0.55);
+
+    /* --- ONE PALETTE POLICY FOR THE WHOLE PAINTED LIBRARY ----------------
+       Every plate that comes out of icon-system/ is graded through this one
+       declaration — the build pad's nine structures, the fleet pad's nine
+       hulls, the research pad's twenty technologies and the comms badge — so
+       the console cannot end up applying two policies to two adjacent grids of
+       the same art. It did exactly that until now: the research pad was
+       normalised and the build pad, one tab over, was not, so the same library
+       arrived bronze on one tab and cyan on the next.
+
+       Measured, not guessed. Saturation-weighted hue over the lit pixels of
+       each plate as it is actually drawn (118% of its socket, over the socket's
+       own #080c13 seat): ungraded the library spans 21-189 degrees — the
+       crystal refinery's crystals and the comms terminals are cyan, the scout
+       and frigate hulls read cyan-steel, the tier-4 spaceport is violet.
+       Through this grade all of them land at 26-32 degrees, one bronze-steel
+       family, and the count of strongly saturated cool pixels (hue 150-260,
+       sat > 0.35) falls to zero on every plate — from 38 on the crystal
+       refinery, 29 on the research academy and 82 on the comms badge.
+       sepia(0.8) is the weakest setting that actually moves the cyan (at 0.3
+       the crystal is still at 145 degrees and reads cyan; at 1.0 it goes gold
+       and stops reading as a crystal at all), and the exposure lift is what
+       stops the near-black hulls reading as a smudge in their sockets.
+
+       Build and Fleet no longer separate by TEMPERATURE. They separate by
+       VALUE, which is the library's own distinction and the stronger one at
+       34px: lit ochre plant against dark steel hulls — mean rendered luma 39-49
+       across the six structures against 12-36 across the eight combat hulls.
+       (The colony ship is pale by design and sits with the structures at 46;
+       it is also the only rounded silhouette on the chart, so it is not relying
+       on value to be told apart.) */
+    --plate-grade: sepia(0.8) hue-rotate(-14deg) saturate(1) brightness(1.28) contrast(1.06);
+    /* Dead, not merely dim. Same exposure as the live grade — so the socket
+       around it renders identically in both states — with the colour taken out.
+       The DIMMING is the scrim below, never `opacity`. */
+    --plate-grade-dead: grayscale(1) brightness(1.28) contrast(1.06);
+
+    /* The cut a painted plate sits in: shadow on the top-left inner edge, light
+       on the bottom-right, which is the inverse of every raised key in this
+       file because this is a hole and not a button. Stated once so the enabled
+       and disabled states of the same card cannot drift apart. */
+    --socket-cut:
+        inset 2px 2px 0 rgba(0,0,0,0.85),
+        inset -1px -1px 0 rgba(176,198,232,0.20);
+    /* The deeper 44px version the research pad uses. */
+    --socket-cut-deep:
+        inset 2px 2px 0 rgba(0,0,0,0.92),
+        inset -2px -2px 0 rgba(176,198,232,0.30),
+        inset 0 0 0 3px rgba(0,0,0,0.35);
+    /* Dims the ART inside a dead socket without touching the socket. An inset
+       shadow paints over the background image but under the shadows listed
+       before it, so this goes AFTER the cut and before the outer ink ring:
+       the painting fades, the machining stays. The spread covers the widest
+       socket in the file (44px) from either edge.
+
+       BLACK, not the seat's own colour: a scrim tinted #060910 would lift the
+       plate's near-black ground off zero and the dead socket would read a few
+       codes lighter than the live one beside it — the exact mismatch this whole
+       rule exists to remove. Blending toward black leaves black at black and
+       takes 55% off everything above it, so the two seats measure the same and
+       only the picture in them goes out. */
+    --socket-dead-scrim: inset 0 0 0 40px rgba(0,0,0,0.55);
+
+    font-family: var(--font-ui);
+    color: var(--text);
+}
+
+body.game-page {
+    background:
+        radial-gradient(1200px 760px at 80% -12%, rgba(70,110,170,0.15), transparent 60%),
+        radial-gradient(900px 620px at 4% 110%, rgba(170,115,55,0.10), transparent 60%),
+        var(--void) url('../images/spacebak.jpg') center/cover fixed;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* --------------------------------------------------------------------
+   Hull rails — the structure the floating groups are seated INTO.
+
+   The top edge carried three unattached islands (treasury plate, a
+   CONNECTED/Shop/Lobby cluster floating in open starfield, and the utility
+   keys) with no container, no shared baseline and no alignment relationship.
+   Every one of them is placed by game-screen.js with !important, so they
+   cannot be re-parented from CSS — but they can be seated. These two rails are
+   pseudo-elements on <body>: no new nodes, nothing for the layout audit to
+   collide with, no pointer events, one composited layer each.
+
+   The rail is what turns "three widgets on a starfield" into "one installed
+   console strip", and it doubles as the contrast floor that keeps 10px mono
+   stencils legible over a bright patch of nebula.
+   -------------------------------------------------------------------- */
+body.game-page::before {
+    content: "";
+    position: fixed;
+    left: 0; right: 0; top: 0;
+    height: 48px;
+    z-index: 30;
+    pointer-events: none;
+    background:
+        /* Rivet line, sunk into the rail rather than sitting on it.
+           The last stop MUST be transparent. A radial gradient paints its final
+           colour across the whole positioning area, not just out to its radius,
+           so `…, rgba(6,9,15,0.95) 72%)` is not a 2px rivet on a steel rail —
+           it is a 95%-opaque black sheet with a highlight in it, and it flatted
+           the entire strip to near-black. */
+        radial-gradient(circle at 22px 38px,
+            rgba(206,224,248,0.7) 0 1.2px, rgba(0,0,0,0.7) 1.8px, rgba(0,0,0,0) 3.4px) repeat-x 0 0 / 88px 100%,
+        linear-gradient(180deg, #454f66 0 2px, #2f3a4e 2px, #1c2333 48%, #0d1220),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0 1px, rgba(0,0,0,0.04) 1px 3px);
+    box-shadow:
+        inset 0 1px 0 rgba(196,216,244,0.35),
+        inset 0 -3px 0 rgba(0,0,0,0.8),
+        0 2px 0 var(--ink),
+        0 7px 16px rgba(0,0,0,0.5);
+}
+/* Bottom rail. The chat strip and the command pad only cover the left half of
+   the screen; the right half of the bottom edge was raw starfield with the
+   minimap floating in the corner. This closes the hull. */
+body.game-page::after {
+    content: "";
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: 8px;
+    z-index: 30;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(48,58,76,0.85), rgba(9,13,20,0.95));
+    box-shadow: inset 0 1px 0 rgba(176,198,232,0.16), inset 0 -1px 0 rgba(0,0,0,0.8);
+}
+/* Phones stack the HUD into the top rail's band; a decorative rail there costs
+   real pixels and buys nothing. */
+@media (max-width: 560px), (max-height: 460px) {
+    body.game-page::before, body.game-page::after { display: none; }
+}
+
+/* --------------------------------------------------------------------
+   Plate / well / titlebar atoms
+   -------------------------------------------------------------------- */
+
+/* Riveted plate. The `background-repeat` list is per-layer: the four rivets
+   are pinned, the grain tiles, the face fills. */
+.game-page #resourceBar,
+.game-page #turnTimeBar,
+.game-page #controlPadGUI,
+.game-page #sectordisplay,
+.game-page #mapLegend,
+.game-page #chatContainer,
+.game-page #event-panel,
+.game-page #empireSummary,
+.game-page #victoryProgress,
+.game-page #connectionInfo,
+.game-page .speech-bubble,
+.game-page .gp-plate {
+    background: var(--rivets), var(--grain), var(--face) !important;
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat !important;
+    border: 2px solid var(--ink) !important;
+    border-radius: 3px;
+    box-shadow: var(--plate-shadow) !important;
+    color: var(--text);
+}
+
+/* FLUSH hull panels. Same plate, no raised lip and no cast shadow.
+   This distinction is structural, not decorative: the left status column is a
+   measured stack whose panels sit 4-6px apart, and a raised plate's
+   `0 4px 0 ink` lip plus 26px blur is NOT part of getBoundingClientRect — so
+   the raised recipe painted 30px of solid-then-fading black down over the top
+   of the sector survey's title bar. The layout audit could never see it,
+   because the audit compares rectangles and a shadow has none. Panels that
+   stack tightly are flush; only panels with real air around them are raised. */
+.game-page #resourceBar,
+.game-page #empireSummary,
+.game-page #victoryProgress,
+.game-page #connectionInfo {
+    box-shadow:
+        inset 1px 1px 0 rgba(176,198,232,0.16),
+        inset -1px -1px 0 rgba(0,0,0,0.55),
+        0 1px 3px rgba(0,0,0,0.5) !important;
+}
+
+/* RECESSED well: instrument faces, scroll bodies, input sockets. */
+.game-page .gp-well {
+    background: var(--well);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.75), inset -1px -1px 0 rgba(255,255,255,0.045);
+}
+
+/* EMBOSSED instrument title bar. Bleeds to the plate edge with negative
+   margins so it does not change the panel's outer box, and sticks to the top
+   of whatever scrolls beneath it. */
+.game-page .gp-titlebar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    margin: -1px -1px 9px;
+    padding: 7px 11px 6px;
+    font-family: var(--font-head);
+    font-size: 11px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+    background: linear-gradient(180deg, #1a222f, #0d121c);
+    border-bottom: 2px solid var(--ink);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -2px 0 rgba(0,0,0,0.55);
+    text-shadow: 0 1px 0 var(--ink);
+}
+
+/* Stencilled panel code, top-right of the plate. Pure signage. */
+.game-page [data-code] { position: relative; }
+.game-page [data-code]::after {
+    content: attr(data-code);
+    position: absolute;
+    top: 8px;
+    right: 11px;
+    z-index: 4;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: var(--faint);
+    pointer-events: none;
+}
+/* Panels that scroll would carry their code away with the content — an absolute
+   child of a scroll container scrolls with it. Where there is a sticky title bar
+   the code rides on that instead, so the signage stays put. */
+.game-page #sectordisplay::after,
+.game-page #mapLegend::after { display: none; }
+.game-page #sectordisplay .gp-titlebar::after { content: "SCN-02"; }
+.game-page #mapLegend .gp-titlebar::after { content: "KEY-07"; }
+.game-page .gp-titlebar::after {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: var(--faint);
+    pointer-events: none;
+}
+
+/* --------------------------------------------------------------------
+   Console keys. Raised -> genuinely inset on :active.
+
+   The container list is wrapped in :where() ON PURPOSE. Written plainly,
+   `#controlPadGUI button` scores an ID (1,1,1) and silently out-specified
+   every class-based rule below it — the active tab never went amber and
+   the build/defence/hull faces all collapsed to the same steel, because a
+   generic fallback was beating the specific rules it exists to back up.
+   :where() contributes zero specificity, so this is a true fallback at
+   (0,1,1) and anything more specific wins, which is the intent.
+   -------------------------------------------------------------------- */
+.game-page .gp-key,
+.game-page :where(#controlPadGUI, #sectordisplay, #chatContainer, #event-panel) button {
+    font-family: var(--font-head);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text);
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    cursor: pointer;
+    text-shadow: 0 1px 0 var(--ink);
+    box-shadow:
+        inset 1px 1px 0 rgba(255,255,255,0.18),
+        inset -2px -2px 0 rgba(0,0,0,0.55),
+        0 3px 0 var(--ink),
+        0 5px 10px rgba(0,0,0,0.42);
+    transition: filter 0.12s ease, transform 0.07s ease, box-shadow 0.07s ease;
+}
+.game-page .gp-key:hover:not(:disabled),
+.game-page :where(#controlPadGUI, #sectordisplay, #chatContainer, #event-panel) button:hover:not(:disabled) {
+    filter: brightness(1.16);
+    color: var(--bright);
+}
+/* The press is the point: the key drops onto its own lip and the light
+   flips from the top-left bevel to a shadow cast into the socket. */
+.game-page .gp-key:active:not(:disabled),
+.game-page :where(#controlPadGUI, #sectordisplay, #chatContainer, #event-panel) button:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.72);
+    filter: brightness(0.95);
+}
+
+/* Amber primary. End Turn, Shop, Home, Settle.
+   The lip under the key is INK, not a dark amber. The lobby uses #5c3a08 at
+   0.86rem where it reads as shadow, but at HUD sizes a tinted lip under a
+   32px key reads as a coloured bar along the bottom edge — which is exactly
+   the decorative accent stripe this product bans. Ink keeps the depth and
+   removes the stripe. */
+.game-page .gp-key--amber {
+    color: #2a1803;
+    background: linear-gradient(180deg, var(--amber-hi), var(--amber) 52%, var(--amber-lo));
+    box-shadow:
+        inset 1px 1px 0 rgba(255,255,255,0.55),
+        inset -2px -2px 0 rgba(120,70,8,0.6),
+        0 3px 0 var(--ink),
+        0 6px 12px rgba(0,0,0,0.45);
+    text-shadow: 0 1px 0 rgba(255,228,175,0.45);
+}
+.game-page .gp-key--amber:hover:not(:disabled) { color: #2a1803; filter: brightness(1.09); }
+.game-page .gp-key--amber:active:not(:disabled) { box-shadow: inset 2px 2px 6px rgba(90,55,8,0.75); }
+
+/* ONE amber label colour, in every state, on every amber key.
+   The generic fallback two rules up is `.game-page :where(…) button:hover
+   :not(:disabled)`, and `:not(:disabled)` contributes its argument's
+   specificity — so that selector scores (0,3,1) and quietly beat
+   `.game-page .tab-button.active` at (0,3,0). The result was visible in every
+   screenshot: the selected tab rendered WHITE bold on bright amber (~2.2:1,
+   washed out further by the fallback's brightness(1.16)) while the identical
+   amber End Turn key rendered correct dark-brown. One button style, two
+   contradictory renderings, decided by a `:not()` nobody counts. Pinned here
+   for hover/focus/active so no future fallback can flip it again. */
+.game-page .gp-key--amber:focus,
+.game-page .gp-key--amber:focus-visible,
+.game-page #controlPadGUI .tab-button.active,
+.game-page #controlPadGUI .tab-button.active:hover,
+.game-page #controlPadGUI .tab-button.active:focus,
+.game-page #controlPadGUI .tab-button.active:active {
+    color: #2a1803;
+    text-shadow: none;
+    filter: none;
+}
+
+/* Danger is a dark steel plate with a crimson stencil, not a saturated red
+   slab. Surrender was the loudest object in the top bar — louder than End Turn,
+   which is the core loop action. The saturated fill is now reserved for the
+   hover/confirm state, so the shout happens when the player is actually about
+   to do it. */
+.game-page .gp-key--danger {
+    color: #ff8f74;
+    /* No hatch. A striped face is this HUD's established "locked / do not use"
+       pattern (disabled build cards, hazard tiles), and putting it on a live
+       control says the wrong thing. Plain dark steel with a warm cast. */
+    background: linear-gradient(180deg, #3d2a2a, #1e1517 58%, #150e10);
+    box-shadow:
+        inset 1px 1px 0 rgba(255,190,170,0.16),
+        inset -2px -2px 0 rgba(0,0,0,0.6),
+        0 3px 0 var(--ink),
+        0 5px 10px rgba(0,0,0,0.42);
+    text-shadow: 0 1px 0 var(--ink);
+}
+.game-page .gp-key--danger:hover:not(:disabled) {
+    color: #ffe3da;
+    background: linear-gradient(180deg, #9c3524, #56180c);
+    filter: none;
+}
+
+/* Sizes. Heights are explicit so a row of mixed keys shares one bezel line. */
+.game-page .gp-key--icon {
+    width: 32px; height: 32px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 14px;
+}
+/* Drawn marks on a key inherit the key's ink and its drop-shadowed relief, the
+   same way the speaker below does. */
+.game-page .gp-key--icon > svg {
+    display: block;
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,0.85));
+}
+.game-page .gp-key--sm { height: 27px; padding: 0 10px; font-size: 10px; }
+.game-page .gp-key--tiny { height: 28px; padding: 0 9px; font-size: 9.5px; white-space: nowrap; }
+
+/* THE AUDIO KEY IS DRAWN, NOT TYPED.
+   GameScreen.updateAudioButton() assigns 🔊 / 🔇 to this button's textContent on
+   every mute toggle and once at start-up, so the emoji cannot be taken out of
+   the markup — it comes back. `font-size: 0` stops that text node from
+   rendering at all (the button is named by aria-label, so nothing is lost), and
+   the speaker is a two-state mark drawn off the same aria-pressed attribute
+   updateAudioButton() already maintains. Both states are inline SVG data URIs:
+   currentColor is not available to a background image, so the strokes are the
+   key's own steel-white and they inherit no hue from the palette. */
+.game-page #audioBtn { font-size: 0; }
+.game-page #audioBtn::before {
+    content: "";
+    width: 15px; height: 15px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 6h2.6L8 3v10L4.6 10H2z' fill='%23cdd6e6' stroke='%2305070d' stroke-width='1'/%3E%3Cpath d='M10.4 5.4a3.6 3.6 0 0 1 0 5.2M12.6 3.4a6.6 6.6 0 0 1 0 9.2' fill='none' stroke='%23cdd6e6' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,0.85));
+}
+.game-page #audioBtn[aria-pressed="true"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 6h2.6L8 3v10L4.6 10H2z' fill='%235e6678' stroke='%2305070d' stroke-width='1'/%3E%3Cpath d='M10.6 5.6l4 4.8M14.6 5.6l-4 4.8' fill='none' stroke='%23ff7f63' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.game-page #utilityButtons .gp-key--amber,
+.game-page #utilityButtons .gp-key--danger { height: 32px; padding: 0 12px; font-size: 10px; }
+
+/* A dead key is a dead key: it sinks into its socket and stops carrying light.
+   Nothing here relies on opacity alone, because a 55%-opacity raised button
+   still reads as pressable. */
+.game-page .gp-key:disabled,
+.game-page :where(#controlPadGUI, #sectordisplay, #chatContainer) button:disabled,
+.game-page button.disabled {
+    cursor: not-allowed;
+    transform: none;
+    color: var(--faint);
+    text-shadow: none;
+    background:
+        repeating-linear-gradient(135deg, rgba(0,0,0,0.28) 0 5px, rgba(0,0,0,0) 5px 10px),
+        linear-gradient(180deg, #1a2029, #12171f);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.7), inset -1px -1px 0 rgba(255,255,255,0.03);
+    filter: none;
+}
+
+/* Focus rings: functional, sanctioned, and amber so they read as the console's
+   own selection light rather than a browser default. */
+.game-page button:focus-visible,
+.game-page a:focus-visible,
+.game-page [role="button"]:focus-visible,
+.game-page input:focus-visible,
+.game-page select:focus-visible,
+.game-page summary:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+    border-radius: 0;
+}
+
+/* --------------------------------------------------------------------
+   Treasury rail
+   -------------------------------------------------------------------- */
+.game-page #resourceBar {
+    border-top: 0 !important;
+    border-left: 0 !important;
+    border-radius: 0 0 4px 0;
+    /* The legacy rule pins this to 30px, which crushes the instrument wells.
+       Height is content-driven here; game-screen.js only sets width and top,
+       and measures whatever comes out. */
+    height: auto;
+    padding: 5px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 200;
+}
+/* Each resource is its own recessed instrument, not a run of loose text. */
+.game-page #resourceBar .res {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    padding: 4px 8px 4px 6px;
+    background: var(--well);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.75), inset -1px -1px 0 rgba(255,255,255,0.05);
+}
+.game-page #resourceBar .res-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; flex: none;
+    filter: drop-shadow(0 1px 0 rgba(0,0,0,0.9));
+}
+.game-page #resourceBar .res-icon svg { display: block; }
+.game-page #resourceBar .res-figures {
+    display: flex; flex-direction: column; align-items: flex-start;
+    line-height: 1.02;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+.game-page #resourceBar .res-stock {
+    font-family: var(--font-head);
+    font-size: 1em;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 0 #000;
+}
+.game-page #resourceBar .res-rate {
+    font-family: var(--font-mono);
+    font-size: 0.68em;
+    letter-spacing: 0.04em;
+    opacity: 0.92;
+}
+.game-page #resourceBar .res-name {
+    font-family: var(--font-mono);
+    font-size: 0.6em;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--faint);
+}
+/* ONE numeral colour. The stocks used to be tan / sky blue / mint, so a
+   three-item row carried four hues before the amber deltas were counted. The
+   figure a commander compares across three columns must be typographically
+   identical in all three or the eye reads the colour before it reads the
+   number. The 24px icon carries the identity; the rate keeps a small warm/cool
+   shift so income still reads as belonging to its resource. */
+.game-page #resourceBar .res-stock { color: var(--bright); }
+.game-page #resourceBar #res-metal   .res-rate { color: var(--metal-ink); }
+.game-page #resourceBar #res-crystal .res-rate { color: var(--crystal-ink); }
+.game-page #resourceBar #res-research .res-rate { color: var(--science-ink); }
+/* A stalled economy is worth noticing, so a zero rate stops looking like income. */
+.game-page #resourceBar .res-rate.is-zero { color: var(--faint) !important; }
+/* One optical size and one light source for the whole set. The three icons were
+   drawn in three unrelated illustration languages — an airbrushed lump with no
+   contour, a flat vector gem, and thin green line art — so the drop shadow is
+   now shared and the artwork itself (game.html) is one set of two-tone bronze
+   solids with a 1.4px dark contour and a top-left key light. */
+.game-page #resourceBar .res-icon svg { filter: drop-shadow(0 1px 0 rgba(0,0,0,0.85)); }
+
+/* The recessed well around each resource costs ~20px of width per block (2px
+   border + 4px padding on both sides). The bar is only ~270px wide on a
+   landscape phone — exactly enough for three bare blocks and not enough for
+   three framed ones. They wrapped onto three rows, the bar grew past 200px
+   tall and its bottom ran into the build pad (667x375, 740x360, 510x407).
+   Below the desktop breakpoint the blocks go bare: the bar is still a plate,
+   the sub-frames are the luxury that does not fit.
+
+   This block MUST stay after the rule it overrides. A media query adds no
+   specificity, so the copy of this that lived up in the phone section — which
+   is earlier in the file — lost to the desktop rule and did nothing at all. */
+@media (max-width: 900px) {
+    .game-page #resourceBar .res {
+        padding: 0;
+        border: 0;
+        background: none;
+        box-shadow: none;
+    }
+    .game-page #resourceBar { gap: 9px; }
+}
+
+/* Very narrow: the treasury is one line, not three stacked pairs.
+   The bar is pinned to the top-left and the build pad to the bottom, and on a
+   short landscape window the gap between them is about 36px (measured at
+   510x407: pad top 93, bar top 57). Stacking stock over rate makes each block
+   ~18px and the bar ~41px, which is 5px into the pad. Side by side the block
+   is ~13px and the bar sits on its floor with room to spare. The floor drops
+   to 30px here for the same reason — 35px was the previous value and it
+   cleared by a single pixel, which is not a margin, it is luck. */
+@media (max-width: 560px) {
+    .game-page #resourceBar { min-height: 30px; }
+    .game-page #resourceBar .res-figures {
+        flex-direction: row;
+        align-items: baseline;
+        gap: 4px;
+    }
+    .game-page #resourceBar .res-icon { width: 16px; height: 16px; }
+    .game-page #resourceBar .res-icon svg { width: 16px; height: 16px; }
+}
+
+/* --------------------------------------------------------------------
+   Empire / victory readouts, connection rail, view title
+   -------------------------------------------------------------------- */
+/* Rajdhani, not the mono face: game-screen.js writes an inline font-size here
+   (~13px at desktop scale) that no stylesheet rule can override, and at 13px
+   Share Tech Mono runs the victory line to ~640px — wider than the 560px the
+   layout allots, so it wrapped to two rows and drove the whole column down
+   into the sector panel. Rajdhani is condensed and fits on one. */
+/* The empire bar's padding is trimmed separately below: it is the only one of
+   these two that hangs a 25px crest inside a 17px line. */
+.game-page #empireSummary,
+.game-page #victoryProgress {
+    padding: 3px 9px;
+    font-family: var(--font-ui);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.35;
+    color: var(--text);
+}
+.game-page #victoryProgress { color: var(--muted); }
+
+/* ==== THE PLAYER'S CREST, ON THE HUD, WHERE IT BELONGS. ==============
+   Twelve painted faction crests ship with this game and, until now, the last
+   time a player saw their own was on the race-select screen before the match
+   started. The line that says who you are — "Empire: 1 world · 1 sector ·
+   2 ships" — was bare text in the top-left corner of every frame.
+
+   It is a ::before and not a child element on purpose: connect.js rewrites this
+   node with `el.textContent = ...` on every empire update, which destroys any
+   child but leaves a pseudo-element alone. `data-race` is published onto <body>
+   by the small block at the foot of game.html, off the same raceId the advisor
+   already receives.
+
+   SIZED FOR THE ART, NOT FOR THE BAR. This shipped as a 48x38 source in a 24x19
+   box, and the Terran crest is a clipboard device with four horizontal bars
+   across it: at 19px tall those four bars merge into one tan lozenge with no
+   silhouette at all, so the player's own empire mark rendered as a smudge. The
+   box goes to 32x25 and the source to the 256x193 master the race-select screen
+   and the landing page already load, so it downsamples cleanly instead of being
+   asked to survive at 24px.
+
+   AND THEN SEATED IN THE BAR, NOT HUNG OFF THE TEXT BASELINE. The 32x25 box was
+   bought by hanging an inline-block off the baseline with `margin-bottom: -6px`,
+   which is a way of making a tall mark cost the line box less than it is — and
+   the six pixels it does not pay for come out of the bottom of the bar. Measured
+   at 1920: the crest ran y55-80 inside a y55-79.5 interior, so it had the one
+   pixel of top padding above it and NOTHING below, and it overhung the bottom
+   border. Nothing was clipped, but the mark was optically bottom-heavy in its
+   own bar, which is the one thing the small crest had got right.
+
+   So it is pinned instead: absolutely positioned and centred on the bar's
+   padding box, which is the same construction every other painted mark in this
+   file uses (build cards, hull cards, tech tiles, colonize keys). It cannot be
+   bottom-heavy, because it is not measured against a baseline any more.
+
+   #empireSummary is `position: fixed` from game.html's own head block, so it is
+   already a containing block — nothing here may restate `position`, and nothing
+   here may set `display` either: game-screen.js writes `display: block` with
+   !important on every layout pass, so a flex row is not available.
+
+   The 27px line is what pays for the clearance: the bar's interior becomes 27px
+   and its padding box 29px, so a 25px crest sits with 2px of air above and below
+   it, and the text — which is centred in its own line box by half-leading — is
+   centred on the same axis. The bar grows 2.5px in total (30.5 -> 33) and
+   game-screen.js re-measures the column with fitColumn(), so the readouts below
+   it follow. The line height is stated in PIXELS on purpose: the crest is a
+   fixed 25px at every scale, but game-screen.js drives the font size down to
+   10px on a narrow window, and a proportional line would shrink out from under
+   the art exactly when the column is tightest.
+
+   The crests carry their own painted bezel, so — as everywhere else in this
+   file — nothing draws a frame over them.
+
+   `content: "" / "…"` is the CSS alt-text form: the crest is the only carrier of
+   "which empire is this", so it states it for assistive tech rather than relying
+   on a decorative image to say it. The base rule declares plain `content: ""`
+   first, so a browser that cannot parse the alternative-text syntax drops only
+   the label and still gets the crest. */
+.game-page[data-race] #empireSummary::before {
+    content: "";
+    position: absolute;
+    left: 9px; top: 50%;
+    transform: translateY(-50%);
+    width: 32px; height: 25px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+}
+.game-page[data-race="1"]  #empireSummary::before { content: "" / "Terran Empire";        background-image: url('../images/ui/crests-512-01-terran.png'); }
+.game-page[data-race="2"]  #empireSummary::before { content: "" / "Silicon Collective";   background-image: url('../images/ui/crests-512-02-silicon.png'); }
+.game-page[data-race="3"]  #empireSummary::before { content: "" / "Zephyr Swarm";         background-image: url('../images/ui/crests-512-03-zephyr.png'); }
+.game-page[data-race="4"]  #empireSummary::before { content: "" / "Crystalline Entity";   background-image: url('../images/ui/crests-512-04-crystalline.png'); }
+.game-page[data-race="5"]  #empireSummary::before { content: "" / "Void Walkers";         background-image: url('../images/ui/crests-512-05-void-walkers.png'); }
+.game-page[data-race="6"]  #empireSummary::before { content: "" / "Mechanicus";           background-image: url('../images/ui/crests-512-06-mechanicus.png'); }
+.game-page[data-race="7"]  #empireSummary::before { content: "" / "Bioform Collective";   background-image: url('../images/ui/crests-512-07-bioform.png'); }
+.game-page[data-race="8"]  #empireSummary::before { content: "" / "Star Nomads";          background-image: url('../images/ui/crests-512-08-star-nomads.png'); }
+.game-page[data-race="9"]  #empireSummary::before { content: "" / "The Ancients";         background-image: url('../images/ui/crests-512-09-ancients.png'); }
+.game-page[data-race="10"] #empireSummary::before { content: "" / "Quantum Entities";     background-image: url('../images/ui/crests-512-10-quantum.png'); }
+.game-page[data-race="11"] #empireSummary::before { content: "" / "Titan Lords";          background-image: url('../images/ui/crests-512-11-titan-lords.png'); }
+.game-page[data-race="12"] #empireSummary::before { content: "" / "Shadow Realm";         background-image: url('../images/ui/crests-512-12-shadow-realm.png'); }
+/* The bar the crest is seated in. Only this one: the victory readout below it
+   has no device in it and keeps the shared 3px padding and 1.35 line.
+   `padding-left` reserves the crest's column (9px inset + 32px crest + 7px
+   gutter) so every line of the readout has one left edge, wrapped or not. */
+.game-page[data-race] #empireSummary {
+    padding-top: 1px;
+    padding-bottom: 1px;
+    padding-left: 48px;
+    line-height: 27px;
+}
+/* Padding stays near zero. This bar joins the measured left column on a
+   narrow window, so every pixel it gains pushes the sector panel down and the
+   whole column towards the build pad — 8px of container padding was enough to
+   drive it into the map legend at 640x480. The keys carry their own height. */
+.game-page #connectionInfo {
+    padding: 2px 4px;
+    flex-wrap: wrap;
+    row-gap: 4px;
+}
+.game-page .conn-readout {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 6px;
+}
+.game-page #status { color: var(--green-hi); }
+.game-page #viewTitle {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--bronze);
+    padding: 5px 16px;
+    background: linear-gradient(180deg, #131924, #0a0e16);
+    border: 2px solid var(--ink);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.07), inset -1px -1px 0 rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.5);
+}
+
+/* --------------------------------------------------------------------
+   Turn clock
+   -------------------------------------------------------------------- */
+.game-page #turnTimeBar {
+    border-top: 0 !important;
+    border-right: 0 !important;
+    border-radius: 0 0 0 4px;
+    z-index: 200;
+    overflow: hidden;
+}
+.game-page .turn-stack {
+    display: flex; flex-direction: column; align-items: stretch;
+    height: 100%;
+    padding: 0;
+}
+/* Mode stencil: an embossed strip across the top of the clock housing. */
+.game-page .turn-mode {
+    padding: 4px 10px 3px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--bronze);
+    background: linear-gradient(180deg, #1a222f, #0d121c);
+    border-bottom: 2px solid var(--ink);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.game-page .turn-row {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px;
+    padding: 6px 9px;
+    min-width: 0;
+}
+.game-page #nextTurnBtn {
+    padding: 8px 13px;
+    font-size: 11px;
+    white-space: nowrap;
+}
+.game-page #nextTurnBtn b { font-weight: inherit; }
+/* Recessed countdown readout — the clock face, not a sentence. */
+.game-page .turn-clock {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 7px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--muted);
+    background: var(--well);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.78);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.game-page #turnRedFlashWhenLow {
+    display: block;
+    font-family: var(--font-head);
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--amber-hi);
+    text-shadow: 0 0 9px rgba(240,162,51,0.45);
+}
+
+/* --------------------------------------------------------------------
+   Command pad: tab key-well + instrument plate
+   -------------------------------------------------------------------- */
+.game-page #controlPadGUI {
+    border-bottom: 0 !important;
+    border-left: 0 !important;
+    border-radius: 4px 4px 0 0;
+    padding: 4px 4px 0;
+    box-shadow:
+        inset 2px 2px 0 var(--bevel-hi),
+        inset -2px 0 0 var(--bevel-lo),
+        0 -10px 28px rgba(0,0,0,0.55) !important;
+}
+/* The tabs sit in their own recessed well, so the raised keys have something
+   to be raised out of. Height is pinned: .tab-panel derives from it. */
+.game-page .pad-tabs {
+    display: flex;
+    gap: 3px;
+    height: var(--pad-tabs-h);
+    padding: 3px;
+    background: #070b12;
+    border: 2px solid var(--ink);
+    border-bottom: 0;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8);
+}
+.game-page .tab-button {
+    flex: 1;
+    min-width: 0;
+    margin: 0;             /* the legacy rule adds 0 2px, which the well's gap replaces */
+    padding: 0 6px;
+    font-family: var(--font-head);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 1px;
+    cursor: pointer;
+    text-shadow: 0 1px 0 var(--ink);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.15), inset -1px -1px 0 rgba(0,0,0,0.5), 0 2px 0 var(--ink);
+    transition: filter 0.12s ease, transform 0.07s ease, box-shadow 0.07s ease;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.game-page .tab-button:not(.active) { color: #9aa5b8; }
+.game-page .tab-button:hover:not(.active) { filter: brightness(1.2); color: var(--bright); }
+.game-page .tab-button:active:not(.active) { transform: translateY(2px); box-shadow: inset 2px 2px 5px rgba(0,0,0,0.65); }
+/* Selected: the key is latched DOWN and lit. Depth carries the state, the amber
+   face confirms it — so it survives greyscale and colour-blind viewing. */
+.game-page .tab-button.active {
+    color: #241502;
+    background: linear-gradient(180deg, var(--amber-hi), var(--amber) 52%, var(--amber-lo));
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.5), inset -2px -2px 0 rgba(120,70,8,0.55), 0 2px 0 var(--ink);
+    /* No light halo here. At 10px Russo One a light text-shadow under dark
+       type fills the counters and the label turns to mush; the lobby's 0.86rem
+       tab can carry it, this cannot. */
+    text-shadow: none;
+}
+
+/* The console body is a BOUNDED WELL that scrolls, and it has to say so.
+   It already scrolled — but the capture harness (and Chromium's overlay
+   scrollbars generally) draws no scrollbar, so a tab whose content ran past
+   the bottom looked like a panel sliced through the middle of a card: the
+   Weapons band cut in half, cost rows guillotined, a row of text sheared to
+   the tops of its letterforms. "Broken render" and "there is more below" have
+   to be distinguishable without a scrollbar, so the bottom 26px fades out
+   under a mask. Content that fades is content that continues. */
+.game-page .tab-panel {
+    height: calc(100% - var(--pad-tabs-h));
+    max-height: calc(100% - var(--pad-tabs-h));
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #4b586e #05070d;
+    /* The top band is reserved for the stencilled panel code. Without it the
+       code printed over the first content row — the research header's
+       "Available: N research" chip is right-aligned and landed underneath it. */
+    padding: 20px 12px 26px;
+    background: var(--grain), var(--well);
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 2px 2px 7px rgba(0,0,0,0.8);
+    color: var(--text);
+    font-size: 0.95em;
+}
+/* The fade is an OVERLAY ON THE PAD, not a mask on the scroller. A mask would
+   fade the panel's own recessed background out along with the text and leave a
+   26px band of the plate showing through the bottom of the well — a fix that
+   looks like a second bug. Pinned to the pad's inner edge (2px border + 4px
+   padding + the panel's own 2px border = 8px), it dissolves whatever the last
+   partial row is into the well colour, so cut content reads as continuing
+   rather than as sliced. */
+.game-page #controlPadGUI::before {
+    content: "";
+    position: absolute;
+    left: 8px; right: 8px; bottom: 4px;
+    height: 26px;
+    z-index: 3;
+    pointer-events: none;
+    background: linear-gradient(to top, #090d15 0, rgba(9,13,21,0.86) 40%, rgba(9,13,21,0) 100%);
+}
+/* …and a stencilled scroll mark on the plate beside it. Drawn, not typed: it
+   used to be a literal ▼ set in the mono face, which is the same "a keyboard
+   character standing in for an icon" this HUD has now removed everywhere else.
+   It sits on the pad, not inside the scroller, so it cannot scroll away from
+   the edge it describes. */
+.game-page #controlPadGUI::after {
+    content: "";
+    position: absolute;
+    right: 12px;
+    bottom: 4px;
+    width: 9px; height: 6px;
+    z-index: 4;
+    pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 6'%3E%3Cpath d='M0.6 1.2 4.5 5 8.4 1.2' fill='none' stroke='%23c79a47' stroke-width='1.6' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E") no-repeat center / contain;
+    opacity: 0.85;
+}
+/* controlpad.js switches tabs with .hidden; state that here so the rules above
+   can never out-specify it. */
+.game-page .tab-panel.hidden { display: none; }
+.game-page .tab-panel::-webkit-scrollbar { width: 10px; }
+.game-page .tab-panel::-webkit-scrollbar-track { background: #05070d; box-shadow: inset 1px 0 0 rgba(0,0,0,0.9); }
+.game-page .tab-panel::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, var(--steel-hi), var(--steel-3));
+    border: 1px solid var(--ink);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.18);
+}
+.game-page .tab-panel::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, #55647c, var(--steel-2)); }
+.game-page .tab-panel::after { top: 5px; right: 13px; }
+.game-page .tab-panel > *:first-child { margin-top: 0; }
+
+/* Section headings inside the pad: stencilled, ruled, unmistakably a divider. */
+.game-page .pad-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    /* 13/8 before, then 8/6. The build pad is a fixed-height box with two of
+       these headings in it, and the card icons cost the grid several pixels of
+       row height; the pixels reclaimed here are what keep the defence row inside
+       the panel instead of half-cut at its bottom edge. */
+    margin: 6px 0 5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--bronze);
+    white-space: nowrap;
+}
+.game-page .pad-heading::after {
+    content: "";
+    flex: 1;
+    height: 2px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.85) 0 1px, rgba(255,255,255,0.07) 1px 2px);
+}
+.game-page .tab-panel > .pad-heading:first-child,
+.game-page .local-order-context + .pad-heading { margin-top: 2px; }
+
+/* ==== HEADING MARKS ARE DRAWN, NOT PAINTED, AND EVERY HEADING HAS ONE. ====
+   What shipped: nine `.pad-heading` elements, of which exactly TWO carried an
+   icon, and both of those were a 64px painted plate squeezed into a 17px box —
+   a 3.8x reduction that resolved to a brown smudge nobody could name. So the
+   reader got no rule at all: seven bare labels and two illegible ones.
+
+   Both halves are fixed the same way. Painted plates have a floor (32px, see the
+   card socket) and this row is nowhere near it, so these are STENCIL marks
+   instead: 16px, one 1.7px stroke, square caps, mitred joins, one bronze — the
+   same ink as the label beside them, and the same drawn language as the audio
+   key and the chat chevrons. And every heading gets one, keyed off `data-icon`,
+   so "a heading mark" means something consistent instead of marking two
+   headings out of nine for no stated reason.
+
+   The marks are inline data URIs rather than another set of published PNGs
+   because at 16px this is three or four line segments — a 40-byte path beats a
+   network request, and `currentColor` is unavailable to a background image, so
+   the bronze is baked in to match the label it sits against.
+
+   Each mark's `background-image` is bound to the bare `[data-icon="…"]`
+   attribute rather than to `.pad-heading`, because the tab strip reuses five of
+   them at 14px (see .tab-button below). The GEOMETRY stays per-context — a
+   heading mark and a tab mark are different sizes — but the drawing is
+   authored once. */
+.game-page .pad-heading[data-icon]::before {
+    content: "";
+    flex: none;
+    /* 18px, not 16. The marks below are stamps — an ink under-body, a bevelled
+       face and a 1px rim — and a three-layer construction needs three pixel rows
+       on each contour before any of it survives. At 16 the rim and the under-body
+       landed on the same row and the mark flattened back into a silhouette. */
+    width: 18px; height: 18px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 18px 18px;
+    opacity: 0.92;
+}
+/* ==== ELEVEN STAMPS, ONE CONSTRUCTION. ===============================
+   What was here: eleven marks drawn as 1.6-1.7px hollow amber outlines. On a
+   console whose every other object is beveled metal, that is the one idiom
+   the art direction rules out — and it was the dominant icon vocabulary in
+   the frame, roughly twenty instances across the tab strip and the pad
+   headings.
+
+   Every mark is now built the way the treasury ingot is built, which is the
+   one construction in this file the review has never objected to:
+
+     1. a near-black UNDER-BODY, the same silhouette fattened by a 2-unit
+        stroke and offset +0.9/+0.9, so the mark sits ON the plate instead of
+        floating over it;
+     2. a filled BODY on a vertical #f0c98f -> #8b5f2a ramp — top-lit bronze,
+        the same 160-degree light the tab keys and build cards carry;
+     3. ink DETAIL struck into the body (the shield band, the sheet rules);
+     4. a 1px #ffe9cc RIM on the top-left contour only — the key light.
+
+   And they got bigger, because a bevel needs pixels to live in: headings 16
+   -> 18px, tab marks 14 -> 16px. Below about 14px the under-body and the rim
+   land on the same pixel row and the whole construction collapses back into a
+   flat blob, which is why nothing in this set is drawn smaller.
+
+   All eleven are authored on the same 16-unit grid and emitted from one template,
+   so they share one ramp, one offset and one rim weight by construction rather
+   than by eleven separate hand-encodings. If you edit one, edit it to that
+   template: silhouette path, the same path again offset and inked, optional ink
+   detail, rim. Anything drawn as a bare stroke will not match the rest. */
+/* A tower crane. BUILD used to wear `economy` (blocks and a stack) while
+   ANALYTICS wore bars on an axis, and at 14px those two silhouettes were the
+   same cluster of verticals on a ground line — 40% of the primary navigation
+   marked with what reads as one icon. Nothing else in the strip has a
+   horizontal top member, so the jib is what separates them. */
+.game-page [data-icon="build"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.5 2.1H14.5V4.6H1.5Z M6.1 4.6H9.3V13.3H6.1Z M3.4 13.3H12.0V15.4H3.4Z M11.9 4.6H13.1V7.3H11.9Z M10.4 7.3H14.6V10.0H10.4Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M1.5 2.1H14.5V4.6H1.5Z M6.1 4.6H9.3V13.3H6.1Z M3.4 13.3H12.0V15.4H3.4Z M11.9 4.6H13.1V7.3H11.9Z M10.4 7.3H14.6V10.0H10.4Z' fill='url(%23b)'/%3E%3Cpath d='M2.0 2.65H14.0 M6.7 5.1V12.9' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+/* Plant standing on the ground: a low block and a capped stack. Stays on the
+   LOCAL ECONOMY BUILDINGS heading, where there is no chart to collide with. */
+.game-page [data-icon="economy"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.2 13.4H14.8V15.4H1.2Z M2.4 8.2H7.6V13.4H2.4Z M9.3 4.6H12.7V13.4H9.3Z M8.7 3.1H13.3V4.6H8.7Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M1.2 13.4H14.8V15.4H1.2Z M2.4 8.2H7.6V13.4H2.4Z M9.3 4.6H12.7V13.4H9.3Z M8.7 3.1H13.3V4.6H8.7Z' fill='url(%23b)'/%3E%3Cpath d='M2.9 8.7H7.1 M9.8 5.1H12.2 M1.7 13.9H14.3' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+.game-page [data-icon="defense"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.4 13.8 3.8V8.2L8 14.6 2.2 8.2V3.8Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M8 1.4 13.8 3.8V8.2L8 14.6 2.2 8.2V3.8Z' fill='url(%23b)'/%3E%3Cpath d='M7.35 3.5H8.65V12.5H7.35Z' fill='%230a0e15'/%3E%3Cpath d='M2.9 4.3 8 2.15 13.1 4.3' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+/* A swept hull, prow to the right. The first attempt was a hull profile in a
+   dock cradle, and at this size the cradle legs under a wedge read as a pagoda
+   roof on stilts — a building, on the one heading that is not about buildings. */
+.game-page [data-icon="shipyard"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M15 8 3.6 2.2 6.4 8 3.6 13.8Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M15 8 3.6 2.2 6.4 8 3.6 13.8Z' fill='url(%23b)'/%3E%3Cpath d='M6.9 7.25H11.8V8.75H6.9Z' fill='%230a0e15'/%3E%3Cpath d='M4.7 3.5 13.4 8' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+.game-page [data-icon="move"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.2 6.1H4.3V9.9H1.2Z M4.8 6.7H9.6V4.3L15 8 9.6 11.7V9.3H4.8Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M1.2 6.1H4.3V9.9H1.2Z M4.8 6.7H9.6V4.3L15 8 9.6 11.7V9.3H4.8Z' fill='url(%23b)'/%3E%3Cpath d='M1.7 6.6H3.8 M5.3 7.2H9.1' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+.game-page [data-icon="research"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.9 14.5 14.1H1.5Z M8 6.6 5.7 11H10.3Z M5.6 3a2.4 2.4 0 1 1 4.8 0a2.4 2.4 0 1 1-4.8 0Z M0.8 12.6a2.4 2.4 0 1 1 4.8 0a2.4 2.4 0 1 1-4.8 0Z M10.4 12.6a2.4 2.4 0 1 1 4.8 0a2.4 2.4 0 1 1-4.8 0Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M8 1.9 14.5 14.1H1.5Z M8 6.6 5.7 11H10.3Z M5.6 3a2.4 2.4 0 1 1 4.8 0a2.4 2.4 0 1 1-4.8 0Z M0.8 12.6a2.4 2.4 0 1 1 4.8 0a2.4 2.4 0 1 1-4.8 0Z M10.4 12.6a2.4 2.4 0 1 1 4.8 0a2.4 2.4 0 1 1-4.8 0Z' fill='url(%23b)'/%3E%3Cpath d='M7.7 2.9 2.7 12.3' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+.game-page [data-icon="requirements"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.2 2.6H4.5V5.4H1.2Z M1.2 6.6H4.5V9.4H1.2Z M1.2 10.6H4.5V13.4H1.2Z M5.9 3.2H14.8V4.9H5.9Z M5.9 7.2H14.8V8.9H5.9Z M5.9 11.2H12.6V12.9H5.9Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M1.2 2.6H4.5V5.4H1.2Z M1.2 6.6H4.5V9.4H1.2Z M1.2 10.6H4.5V13.4H1.2Z M5.9 3.2H14.8V4.9H5.9Z M5.9 7.2H14.8V8.9H5.9Z M5.9 11.2H12.6V12.9H5.9Z' fill='url(%23b)'/%3E%3Cpath d='M1.7 3.1H4.0 M6.4 3.7H14.3' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+.game-page [data-icon="orders"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M2.9 1.4H9.7L13.1 4.8V14.6H2.9Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M2.9 1.4H9.7L13.1 4.8V14.6H2.9Z' fill='url(%23b)'/%3E%3Cpath d='M9.7 1.4 13.1 4.8H9.7Z M5.2 7.2H10.8V8.5H5.2Z M5.2 9.7H10.8V11H5.2Z M5.2 12.2H8.9V13.5H5.2Z' fill='%230a0e15'/%3E%3Cpath d='M3.4 1.9H9.4 M3.4 1.9V14.1' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+.game-page [data-icon="analytics"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.4 1.6H3.6V12.4H14.6V14.6H1.4Z M4.9 8.2H6.9V12.4H4.9Z M7.9 4.4H9.9V12.4H7.9Z M10.9 6.4H12.9V12.4H10.9Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M1.4 1.6H3.6V12.4H14.6V14.6H1.4Z M4.9 8.2H6.9V12.4H4.9Z M7.9 4.4H9.9V12.4H7.9Z M10.9 6.4H12.9V12.4H10.9Z' fill='url(%23b)'/%3E%3Cpath d='M1.9 2.1V12.9 M5.4 8.7V12.2 M8.4 4.9V12.2 M11.4 6.9V12.2' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+.game-page [data-icon="battles"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M14.9 1.1 13.6 4.2 4.0 13.2 1.8 11.0 11.4 2.0Z M4.6 2.0 14.2 11.0 12.0 13.2 2.4 4.2 1.1 1.1Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M14.9 1.1 13.6 4.2 4.0 13.2 1.8 11.0 11.4 2.0Z M4.6 2.0 14.2 11.0 12.0 13.2 2.4 4.2 1.1 1.1Z' fill='url(%23b)'/%3E%3Cpath d='M12.6 2.1 14.4 1.3 M3.4 2.1 1.6 1.3' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+.game-page [data-icon="colonize"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M2.2 12.2A5.8 5.6 0 0 1 13.8 12.2Z M0.9 12.2H15.1V14.4H0.9Z M7.2 5.2H8.8V8.4H7.2Z M5.3 3.2H10.7V4.9H5.3Z' transform='translate(0.9 0.9)' fill='%230a0e15' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M2.2 12.2A5.8 5.6 0 0 1 13.8 12.2Z M0.9 12.2H15.1V14.4H0.9Z M7.2 5.2H8.8V8.4H7.2Z M5.3 3.2H10.7V4.9H5.3Z' fill='url(%23b)'/%3E%3Cpath d='M3.7 9.9A5.0 4.8 0 0 1 7.6 7.1' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E"); }
+
+/* ==== THE TAB STRIP GETS THE MARKS TOO. ==============================
+   The icon rule used to run backwards against the information hierarchy: five
+   bare text plates carried the pad's primary navigation, and thirty pixels
+   below them every sub-heading got a 16px bronze mark. The least important
+   labels were marked and the most important were not.
+
+   Same `data-icon` hook, same authored marks, two points smaller — a tab is a
+   14px mark beside a 10.5px label, a heading is a 16px mark beside a 10px one.
+   No new artwork: BUILD reuses economy, FLEET shipyard, RESEARCH research,
+   ANALYTICS analytics, and COLONIZE the mark added directly above.
+
+   INLINE-BLOCK, NOT A FLEX CHILD. `.tab-button` truncates with
+   `text-overflow: ellipsis`, which needs a real inline formatting context —
+   turning the button into a flex container makes its label an anonymous flex
+   item and silently kills the truncation on the narrow viewports where it is
+   the only thing preventing "ANALYTICS" from overrunning its key. */
+/* THE STRIP IS MEASURED, NOT ASSUMED. The command pad's width is set by the
+   HUD's column fitter at runtime, not by a media query, so a viewport
+   breakpoint is the wrong instrument here — at 1920 the strip is ~517px and
+   "ANALYTICS" plus a mark fits with room; at 1280 it is ~442px and the same
+   markup truncates to "ANALYTI…", which reads as a bug rather than a style.
+   A container query asks the actual container, which is the only thing that
+   knows. Below the width where all five labels still fit, the mark goes and the
+   label stays: the label is the datum, the mark is the enhancement. */
+.game-page .pad-tabs { container-type: inline-size; container-name: padtabs; }
+.game-page .tab-button[data-icon] { padding: 0 4px; }
+.game-page .tab-button[data-icon]::before {
+    content: "";
+    display: inline-block;
+    /* 16px for the same reason the headings went to 18: the stamp construction
+       has three layers on every contour and 14px does not have the rows. */
+    width: 16px; height: 16px;
+    margin-right: 5px;
+    vertical-align: -3px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+    opacity: 0.92;
+}
+/* THE BREAKPOINT IS THE WIDTH THE MARKS ACTUALLY NEED, NOT THE WIDTH THE STRIP
+   HAPPENS TO BE. This was 515px, and the strip's container box at 1920 measures
+   520px — five pixels of headroom on a rule that drops the mark off all five
+   primary nav tabs at once. That is not a breakpoint, it is a coincidence, and
+   any of a wrapped label, a font-metric change or one notch of the column
+   fitter would trip it.
+
+   Measured on the live strip by forcing the marks on and sweeping the container
+   width one pixel at a time: with a 16px mark and its 5px gutter, all five
+   labels still fit whole down to a 490px container, and "ANALYTICS" is the
+   first to truncate at 489. So 495 — six pixels of guard below the real fit
+   limit, twenty-five pixels of headroom above it at 1920, and the invariant the
+   rule exists for is preserved: the mark leaves BEFORE any label is cut. */
+@container padtabs (max-width: 495px) {
+    .game-page .tab-button[data-icon]::before { display: none; }
+    .game-page .tab-button[data-icon] { padding: 0 6px; }
+}
+
+/* A latched tab is a gold plate with near-black type on it, and a bronze mark
+   on gold is invisible. The mark goes dark with the label rather than being
+   redrawn in a second colour — one asset, two states. */
+.game-page .tab-button.active[data-icon]::before {
+    filter: brightness(0.26) saturate(0.4);
+    opacity: 1;
+}
+
+.game-page .pad-note {
+    margin-top: 8px;
+    font-size: 0.86em;
+    line-height: 1.4;
+    color: var(--muted);
+}
+.game-page .pad-empty { font-size: 0.9em; color: var(--muted); }
+
+/* Local order context: a recessed status readout. Amber TYPE on a near-black
+   well — deliberately not an amber-filled block, which at this size read as a
+   warning banner and shouted down the controls it is meant to caption. */
+.game-page .local-order-context {
+    margin-bottom: 7px;
+    padding: 5px 9px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    line-height: 1.45;
+    color: var(--bronze);
+    background: #05080e;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.8), inset -1px -1px 0 rgba(255,255,255,0.04);
+}
+
+/* --------------------------------------------------------------------
+   Build / defence / hull keys — the surface with the most state to carry
+   -------------------------------------------------------------------- */
+/* `grid-auto-rows: 1fr` is the whole fix for the row-two misalignment. The
+   cards were content-sized, so "Research Academy" (one line) and "Upgrade
+   Spaceport to Lv 2" (two lines) produced two different card heights in the
+   same row and the grid lost its baseline — about 3px of visible stagger.
+   A fixed row height also stops the pad reflowing every time a label grows a
+   word, which is what made the bottom of the panel land mid-card. */
+/* Row floor. The socket is now 20px, so the socket no longer sets this — TEXT
+   does: a title line (11.5px at 1.25) plus one cost line (9px at 1.25) plus the
+   card's padding (6+6) and bezel (2+2) is ~42px, and 48 keeps a two-line cost
+   card from being taller than a one-line one and staggering the row. The floor
+   must stay at or above socket + padding + bezel (20+12+4 = 36) or a content-box
+   card would let the mark hang out of the bottom of its own key; 48 clears that
+   with room, and it is the text that is binding. */
+.game-page .build-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 6px;
+    grid-auto-rows: minmax(48px, 1fr);
+}
+.game-page .ship-grid  {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+    grid-auto-rows: minmax(48px, 1fr);
+}
+
+.game-page .building-button,
+.game-page .defense-button,
+.game-page .ship-button {
+    padding: 6px 8px;
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    text-align: left;
+    line-height: 1.25;
+    color: var(--bright);
+    border: 2px solid var(--ink);
+    border-radius: 1px;
+    cursor: pointer;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.85);
+    box-shadow:
+        inset 1px 1px 0 rgba(255,255,255,0.17),
+        inset -2px -2px 0 rgba(0,0,0,0.55),
+        0 3px 0 var(--ink),
+        0 5px 10px rgba(0,0,0,0.4);
+    transition: filter 0.12s ease, transform 0.07s ease, box-shadow 0.07s ease;
+}
+/* ONE steel face for all three card families. The previous green-cast /
+   rose-cast / blue-cast faces were three more hues on a palette that already
+   had too many, and the category is already stated twice above each grid — by
+   the stencilled section heading and by the glyph. Category tint on a
+   container earns nothing and costs the dominant. */
+.game-page .building-button,
+.game-page .defense-button,
+.game-page .ship-button { background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4)); }
+
+/* --------------------------------------------------------------------
+   CARD MARKS — drawn solids, one vocabulary per card.
+   -------------------------------------------------------------------- */
+/* THE HISTORY, BECAUSE BOTH PREVIOUS ANSWERS WERE WRONG IN OPPOSITE WAYS.
+
+   First these cards carried `<i class="bi">` typing ⛏ ◆ ⌬ ⚔ ◎ / ⌁ ▸ ▰ ◤ ◆ ◈ ⬢ ▤
+   ⌂ — thirteen unrelated geometric characters that named nothing (a filled
+   diamond meant BOTH "crystal refinery" and "battleship"), plus a 🚀 that
+   build.js still writes and that rendered as a cartoon rocket.
+
+   Then every card was given a 64px painted plate from icon-system/. That fixed
+   the naming and introduced three faults that a 32px socket cannot escape:
+
+     1. The sources are opaque. Every one carries a solid #000000 backing plus
+        its own baked bezel, so a 32px socket rendered three nested rectangles
+        (card border, the asset's frame, the black plate) around a 24px
+        painting, and absolute black appeared nowhere else on the HUD. On the
+        amber MOVE SHIPS HERE key that black tile sat on a bright gold plate —
+        the highest value collision on the screen.
+     2. The hulls do not separate. Frigate, Destroyer, Cruiser, Battleship,
+        Dreadnought and Carrier are all a grey ~45° sliver with a cyan drive
+        dot; at 32px six of the nine ship cards were the same picture. A 64px
+        painting downsampled to 32 has no room to carry a class read, and no
+        exposure curve invents one.
+     3. Two illustration languages inside one card row: a soft unoutlined
+        photoreal miniature 6px from the hard-outlined flat-facet cost glyphs.
+
+   The rule now, and it is a SIZE rule so it can be checked rather than argued:
+   painted plates get sockets of 44px and up (the Research pad — see .tech-card,
+   which is the one row in the HUD wide enough to host one). Anything 20px or
+   below is DRAWN, in the outlined-solid vocabulary the treasury rail already
+   established — one near-black keyline, flat facet values off a single ramp,
+   key light top-left. So a build card now holds exactly one language: a 20px
+   drawn solid beside 10px drawn solids.
+
+   Structures are bronze and hulls are gunmetal, which is not decoration: it is
+   the library's own logic (its structures are lit ochre, its hulls are dark
+   steel) and it gives Build and Fleet distinct temperatures without tinting a
+   single container.
+
+   The nine hulls are drawn as a RECOGNITION CHART — every one in profile, prow
+   right, on one waterline, separated by mass, height and topside furniture:
+   Scout is a bare needle, Frigate short with one gun, Destroyer carries a
+   three-prong battery past the prow, Cruiser is long under a stepped bridge,
+   Battleship is the deep hull with the turret comb, Dreadnought the heaviest
+   slab with a ram, Carrier a flat unarmed deck, Intruder the only raked hull on
+   the chart, Colony Ship the only rounded body. That set separates at 20px,
+   which the paintings did not at 32.
+
+   Still hung on ::before rather than a child element, for the two reasons that
+   were never stylistic: build.js addresses the Spaceport card's label by
+   childNodes[0], so nothing may be inserted at the front of a card; and a CSS
+   background cannot become the only carrier of a label, so the button text
+   stays the accessible name. */
+
+/* ABSOLUTE, NOT FLOATED. The plate used to be `float: left`, and a float only
+   shortens the line boxes it vertically overlaps — so the name and the first
+   cost line were indented past the icon and any WRAPPED remainder returned to
+   the card's own left padding and ran underneath it. "prod/turn" sat below the
+   Spaceport plate while the line above it was indented: ragged, and it read as
+   a layout bug rather than a style.
+
+   Reserving the column in `padding-left` and pinning the mark into it with
+   `position: absolute` gives the text column ONE left edge for every line,
+   wrapped or not. The reason a padding column was rejected before was that a
+   32px socket plus its gutter took 39px off every line and pushed a third line
+   onto the worst cards — at 20px the gutter is 26px, which is less than the
+   float was already costing line one, so the Spaceport title now fits on ONE
+   line where it used to wrap. */
+.game-page .colonize-key::before,
+.game-page .sector-context-actions button::before {
+    content: "";
+    position: absolute;
+    left: 8px;
+    width: 20px; height: 20px;
+    background-repeat: no-repeat;
+    background-position: center;
+    /* Stated in pixels, not `contain`: the drawing is authored on a 24-unit
+       grid and every stroke weight in it was chosen against this box. */
+    background-size: 20px 20px;
+}
+
+/* ==== THE CARDS GET THE PAINTINGS THEY WERE NAMED FOR. ================
+   Eighteen purpose-built painted plates ship in this repo —
+   icon-system/icons/buildings/ (9) and icon-system/icons/ships/ (9) — and they
+   name-match these cards one for one. Until now the HUD drew hand-authored
+   three-fill vector glyphs at 20px instead and the plates were never published;
+   game.html's own comment on this grid asserted the cards used "the painted
+   building icon from icon-system/", which was simply not true.
+
+   The note above records that painted plates WERE tried here once and pulled,
+   and every one of those three objections is answered rather than ignored:
+
+     1. "The sources are opaque, so a socket renders three nested rectangles."
+        The plates carry ~10% of baked bezel on each edge. Drawing them at 118%
+        of the socket clips that bezel off and leaves the painting — the exact
+        trick .tech-card has used successfully since it was written. What is left
+        is the console's own recess, one frame, not three.
+     2. "The hulls do not separate at 32px." They were being asked to separate at
+        32px with no exposure lift, from a 64px source. At 34px off a 96px source
+        with the lift below, the nine escalate by mass and by topside furniture —
+        needle, gunned frigate, pronged destroyer, stepped cruiser, comb-turreted
+        battleship, ram-prowed dreadnought, raked intruder, flat carrier deck,
+        pale rounded colony hull. Checked at 1:1 in the capture harness.
+     3. "Two illustration languages in one card." There is now one: every mark on
+        a build or fleet card is a painting, and the 10px cost pips beside them
+        are the treasury's own marks, which is a size relationship rather than a
+        second vocabulary.
+
+   The size rule the note states — "painted plates get sockets of 44px and up" —
+   was written when the alternative was a 20px socket. It is restated here as
+   what it was actually protecting: a painting needs a socket big enough to hold
+   a silhouette, and 34px is measurably that; 20px is not.
+
+   THE COLUMN COST. padding-left goes 34 -> 44px, so each card's text column
+   loses 10px. The card that could not afford it is the Spaceport, whose label
+   build.js rewrites to "Upgrade Spaceport to Lv N" — its cost line is measured
+   in the capture after every change to this number. */
+.game-page .build-grid .building-button,
+.game-page .build-grid .defense-button,
+.game-page .ship-grid .ship-button { position: relative; padding-left: 44px; }
+.game-page .build-grid .building-button::before,
+.game-page .build-grid .defense-button::before,
+.game-page .ship-grid .ship-button::before {
+    content: "";
+    position: absolute;
+    left: 5px; top: 50%;
+    transform: translateY(-50%);
+    width: 34px; height: 34px;
+    background-repeat: no-repeat;
+    background-position: center;
+    /* 118%: clips the plate's own painted bezel so the console's recess is the
+       only frame on the card. */
+    background-size: 118%;
+    background-color: #080c13;
+    /* A CUT, NOT A BUTTON — light along the bottom-right inner edge, shadow along
+       the top-left, which is the inverse of every raised key in this file. Same
+       socket the research pad uses, so a card mark reads the same on both pads. */
+    box-shadow: var(--socket-cut), 0 0 0 2px var(--ink);
+    /* Graded through the console's one library grade — see --plate-grade. This
+       was a local brightness/contrast/saturate, which is how the build pad kept
+       its cyan crystals while the research pad, one tab over, had exactly that
+       hue normalised out of the same library in the same pass. */
+    filter: var(--plate-grade);
+}
+/* A DISABLED CARD IS THE SAME SOCKET WITH DEAD ART IN IT.
+   The seat, the cut and the ink ring are STRUCTURE: they are stated once, in
+   --socket-cut, and both states use the same declaration, so the two cannot
+   drift apart. Only what is INSIDE the socket changes — the colour goes, and a
+   scrim dims the painting.
+
+   `opacity` was the wrong instrument, and this is the whole of the bug it
+   caused: it fades the pseudo-element, and the pseudo-element is not the art.
+   It is the art AND the #080c13 seat AND the bevel. So a disabled card lost its
+   socket entirely and floated a ship on the striped card face while the enabled
+   card beside it had a hole cut in the console — the same component with two
+   different constructions, on four of six ship cards in one frame.
+
+   The scrim is an inset shadow listed AFTER the cut, so it paints over the
+   background image and under the bevel: the art dims, the machining survives.
+   Dimmed WITH the card and not past it: measured on one card toggled through
+   both states, the dead plate peaks at 42 against its dead label's 65 — the
+   same ordering the live card has at 163 against 229 — so a locked row never
+   becomes the brightest thing on itself. */
+.game-page .build-grid .building-button:disabled::before,
+.game-page .build-grid .building-button.disabled::before,
+.game-page .build-grid .defense-button:disabled::before,
+.game-page .build-grid .defense-button.disabled::before,
+.game-page .ship-grid .ship-button:disabled::before,
+.game-page .ship-grid .ship-button.disabled::before {
+    filter: var(--plate-grade-dead);
+    box-shadow: var(--socket-cut), var(--socket-dead-scrim), 0 0 0 2px var(--ink);
+}
+/* Half a point off the cost line and no tracking, which is what keeps the
+   Spaceport's second line down to two words instead of three. */
+.game-page .build-grid small { font-size: 9px; letter-spacing: 0; }
+
+/* --- structures: the library's own plates, one per card ---------------- */
+.game-page .build-grid [data-building-id="0"]::before { background-image: url('../images/ui/icons-buildings-metal-extractor.png'); }
+.game-page .build-grid [data-building-id="1"]::before { background-image: url('../images/ui/icons-buildings-crystal-refinery.png'); }
+.game-page .build-grid [data-building-id="2"]::before { background-image: url('../images/ui/icons-buildings-research-academy.png'); }
+.game-page .build-grid [data-building-id="4"]::before { background-image: url('../images/ui/icons-buildings-orbital-turret.png'); }
+.game-page .build-grid [data-building-id="5"]::before { background-image: url('../images/ui/icons-buildings-warp-gate.png'); }
+/* The spaceport is the one card with tiers rather than a count, and the
+   library painted four of it. The plate escalates with the tier, so the mark
+   states the upgrade the label is offering instead of restating the noun. */
+.game-page .build-grid [data-building-id="3"][data-tier="1"]::before { background-image: url('../images/ui/icons-buildings-spaceport-level-01.png'); }
+.game-page .build-grid [data-building-id="3"][data-tier="2"]::before { background-image: url('../images/ui/icons-buildings-spaceport-level-02.png'); }
+.game-page .build-grid [data-building-id="3"][data-tier="3"]::before { background-image: url('../images/ui/icons-buildings-spaceport-level-03.png'); }
+.game-page .build-grid [data-building-id="3"][data-tier="4"]::before { background-image: url('../images/ui/icons-buildings-spaceport-level-04.png'); }
+.game-page .build-grid [data-building-id="3"]::before { background-image: url('../images/ui/icons-buildings-spaceport-level-01.png'); }
+/* --- hulls: icons/ships/01..09 maps one-for-one onto data-ship-id -------- */
+.game-page .ship-grid [data-ship-id="1"]::before { background-image: url('../images/ui/icons-ships-01-frigate.png'); }
+.game-page .ship-grid [data-ship-id="2"]::before { background-image: url('../images/ui/icons-ships-02-destroyer.png'); }
+.game-page .ship-grid [data-ship-id="3"]::before { background-image: url('../images/ui/icons-ships-03-scout.png'); }
+.game-page .ship-grid [data-ship-id="4"]::before { background-image: url('../images/ui/icons-ships-04-cruiser.png'); }
+.game-page .ship-grid [data-ship-id="5"]::before { background-image: url('../images/ui/icons-ships-05-battleship.png'); }
+.game-page .ship-grid [data-ship-id="6"]::before { background-image: url('../images/ui/icons-ships-06-colony-ship.png'); }
+.game-page .ship-grid [data-ship-id="7"]::before { background-image: url('../images/ui/icons-ships-07-dreadnought.png'); }
+.game-page .ship-grid [data-ship-id="8"]::before { background-image: url('../images/ui/icons-ships-08-intruder.png'); }
+.game-page .ship-grid [data-ship-id="9"]::before { background-image: url('../images/ui/icons-ships-09-carrier.png'); }
+
+.game-page .building-button:hover:not(:disabled),
+.game-page .defense-button:hover:not(:disabled),
+.game-page .ship-button:hover:not(:disabled) { filter: brightness(1.2); }
+.game-page .building-button:active:not(:disabled),
+.game-page .defense-button:active:not(:disabled),
+.game-page .ship-button:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.75);
+}
+/* Count / level chip after the name. */
+.game-page .building-button > span,
+.game-page .defense-button > span {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--bronze);
+}
+.game-page .building-button small,
+.game-page .defense-button small,
+.game-page .ship-button small {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    text-shadow: none;
+}
+/* The hull grid is three columns inside a ~500px pad, and build.js writes the
+   longest cost strings in the game there ("1,650 220 · Shipyards 2 · 12 prod").
+   A point smaller keeps most of them on one line instead of two. */
+.game-page .ship-button small { font-size: 9px; letter-spacing: 0; }
+/* ONE SYMBOL PER RESOURCE, NOT TWO.
+   `⛁` (U+26C1) is in no font this product loads, so every metal cost once
+   rendered as a tofu box; the replacement was a 7px filled square for metal and
+   a 6px rotated square for crystal. That fixed the tofu and created a worse
+   problem: the treasury rail says metal is an INGOT and crystal is a faceted
+   SHARD, and the cost line eight pixels below it said metal is a square and
+   crystal is a diamond. The smallest and most-repeated mark in the HUD taught a
+   second, contradictory icon language for the same two nouns.
+
+   These are now the treasury marks, reduced. Same silhouettes, same warm/cool
+   pair, same near-black contour, same top-left key light — simplified for the
+   size (the 22px marks carry a gradient per facet and a specular; at 10px those
+   would be sub-pixel, so each facet is one flat value off the same ramp). The
+   artwork is a data URI rather than an <img> or a `<use>` because build.js
+   writes these spans and nothing may be inserted inside them, and because a
+   background image cannot be mistaken for content by a screen reader — the
+   figure and its `title` are still the whole accessible label. */
+.game-page .cost-metal, .game-page .cost-crystal {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.game-page .cost-metal { color: var(--metal-ink); }
+.game-page .cost-crystal { color: var(--crystal-ink); }
+.game-page .cost-metal::before,
+.game-page .cost-crystal::before {
+    content: "";
+    display: inline-block;
+    width: 10px; height: 10px;
+    margin-right: 3px;
+    vertical-align: -1px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+}
+/* AUTHORED AT 10, NOT REDUCED FROM 24.
+   These were the 24-unit treasury drawings reused unmodified in a 10px box. A
+   24-unit grid scaled by 0.417 puts every facet boundary between two device
+   pixels, so at 1:1 the metal pip sampled as an orange blob and the crystal as a
+   grey one — on the one line the player scans most often, and directly under a
+   treasury rail where the same two nouns ARE readable.
+
+   Redrawn on a 10-unit grid: every edge lands on a whole unit, so it lands on a
+   whole pixel. The ingot is three faces off one warm ramp (lit top, front, cut
+   right); the shard is three crown facets over two pavilion facets off the
+   console steel. Same silhouettes and same warm/cool pair as the 22px treasury
+   marks, so this is still one icon language for metal and crystal — it is the
+   GEOMETRY that is authored for the size, not a different picture.
+
+   AND THE CONTOUR IS BACK, AS A CONTACT SHADOW. The note this replaces was right
+   that a keyline drawn AROUND a 10px mark eats a fifth of its interior. This one
+   is not around it: the silhouette is stamped once in ink, offset half a pixel
+   down and right, and the body sits on top — so the ink shows only on the bottom
+   and right OUTSIDE the shape. It costs nothing interior and it is what stops the
+   pip dissolving into a steel card face. */
+.game-page .cost-metal::before {
+    background-size: 10px 10px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M0.5 4 2.5 2H9V6L7 8H0.5Z' transform='translate(0.55 0.55)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1' stroke-linejoin='miter'/%3E%3Cpath d='M0.5 4 2.5 2H9L7 4Z' fill='%23ffd9a0'/%3E%3Cpath d='M0.5 4H7V8H0.5Z' fill='%23c98f4b'/%3E%3Cpath d='M7 4 9 2V6L7 8Z' fill='%238a5b28'/%3E%3C/svg%3E");
+}
+/* Capped with the treasury mark it reduces (see game.html): the top facet used to
+   be #f6faff, which made a 10px cost chip the brightest object on a build card and
+   put it above the 12px card title in the value hierarchy. The facet SPREAD is
+   kept — that is what makes the gem read as cut rather than as a blob — but the
+   whole ramp sits inside the console's steel. */
+.game-page .cost-crystal::before {
+    margin-left: 2px;
+    background-size: 10px 10px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 1H8L10 4 5 9 0 4Z' transform='translate(0.55 0.55)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1' stroke-linejoin='miter'/%3E%3Cpath d='M2 1H8L6.6 4H3.4Z' fill='%23c3cfe0'/%3E%3Cpath d='M2 1 0 4H3.4Z' fill='%23aebed2'/%3E%3Cpath d='M8 1 10 4H6.6Z' fill='%2399aac1'/%3E%3Cpath d='M0 4H5V9Z' fill='%238494ab'/%3E%3Cpath d='M10 4H5V9Z' fill='%2366768d'/%3E%3C/svg%3E");
+}
+.game-page .cost-note { color: var(--faint); }
+
+/* UNAFFORDABLE / UNAVAILABLE. build.js sets both `disabled` and `.disabled`.
+   The key sinks into its socket, loses every highlight, gains a machined
+   lockout hatch, and the costs turn red — four independent signals, so this
+   is legible at a glance, in greyscale, and at gameplay zoom. */
+.game-page .building-button:disabled,  .game-page .building-button.disabled,
+.game-page .defense-button:disabled,   .game-page .defense-button.disabled,
+.game-page .ship-button:disabled,      .game-page .ship-button.disabled {
+    cursor: not-allowed;
+    transform: none;
+    color: #6d7788;
+    text-shadow: none;
+    background:
+        repeating-linear-gradient(135deg, rgba(0,0,0,0.3) 0 5px, rgba(0,0,0,0) 5px 10px),
+        linear-gradient(180deg, #1b212a, #12171f);
+    /* THE FRAME STAYS. The card kept its 2px ink border, but against a fill
+       this dark an ink border is invisible, so a locked card rendered as a bare
+       hatched region floating in the panel and the right-hand column lost all
+       grid structure below row one. A locked control is still a control: it
+       keeps its geometry and its outline, and says "locked" with luminance,
+       desaturation and the hatch. The 1px inner rim is what makes the outline
+       readable at this fill value. */
+    box-shadow:
+        inset 0 0 0 1px rgba(146,166,196,0.20),
+        inset 2px 2px 5px rgba(0,0,0,0.72),
+        inset -1px -1px 0 rgba(255,255,255,0.03);
+    filter: none;
+}
+/* THE SECOND DISABLED-MARK RULE USED TO LIVE HERE, AND IT WAS THE HALF THAT
+   ACTUALLY RENDERED. Two rules 170 lines apart both dressed the same locked
+   plate — the one beside the socket construction, and this one — and the
+   cascade split them: the scoped rule up there won `filter` on specificity
+   while this one still contributed `opacity: 0.6`, which no rule above could
+   see or cancel. So the plate was faded even after the fade was removed from
+   the rule that appeared to own it, and the card's lockout hatch went on
+   showing through the socket, which is the one thing a hole in a console must
+   never do. Measured on a live card toggled through both states: the seat read
+   9-12 where the live card's read 0.
+
+   Every .building-button, .defense-button and .ship-button in game.html is
+   inside a .build-grid or .ship-grid, so this rule addressed exactly the same
+   elements as the scoped one and nothing else. It is now ONE rule, up with the
+   socket it dresses. Its reasoning is kept and satisfied there: the mark strips
+   to grey and sits at or below the value of the dead label beside it (#6d7788,
+   luma 118) — the graded plate peaks near 105 and averages far under it — so
+   the eye is not pulled to the one card you cannot buy. What is NOT kept is
+   "let the hatch run behind the strokes the way it runs behind the text": that
+   was written for a drawn glyph with no plate behind it, and a painting sits in
+   a cut socket, which the hatch has no business crossing. */
+/* The costs go DEAD, not red. Red would state "you cannot afford this", and
+   most of these locks are not about money — the hull roster is gated on
+   Military Shipyards and on race doctrine, and the Spaceport on a tech level.
+   Colour that lies about the reason is worse than colour that says nothing;
+   the reason itself is in the tooltip and in the readout above the grid. */
+.game-page .building-button:disabled .cost-metal,   .game-page .building-button.disabled .cost-metal,
+.game-page .defense-button:disabled .cost-metal,    .game-page .defense-button.disabled .cost-metal,
+.game-page .ship-button:disabled .cost-metal,       .game-page .ship-button.disabled .cost-metal,
+.game-page .building-button:disabled .cost-crystal, .game-page .building-button.disabled .cost-crystal,
+.game-page .defense-button:disabled .cost-crystal,  .game-page .defense-button.disabled .cost-crystal,
+.game-page .ship-button:disabled .cost-crystal,     .game-page .ship-button.disabled .cost-crystal {
+    color: #5b6472;
+}
+/* The chips are painted artwork, so they go dead the way the card plates do —
+   the same grayscale-and-dim the locked build icon takes, not a second recipe. */
+.game-page .building-button:disabled .cost-metal::before,   .game-page .building-button.disabled .cost-metal::before,
+.game-page .defense-button:disabled .cost-metal::before,    .game-page .defense-button.disabled .cost-metal::before,
+.game-page .ship-button:disabled .cost-metal::before,       .game-page .ship-button.disabled .cost-metal::before,
+.game-page .building-button:disabled .cost-crystal::before, .game-page .building-button.disabled .cost-crystal::before,
+.game-page .defense-button:disabled .cost-crystal::before,  .game-page .defense-button.disabled .cost-crystal::before,
+.game-page .ship-button:disabled .cost-crystal::before,     .game-page .ship-button.disabled .cost-crystal::before {
+    filter: grayscale(1) brightness(0.68);
+}
+
+/* Race doctrine locks: hazard-hatched dead plates, distinct from "you cannot
+   afford this yet". Red hatch = never; amber hatch = not until the yard is up. */
+.game-page .ship-button.ship-locked {
+    background:
+        repeating-linear-gradient(135deg, rgba(150,40,30,0.32) 0 6px, rgba(0,0,0,0) 6px 12px),
+        linear-gradient(180deg, #241a1c, #171012) !important;
+    color: #7d666a !important;
+    box-shadow: inset 0 0 0 1px rgba(196,146,146,0.20), inset 2px 2px 5px rgba(0,0,0,0.75) !important;
+    cursor: not-allowed !important;
+}
+.game-page .ship-button.ship-techlocked {
+    background:
+        repeating-linear-gradient(135deg, rgba(180,130,30,0.26) 0 6px, rgba(0,0,0,0) 6px 12px),
+        linear-gradient(180deg, #242018, #171410) !important;
+    color: #857a63 !important;
+    box-shadow: inset 0 0 0 1px rgba(196,172,124,0.20), inset 2px 2px 5px rgba(0,0,0,0.75) !important;
+    cursor: not-allowed !important;
+}
+
+.game-page .colonize-key {
+    position: relative;
+    width: 100%;
+    padding: 13px 13px 13px 38px;
+    margin-bottom: 11px;
+    text-align: left;
+    font-family: var(--font-head);
+    font-weight: 400;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+/* The two primary orders in the HUD — settle a world, send the fleet — carry a
+   mark. These are the only two keys that get one: an icon on every button is
+   noise, an icon on the commitment is a landmark. (The Move Ships key's own
+   geometry is set further down, beside the rest of the sector-survey rules,
+   because that block would otherwise re-set the padding this needs and win on
+   source order.)
+
+   THESE TWO SIT ON GOLD, so they are drawn in the plate's OWN shadow value
+   (#3a2405) with no keyline and no facet ramp — struck into the metal, the way
+   a stamped legend on a real console key is, rather than laid on top of it. The
+   painted plates that used to be here put a hard #000000 tile on a bright amber
+   gradient: the single highest value collision anywhere on the HUD. */
+.game-page .colonize-key::before,
+.game-page .sector-context-actions button::before {
+    content: "";
+    position: absolute;
+    left: 9px; top: 50%;
+    transform: translateY(-50%);
+    /* Geometry and fit come from the shared socket rule above. */
+}
+.game-page .colonize-key::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M1.4 20.4Q12 14.4 22.6 20.4V23.4H1.4Z' fill='%233a2405'/%3E%3Cpath d='M7.2 16.6A4.8 4.8 0 0 1 16.8 16.6Z' fill='%233a2405' stroke='%233a2405' stroke-width='1.2' stroke-linejoin='miter'/%3E%3Cpath d='M12 11.8V8.2' fill='none' stroke='%233a2405' stroke-width='1.9'/%3E%3Cpath d='M8.6 4.6 11 7.2M15.4 4.6 13 7.2' fill='none' stroke='%233a2405' stroke-width='1.9' stroke-linecap='butt'/%3E%3Ccircle cx='12' cy='6.6' r='1.8' fill='%233a2405'/%3E%3C/svg%3E"); }
+.game-page .sector-context-actions button::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M22.6 12 5.4 3.6 11.4 12 5.4 20.4Z' fill='%233a2405'/%3E%3Cpath d='M0.8 6.6H5.2M0.8 12H3.6M0.8 17.4H5.2' fill='none' stroke='%233a2405' stroke-width='2.2' stroke-linecap='butt'/%3E%3C/svg%3E"); }
+/* A disabled amber key goes to a dead grey plate, so the mark has to leave the
+   gold ramp with it — it lightens rather than darkens, because the dead plate
+   is darker than the live one. */
+.game-page .colonize-key:disabled::before,
+.game-page .colonize-key.disabled::before,
+.game-page .sector-context-actions button:disabled::before {
+    filter: grayscale(1) brightness(2.6) contrast(0.8);
+    opacity: 0.5;
+}
+
+/* Fleet roster: a two-column instrument readout, dotted leaders and all. */
+.game-page .fleet-roster {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    padding: 6px 8px;
+    background: #05080e;
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+}
+.game-page .fleet-roster > div {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    padding: 2px 4px;
+}
+.game-page .fleet-roster > div::after {
+    content: "";
+    order: 1;
+    flex: 1;
+    border-bottom: 1px dotted rgba(139,148,168,0.28);
+}
+.game-page .fleet-roster span { order: 2; color: var(--bright); }
+.game-page .fleet-total {
+    margin-top: 7px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--crystal-ink);
+}
+
+/* --------------------------------------------------------------------
+   Research
+   -------------------------------------------------------------------- */
+.game-page .tech-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 9px;
+}
+.game-page .tech-panel-header .pad-heading { margin: 0; }
+.game-page .tech-panel-header .pad-heading::after { display: none; }
+.game-page .tech-budget {
+    padding: 4px 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+    font-variant-numeric: tabular-nums;
+    background: var(--well);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.78);
+    white-space: nowrap;
+}
+.game-page .tech-branch {
+    margin-bottom: 8px;
+    background: linear-gradient(180deg, var(--steel-2), var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.11), inset -2px -2px 0 rgba(0,0,0,0.5);
+    overflow: hidden;
+}
+/* connect.js writes `title.style.background = branch.color + '2b'` — a 17%
+   wash of the branch's identity colour straight onto the container. That is
+   what put a mint band over Economy and a rose band over Weapons, and it is
+   the tinted-container treatment this product bans in its decorative form.
+   The `!important` here is aimed at that inline declaration specifically; the
+   branch identity survives in the branch NAME, which is the thing a player
+   actually reads. */
+.game-page .tech-branch-title {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 9px;
+    font-family: var(--font-head);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+    background: linear-gradient(180deg, #1a222f, #0d121c) !important;
+    border-bottom: 2px solid var(--ink);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.5);
+    text-shadow: 0 1px 0 var(--ink);
+}
+.game-page .tech-branch-title small {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    line-height: 1.25;
+    text-align: right;
+    text-transform: none;
+}
+.game-page .tech-grid { display: grid; grid-template-columns: 1fr; gap: 5px; padding: 6px; }
+.game-page .tech-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 10px;
+    align-items: center;
+    width: 100%;
+    min-height: 54px;
+    padding: 7px 9px;
+    text-align: left;
+    /* These are buttons inside #controlPadGUI, so the console-key fallback
+       uppercases them. A tech card carries a sentence ("+10% metal income per
+       level"), and sentences in caps are slower to read, not more military. */
+    font-family: var(--font-ui);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text);
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 1px;
+    cursor: pointer;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.16), inset -2px -2px 0 rgba(0,0,0,0.5), 0 2px 0 var(--ink);
+    transition: filter 0.12s ease, transform 0.07s ease, box-shadow 0.07s ease;
+}
+.game-page .tech-card:hover:not(:disabled) { filter: brightness(1.16); }
+.game-page .tech-card:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 2px 2px 5px rgba(0,0,0,0.7); }
+
+/* ==== THE ONE PLACE ON THE HUD THAT KEEPS THE PAINTED PLATES. ==========
+   Twenty cards of near-identical grey text is the hardest list in the HUD to
+   scan; icon-system/icons/tech has a painted plate per branch and connect.js
+   already stamps `data-tech-id`, so the mapping needs no new hook. One plate
+   per technology, not per level: the level is stated in the label already
+   ("Deflector Shields Lv0/5") and 108 near-identical derivatives on the wire
+   would buy nothing a numeral does not already say.
+
+   A research row is full-pad width and 58px tall, which is the only geometry in
+   this interface that can host a painting at the size a painting needs. Below
+   44px the card marks are DRAWN instead (see the build and hull grids); this is
+   the other side of that same rule, not an exception to it.
+
+   Three things make the plate an installed instrument here rather than the
+   sticker it was at 32px:
+
+     - THE SOCKET IS A RECESS. The asset's own dark ground is the window behind
+       the glass; the bezel around it is the console's, drawn as a real cut —
+       shadow on the top-left inner edge, light on the bottom-right, which is
+       the inverse of every raised key in this file because this is a hole, not
+       a button. An outer ink ring separates it from the card face.
+     - THE ASSET'S BAKED FRAME IS CROPPED OFF. Each source carries about 5px of
+       painted bezel on a 64px canvas, and stacking it inside the console's own
+       bezel produced three nested rectangles around the subject. Drawing the
+       source at 120% of the socket clips ~5px a side and leaves the painting.
+       (This is safe here and was NOT safe on the hulls: a hull's silhouette
+       reaches the edge of its canvas, a tech object sits centred in its.)
+     - The exposure lift is small. These plates are lit ochre and steel already;
+       they were never the near-black the hull sources are. */
+.game-page .tech-card { position: relative; padding-left: 62px; min-height: 58px; }
+.game-page .tech-card::before {
+    content: "";
+    position: absolute;
+    left: 8px; top: 50%;
+    transform: translateY(-50%);
+    width: 44px; height: 44px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 120%;
+    background-color: #080c13;
+    border-radius: 0;
+    /* A REAL MACHINED EDGE, not a tonal seam. The recess used to be stated with a
+       0.16-alpha inner light and a 2px ink ring, and against a #1a2130 card an
+       ink ring is invisible — so the tile had no edge on three sides and the
+       painting inside it dissolved into the card. The shadow deepens, the lit
+       lip nearly doubles, and a warm 1px rim now catches on the bottom-right
+       where the light would actually land in a cut. Still a hole and not a
+       button: dark top-left, light bottom-right, which is the inverse of every
+       raised key in this file. */
+    box-shadow: var(--socket-cut-deep), 0 0 0 2px var(--ink);
+    /* PALETTE NORMALISATION, from the console-wide recipe. Three of the twenty
+       plates arrive off-palette — Crystal Refining is a saturated cyan block,
+       Research Networks is four green CRT terminals, and green is the one hue
+       this console does not own. The grade and the measurements behind it are
+       stated once at --plate-grade; this pad no longer owns a private copy of
+       them, which is what let the build pad drift off it. */
+    filter: var(--plate-grade);
+}
+/* Dimmed WITH the card, never past it. A locked plate that stays darker than
+   its own dead label inverts the value hierarchy and pulls the eye to the one
+   row you cannot buy — and it keeps its socket, because the socket is the
+   console's machining and not the card's state. Same construction as the build
+   and fleet cards, from the same two declarations. */
+.game-page .tech-card:disabled::before {
+    filter: var(--plate-grade-dead);
+    box-shadow: var(--socket-cut-deep), var(--socket-dead-scrim), 0 0 0 2px var(--ink);
+}
+/* TWENTY TECHNOLOGIES, TWENTY DIFFERENT PICTURES, AND NONE OF THEM BORROWED.
+   Metal Extraction and Research Networks were pointed at the BUILD pad's
+   Metal Extractor and Research Academy plates, so the first and third rows a
+   player ever sees in the Research tab wore the same paintings as two cards one
+   tab over: the same picture meaning two different nouns, on the two rows worst
+   placed to get away with it.
+
+   The reason those two were borrowed was real — `metal-extraction/level-01` is
+   a bright green territory flag and `research-networks/level-01` is a box of
+   paper folders, neither of which says what its technology does, and green is
+   the one hue this console does not own. But the icon set has ten levels per
+   branch and the answer was three files further down its own folder:
+   `level-05` is an extraction rig and a linked terminal network respectively,
+   both in the console's steel and bronze, both purpose-built for these exact
+   technologies. Level 5 rather than level 1 is not arbitrary — the sets escalate
+   from a survey marker to real plant, and real plant is what a tech card wants
+   to show. Nothing on this pad is now the Build pad's picture. */
+.game-page .tech-card[data-tech-id="1"]::before  { background-image: url('../images/ui/icons-tech-metal-extraction-level-05.png'); }
+.game-page .tech-card[data-tech-id="2"]::before  { background-image: url('../images/ui/icons-tech-crystal-refining-level-01.png'); }
+.game-page .tech-card[data-tech-id="3"]::before  { background-image: url('../images/ui/icons-tech-research-networks-level-05.png'); }
+.game-page .tech-card[data-tech-id="4"]::before  { background-image: url('../images/ui/icons-tech-laser-weapons-level-01.png'); }
+.game-page .tech-card[data-tech-id="5"]::before  { background-image: url('../images/ui/icons-tech-reinforced-hulls-level-01.png'); }
+.game-page .tech-card[data-tech-id="6"]::before  { background-image: url('../images/ui/icons-tech-deflector-shields-level-01.png'); }
+.game-page .tech-card[data-tech-id="7"]::before  { background-image: url('../images/ui/icons-tech-terraforming-level-01.png'); }
+.game-page .tech-card[data-tech-id="8"]::before  { background-image: url('../images/ui/icons-tech-espionage-level-01.png'); }
+.game-page .tech-card[data-tech-id="9"]::before  { background-image: url('../images/ui/icons-tech-counter-intel-level-01.png'); }
+.game-page .tech-card[data-tech-id="10"]::before { background-image: url('../images/ui/icons-tech-plasma-cannons-level-01.png'); }
+.game-page .tech-card[data-tech-id="11"]::before { background-image: url('../images/ui/icons-tech-antimatter-warheads-level-01.png'); }
+.game-page .tech-card[data-tech-id="12"]::before { background-image: url('../images/ui/icons-tech-reactive-armor-level-01.png'); }
+.game-page .tech-card[data-tech-id="13"]::before { background-image: url('../images/ui/icons-tech-adaptive-plating-level-01.png'); }
+.game-page .tech-card[data-tech-id="14"]::before { background-image: url('../images/ui/icons-tech-phase-shields-level-01.png'); }
+.game-page .tech-card[data-tech-id="15"]::before { background-image: url('../images/ui/icons-tech-rocketry-level-01.png'); }
+.game-page .tech-card[data-tech-id="16"]::before { background-image: url('../images/ui/icons-tech-hyperv-missiles-level-01.png'); }
+.game-page .tech-card[data-tech-id="17"]::before { background-image: url('../images/ui/icons-tech-ion-drives-level-01.png'); }
+.game-page .tech-card[data-tech-id="18"]::before { background-image: url('../images/ui/icons-tech-warp-drives-level-01.png'); }
+.game-page .tech-card[data-tech-id="19"]::before { background-image: url('../images/ui/icons-tech-military-shipyards-level-01.png'); }
+.game-page .tech-card[data-tech-id="20"]::before { background-image: url('../images/ui/icons-tech-orbital-engineering-level-01.png'); }
+.game-page .tech-card .tech-name {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 12.5px;
+    color: var(--bright);
+    text-shadow: 0 1px 0 var(--ink);
+}
+.game-page .tech-card .tech-summary {
+    grid-column: 1 / -1;
+    font-size: 10.5px;
+    line-height: 1.3;
+    color: var(--muted);
+}
+.game-page .tech-card .tech-cost {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--amber-hi);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.game-page .tech-card .tech-req {
+    grid-column: 1 / -1;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--red-hi);
+}
+.game-page .tech-card:disabled {
+    cursor: not-allowed;
+    color: var(--faint);
+    background:
+        repeating-linear-gradient(135deg, rgba(0,0,0,0.28) 0 5px, rgba(0,0,0,0) 5px 10px),
+        linear-gradient(180deg, #1b212a, #12171f);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.72);
+    transform: none;
+}
+.game-page .tech-card:disabled .tech-name { color: #808b9d; text-shadow: none; }
+.game-page .tech-card:disabled .tech-cost { color: var(--red-hi); }
+.game-page .tech-card.tech-locked {
+    background:
+        repeating-linear-gradient(135deg, rgba(150,40,30,0.32) 0 6px, rgba(0,0,0,0) 6px 12px),
+        linear-gradient(180deg, #241a1c, #171012);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.75);
+}
+.game-page .tech-card.tech-locked .tech-cost { color: var(--red-hi); }
+
+/* --------------------------------------------------------------------
+   Colonize checklist & standing orders
+   -------------------------------------------------------------------- */
+.game-page .req-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.game-page .req-list li {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 5px 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: var(--muted);
+    background: #05080e;
+    border: 2px solid var(--ink);
+    box-shadow: inset 1px 1px 4px rgba(0,0,0,0.75);
+}
+/* THE CHECKLIST MARK IS DRAWN, LIKE EVERY OTHER MARK ON THIS HUD.
+   build.js writes ✓ / ✗ / • into this span on every refresh, and its own comment
+   records why the CSS route was abandoned: `font-size: 0` collapsed the box,
+   because the width was `1.2em` and 1.2 × 0 is 0, so the mark printed over the
+   label. The width is stated in PIXELS here, which is what that attempt was
+   missing — the box survives the zeroed text and the drawn mark sits in it.
+   Met is emphasis (amber), blocked is the single alert hue, pending is neutral
+   steel. Three roles, not a green/red traffic light, and the SHAPE carries the
+   state as well as the colour so it survives greyscale. */
+.game-page .req-list .req-mark {
+    flex: none;
+    width: 14px;
+    font-size: 0 !important;
+    text-align: center;
+}
+.game-page .req-list .req-mark::before {
+    content: "";
+    display: inline-block;
+    width: 12px; height: 12px;
+    vertical-align: -2px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    /* pending — a neutral rule, the same mark the event feed uses for a note */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.6 6H9.4' stroke='%238b94a8' stroke-width='1.8' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+.game-page .req-list li.is-met { color: var(--amber-hi); }
+.game-page .req-list li.is-met .req-mark::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M1.6 6.4 4.5 9.3 10.4 2.9' fill='none' stroke='%23f0a233' stroke-width='2' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E");
+}
+.game-page .req-list li.is-blocked { color: var(--red-hi); }
+.game-page .req-list li.is-blocked .req-mark::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.2 2.2 9.8 9.8M9.8 2.2 2.2 9.8' fill='none' stroke='%23ff7f63' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+
+.game-page .so-block {
+    display: grid; gap: 7px;
+    margin: 8px 0 12px;
+    padding: 9px 10px;
+    font-size: 0.9em;
+    background: #05080e;
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.78);
+}
+/* `align-items: center` centred the switch against the whole WRAPPED label, so
+   the first order's toggle floated between its two lines while the second
+   (one line) sat correctly — two controls in one list, misaligned with each
+   other. Anchored to the first line's cap height instead, which holds however
+   the label wraps. */
+.game-page .so-row { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; line-height: 1.35; }
+.game-page .so-row > span { padding-top: 1px; }
+.game-page .so-row--indent { padding-left: 25px; color: var(--muted); cursor: default; align-items: center; }
+/* Toggles as recessed sockets with a machined amber latch, so an armed
+   standing order is visible from across the panel. The bevel is INVERTED
+   against every other control on the HUD — dark top-left, light bottom-right —
+   because this is a hole in the plate, not a key standing proud of it. */
+.game-page .so-row input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    width: 16px; height: 16px; flex: none; margin: 0;
+    align-self: flex-start;
+    margin-top: 0.15em;
+    cursor: pointer;
+    border-radius: 0;
+    /* An empty socket has to be visible as a socket, or an unarmed standing
+       order looks like no control at all on a dark panel. */
+    background: linear-gradient(160deg, #05080e, #131d30);
+    border: 2px solid var(--ink);
+    box-shadow:
+        0 0 0 1px rgba(146,166,196,0.28),
+        inset 2px 2px 4px rgba(0,0,0,0.9),
+        inset -2px -2px 0 rgba(168,192,226,0.42);
+}
+.game-page .so-row input[type="checkbox"]:hover { background: linear-gradient(160deg, #0a1120, #17233a); }
+/* Armed: an amber stencil check struck into the socket. The tick is drawn, not
+   typed — a font glyph at 16px would depend on whichever fallback the machine
+   has, and half of them centre it wrong. */
+.game-page .so-row input[type="checkbox"]:checked {
+    background:
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M1.6 6.1 L4.4 9 L10.4 2.4' fill='none' stroke='%23ffce80' stroke-width='2.4' stroke-linecap='square'/></svg>") center / 11px 11px no-repeat,
+        linear-gradient(160deg, #1c1608, #2b210b);
+    box-shadow:
+        inset 2px 2px 4px rgba(0,0,0,0.85),
+        inset -1px -1px 0 rgba(255,206,128,0.45);
+}
+/* Recessed instrument readout, not a web number field: mono, centred, amber
+   digits, spinner removed (the value is 0-6 and the label states the range). */
+.game-page #soTargetScouts {
+    width: 58px;
+    padding: 3px 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: center;
+    letter-spacing: 0.08em;
+    color: var(--amber-hi);
+    background: linear-gradient(180deg, #05080e, #0b111c);
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow:
+        inset 2px 2px 5px rgba(0,0,0,0.9),
+        inset -1px -1px 0 rgba(158,182,216,0.28);
+    -moz-appearance: textfield;
+}
+.game-page #soTargetScouts::-webkit-outer-spin-button,
+.game-page #soTargetScouts::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.game-page #soTargetScouts:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
+.game-page .analytics-meters {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    margin-bottom: 9px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+.game-page .analytics-meters b { color: var(--bright); }
+.game-page #combatAnalyticsStatus {
+    margin-bottom: 9px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.03em;
+}
+.game-page .analytics-player-card,
+.game-page .analytics-recent-item {
+    padding: 7px 8px;
+    font-size: 11px;
+    color: var(--text);
+    background: linear-gradient(180deg, var(--steel-2), var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.1), inset -1px -1px 0 rgba(0,0,0,0.5);
+}
+.game-page .analytics-player-title { color: var(--bright); font-weight: 700; }
+.game-page .analytics-ship-table th {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--bronze);
+}
+.game-page .analytics-ship-table td { border-bottom: 1px solid rgba(0,0,0,0.55); box-shadow: inset 0 -1px 0 rgba(255,255,255,0.03); }
+.game-page .operations-detail {
+    margin-top: 9px;
+    padding: 7px 9px;
+    font-size: 11px;
+    background: #05080e;
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.75);
+}
+.game-page .operations-detail summary {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--bronze);
+    cursor: pointer;
+}
+.game-page .operations-detail li { color: var(--muted); }
+.game-page .intel-ledger-row { border-bottom: 1px solid rgba(0,0,0,0.5); box-shadow: inset 0 -1px 0 rgba(255,255,255,0.03); }
+.game-page .intel-ledger-row span:last-child { color: var(--faint); }
+
+/* --------------------------------------------------------------------
+   Sector survey panel
+   -------------------------------------------------------------------- */
+/* ONE COLUMN WIDTH, and no dead gutter in it.
+   The survey was 259px wide and the console below it 540px, both flush left at
+   x=10 — two panels in one column with right edges 280px apart, and a ~90px
+   band of bare starfield between them that read as a hole rather than as
+   space. Two fixes, both of which have to work with game-screen.js writing
+   width/top/max-height on this element with `!important`:
+
+   1. WIDTH. `min-width` clamps a used width regardless of importance, so the
+      panel can be widened without fighting the layout script. The value is the
+      SAME expression game-screen.js uses for the console
+      (`clamp(280, 500 * scale, …)`), read off the --game-scale custom property
+      the layout already publishes, so the two edges cannot drift apart again.
+      Only above 900px, where the console is genuinely that wide and the map can
+      spare it.
+   2. HEIGHT. `height: 100%` on a fixed element resolves against the viewport
+      and is then clamped by the `max-height` game-screen.js computed — which
+      is exactly `viewportHeight - top - bottomReserved - 12`, i.e. the room
+      down to the console. So the panel fills its bay precisely, the gutter
+      closes, and the bottom edge lands where the layout already proved it is
+      collision-free. No new number, no second source of truth.
+   The 500px min-width also stops looking sparse because the body splits into
+   two instrument columns at that width — see .survey-cols below. */
+.game-page #sectordisplay {
+    padding: 1px;
+    z-index: 110;
+    font-family: var(--font-ui);
+    /* Reserve the scrollbar channel whether or not a scrollbar is showing.
+       game-screen.js gives this panel `overflow-y: auto`, and fitLeftColumn()
+       now sizes it to its own content — so without a stable gutter the two feed
+       each other: the panel is clamped, a scrollbar appears, the body loses
+       ~15px of width, the text rewraps taller, the observer re-measures, the
+       panel grows, the scrollbar goes, the body widens, the text rewraps
+       shorter, and the HUD never stops moving. Playwright sees that as an
+       element that never becomes stable and every click into the pad times out. */
+    scrollbar-gutter: stable;
+}
+/* There used to be a `height: 100%` here above 900px, to fill the bay before
+   fitLeftColumn() had measured it. It is gone, and it has to be: the panel is
+   now sized to its own content, and this rule was what made that impossible.
+   fitLeftColumn() measures scrollHeight with the inline height cleared — which
+   is exactly when this rule applied, so the "content height" it read was 100%
+   of the viewport and the panel was stretched straight back to full. That is
+   what left a 390px hole under a seven-row readout at 1440p. The slack belongs
+   to the comms bay below, which has an instrument face to fill it with. */
+.game-page #sectordisplay .gp-body { padding: 0 10px 12px; }
+@media (min-width: 900px) {
+    .game-page #sectordisplay {
+        min-width: clamp(280px, calc(500px * var(--game-scale, 1)), 560px);
+    }
+}
+/* ONE column, deliberately. A two-column split was tried at this width and it
+   halved the panel's content height — which turned a 90px gap below the panel
+   into a 330px void inside it. At 540px the readout instead becomes a proper
+   instrument list: mono label hard left, value hard right, ruled rows. The
+   width buys legibility, not a second column. */
+.game-page .survey-col { min-width: 0; }
+.game-page .survey-col + .survey-col { display: grid; gap: 7px; align-content: start; margin-top: 7px; }
+.game-page #sectordisplay td + td { text-align: right; }
+.game-page #sectorShipTable td + td { width: 22%; }
+.game-page .sector-panel-heading {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 8px; margin-bottom: 7px;
+}
+.game-page .sector-panel-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--bronze);
+}
+.game-page #sectorPanelTitle {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--font-head);
+    font-weight: 400;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: var(--bright);
+    text-shadow: 0 1px 0 var(--ink);
+}
+/* Intel state: a beveled status chip, square, coloured face. */
+.game-page .sector-intel-state {
+    flex: none;
+    padding: 3px 7px;
+    font-family: var(--font-mono);
+    font-size: 8.5px;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.16), inset -1px -1px 0 rgba(0,0,0,0.5);
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3));
+}
+/* Intel quality is a LUMINANCE ladder inside the one amber role, not four
+   hues: lit lamp (live) → warm plate (sensor) → dim plate (memory) → dead
+   socket (unknown). It reads in greyscale, which a green/blue/amber/grey set
+   does not, and it stops the survey panel contributing three more colours to a
+   HUD that had eight. */
+.game-page .sector-intel-state.live    { color: #241502; background: linear-gradient(180deg, var(--amber-hi), var(--amber) 55%, var(--amber-lo)); }
+.game-page .sector-intel-state.sensor  { color: var(--amber-hi); background: linear-gradient(180deg, #46402f, #241f14); }
+.game-page .sector-intel-state.memory  { color: var(--bronze); background: linear-gradient(180deg, #2b2f38, #171a20); }
+.game-page .sector-intel-state.unknown {
+    color: var(--faint);
+    background: #05080e;
+    box-shadow: inset 2px 2px 4px rgba(0,0,0,0.85), inset -1px -1px 0 rgba(255,255,255,0.05);
+}
+/* Richness percentages arrive from GUI.js as inline `color:yellow|red|green`
+   spans — the acid yellow "100%" pair in the survey. Attribute-substring
+   matching lets the three states be remapped onto the three roles without
+   touching that file: poor is the alert hue, ordinary is neutral off-white
+   (100% is the baseline and does not deserve a colour), rich is amber. */
+.game-page #sectordisplay td span[style*="yellow"] { color: var(--bright) !important; }
+.game-page #sectordisplay td span[style*="green"]  { color: var(--amber-hi) !important; }
+.game-page #sectordisplay td span[style*="red"]    { color: var(--red-hi) !important; }
+.game-page .sector-intel-summary {
+    margin-bottom: 8px;
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: var(--muted);
+}
+/* MOVE SHIPS HERE is the primary verb of the whole game and it was the least
+   visible control on screen: a dark grey-to-charcoal plate at roughly 1.6:1
+   against the panel it sat on, i.e. it read as disabled while it was live.
+   It now wears the amber pressable treatment — the same plate as End Turn and
+   Home, with a real inset press — so the hierarchy matches the importance.
+   The disabled state is the hatched dead socket every other key uses, so the
+   two states are no longer a few percent of luminance apart. */
+/* Capped: at the column's full 540px this key became a banner rather than a
+   control, and out-shouted End Turn. It is a key, so it is key-sized. */
+.game-page .sector-context-actions { display: flex; gap: 5px; margin-bottom: 9px; max-width: 300px; }
+.game-page .sector-context-actions button {
+    /* Geometry for the move-fleet plate hung on ::before above. It has to be set
+       HERE and not up there: this block re-states `padding`, and at equal
+       specificity the later rule wins — which is exactly how the icon ended up
+       printed over the first three letters of "MOVE SHIPS HERE". */
+    position: relative;
+    flex: 1;
+    /* 9px inset + the 20px mark + 8px gutter = 37px of left padding, and a
+       34px floor so a 20px mark has 7px of key above and below it. */
+    padding: 9px 8px 9px 37px;
+    min-height: 34px;
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: 0.07em;
+    color: #2a1803;
+    background: linear-gradient(180deg, var(--amber-hi), var(--amber) 52%, var(--amber-lo));
+    box-shadow:
+        inset 2px 2px 0 rgba(255,255,255,0.5),
+        inset -2px -2px 0 rgba(120,70,8,0.62),
+        0 3px 0 var(--ink),
+        0 6px 12px rgba(0,0,0,0.45);
+    text-shadow: 0 1px 0 rgba(255,228,175,0.4);
+}
+.game-page .sector-context-actions button:hover:not(:disabled) { color: #2a1803; filter: brightness(1.09); }
+.game-page .sector-context-actions button:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: inset 2px 2px 6px rgba(90,55,8,0.75);
+}
+/* Must be stated AFTER the amber rule above: the shared dead-key rule up in
+   the console-keys block scores the same (0,2,1) and loses on order, so
+   without this an unusable Move Ships would still be painted primary-amber. */
+.game-page .sector-context-actions button:disabled {
+    cursor: not-allowed;
+    transform: none;
+    opacity: 1;
+    color: var(--faint);
+    text-shadow: none;
+    background:
+        repeating-linear-gradient(135deg, rgba(0,0,0,0.28) 0 5px, rgba(0,0,0,0) 5px 10px),
+        linear-gradient(180deg, #1a2029, #12171f);
+    box-shadow:
+        inset 0 0 0 1px rgba(146,166,196,0.18),
+        inset 2px 2px 5px rgba(0,0,0,0.7);
+    filter: none;
+}
+
+/* The survey table IS the instrument: recessed, mono labels, bright values. */
+.game-page #sectordisplay table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #05080e;
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.8);
+}
+.game-page #sectordisplay td {
+    padding: 3px 7px;
+    font-size: 10.5px;
+    line-height: 1.35;
+    border-bottom: 1px solid rgba(0,0,0,0.6);
+    box-shadow: inset 0 -1px 0 rgba(255,255,255,0.026);
+}
+.game-page #sectordisplay td:first-child {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--bronze);
+    white-space: nowrap;
+}
+.game-page #sectordisplay td div { color: var(--bright); font-weight: 600; }
+.game-page #sectorShipTable tr:first-child td { color: var(--bronze); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+.game-page #sectorShipTable tr:first-child td div { color: var(--bronze); font-weight: 400; }
+.game-page .sector-local-inventory {
+    margin-top: 6px;
+    padding: 6px 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--text);
+    background: #05080e;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.78);
+}
+.game-page .sector-action-panel:empty { display: none; }
+.game-page .sector-intel-note { color: var(--bronze); }
+/* connect.js writes the probe-intel heading with an inline magenta — the only
+   rose object left in the HUD. Remapped onto the amber role in place. */
+.game-page #sectorIntel div[style*="d65db1"] { color: var(--amber-hi) !important; }
+
+/* --------------------------------------------------------------------
+   Map key
+   -------------------------------------------------------------------- */
+/* The legend is bottom-anchored and grows UPWARDS into the measured status
+   column, so its height is a layout input, not just a look. Everything here is
+   tuned to land at or under the height it had before the title bar existed
+   (it collided with the connection bar at 640x480 when it was 15px taller). */
+.game-page #mapLegend {
+    padding: 1px;
+    z-index: 110;
+    line-height: 1.42;
+}
+.game-page #mapLegend .gp-body { padding: 0 9px 7px; }
+.game-page #mapLegend .gp-titlebar { margin-bottom: 6px; padding: 5px 10px 4px; font-size: 10px; }
+.game-page .legend-row {
+    display: flex; align-items: center; gap: 7px;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    letter-spacing: 0.01em;
+    color: var(--text);
+}
+/* A CHIP IS A PAINTED PLATE, NOT A DIV WITH A BACKGROUND COLOUR.
+   Six flat 12px rectangles were the cheapest object on a permanently-visible
+   panel: the 1px bevel had no room to read across a 12px face, so each swatch
+   sampled as a single uniform colour edge to edge.
+
+   SIZE. 18px, which is what a 2px bevel and a 16px stamped mark both need.
+
+   MATERIAL. The `plate` layer below is the same 160-degree light the tab keys
+   and build cards are lit by — a highlight on the top-left third, the base hue
+   through the middle, a shadow into the bottom-right corner — plus a machined
+   speck of grain. It is hue-agnostic, so it composes with any fill and with any
+   mark without being restated per chip.
+
+   HUE and MARK are both set further down, per row, with the reasoning for the
+   retune stated there. */
+.game-page .legend-swatch {
+    /* Two struck rivets on the diagonal, at the same inset the board's hex plates
+       carry theirs. They are what makes an 18px chip read as a fixed plate rather
+       than a painted square. */
+    --rivet-tl: radial-gradient(circle at 3px 3px,
+        rgba(255,240,214,0.50) 0 0.9px, rgba(0,0,0,0.62) 0.9px 1.8px, transparent 1.9px);
+    --rivet-br: radial-gradient(circle at calc(100% - 3px) calc(100% - 3px),
+        rgba(255,240,214,0.34) 0 0.9px, rgba(0,0,0,0.62) 0.9px 1.8px, transparent 1.9px);
+    --plate:
+        linear-gradient(160deg,
+            rgba(255,255,255,0.40) 0,
+            rgba(255,255,255,0.10) 34%,
+            rgba(0,0,0,0.16) 62%,
+            rgba(0,0,0,0.46) 100%),
+        repeating-linear-gradient(90deg,
+            rgba(255,255,255,0.05) 0 1px, rgba(0,0,0,0.05) 1px 2px);
+    /* A CHAMFER, NOT A SHEEN. What was here was a linear-gradient plus two 1px
+       inset lines, which at 18px is a rectangle wearing a gloss — the flattest
+       object in a frame full of milled metal, sitting directly over the map.
+       This is the chamfer the hex plates on the board carry: a 2px lit edge
+       along the top and left, a 2px cut edge along the bottom and right, and a
+       ring of shadow inside both so the chip has a thickness rather than an
+       outline. The border stays neutral ink; the light is what has a hue, which
+       is how a bevel works and is not a decorative edge stripe. */
+    width: 18px; height: 18px;
+    flex: 0 0 auto;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    background-image: var(--rivet-tl), var(--rivet-br), var(--plate);
+    box-shadow:
+        inset 2px 2px 0 rgba(255,238,208,0.34),
+        inset -2px -2px 0 rgba(0,0,0,0.72),
+        inset 0 0 0 4px rgba(0,0,0,0.16),
+        0 1px 0 rgba(255,255,255,0.05);
+}
+/* SIX CHIPS, SIX STAMPED MARKS — a legend, not six default HTML swatches.
+   What was here: three saturated primaries (#37b24d, #e03131, #3fc1c9) that
+   were the only full-chroma hues anywhere in a steel-and-amber console, pulled
+   at by a single `saturate(0.84)` that came nowhere near bringing them into
+   range. They were quoted straight out of galaxy3d.js's STATUS_COLORS on the
+   principle that the key must match its board — but that file applies the tint
+   as a WASH over a dark steel plate and says so at its own constant, so the
+   RENDERED tile is far duller than the constant. The key was quoting the input
+   to the board's material, not its output, which is why no green, red or cyan
+   hex appears anywhere on the actual map.
+
+   That retune took the six to roughly where the board renders them — and left
+   six chromatic families in a six-row legend, inside a console whose whole
+   palette is steel plus amber and bronze. Halving the chroma of six wrong hues
+   still leaves six hues.
+
+   THREE VALUES, AND EACH ONE MEANS SOMETHING. The fills collapse to the console's
+   own bronze, steel and slate, and the split is not decorative:
+
+     bronze #8b6335   ground you hold or can take — home, owned, the hazard belt
+                      that becomes a safe lane once it is yours
+     steel  #5a6474   live contacts — an enemy sighting, your own fleet standing
+                      in a sector it has not claimed
+     slate  #3d4453   dead space — the collapsar, which is never anything else
+
+   That is MORE information than the six hues carried, because the six were only
+   ever six labels for six rows the marks already name. Colour was redundant with
+   the mark; now it groups.
+
+   And every row still carries its stamped mark in the console's near-black — a
+   home spire, a claimed hex, crossed blades, a chevron pair, a hazard triangle, a
+   void annulus — so the key survives greyscale and colour blindness and says
+   what it means before the tint is read at all. Two rows carry a second layer
+   because they share a fill with a neighbour: hazard gets the diagonal warning
+   stripe the belt earns, void gets a dark annulus under its mark. */
+.game-page .legend-swatch {
+    background-repeat: no-repeat;
+    background-position: center;
+}
+.game-page .legend-swatch[data-key="home"]   { background-color: #8b6335; }
+.game-page .legend-swatch[data-key="owned"]  { background-color: #8b6335; }
+.game-page .legend-swatch[data-key="enemy"]  { background-color: #5a6474; }
+.game-page .legend-swatch[data-key="fleet"]  { background-color: #5a6474; }
+.game-page .legend-swatch[data-key="hazard"] { background-color: #8b6335; }
+.game-page .legend-swatch[data-key="void"]   { background-color: #3d4453; }
+/* The marks. `--plate` stays underneath every one of them, so a stamped chip is
+   still a lit chip; the mark is layered in front of it in the shared
+   `background-image` list rather than replacing it. */
+.game-page .legend-swatch[data-key="home"] {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 2.2 12.6 8.2H3.4Z' fill='%230a0e15'/%3E%3Cpath d='M5.8 8.6V13.4M10.2 8.6V13.4M3.4 13.6H12.6' fill='none' stroke='%230a0e15' stroke-width='2' stroke-linecap='butt'/%3E%3C/svg%3E"),
+        var(--rivet-tl), var(--rivet-br),
+        var(--plate);
+}
+/* A CLAIMED HEX, not a ringed world. The first draft was a circle with a ruled
+   line across it, which at 16px is the international sign for "prohibited" —
+   the exact opposite of what this row says. The hex is also the shape the board
+   is actually made of, so the mark quotes the thing it explains. */
+.game-page .legend-swatch[data-key="owned"] {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.4 13.7 4.7V11.3L8 14.6 2.3 11.3V4.7Z' fill='none' stroke='%230a0e15' stroke-width='1.9' stroke-linejoin='miter'/%3E%3Ccircle cx='8' cy='8' r='2.3' fill='%230a0e15'/%3E%3C/svg%3E"),
+        var(--rivet-tl), var(--rivet-br),
+        var(--plate);
+}
+.game-page .legend-swatch[data-key="enemy"] {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.6 2.4 11.8 11.6M13.4 2.4 4.2 11.6M10.4 13.4 13.4 10.4M2.6 10.4 5.6 13.4' fill='none' stroke='%230a0e15' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E"),
+        var(--rivet-tl), var(--rivet-br),
+        var(--plate);
+}
+.game-page .legend-swatch[data-key="fleet"] {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.6 3.4 7.4 8 2.6 12.6M8.4 3.4 13.2 8 8.4 12.6' fill='none' stroke='%230a0e15' stroke-width='2.1' stroke-linecap='square' stroke-linejoin='miter'/%3E%3C/svg%3E"),
+        var(--rivet-tl), var(--rivet-br),
+        var(--plate);
+}
+/* The belt shares its bronze with home and owned — deliberately, it is ground you
+   can take — so it carries the warning stripe as well as the triangle. */
+.game-page .legend-swatch[data-key="hazard"] {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.8 15 13.8H1Z' fill='none' stroke='%230a0e15' stroke-width='2' stroke-linejoin='miter'/%3E%3Cpath d='M8 6V9.4' fill='none' stroke='%230a0e15' stroke-width='2' stroke-linecap='butt'/%3E%3Crect x='7' y='10.8' width='2' height='1.9' fill='%230a0e15'/%3E%3C/svg%3E"),
+        var(--rivet-tl), var(--rivet-br),
+        repeating-linear-gradient(135deg,
+            rgba(10,14,21,0.42) 0 2.5px, rgba(255,214,150,0.10) 2.5px 5px),
+        var(--plate);
+}
+/* A dark annulus under the mark: the collapsar is the one row that is not a
+   plate with something on it, it is a hole. */
+.game-page .legend-swatch[data-key="void"] {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5.1' fill='none' stroke='%230a0e15' stroke-width='1.9'/%3E%3Ccircle cx='8' cy='8' r='2.4' fill='%230a0e15'/%3E%3C/svg%3E"),
+        var(--rivet-tl), var(--rivet-br),
+        radial-gradient(circle at 50% 50%,
+            rgba(0,0,0,0.88) 0 22%, rgba(0,0,0,0.30) 46%, rgba(0,0,0,0) 62%),
+        var(--plate);
+}
+.game-page .legend-note {
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 2px solid var(--ink);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.05);
+    font-size: 0.88em;
+    line-height: 1.32;
+    color: var(--muted);
+    white-space: normal;
+}
+
+/* --------------------------------------------------------------------
+   Minimap: a framed instrument, not a grey box.
+   minimap.js clears this element's children on every repaint, so the frame
+   has to live on pseudo-elements. ::before paints under the hex tiles (scan
+   grid), ::after paints over them (scanlines, vignette, stencil label) —
+   that ordering is guaranteed because both are auto-z-index absolutes and
+   ::after is the last child.
+   -------------------------------------------------------------------- */
+.game-page #minimapid {
+    background: radial-gradient(120% 100% at 50% 40%, #0a1322, #04060b 78%) !important;
+    /* A REAL EDGE. This had a 2px ink border against a near-black map, which is
+       no border at all: the left edge was a tonal seam with no line on it and
+       the whole instrument read as a rendering artefact with four amber
+       brackets floating over it. The bright inner rim is the line; the ink
+       border is the shadow under it; the outer plate edge is the hull it is
+       set into. Right and bottom stay open because the chart is flush to the
+       screen corner, which is how it is installed. */
+    border: 2px solid var(--ink) !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    border-radius: 3px 0 0 0;
+    overflow: hidden;
+    box-shadow:
+        inset 2px 2px 0 rgba(176,198,232,0.22),
+        inset 0 0 0 1px rgba(120,150,190,0.10),
+        inset 3px 3px 14px rgba(0,0,0,0.85),
+        -2px -2px 0 #0b1018,
+        -10px -10px 28px rgba(0,0,0,0.6);
+}
+/* --- chart tiles ---------------------------------------------------------
+   ui.js draws the tiles as SVG presentation attributes, which any CSS rule
+   outranks — so the chart's material is set here without touching that file.
+   Removed: the cyan bloom (`filter: drop-shadow`) that haloed every sensed
+   tile, and the 5px sector numbers that rendered as illegible mush. Numbers
+   are pinned to a legible 9px mono with a struck outline instead of being
+   dropped: a chart you cannot read coordinates off is not a chart. */
+/* Sector numbers rendered as ~5px mush. The cause is not the declared size —
+   ui.js asks for 12 — it is that each tile is an <svg viewBox="0 0 100 86.6">
+   drawn at about 50 CSS px wide, so every length inside it, CSS lengths
+   included, is scaled by ~0.5. A `font-size: 9px` rule would have produced
+   4.5px type and looked like it had done nothing. These are USER UNITS: 16
+   lands near 8px at the current chart scale and stays proportional if the grid
+   ever gets the right dimensions and the hexes grow. The struck outline is what
+   keeps a numeral readable over an amber tile and over black. */
+.game-page #minimapid text {
+    font-family: var(--font-mono);
+    /* 16 user units was still ~8 CSS px at the chart's ~0.5 scale, which is
+       where the "sub-pixel illegible" reading came from — a coordinate you have
+       to lean in to read is not a coordinate. 19 lands near 9.5px.
+       It cannot simply go higher: ui.js stacks three labels down each cell at
+       baselines 40 / 55 / 68 in an 86.6-unit box, so at 20+ the sector number's
+       descenders meet the fleet count's cap height and "10" and "FL2" collide.
+       The two subordinate labels stay smaller, which also states the hierarchy:
+       the number identifies the cell, the rest annotates it. */
+    font-size: 19px;
+    paint-order: stroke fill;
+    stroke: rgba(0,0,0,0.92);
+    stroke-width: 4.5px;
+    stroke-linejoin: round;
+}
+.game-page #minimapid text[id^="txtfleetid"],
+.game-page #minimapid text[id^="colonizedtxt"] { font-size: 15px; }
+.game-page #minimapid path[data-intel="fog"],
+.game-page #minimapid polygon[data-intel="fog"] {
+    stroke: #27354d;
+    stroke-width: 1.5px;
+    stroke-dasharray: none;
+    opacity: 0.85;
+}
+.game-page #minimapid path[data-intel="memory"],
+.game-page #minimapid polygon[data-intel="memory"] { opacity: 0.62; }
+/* Under the tiles: the survey grid, with a heavier decade line every fifth
+   cell so the plate reads as a calibrated instrument face rather than as graph
+   paper, over a phosphor bloom that lifts the middle of the glass away from
+   the darkened edges. This element is mostly empty early in a match — that is
+   exactly when it has to look like a piece of equipment on standby rather than
+   like a panel nobody finished. */
+.game-page #minimapid::before {
+    content: "";
+    position: absolute; inset: 0;
+    pointer-events: none;
+    /* NO SQUARE GRID. A regular cyan cartesian lattice was drawn underneath a
+       hexagonal chart — two grid systems fighting, neither of which described
+       the map. The hex lattice ui.js already draws IS the grid; it just needed
+       to be visible (see the fog rule above). What is left here is glass: a
+       phosphor bloom lifting the middle away from the darkened edges, and a
+       faint diagonal machining grain so the empty part of an unexplored chart
+       reads as an instrument on standby rather than as a hole. */
+    background-image:
+        radial-gradient(115% 92% at 50% 42%, rgba(70,120,180,0.16), rgba(4,7,13,0) 74%),
+        repeating-linear-gradient(45deg, rgba(126,160,208,0.045) 0 1px, rgba(0,0,0,0) 1px 7px);
+}
+/* Over the tiles: corner registration ticks etched on the glass, scanlines,
+   a vignette, and a hull rail along the bottom edge carrying the stencil.
+   Registration TICKS rather than a continuous inner frame: an unbroken
+   coloured line inset from the edge would read as a decorative accent border,
+   which this product does not allow anywhere. Ticks are instrument marks.
+   All of it is background layers on one already-composited pseudo-element —
+   no extra nodes, no textures, and minimap.js is free to keep clearing this
+   element's children, which is why none of it can live in the markup. */
+.game-page #minimapid::after {
+    /* The label and the panel code share one content string because an element
+       has one ::after and this one is already carrying the whole over-tile
+       layer. Amber, to match the registration ticks it sits between — it was
+       green with a green bloom, one more hue and one more glow.
+       attr(data-chart) is the live coverage figure, written by
+       fitTacticalChart() in game.html straight off the tiles this element is
+       drawing: a chart that says how much of itself is charted. Before the map
+       arrives the attribute reads STANDBY, which is what it is. */
+    content: "TACTICAL CHART · " attr(data-chart) " · MAP-08";
+    position: absolute; inset: 0;
+    display: flex; align-items: flex-end;
+    padding: 0 0 5px 10px;
+    pointer-events: none;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--bronze);
+    text-shadow: 0 1px 0 #000;
+    background:
+        /* bottom hull rail the stencil sits on: light edge, dark body */
+        linear-gradient(180deg, rgba(176,198,232,0.18) 0 1px, rgba(9,13,20,0.94) 1px, rgba(5,7,13,0.97)) bottom left / 100% 19px no-repeat,
+        /* top-left tick */
+        linear-gradient(var(--bronze), var(--bronze)) 10px 10px / 16px 2px no-repeat,
+        linear-gradient(var(--bronze), var(--bronze)) 10px 10px / 2px 16px no-repeat,
+        /* top-right tick */
+        linear-gradient(var(--bronze), var(--bronze)) calc(100% - 10px) 10px / 16px 2px no-repeat,
+        linear-gradient(var(--bronze), var(--bronze)) calc(100% - 10px) 10px / 2px 16px no-repeat,
+        /* bottom-left tick (sits above the rail) */
+        linear-gradient(var(--bronze), var(--bronze)) 10px calc(100% - 27px) / 16px 2px no-repeat,
+        linear-gradient(var(--bronze), var(--bronze)) 10px calc(100% - 27px) / 2px 16px no-repeat,
+        /* bottom-right tick */
+        linear-gradient(var(--bronze), var(--bronze)) calc(100% - 10px) calc(100% - 27px) / 16px 2px no-repeat,
+        linear-gradient(var(--bronze), var(--bronze)) calc(100% - 10px) calc(100% - 27px) / 2px 16px no-repeat,
+        repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.22) 3px, rgba(0,0,0,0) 4px);
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.6);
+}
+
+/* --------------------------------------------------------------------
+   Chart frame — north mark, cell scale, sensor reticle.
+
+   A hex lattice with nothing on it is a texture, not a chart: at turn one about
+   six of 112 cells are charted and the rest is an undifferentiated honeycomb
+   with no orientation, no scale and no statement of how much of the map that
+   cluster is. Everything here is a frame of reference, which is the cheapest
+   way to make a mostly-unexplored map read as DELIBERATELY mostly-unexplored.
+
+   It is a SIBLING of #minimapid, not a child, because minimap.js clears that
+   element's children; fitTacticalChart() in game.html gives it the chart's
+   measured rectangle. Nothing in it is interactive and nothing in it is the
+   only carrier of information — the tiles keep their own aria-labels.
+   -------------------------------------------------------------------- */
+.game-page #chartFrame {
+    position: fixed;
+    display: none;
+    z-index: 101;              /* over the chart (100), under the map key (110) */
+    pointer-events: none;
+    box-sizing: border-box;
+}
+/* North mark. Seated beside the top-left registration tick so it reads as part
+   of that corner group rather than as a floating badge, and on its own bezel so
+   it stays legible over a lit tile as the map fills in. */
+.game-page .chart-compass {
+    position: absolute;
+    top: 7px; left: 32px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px 3px 5px;
+    color: var(--amber);
+    background: linear-gradient(180deg, rgba(16,21,31,0.94), rgba(5,8,14,0.96));
+    border: 1px solid rgba(0,0,0,0.85);
+    box-shadow: inset 0 1px 0 rgba(176,198,232,0.14), 0 1px 3px rgba(0,0,0,0.6);
+}
+.game-page .chart-compass svg { display: block; width: 21px; height: 21px; }
+.game-page .chart-compass b {
+    font-family: var(--font-head);
+    font-weight: 400;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--amber-hi);
+    text-shadow: 0 1px 0 var(--ink);
+}
+/* Scale. It sits in the right half of the bottom hull rail, which the stencil
+   at bottom-left does not reach. "1 cell = 1 sector" is the whole truth about
+   this projection: the chart is the sector grid, one hex per sector, and any
+   distance claim beyond that would be invented. */
+.game-page .chart-scale {
+    position: absolute;
+    right: 10px; bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.game-page .chart-scale-bar {
+    display: block;
+    width: 26px; height: 6px;
+    background:
+        linear-gradient(90deg, var(--bronze) 0 2px, rgba(0,0,0,0) 2px) 0 0 / 100% 2px no-repeat,
+        linear-gradient(90deg, rgba(0,0,0,0) calc(100% - 2px), var(--bronze) calc(100% - 2px)) 0 0 / 100% 2px no-repeat,
+        linear-gradient(var(--bronze), var(--bronze)) 0 2px / 100% 1px no-repeat;
+}
+.game-page .chart-scale-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    white-space: nowrap;
+}
+/* Phones and short landscape drop the chart entirely; the frame goes with it. */
+@media (max-width: 560px), (max-height: 460px) {
+    .game-page #chartFrame { display: none !important; }
+}
+
+/* --------------------------------------------------------------------
+   Chat: hull footer rail
+   -------------------------------------------------------------------- */
+.game-page #chatContainer {
+    border-bottom: 0 !important;
+    border-left: 0 !important;
+    border-radius: 0;
+    box-shadow:
+        inset 0 2px 0 rgba(176,198,232,0.16),
+        inset -2px 0 0 var(--bevel-lo) !important;
+    z-index: 150;
+    gap: 4px;
+}
+/* Four keys at two unrelated widths with no rhythm, two of them labelled with
+   literal ASCII ('^' and a capital 'V' set in the body sans, not chevrons).
+   The glyphs are drawn in game.html as SVG paths now; this gives the row its
+   metre: icon keys on a 32px square module, text keys on a 96px module, one
+   bezel height for all four. */
+.game-page #chatContainer .gp-key--tiny { height: 30px; }
+.game-page #chatContainer .gp-key--icon-sm {
+    width: 32px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.game-page #chatContainer .gp-key--icon-sm svg { display: block; width: 11px; height: 11px; }
+.game-page #chatContainer .gp-key--icon-sm svg path { stroke: currentColor; }
+.game-page #chatContainer .gp-key--text { width: 96px; padding: 0; justify-content: center; }
+/* The input has to end ON the rail's edge, not 11px inside it — the seam where
+   the button strip's fill met the input's slightly different navy, plus an
+   input that stopped 20px short of the console above it, was the whole reason
+   the footer read as unfinished. game-screen.js writes the container's padding
+   inline with !important (`max(8px, 10px * scale)` each side), so it cannot be
+   removed — it is cancelled with the identical expression instead, off the
+   same --game-scale the layout publishes. */
+.game-page #chatForm {
+    flex: 1;
+    min-width: 0;
+    margin-right: calc(-1 * max(8px, 10px * var(--game-scale, 1)));
+}
+.game-page #chat {
+    width: 100%; height: 100%;
+    padding: 6px 11px;
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--bright);
+    background: #0a0f18;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8), inset -1px -1px 0 rgba(255,255,255,0.05);
+    outline: none;
+    caret-color: var(--amber-hi);
+}
+.game-page #chat::placeholder { color: var(--faint); }
+.game-page #chat:focus {
+    border-color: var(--amber);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8), 0 0 0 2px rgba(240,162,51,0.32);
+}
+.game-page #chatFeed { text-shadow: 0 1px 2px rgba(0,0,0,0.9); z-index: 151; }
+/* The comms bay. Recessed well, stencilled label bottom-left, panel code
+   bottom-right — the same signage every other instrument on this HUD carries.
+   It sits behind #chatFeed and is positioned by fitLeftColumn() in game.html
+   from the measured gap between the survey and the console. */
+.game-page #commsBay {
+    position: fixed;
+    display: none;
+    z-index: 96;
+    pointer-events: none;
+    overflow: hidden;
+    box-sizing: border-box;
+    /* The scanline sheet is production/console/scanlines.svg, the real asset,
+       instead of a repeating-linear-gradient approximating it. Two adjustments
+       it needs to sit on this palette: doubled to an 8px pitch, because at its
+       native 4px pitch across 530px of glass it reads as corduroy rather than
+       as a phosphor sheet; and knocked back by a flat veil (the topmost layer,
+       which affects only the background — children paint above every background
+       layer), because the sheet's strokes are a pale cyan and this console does
+       not carry a cool hue anywhere else. */
+    background:
+        linear-gradient(rgba(6,9,15,0.55), rgba(6,9,15,0.55)),
+        url('../images/ui/console-scanlines.svg') repeat 0 0 / 512px 512px,
+        radial-gradient(120% 150% at 50% 45%, rgba(70,110,170,0.10), rgba(4,7,13,0) 72%),
+        linear-gradient(180deg, #070b12, #05080e);
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    box-shadow:
+        inset 2px 2px 7px rgba(0,0,0,0.85),
+        inset -1px -1px 0 rgba(176,198,232,0.10);
+    container-type: size;
+}
+
+/* --------------------------------------------------------------------
+   Comms bay, IDLE. The largest contiguous region of the interface used to be
+   a flat fill with two stencils on it and nothing between them — not a quiet
+   panel, an unfinished one. An instrument with no traffic should read as ON
+   AND LISTENING, so this is a real empty-state face: the comms terminal plate
+   from icon-system, a six-segment meter reading nothing, and the channel state
+   in mono. It retires the instant real traffic arrives (the :has() rule below),
+   because from then on the bay is the chat transcript's well and an idle
+   readout underneath live messages would be a lie.
+   -------------------------------------------------------------------- */
+.game-page .comms-idle {
+    position: absolute;
+    inset: 0 0 17px 0;          /* 17px reserved for the COMMS / MSG-09 stencils */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 13px;
+    padding: 6px 14px;
+}
+/* Flat carrier, running the full width of the glass and interrupted by the
+   readout. It is the reason the bay can be 530px wide and still look occupied:
+   a trace at zero says "receiving, nothing on it", where blank space says
+   "unfinished". Same ruled-line recipe as the pad section headings. */
+.game-page .comms-idle::before,
+.game-page .comms-idle::after {
+    content: "";
+    flex: 1 1 0;
+    min-width: 0;
+    height: 2px;
+    /* Neutral steel, not bronze. It runs the width of a container, and a
+       coloured line in that position is exactly the decorative accent stripe
+       this product does not allow anywhere; the same ruled recipe the pad
+       section headings use reads as machined and needs no hue at all. */
+    background: linear-gradient(180deg, rgba(0,0,0,0.8) 0 1px, rgba(176,198,232,0.13) 1px 2px);
+}
+/* THE PAINTED TERMINAL PLATE, CROPPED OUT OF ITS OWN BEZEL.
+   What was here was a 2px hollow ring on a stem with a detached square blip,
+   which at 1:1 read as a wine glass — a stroke drawing, in the idiom the art
+   direction rules out, standing in for the one ornament in the largest empty
+   region of the interface.
+
+   A painted plate WAS tried here once and pulled, for a real reason: the source
+   carries an opaque near-black ground inside a heavy painted bezel, so drawing
+   it whole put a hard tile in a near-black well. Drawing it at 140% of the box
+   crops that bezel and the dead ground off and leaves the subject — two comms
+   terminals with a trace running between them — whose own edges are painted
+   dark and fall away into the glass instead of ending on a line. Same crop the
+   build cards and the research pad use on the same library. */
+.game-page .comms-idle-face {
+    flex: none;
+    width: 28px; height: 28px;
+    background-repeat: no-repeat;
+    background-position: center;
+    /* The comms glass is a size container and the face is scaled to 62px and
+       92px by the two @container rules below, so the crop is stated as a
+       percentage and follows the box rather than being restated three times. */
+    background-size: 140%;
+    /* Same library, same grade. This plate was the most off-palette thing on the
+       console — 82 strongly saturated cyan pixels, a weighted hue of 152 degrees
+       — and it is drawn at up to 92px by the container rules below, so it was
+       the largest single piece of art sitting outside the palette policy the
+       cards one panel away were held to. */
+    filter: var(--plate-grade);
+    /* Held below the readout beside it: the plate is the channel's badge, the
+       words and the meter are the datum. */
+    opacity: 0.86;
+}
+.game-page .comms-idle-face { background-image: url('../images/ui/icons-actions-chat.png'); }
+/* CENTRED IN EVERY VARIANT, not only the tall one. The readout's two rows are
+   different widths — "NO TRAFFIC · CHANNEL OPEN" runs about 180px and the meter
+   about 90px — and with the rows left-aligned the block's optical centre sat
+   ~45px right of the meter, so the face beside it read as shoved to the left end
+   of the gap in the divider rule even though the group as a whole is centred.
+   `justify-items` used to be set only inside the min-height:132px container
+   query, which is exactly the layout the reviewed frame does not use. */
+.game-page .comms-idle-readout { display: grid; gap: 6px; justify-items: center; }
+.game-page .comms-idle-line {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.17em;
+    text-transform: uppercase;
+    color: rgba(199,154,71,0.72);
+    white-space: nowrap;
+}
+/* SEGMENTS, NOT OUTLINED BOXES. These were near-black fills carrying a 1px
+   near-black outline on a near-black bay: six empty rectangles that were
+   effectively invisible, which is not "a meter reading zero", it is a meter that
+   has not been drawn. A dead segment on a real console is still a piece of
+   milled metal catching the room light, so each one is now a plate — a steel
+   body under the same 160-degree gradient the legend chips carry, a lit top-left
+   edge and a cut bottom-right one.
+   The first segment is amber because the channel is open: carrier detect is what
+   distinguishes "listening" from "off", and the readout beside it says exactly
+   that. The other five stay unlit, which is what 0 dB means. */
+.game-page .comms-meter { display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
+.game-page .comms-meter i {
+    display: block;
+    width: 7px;
+    background:
+        linear-gradient(160deg,
+            rgba(255,255,255,0.26) 0, rgba(255,255,255,0.06) 38%,
+            rgba(0,0,0,0.22) 66%, rgba(0,0,0,0.50) 100%),
+        linear-gradient(180deg, #3a4150, #262c38);
+    box-shadow:
+        inset 1px 1px 0 rgba(214,228,248,0.30),
+        inset -1px -1px 0 rgba(0,0,0,0.72),
+        0 0 0 1px rgba(0,0,0,0.85);
+}
+.game-page .comms-meter i:first-child {
+    background:
+        linear-gradient(160deg,
+            rgba(255,255,255,0.30) 0, rgba(255,255,255,0.08) 38%,
+            rgba(0,0,0,0.20) 66%, rgba(0,0,0,0.42) 100%),
+        linear-gradient(180deg, #d8ab55, #9c7226);
+    box-shadow:
+        inset 1px 1px 0 rgba(255,236,196,0.55),
+        inset -1px -1px 0 rgba(0,0,0,0.55),
+        0 0 0 1px rgba(0,0,0,0.85);
+}
+.game-page .comms-meter i:nth-child(1) { height: 5px; }
+.game-page .comms-meter i:nth-child(2) { height: 8px; }
+.game-page .comms-meter i:nth-child(3) { height: 11px; }
+.game-page .comms-meter i:nth-child(4) { height: 14px; }
+.game-page .comms-meter i:nth-child(5) { height: 17px; }
+.game-page .comms-meter i:nth-child(6) { height: 20px; }
+.game-page .comms-meter b {
+    margin-left: 7px;
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--faint);
+}
+/* A tall bay (the survey does not always want its full height) gets the face at
+   instrument scale and the readout stacked under it, so 270px of glass is not
+   filled by one 38px row floating in the middle of it. */
+@container (min-height: 132px) {
+    .game-page .comms-idle { flex-direction: column; gap: 12px; }
+    .game-page .comms-idle::before,
+    .game-page .comms-idle::after { flex: 0 0 2px; width: min(320px, 70%); }
+    .game-page .comms-idle-face { width: 62px; height: 62px; }
+    .game-page .comms-idle-readout { justify-items: center; gap: 9px; }
+    .game-page .comms-idle-line { font-size: 11px; }
+}
+/* A 1440p column hands this bay ~590px. A 62px plate floating in the middle of
+   that is the same "one small thing in a large empty box" the review objected
+   to, one size up, so the face scales with the glass it is set into. */
+@container (min-height: 300px) {
+    .game-page .comms-idle { gap: 18px; }
+    .game-page .comms-idle::before,
+    .game-page .comms-idle::after { width: min(420px, 82%); }
+    .game-page .comms-idle-face { width: 92px; height: 92px; }
+    .game-page .comms-idle-readout { gap: 13px; }
+    .game-page .comms-idle-line { font-size: 12.5px; letter-spacing: 0.2em; }
+    .game-page .comms-meter { gap: 4px; }
+    .game-page .comms-meter i { width: 9px; }
+    .game-page .comms-meter i:nth-child(1) { height: 7px; }
+    .game-page .comms-meter i:nth-child(2) { height: 11px; }
+    .game-page .comms-meter i:nth-child(3) { height: 15px; }
+    .game-page .comms-meter i:nth-child(4) { height: 19px; }
+    .game-page .comms-meter i:nth-child(5) { height: 23px; }
+    .game-page .comms-meter i:nth-child(6) { height: 27px; }
+    .game-page .comms-meter b { font-size: 10.5px; }
+}
+/* Real traffic wins. `:has()` is the whole mechanism: chat.js appends message
+   elements to #chatMessages, and #chatFeed floats over this bay, so the moment
+   the feed is non-empty the idle face has to go. If a browser does not support
+   :has() the selector is dropped and the face simply stays — degraded, never
+   broken, and never covering a message. */
+body.game-page:has(#chatMessages > *) .comms-idle { display: none; }
+.game-page #commsBay > span {
+    position: absolute;
+    left: 9px; bottom: 5px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(199,154,71,0.62);
+}
+.game-page #commsBay::after {
+    content: attr(data-code);
+    position: absolute;
+    right: 9px; bottom: 5px;
+    top: auto;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: rgba(94,102,120,0.75);
+}
+.game-page .chat-message {
+    padding: 6px 9px;
+    font-size: 12px;
+    color: var(--text);
+    background: linear-gradient(180deg, var(--steel-2), var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.11), inset -1px -1px 0 rgba(0,0,0,0.5), 0 4px 10px rgba(0,0,0,0.45);
+}
+.game-page .chat-message-own {
+    color: #fff1d8;
+    background: linear-gradient(180deg, #3a2f16, #221a0c);
+    box-shadow: inset 1px 1px 0 rgba(255,210,120,0.16), inset -1px -1px 0 rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.45);
+}
+
+/* --------------------------------------------------------------------
+   Event log. connect.js builds this with inline styles, so the surface
+   properties need !important — but NOT the geometry, which game-screen.js
+   owns (fitRight sets width/top/right/max-height).
+   -------------------------------------------------------------------- */
+/* THE PANEL WAS NOT TRANSLUCENT — IT WAS UNDERNEATH THE GALAXY.
+   The reported fault was "starfield dots show between glyphs and read as stray
+   punctuation, and the text fades mid-sentence like a render error". Both are
+   one bug: connect.js appends #event-panel to <body> with no z-index, so it
+   paints at z-index auto, while #galaxy3d is a fixed full-screen div at
+   z-index 1. A positioned element with z-index:1 paints ABOVE a positioned
+   element with z-index:auto no matter what order they are in the document, so
+   the WebGL canvas — stars, nebula bloom and all — was drawing OVER the panel.
+   The "stray punctuation" is stars; the "fade" is a soft nebula sprite hazing
+   the words underneath it. There was nothing wrong with the panel's own fill.
+   Every other HUD panel is at 100+ and was never affected.
+   235 puts it with the status bars it belongs to and below the overlays. */
+.game-page #event-panel {
+    z-index: 235;
+    padding: 9px 10px 7px !important;
+    border-radius: 3px;
+    font-family: var(--font-ui) !important;
+    font-size: 12px !important;
+    color: var(--text) !important;
+}
+/* And the fill is now stated rather than inferred. The plate recipe composites
+   four rivet floods over an opaque face, so it was already opaque — but it was
+   opaque by accident of the rivet gradients' last stop, and one edit to that
+   token would have made this panel see-through again with no way to tell from
+   reading the rule. An explicit background-color under the layers means it
+   cannot happen. */
+.game-page #event-panel { background-color: var(--steel-4) !important; }
+/* The feed itself is a recessed well: reading surfaces on this console are
+   sunk into the plate, and a bevelled floor is also what visually separates a
+   scrolling list from the title rail above it. */
+.game-page #event-feed-list {
+    padding: 7px 8px 2px;
+    background: var(--well);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.8), inset -1px -1px 0 rgba(255,255,255,0.045);
+}
+/* NO PARTIAL ALPHA ON EVENT TEXT. connect.js writes each line's colour as
+   rgba(232,236,255,0.78) for chatter and 0.92 for everything else — a 14%
+   alpha step nobody can read as a distinction, which nonetheless puts every
+   glyph in the panel below full opacity and is half of why the feed looked like
+   it was dissolving. The distinction is kept but moved to LUMINANCE at full
+   alpha, which survives greyscale and does not let the backdrop through the
+   letterforms. `span:last-child` is the body of every row (the first span is
+   the kind mark, already handled above); the attribute match picks out the
+   chatter rows by the value connect.js serialised. */
+.game-page #event-feed-list > div > span:last-child { color: var(--text) !important; }
+.game-page #event-feed-list > div > span[style*="rgba(232, 236, 255, 0.78)"] { color: var(--muted) !important; }
+.game-page #event-feed-list > div > span:first-child { opacity: 1 !important; }
+/* The inline header becomes the instrument title bar. Negative margins keep
+   the panel's outer box exactly the size the layout measured. */
+.game-page #event-panel > div:first-child {
+    position: sticky !important;
+    top: -9px;
+    z-index: 3;
+    margin: -9px -10px 8px !important;
+    padding: 6px 10px !important;
+    font-family: var(--font-head);
+    font-size: 10.5px;
+    font-weight: 400 !important;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+    background: linear-gradient(180deg, #1a222f, #0d121c);
+    border-bottom: 2px solid var(--ink);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -2px 0 rgba(0,0,0,0.5);
+    text-shadow: 0 1px 0 var(--ink);
+}
+.game-page #event-filters {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px !important;
+    row-gap: 4px;
+}
+.game-page #event-filters button {
+    padding: 3px 5px !important;
+    border-radius: 0 !important;
+    font-family: var(--font-mono) !important;
+    font-size: 8.5px !important;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted) !important;
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3)) !important;
+    border: 2px solid var(--ink) !important;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.15), inset -1px -1px 0 rgba(0,0,0,0.5), 0 2px 0 var(--ink);
+}
+/* renderEventFeed() keeps aria-pressed in step with the selection, so the
+   latched look can be driven off the same attribute the assistive layer uses
+   rather than off a second, separately-maintained class. */
+.game-page #event-filters button[aria-pressed="true"] {
+    color: #2a1803 !important;
+    background: linear-gradient(180deg, var(--amber-hi), var(--amber) 52%, var(--amber-lo)) !important;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.5), inset -2px -2px 0 rgba(120,70,8,0.5), 0 2px 0 #5c3a08;
+}
+.game-page #event-panel > div:first-child > span:first-child {
+    white-space: nowrap;
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+}
+.game-page #event-feed-list { font-size: 11.5px; line-height: 1.45; }
+/* ==== THE FEED'S MARKS ARE DRAWN, AND THEY DIFFER BY EVENT. ==========
+   Two faults, one rule.
+
+   HUE. The marks arrive with inline colours — mint, peach, sky blue, salmon and
+   a violet — which is five of the eight hues the palette audit counted. They go
+   bronze; danger keeps the alert hue.
+
+   SHAPE. The marks were TYPOGRAPHY: ✦ ⬢ ⬡ → ⚔ ! ⌖ · ⛁, nine characters chosen
+   from whatever the fallback face happens to carry. Two of those nine are in no
+   font this product loads (⛁ U+26C1 is the same tofu that was removed from the
+   build costs, and ⌖ U+2316 is not in Rajdhani either), so on a stock Windows
+   install the feed printed the same substituted glyph for several unrelated
+   event types — which is what the review saw: four differently-categorised
+   entries wearing one identical bullet, directly under four category filters.
+
+   These are drawn instead — and, since the tab and heading marks became stamps,
+   drawn the SAME WAY: ink under-body, bevelled face on the bronze ramp, 1px warm
+   rim. They were the last hollow strokes left in the HUD. Six of them at 13px,
+   keyed off the colour connect.js serialises inline — which is the only
+   classification the feed publishes into the DOM, and which folds onto the four
+   filter categories the panel already advertises:
+     transit / orders  (ship, movement)   chevron into a stop bar
+     economy           (building, income) the treasury ingot, so a resource
+                                          event wears the resource's own mark
+     research          (research)         the three-node lattice, as the pad
+                                          heading uses
+     battles + faults  (battle, problem)  crossed blades, in the alert hue
+     chart             (chart)            a registration crosshair — the one
+                                          event that leaves a permanent mark
+     note              (info)             a blank chassis plate
+
+   WHERE THIS STILL CANNOT REACH. The bullet differs by KIND, which is as far as
+   CSS can see: connect.js writes the kind's colour inline and writes the filter
+   TYPE nowhere at all. A run of rows that share a kind therefore shares a mark,
+   and the advisor's opening survey is exactly that — connect.js:1027 pushes
+   every line of it as kind 'chart', so four consecutive rows legitimately wear
+   the registration mark. Splitting those needs the type published into the DOM,
+   which is a change to connect.js and not to this file.
+
+   `font-size: 0` retires the character without removing it: renderEventFeed()
+   writes it on every repaint and would put it straight back. */
+.game-page #event-feed-list > div > span:first-child {
+    color: var(--bronze) !important;
+    font-size: 0 !important;
+}
+.game-page #event-feed-list > div > span:first-child::before {
+    content: "";
+    display: inline-block;
+    /* 13px inside the 14px column connect.js writes: a stamp has an ink
+       under-body, a bevelled face and a rim, and 12px is one row short of all
+       three surviving. */
+    width: 13px; height: 13px;
+    vertical-align: -2px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    /* note / uncategorised — the default when no hue matches below */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23c3cfe0'/%3E%3Cstop offset='1' stop-color='%2366768d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M1.0 3.2H11.0V8.8H1.0Z' transform='translate(0.7 0.7)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1.6' stroke-linejoin='miter'/%3E%3Cpath d='M1.0 3.2H11.0V8.8H1.0Z' fill='url(%23b)'/%3E%3Cpath d='M2.6 5.0H9.4V5.9H2.6Z M2.6 6.6H7.4V7.5H2.6Z' fill='%230a0e15'/%3E%3Cpath d='M1.6 3.8H10.4' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E");
+}
+/* transit / orders — ship built, fleet moved, world settled */
+.game-page #event-feed-list > div > span[style*="rgb(167, 216, 255)"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M2.0 1.0 6.6 6 2.0 11.0 0.6 9.6 3.9 6 0.6 2.4Z M8.7 1.0H10.9V11.0H8.7Z' transform='translate(0.7 0.7)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1.6' stroke-linejoin='miter'/%3E%3Cpath d='M2.0 1.0 6.6 6 2.0 11.0 0.6 9.6 3.9 6 0.6 2.4Z M8.7 1.0H10.9V11.0H8.7Z' fill='url(%23b)'/%3E%3Cpath d='M2.0 1.9 5.4 5.6' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E");
+}
+/* economy — the treasury's own ingot, reduced again */
+.game-page #event-feed-list > div > span[style*="rgb(255, 211, 168)"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0.9 4.6 2.9 2.6H10.4L8.4 4.6Z M0.9 4.6H8.4L9.1 9.6H0.2Z' transform='translate(0.7 0.7)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1.6' stroke-linejoin='miter'/%3E%3Cpath d='M0.9 4.6 2.9 2.6H10.4L8.4 4.6Z M0.9 4.6H8.4L9.1 9.6H0.2Z' fill='url(%23b)'/%3E%3Cpath d='M0.9 4.6 2.9 2.6H10.4L8.4 4.6Z' fill='%23f0c98f'/%3E%3Cpath d='M1.5 4.1 3.2 3.3' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E");
+}
+/* research */
+.game-page #event-feed-list > div > span[style*="rgb(168, 240, 201)"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M6 1.4 10.9 10.6H1.1Z M6 5 4.3 8.4H7.7Z M4.2 2.3a1.8 1.8 0 1 1 3.6 0a1.8 1.8 0 1 1-3.6 0Z M0.6 9.5a1.8 1.8 0 1 1 3.6 0a1.8 1.8 0 1 1-3.6 0Z M7.8 9.5a1.8 1.8 0 1 1 3.6 0a1.8 1.8 0 1 1-3.6 0Z' transform='translate(0.7 0.7)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1.6' stroke-linejoin='miter'/%3E%3Cpath d='M6 1.4 10.9 10.6H1.1Z M6 5 4.3 8.4H7.7Z M4.2 2.3a1.8 1.8 0 1 1 3.6 0a1.8 1.8 0 1 1-3.6 0Z M0.6 9.5a1.8 1.8 0 1 1 3.6 0a1.8 1.8 0 1 1-3.6 0Z M7.8 9.5a1.8 1.8 0 1 1 3.6 0a1.8 1.8 0 1 1-3.6 0Z' fill='url(%23b)'/%3E%3Cpath d='M5.7 2.3 2.0 9.2' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E");
+}
+/* charting — a registration mark, for the one event that changes the map */
+.game-page #event-feed-list > div > span[style*="rgb(215, 196, 255)"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23f0c98f'/%3E%3Cstop offset='1' stop-color='%238b5f2a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M5.1 0.4H6.9V3.6H5.1Z M5.1 8.4H6.9V11.6H5.1Z M0.4 5.1H3.6V6.9H0.4Z M8.4 5.1H11.6V6.9H8.4Z M3.7 3.7H8.3V8.3H3.7Z M5.2 5.2V6.8H6.8V5.2Z' transform='translate(0.7 0.7)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1.6' stroke-linejoin='miter'/%3E%3Cpath d='M5.1 0.4H6.9V3.6H5.1Z M5.1 8.4H6.9V11.6H5.1Z M0.4 5.1H3.6V6.9H0.4Z M8.4 5.1H11.6V6.9H8.4Z M3.7 3.7H8.3V8.3H3.7Z M5.2 5.2V6.8H6.8V5.2Z' fill='url(%23b)'/%3E%3Cpath d='M4.2 4.2H7.8' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E");
+}
+/* battles and faults — the only mark in the feed that keeps the alert hue */
+.game-page #event-feed-list > div > span[style*="rgb(255, 180, 168)"] { color: var(--red-hi) !important; }
+.game-page #event-feed-list > div > span[style*="rgb(255, 180, 168)"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffb49c'/%3E%3Cstop offset='1' stop-color='%238a3a22'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M11.2 0.8 10.2 3.2 3.0 9.9 1.4 8.3 8.6 1.6Z M3.4 1.6 10.6 8.3 9.0 9.9 1.8 3.2 0.8 0.8Z' transform='translate(0.7 0.7)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1.6' stroke-linejoin='miter'/%3E%3Cpath d='M11.2 0.8 10.2 3.2 3.0 9.9 1.4 8.3 8.6 1.6Z M3.4 1.6 10.6 8.3 9.0 9.9 1.8 3.2 0.8 0.8Z' fill='url(%23b)'/%3E%3Cpath d='M9.4 1.7 10.8 1.1 M2.6 1.7 1.2 1.1' fill='none' stroke='%23ffe9cc' stroke-width='1' stroke-linecap='butt' stroke-linejoin='miter' opacity='0.85'/%3E%3C/svg%3E");
+}
+
+/* --------------------------------------------------------------------
+   Advisor speech bubble (avatar-notifications.js injects its own <style>;
+   these win on specificity, not on order)
+   -------------------------------------------------------------------- */
+/* THE TOAST IS NOW THE FULL COLUMN, and it has no companion tile.
+   What shipped: a 252px bubble at x=1563 plus a separate 82px avatar disc at
+   x=1828, both floating over an event panel that spans 1564-1904. That leaves
+   a ~13px slot between the bubble's right edge and the disc through which the
+   panel behind showed — a clipped orange header, a chevron, a rule and two
+   fragments of body copy, visible in every single screenshot. It is a WIDTH
+   mismatch, so no amount of z-index fixes it: the fix is for the overlay to be
+   exactly as wide as the thing it covers.
+
+   The avatar disc goes entirely. It was a glossy web-2.0 vector Earth with a
+   gold laurel and a specular sheen, sharing no rendering language with any
+   other mark in the HUD, and dropping it is what buys the bubble the width. It
+   also removed the second occluder. Race identity is carried where it is
+   actually legible — the race name in the lobby and the emblem on the race
+   card — not by a 58px badge over the map.
+
+   game-screen.js writes `right: 10px !important` inline and inline-important
+   cannot be outranked, so the 6px needed to line this up with the event panel
+   (which sits at right: 16px) comes from a margin instead. */
+.game-page #avatar-notification-system {
+    width: 100%;
+    max-width: 340px;
+    margin-right: 6px;
+    gap: 0;
+}
+.game-page .avatar-container,
+.game-page .speech-pointer { display: none !important; }
+.game-page .speech-bubble-container {
+    max-width: none !important;
+    width: 100%;
+    flex: 1 1 auto;
+}
+.game-page .speech-bubble {
+    padding: 26px 12px 10px !important;
+    border-radius: 3px;
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+    color: var(--text) !important;
+    position: relative;
+    overflow: hidden;
+}
+/* Its own instrument title rail, so it reads as a seated module in the right
+   column rather than as a floating web toast. Same rail as SECTOR SURVEY and
+   MAP KEY, same stencilled code opposite. */
+.game-page .speech-bubble::before {
+    content: "STANDING ADVISORY";
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    padding: 6px 10px 5px;
+    font-family: var(--font-head);
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+    background: linear-gradient(180deg, #1a222f, #0d121c);
+    border-bottom: 2px solid var(--ink);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -2px 0 rgba(0,0,0,0.55);
+    text-shadow: 0 1px 0 var(--ink);
+}
+.game-page .speech-bubble::after {
+    content: "ADV-06";
+    position: absolute;
+    top: 7px; right: 10px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: var(--faint);
+}
+/* Advisory severity, on the locked palette: neutral for information, amber for
+   anything that wants a decision, crimson for a loss. The sky-blue headline
+   that shipped was the brightest single object in the top right. */
+.game-page .speech-content.info    { color: var(--text) !important; }
+.game-page .speech-content.success { color: var(--amber-hi) !important; }
+.game-page .speech-content.warning { color: var(--amber-hi) !important; }
+.game-page .speech-content.error   { color: var(--red-hi) !important; }
+/* The nav row becomes three console keys and a readout, not four grey pills. */
+.game-page .speech-nav {
+    gap: 5px !important;
+    border-top: 2px solid var(--ink) !important;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.05);
+    padding-top: 8px !important;
+}
+.game-page .speech-nav .nav-btn {
+    width: 26px; height: 22px;
+    border: 2px solid var(--ink) !important;
+    border-radius: 0 !important;
+    color: var(--text) !important;
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4)) !important;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.16), inset -1px -1px 0 rgba(0,0,0,0.5), 0 2px 0 var(--ink);
+    font-size: 9px;
+}
+.game-page .speech-nav .nav-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 2px 2px 5px rgba(0,0,0,0.7); }
+.game-page .speech-nav .nav-btn:disabled {
+    color: var(--faint) !important;
+    background: linear-gradient(180deg, #1a2029, #12171f) !important;
+    box-shadow: inset 2px 2px 4px rgba(0,0,0,0.7) !important;
+    opacity: 1 !important;
+}
+/* The dismiss key is NEUTRAL STEEL, like the two beside it. It was the only
+   red-orange mark anywhere on screen, and crimson in this console means danger
+   — closing a read advisory is not danger, it is housekeeping. The three nav
+   keys are one control group and now read as one. (The mark itself is drawn by
+   avatar-notifications.js as a stroked vector taking `currentColor`; this is
+   the button ink it inherits.) */
+.game-page .speech-nav .speech-dismiss { color: var(--text) !important; }
+.game-page .speech-nav .speech-dismiss:hover:not(:disabled) { color: var(--bright) !important; }
+.game-page .speech-nav .nav-counter {
+    font-family: var(--font-mono);
+    font-size: 10px !important;
+    color: var(--bronze) !important;
+    min-width: 42px;
+    padding: 2px 0;
+    background: #05080e;
+    box-shadow: inset 2px 2px 4px rgba(0,0,0,0.85);
+}
+
+/* --------------------------------------------------------------------
+   Multi-move dialog & remaining overlays, brought into the same language
+   -------------------------------------------------------------------- */
+.game-page #multiMove {
+    background: var(--rivets), var(--grain), var(--face);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    box-shadow: var(--plate-shadow);
+}
+.game-page #multiMove select {
+    padding: 6px;
+    font-family: var(--font-ui);
+    color: var(--text);
+    background: #0a0f18;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.78);
+}
+.game-page #multiMove button {
+    font-family: var(--font-head);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text);
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    text-shadow: 0 1px 0 var(--ink);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.17), inset -2px -2px 0 rgba(0,0,0,0.55), 0 3px 0 var(--ink);
+    transform: none;
+}
+.game-page #multiMove button:hover:not(:disabled) { filter: brightness(1.16); transform: none; }
+.game-page #multiMove button:active:not(:disabled) { transform: translateY(3px); box-shadow: inset 2px 2px 6px rgba(0,0,0,0.7); }
+.game-page #multiMove button:disabled { filter: none; opacity: 1; }
+.game-page .multi-move-header b {
+    font-family: var(--font-head);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+}
+.game-page .move-preflight,
+.game-page .multi-move-empty {
+    background: #05080e;
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.78);
+    color: var(--muted);
+}
+.game-page .move-preflight summary {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--bronze);
+    font-weight: 400;
+}
+.game-page .move-preflight .route-danger { color: var(--red-hi); }
+.game-page .move-preflight .route-risk { color: var(--amber-hi); }
+
+/* Reduced motion: the presses are 70ms and carry state, so they stay, but the
+   global block below already collapses every transition. Nothing extra needed. */
 
 /* Keyboard focus, shared by the game screen and the lobby — the two pages that use
    this stylesheet and the only two that had no focus indication at all. The auth,

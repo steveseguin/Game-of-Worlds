@@ -1,366 +1,2887 @@
+/* ---------------------------------------------------------------------------
+   Race selection — the faction registry console.
+
+   WHERE THE ART COMES FROM (read this first)
+
+   Every faction on this screen is carried by three PAINTED assets out of
+   lore/visual-reference/production/, not by CSS:
+
+     the CREST      mounted edge to edge in a machined aperture, at 217px on
+                    the roster card and 132px as the dossier medallion;
+     the HOMEWORLD  a 960x540 painting of the faction's canon world. It is the
+                    dossier's hero plate and, held far back behind a scrim, the
+                    void the whole console is bolted into;
+     the FLEET      the three-hull language sheet in the dossier.
+
+   That matters to the colour decisions below. CSS cannot make metal, and the
+   two previous versions of this sheet proved it by trying: the frame came back
+   92% below luma 51 with nothing above 156, because every surface in it was a
+   gradient between two dark greys. The paintings supply the light now. The
+   chrome's job is to be MACHINED — bright chamfer, black recess, wide value
+   gap between the two — and then to get out of the way.
+
+   MATERIAL MODEL
+
+   Nothing here is a flat div. Three surface classes do the work:
+
+     PLATE   raised metal. A two-step chamfer — a bright outer step and a mid
+             step on the top/left, a black outer step and a dark mid step on the
+             bottom/right — over a brushed-steel noise tile, plus a hard offset
+             drop below so the plate sits proud of what it is bolted to.
+             Housings, panels, cards, instrument boxes.
+     SLOT    machined recess. Inner shadow from the top-left, a 1px catch-light
+             on the bottom edge, dark fill. Meter wells, tracks, plots.
+     BAR     embossed title strip. Vertical gradient, 1px light line on top,
+             1px black under, text with a dark emboss.
+
+   The light is fixed: top-left, always. Every highlight is on a top or left
+   edge and every shade on a bottom or right one — including inside instruments,
+   where a bar's bevel does NOT flip with the sign of its reading. Colour says
+   which way a value went; the key light never moves.
+
+   PALETTE
+     STEEL is the ground. Positive readings are bronze, negative are oxide red.
+     SATURATED AMBER (#E0A22C) has exactly one job on this screen: the confirm
+     action and the selected-card marker. It is not allowed on eyebrows, codes,
+     rank markers, chips or counters — when amber marks ten things it marks
+     nothing.
+     FACTION HUE (--race-accent) survives in exactly ONE place: the raking key
+     light across the crest aperture, where it tints painted art. It is off the
+     chrome entirely. Twelve saturated LEDs plus twelve coloured three-letter
+     codes turned a steel-and-bronze roster into a grid of debug tags, and the
+     crest identifies the faction far better than a hue ever did.
+
+   TYPE
+     No numeral is rendered below 11px anywhere. Figures are Rajdhani 600 with
+     tabular lining numerals, or Share Tech Mono at >= 11px with .06em tracking;
+     at 8-9px a mono zero and eight differ by two pixels of counter and the whole
+     information layer stops resolving. Prose below 15px is 13px/1.45 minimum.
+     Small labels sit at or above #8A9AB0 on the near-black grounds, which is
+     ~7:1 — the old #5B6A82 was 3:1 and mush on a store screenshot.
+
+   Borders are neutral steel everywhere. The only coloured edge is the selection
+   outline on the chosen card, which is functional.
+   --------------------------------------------------------------------------- */
+
 #raceSelectionModal {
-    --race-accent: #60d8ff;
-    --rs-panel: #101722;
-    --rs-line: rgba(145, 177, 214, 0.22);
-    --rs-text: #e7edf7;
-    --rs-muted: #8f9db1;
-    --rs-amber: #f0a233;
+    /* THE ONE KEY LIGHT. Every aperture on this console — thirteen crest ports,
+       the homeworld plate, three hull bays — is raked from the top-left by this
+       colour and no other. It used to be the faction's own hue at 22% over the
+       painting, which read as a coloured gel and made a twelve-tile roster come
+       out green, cyan, magenta, purple and chartreuse against a console that is
+       steel and amber everywhere else. There is no per-faction hue on this
+       screen any more; the paintings carry the factions. */
+    --rs-key: 255, 236, 205;
+
+    /* material. The chamfer highlight is deliberately bright: a machined edge
+       is only machined if the lit step and the cut shadow are far apart in
+       value, and a 1% sliver of near-white on every top-left edge is what makes
+       an otherwise dark frame read as metal rather than as paint. */
+    --rs-chamfer-hi: #9DABBE;   /* plate outer top/left step */
+    --rs-chamfer-mid: #5A6779;  /* plate inner top/left step */
+    --rs-chamfer-lo: #0B0E13;   /* plate outer bottom/right step */
+    --rs-chamfer-lo2: #191F2A;  /* plate inner bottom/right step */
+    --rs-edge: #04070B;
+
+    /* One rivet, drawn once. 10px box, 5px head: a lit crown at 30%/30%, a
+       shaded flank at 70%/70%, a black seat ring and then nothing. The 2x2
+       white dots this replaces read as stuck pixels at 1:1. */
+    --rs-rivet: radial-gradient(circle at 4.6px 4.6px,
+        #EDF3FB 0 0.9px, #B6C5D8 1.7px, #6B7A90 2.4px, #2B3547 3.1px,
+        #05080C 3.9px, rgba(0, 0, 0, 0.85) 4.6px, rgba(0, 0, 0, 0) 5.2px);
+
+    /* ink */
+    --rs-steel: #8894A4;
+    --rs-steel-hi: #D6DEE8;
+    --rs-text: #DFE6F0;
+    --rs-muted: #A2AEBF;
+    --rs-dim: #8A9AB0;
+
+    /* the reserved action colour and the two reading colours */
+    --rs-amber: #E9A53C;
+    --rs-bronze-hi: #F0BE62;
+    --rs-oxide: #E58469;
+
+    --rs-mono: 'Share Tech Mono', ui-monospace, monospace;
+    --rs-num: 'Rajdhani', 'Segoe UI', sans-serif;
+
+    /* the doctrine plot's well height. The readings live in their own rail above
+       the well now, so this is purely the plotting range: half of it, less the
+       plot's padding, is the rail-to-rail travel of a bar. 56 and not 62: the
+       dossier column is oversubscribed at 1080p (see THE DOSSIER'S VERTICAL
+       BUDGET below) and 6px here still leaves 21px of rail-to-rail travel, so
+       MIN_DRAW's shortest bar is 3.6px and clears the baseline rule. */
+    --rs-plot-h: 56px;
+
+    --rs-pad: clamp(12px, 2.2vw, 24px);
+    /* Reserved band under the housing. It grounds the console on the frame and
+       gives docked status strips somewhere to live that is not on top of the
+       dossier's bottom-right corner. Sized to a docked toast plus its own drop
+       shadow and no more — every pixel above this line is bay. 20 rather than
+       30: at 1080p the housing is height-capped by `100vh - pad*2 - apron`, so
+       ten pixels of apron is ten pixels of bay, and 20 still clears a docked
+       toast's 12px inset. */
+    --rs-apron: 20px;
+
+    --rs-px: 0;
+    --rs-py: 0;
+
     position: fixed;
     inset: 0;
     z-index: 2000;
     display: grid;
     place-items: center;
-    padding: clamp(12px, 2.2vw, 28px);
-    background: radial-gradient(circle at 50% 15%, rgba(58, 100, 155, 0.16), transparent 44%), rgba(3, 6, 11, 0.92);
-    backdrop-filter: blur(8px) saturate(0.75);
+    padding: var(--rs-pad) var(--rs-pad) calc(var(--rs-pad) + var(--rs-apron));
+    background: #04070C;
     color: var(--rs-text);
     font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+    font-variant-numeric: tabular-nums lining-nums;
 }
 
+/* Digital-screen scanlines over the whole console, kept faint enough that they
+   texture the glass rather than veil the art or chew the 11px figures. */
 #raceSelectionModal::after {
     content: '';
     position: absolute;
     inset: 0;
+    z-index: 6;
     pointer-events: none;
-    background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(0, 0, 0, 0.18) 4px, transparent 5px);
-    opacity: 0.45;
+    background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 0 1px, transparent 1px 3px);
+    opacity: 0.34;
 }
+
+/* ------------------------------------------------------------------ the void
+
+   25% of a 1920 frame is gutter, and until this pass all of it was black.
+
+   It now carries the SELECTED FACTION'S HOMEWORLD as a deep backdrop: the same
+   painting the dossier mounts, blown up behind the console, desaturated, held
+   at a third strength and cut by a heavy vignette. Two starfields, a nebula
+   wash and a bolted hull rail down each edge sit on top of it, so the housing
+   still reads as installed hardware rather than as a picture frame.
+
+   This is the single biggest change to the frame's value structure. It is also
+   the reason the backdrop is treated so hard: a full-strength painting behind a
+   console competes with it, and the console has to win. Everything here is
+   subordination — blur, desaturation, vignette, and a black pool under the
+   housing's drop shadow.
+
+   The layers translate with the pointer for depth and sit at exactly 0 at rest,
+   so headless captures are byte-stable. */
+
+.race-void {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 62% 48% at 50% 4%, rgba(58, 104, 160, 0.20), transparent 62%),
+        radial-gradient(ellipse 48% 40% at 14% 76%, rgba(126, 78, 34, 0.16), transparent 66%),
+        radial-gradient(ellipse 44% 42% at 88% 22%, rgba(74, 60, 132, 0.16), transparent 68%),
+        #04070C;
+}
+
+/* The homeworld, held FAR back — and the treatment owns the upscale rather than
+   pretending it is not one. The published plates are 448x252; across a 1920
+   frame that is 4.3x, and at the previous strength (78% opacity, 5px blur) a
+   quarter of the frame resolved as mushy brown blotches with visible horizontal
+   banding. A 20px blur at a third of the strength is a defocused plane behind a
+   console: no band survives it, the frame keeps a value range under the
+   starfield, and nothing in the gutter competes with the housing. */
+.race-void-world {
+    position: absolute;
+    inset: -4%;
+    display: block;
+    opacity: 0.46;
+    transform: translate3d(calc(var(--rs-px) * -10px), calc(var(--rs-py) * -7px), 0) scale(1.04);
+}
+.race-void-world img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(22px) saturate(0.52) brightness(1.06) contrast(0.88);
+}
+/* The scrim that subordinates it. A vignette into the corners and a soft fade
+   top and bottom — and NOT a pool of black through the middle, which is what
+   the first version did: the console covers that band anyway, so all the pool
+   achieved was to darken the one part of the backdrop nobody can see while
+   leaving the visible gutters at 4% of the painting's brightness. */
+.race-void-haze {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 78% 74% at 50% 46%, rgba(2, 4, 8, 0) 0, rgba(2, 4, 8, 0.22) 62%, rgba(2, 4, 8, 0.74) 100%),
+        linear-gradient(180deg, rgba(2, 4, 8, 0.52) 0, rgba(2, 4, 8, 0.04) 18%, rgba(2, 4, 8, 0.04) 72%, rgba(2, 4, 8, 0.62) 100%);
+}
+.race-void-far,
+.race-void-near {
+    position: absolute;
+    inset: -60px;
+    display: block;
+    background-repeat: repeat;
+    will-change: transform;
+}
+.race-void-far {
+    background-image: var(--rs-stars-far);
+    background-size: 512px 512px;
+    opacity: 0.72;
+    transform: translate3d(calc(var(--rs-px) * -7px), calc(var(--rs-py) * -5px), 0);
+}
+.race-void-near {
+    background-image: var(--rs-stars-near);
+    background-size: 320px 320px;
+    opacity: 0.9;
+    transform: translate3d(calc(var(--rs-px) * -18px), calc(var(--rs-py) * -12px), 0);
+}
+
+/* THE LEFT GUTTER'S SIGNAGE IS HOUSED HARDWARE, NOT AN ART DROP.
+   The selected faction's crest used to hang here as a 196x148 masked rectangle
+   at 20% screen-blend with no frame, no rail and nothing to bolt it to: on a
+   store-page screenshot a ghosted duplicate of the card art floating in 190px
+   of empty starfield reads as a leaked render, which is exactly what the review
+   called it. It is now a PLATE bolted to the hull — the same two-step chamfer,
+   brushed ground, corner rivets and hard drop as every other plate on this
+   console — with the crest mounted inside a machined aperture and a stencilled
+   caption under it. Same idea, same restraint, but it is now part of the ship
+   instead of hovering next to it. */
+.race-void-mark {
+    position: absolute;
+    top: 50%;
+    /* clear of the hull rail at x30-48 even at full parallax travel, and clear
+       of the housing's left edge at x240 */
+    left: 62px;
+    display: none;
+    width: 150px;
+    padding: 7px 7px 0;
+    background:
+        var(--rs-rivet) 3px 3px / 10px 10px no-repeat,
+        var(--rs-rivet) calc(100% - 3px) 3px / 10px 10px no-repeat,
+        var(--rs-rivet) 3px calc(100% - 3px) / 10px 10px no-repeat,
+        var(--rs-rivet) calc(100% - 3px) calc(100% - 3px) / 10px 10px no-repeat,
+        var(--rs-brush),
+        linear-gradient(180deg, #2C3746 0, #212B39 46%, #161E29 100%);
+    border: 1px solid var(--rs-edge);
+    box-shadow:
+        inset 1px 1px 0 var(--rs-chamfer-hi),
+        inset 2px 2px 0 var(--rs-chamfer-mid),
+        inset -1px -1px 0 var(--rs-chamfer-lo),
+        inset -2px -2px 0 var(--rs-chamfer-lo2),
+        0 3px 0 rgba(0, 0, 0, 0.6),
+        0 8px 18px rgba(0, 0, 0, 0.55);
+    transform: translate3d(calc(var(--rs-px) * -10px), calc(-50% + var(--rs-py) * -8px), 0);
+}
+/* The aperture. Same slot geometry as the thirteen crest ports: shadow in from
+   the top-left, a catch-light on the bottom lip, black mat. */
+.race-void-mark img {
+    display: block;
+    width: 100%;
+    height: 100px;
+    object-fit: contain;
+    /* the mat is black because the plates are painted on black — same reason
+       the thirteen crest ports use #000 and show no letterbox seam */
+    background: #000;
+    box-shadow:
+        inset 0 3px 7px rgba(0, 0, 0, 0.95),
+        inset 3px 0 6px rgba(0, 0, 0, 0.8),
+        inset 0 -1px 0 rgba(178, 202, 232, 0.26),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.9);
+    /* held well back — this is signage behind the console, not a second roster
+       card competing with the twelve that matter — but knocked back FROM the
+       faction's own normalized value, not from raw */
+    filter:
+        brightness(calc(0.62 * var(--crest-gain, 1)))
+        saturate(calc(0.7 * var(--crest-sat, 1)))
+        contrast(0.95);
+}
+.race-void-mark span {
+    display: block;
+    padding: 5px 1px 6px;
+    color: #7C8CA3;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-align: center;
+    text-transform: uppercase;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Right gutter: the registry line, stamped down the hull beside the rail.
+   It used to be 11px at 0.38em of tracking in #4B5A72 on near-black, which at
+   1:1 does not resolve as letters at all — the run read as a column of
+   scattered dots that smeared out towards the bottom. It is now set at the same
+   size, tracking, colour and emboss as the PNL-RS panel codes, because that is
+   what it IS: a panel code, on the panel's own hardware. */
+.race-void-tag {
+    position: absolute;
+    top: 50%;
+    right: 52px;
+    display: none;
+    color: #6E7F98;
+    font-family: var(--rs-mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9), 0 -1px 0 rgba(190, 214, 244, 0.09);
+    white-space: nowrap;
+    writing-mode: vertical-rl;
+    transform: translateY(calc(-50% + var(--rs-py) * -10px));
+}
+
+/* Hull rails: a bolted steel spine down each gutter, bolt heads every 120px.
+   Both sides carry the same rail at the same brightness — a rail that only
+   resolves into two grey nubs reads as stray geometry, not as structure.
+
+   THE BOLTS ARE SEATED HARDWARE, NOT PUNCHED HOLES. They used to be flat dark
+   discs with a centred highlight, which under this console's fixed top-left key
+   light is not a fastener at all — it is a hole. Each head is now three stacked
+   layers: a crown lit from 40% up-left, a dark rim falling away bottom-right,
+   and an inset ring cut into the plate under it so the head sits IN the rail
+   rather than on top of it. */
+.race-rail {
+    position: absolute;
+    top: -20px;
+    bottom: -20px;
+    display: none;
+    width: 18px;
+    background:
+        /* crown: highlight up-left, shade down-right */
+        radial-gradient(circle at 7.4px 7.4px,
+            #F2F7FF 0 1.1px, #C3D2E4 2.1px, #8A99AE 3px, #4A5769 3.9px, #1A2231 4.7px, rgba(0, 0, 0, 0) 5.1px)
+            0 24px / 18px 120px repeat-y,
+        /* seat: a black ring and a catch-light on the ring's lower lip */
+        radial-gradient(circle at 9px 9.4px,
+            rgba(0, 0, 0, 0) 0 4.8px, rgba(0, 0, 0, 0.95) 5px 6.1px, rgba(174, 196, 224, 0.22) 6.1px 6.7px, rgba(0, 0, 0, 0) 7px)
+            0 24px / 18px 120px repeat-y,
+        linear-gradient(90deg,
+            #05080C 0 1px,
+            #6A7A90 1px 3px,
+            #46536A 3px 7px,
+            #313C4E 7px 12px,
+            #1C2531 12px 16px,
+            #05080C 16px 18px);
+    box-shadow: 0 0 22px rgba(0, 0, 0, 0.8), inset 0 0 40px rgba(0, 0, 0, 0.35);
+}
+.race-rail[data-side="l"] { left: 30px; }
+.race-rail[data-side="r"] { right: 30px; }
+
+@media (min-width: 1560px) {
+    .race-rail { display: block; }
+}
+/* The gutter art needs a gutter to live in: below this the housing is nearly
+   edge-to-edge and the mark would only ever be a sliver behind it. */
+@media (min-width: 1820px) {
+    .race-void-mark,
+    .race-void-tag { display: block; }
+}
+
+/* --------------------------------------------------------------------- housing */
 
 .race-selection-container {
-    width: min(1180px, 100%);
-    height: min(820px, calc(100vh - clamp(24px, 4.4vw, 56px)));
+    width: min(1440px, 100%);
+    /* Tall enough that all twelve factions land on screen at once at 1080p —
+       a picker you have to scroll to see half the roster cannot be compared. */
+    height: min(1010px, calc(100vh - var(--rs-pad) * 2 - var(--rs-apron)));
     min-height: 560px;
     position: relative;
-    z-index: 1;
+    z-index: 2;
     display: grid;
+    /* minmax(0,1fr), not the implicit `auto`: an auto column is sized to the
+       max-content of its rows, so on a narrow viewport the header's nowrap
+       eyebrow made the whole housing wider than its own box and pushed the
+       authorization gauge off the plate. */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
-    background: linear-gradient(180deg, #202a38 0, #121925 78px, #0b111a 78px);
-    border: 2px solid #030507;
-    border-radius: 5px;
-    box-shadow: inset 2px 2px 0 rgba(190, 211, 238, 0.16), inset -2px -2px 0 rgba(0, 0, 0, 0.72), 0 5px 0 #030507, 0 28px 70px rgba(0, 0, 0, 0.72);
+    background:
+        var(--rs-brush),
+        linear-gradient(180deg, #38455A 0, #263143 66px, #1A2331 66px, #131A25 100%);
+    border: 2px solid var(--rs-edge);
+    border-radius: 3px;
+    box-shadow:
+        inset 2px 2px 0 var(--rs-chamfer-hi),
+        inset 4px 4px 0 var(--rs-chamfer-mid),
+        inset -2px -2px 0 var(--rs-chamfer-lo),
+        inset -4px -4px 0 var(--rs-chamfer-lo2),
+        0 7px 0 #020407,
+        0 34px 90px rgba(0, 0, 0, 0.85);
 }
 
+/* Hull rivets, one per corner of the housing. Same 10px head as every other
+   fastener on the console — there is one rivet in this sheet and everything
+   uses it, because four sizes of rivet is four sizes of nothing. */
 .race-selection-container::before,
 .race-selection-container::after {
     content: '';
     position: absolute;
-    z-index: 3;
-    top: 9px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #93a2b8, #202834 55%, #05070a 70%);
-    box-shadow: 0 0 0 1px #05070a;
+    z-index: 4;
+    left: 9px;
+    right: 9px;
+    height: 10px;
+    pointer-events: none;
+    background:
+        var(--rs-rivet) left center / 10px 10px no-repeat,
+        var(--rs-rivet) right center / 10px 10px no-repeat;
 }
+.race-selection-container::before { top: 9px; }
+.race-selection-container::after { bottom: 9px; }
 
-.race-selection-container::before { left: 9px; }
-.race-selection-container::after { right: 9px; }
+/* --------------------------------------------------------------------- header
+
+   The header is a PLATE bolted across the top of the housing, not a band of
+   background colour: a chunky 2px lit step on its top edge, a 2px black step
+   under it, and a rivet in each corner. The title is STAMPED into it — a
+   steel gradient clipped to the glyphs with a lit step above and a black step
+   below — because it is the largest type in the frame and flat #F2F6FC with a
+   blurred drop shadow is the exact failure the direction names. */
 
 .race-selector-header {
-    min-height: 78px;
+    position: relative;
+    min-width: 0;
+    /* The plate is sized by the heading stack inside it (~85px), so this floor
+       only ever mattered on a short heading; 5px of padding rather than 7 is
+       5px handed to both bays below, which the dossier column needs. */
+    min-height: 76px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 22px;
-    padding: 15px 24px 14px;
-    border-bottom: 2px solid #04070b;
-    box-shadow: inset 0 -1px 0 rgba(150, 180, 220, 0.12);
+    gap: 16px;
+    padding: 5px 22px 5px 28px;
+    border-bottom: 2px solid var(--rs-edge);
+    box-shadow:
+        inset 0 2px 0 rgba(198, 220, 246, 0.17),
+        inset 0 -3px 0 rgba(0, 0, 0, 0.85),
+        inset 0 -4px 0 rgba(150, 180, 220, 0.10);
+}
+/* Only the BOTTOM pair. The housing's own corner bolts already land on this
+   plate's top corners — a second rivet 2px away from each of them is not two
+   fasteners, it is one fastener drawn twice. */
+.race-selector-header::after {
+    content: '';
+    position: absolute;
+    z-index: 3;
+    left: 7px;
+    right: 7px;
+    bottom: 5px;
+    height: 10px;
+    pointer-events: none;
+    background:
+        var(--rs-rivet) left center / 10px 10px no-repeat,
+        var(--rs-rivet) right center / 10px 10px no-repeat;
 }
 
 .race-selector-eyebrow,
 .race-grid-heading,
 .race-detail-kicker,
 .race-confirm-note,
-.race-selector-count span,
 .race-card-index,
-.race-card-status {
-    font-family: 'Share Tech Mono', ui-monospace, monospace;
+.race-card-sig,
+.race-card-mark,
+.race-note-body b,
+.race-selector-gauge-label,
+.race-selector-gauge-note,
+.race-chip,
+.race-hero-gate-body b,
+.rs-plot-axis,
+.rs-plot-codes,
+.race-world-seal,
+.race-detail-clear,
+.race-hull-name,
+.race-hull-read,
+.race-detail-stamp-line,
+.race-detail-instrument-bar {
+    font-family: var(--rs-mono);
     text-transform: uppercase;
-    letter-spacing: 0.13em;
+    letter-spacing: 0.06em;
 }
 
-.race-selector-eyebrow { margin-bottom: 2px; color: var(--rs-amber); font-size: 0.66rem; }
+/* Demoted to steel: this is a label, not a signal. */
+.race-selector-eyebrow {
+    margin-bottom: 2px;
+    color: var(--rs-steel);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+}
+/* Stamped, not typed. The glyphs are filled with a vertical steel gradient —
+   near-white crown, mid-steel body, dark heel — which is what a raised letter
+   does under a top-left key light. The emboss is drawn on a ::before copy
+   underneath because background-clip:text and text-shadow are mutually
+   exclusive: the shadow paints behind the ELEMENT box, so on a clipped fill it
+   would show as a rectangle of grey behind the words. The copy carries the two
+   1px steps and the seat shadow; the clipped layer sits exactly on top of it. */
 .race-selector-header h2 {
+    position: relative;
     margin: 0;
-    color: #f3f6fb;
     font-family: 'Russo One', 'Segoe UI', sans-serif;
-    font-size: clamp(1.25rem, 2vw, 1.72rem);
+    font-size: clamp(1.3rem, 2vw, 1.86rem);
     font-weight: 400;
+    line-height: 1.08;
     letter-spacing: 0.035em;
-    text-shadow: 0 2px 0 #020305;
+    background: linear-gradient(180deg, #FBFDFF 0, #DCE6F3 26%, #93A6C0 62%, #5E6E86 88%, #7C8CA4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
 }
-.race-selector-header p { margin: 3px 0 0; color: var(--rs-muted); font-size: 0.85rem; line-height: 1.25; }
+.race-selector-header h2::before {
+    content: attr(data-text);
+    position: absolute;
+    z-index: -1;
+    left: 0;
+    top: 0;
+    color: #0A0E15;
+    -webkit-text-fill-color: #0A0E15;
+    text-shadow:
+        0 -1px 0 rgba(232, 242, 255, 0.34),
+        0 1px 0 rgba(0, 0, 0, 0.95),
+        0 2px 3px rgba(0, 0, 0, 0.7),
+        0 6px 14px rgba(0, 0, 0, 0.55);
+}
+/* The measure is set to the copy, not to a round number: the sub is one line at
+   this width and the heading block therefore never grows a second line that
+   steals height from the roster below it. */
+.race-selector-heading { flex: none; width: 566px; max-width: 46%; }
+.race-selector-header p {
+    max-width: 100%;
+    margin: 4px 0 0;
+    color: var(--rs-muted);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.42;
+}
 
-.race-selector-count {
-    min-width: 82px;
+/* A MACHINED RAIL between the heading and the channel key, cut into the plate
+   rather than floated on it: a 12px channel with a black top wall and a lit
+   bottom lip, carrying graduations on ONE regular pitch — a tick every 12px
+   and a taller tick every fifth. The previous version emitted five ticks at
+   three heights on two different irregular pitches, which under inspection
+   read as random marks. A decorative scale with unequal spacing is worse than
+   no scale, so this one is a real one or it is nothing.
+   The graduations are laid inside the channel and clipped by it, so the run
+   always ends on the channel wall and never in a half-drawn tick. */
+.race-selector-rail {
+    flex: 1 1 auto;
+    min-width: 40px;
+    align-self: center;
+    position: relative;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 18px;
+}
+.race-selector-rail::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 15px;
+    height: 14px;
+    overflow: hidden;
+    background:
+        /* every fifth graduation, full depth */
+        repeating-linear-gradient(90deg,
+            rgba(196, 218, 246, 0.5) 0 1px,
+            transparent 1px 60px) 0 2px / 100% 10px no-repeat,
+        /* the regular graduation, half depth */
+        repeating-linear-gradient(90deg,
+            rgba(178, 202, 232, 0.28) 0 1px,
+            transparent 1px 12px) 0 2px / 100% 6px no-repeat,
+        /* the channel: black top wall, dark floor, lit bottom lip */
+        linear-gradient(180deg,
+            #04070B 0 2px, #0C121B 2px 11px, #070B11 11px 12px,
+            rgba(190, 214, 244, 0.4) 12px 13px, rgba(0, 0, 0, 0.7) 13px 14px);
+    box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.9), inset -1px 0 0 rgba(0, 0, 0, 0.9);
+}
+/* Bolt heads capping the channel, on the same head as every fastener. */
+.race-selector-rail::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 17px;
+    height: 10px;
+    background:
+        var(--rs-rivet) left center / 10px 10px no-repeat,
+        var(--rs-rivet) right center / 10px 10px no-repeat;
+}
+.race-selector-rail-tag {
+    position: relative;
+    z-index: 2;
+    padding: 4px 8px;
+    background: linear-gradient(180deg, #202B3A, #0F161E);
+    box-shadow: inset 1px 1px 0 rgba(198, 220, 246, 0.22), inset -1px -1px 0 rgba(0, 0, 0, 0.7);
+    color: #8A9AB0;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    line-height: 12px;
+    letter-spacing: 0.12em;
+}
+
+/* Channel key: the legend for every meter on the screen, framed as an
+   instrument and bolted into the run of bare plate that used to be a 620px
+   dead zone. It is the one piece of chrome that makes the abbreviations on
+   twelve cards and two charts legible. */
+.race-selector-key {
+    flex: none;
     display: grid;
-    place-items: center;
-    padding: 7px 12px;
-    background: #080d14;
-    border: 2px solid #04070b;
-    box-shadow: inset 2px 2px 7px rgba(0,0,0,0.75), inset -1px -1px 0 rgba(255,255,255,0.05);
+    gap: 4px;
+    padding: 6px 11px 8px;
+    background:
+        var(--rs-brush),
+        linear-gradient(180deg, #1E2836 0, #131B25 100%);
+    border: 2px solid var(--rs-edge);
+    box-shadow:
+        inset 2px 2px 0 rgba(120, 136, 156, 0.5),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.85),
+        0 3px 0 rgba(0, 0, 0, 0.6);
 }
-.race-selector-count strong { color: var(--race-accent); font-family: 'Russo One', sans-serif; font-size: 1.18rem; line-height: 1; }
-.race-selector-count span { margin-top: 3px; color: var(--rs-muted); font-size: 0.55rem; }
+.race-selector-key-bar {
+    color: #8E9DB2;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.race-selector-key-grid {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 2px 14px;
+}
+.race-selector-key-grid span { display: flex; align-items: baseline; gap: 5px; }
+.race-selector-key-grid b {
+    color: #BDC9D9;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+}
+.race-selector-key-grid em {
+    color: #8A9AB0;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 500;
+}
 
+/* Framed gauge: how much of the registry you are cleared for. Same plate family
+   as the channel key. The reading is steel, not amber — a count of authorized
+   factions is information, and amber on this console means "confirm". */
+.race-selector-gauge {
+    flex: none;
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    padding: 9px 18px 8px;
+    background:
+        var(--rs-rivet) 3px 3px / 10px 10px no-repeat,
+        var(--rs-rivet) calc(100% - 3px) 3px / 10px 10px no-repeat,
+        var(--rs-rivet) 3px calc(100% - 3px) / 10px 10px no-repeat,
+        var(--rs-rivet) calc(100% - 3px) calc(100% - 3px) / 10px 10px no-repeat,
+        var(--rs-brush),
+        linear-gradient(180deg, #1E2836 0, #131B25 100%);
+    border: 2px solid var(--rs-edge);
+    box-shadow:
+        inset 2px 2px 0 rgba(120, 136, 156, 0.5),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.85),
+        0 3px 0 rgba(0, 0, 0, 0.6);
+}
+.race-selector-gauge-label,
+.race-selector-gauge-note { color: var(--rs-dim); font-size: 11px; letter-spacing: 0.12em; }
+.race-selector-gauge-read { display: flex; align-items: baseline; gap: 2px; }
+.race-selector-gauge-read strong {
+    color: #E6EDF6;
+    font-family: 'Russo One', sans-serif;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-shadow: 0 1px 0 #04070B, 0 -1px 0 rgba(255, 255, 255, 0.14);
+}
+.race-selector-gauge-read i {
+    color: var(--rs-dim);
+    font-family: var(--rs-mono);
+    font-size: 14px;
+    font-style: normal;
+}
+
+/* --------------------------------------------------------------------- bays */
+
+/* THE DOSSIER'S VERTICAL BUDGET.
+   At 1080p the two bays get whatever the housing has after the header: 800px of
+   scroll port in the dossier column. A locked faction with a long restriction
+   list stacks hero 230 + gate + signature + doctrine plot + fleet profile +
+   TECH & HULL ACCESS + HULL CALIBRATION + stamp, and before this pass that came
+   to 921-994px — so the last instrument in the bay sat entirely below the fold
+   on eleven of the twelve factions, behind a fade that reads as "disabled"
+   rather than as "more below".
+   The hero is NOT where that height comes back from: 230px is the floor at
+   which a 16:9 painting is still a painting, and it is the point of the plate.
+   It comes back from the frame's own slack — the apron, the header's padding,
+   these bay paddings, the confirm rail — and from 1-3px of interior padding in
+   each instrument box, plus the clearance gate moving inside the hero's identity
+   lockup, where the foot has ~45px of unused column beside a 132px medallion and
+   the gate therefore costs the bay nothing at all. */
 .race-selection-main {
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1.24fr) minmax(340px, 0.86fr);
-    gap: 14px;
-    padding: 14px;
+    grid-template-columns: minmax(0, 1.56fr) minmax(384px, 0.8fr);
+    gap: 12px;
+    padding: 8px;
 }
 
+/* The bay plates. Lifted ~10 luma off the old #0D141D: when the plate and the
+   recesses cut into it are the same value, nothing reads as machined, and the
+   near-black has to be RESERVED for apertures and slots or it stops meaning
+   "cut". */
 .race-grid-shell,
 .race-detail-panel {
     min-width: 0;
     min-height: 0;
-    border: 2px solid #04070b;
-    background: #080d14;
-    box-shadow: inset 2px 2px 8px rgba(0,0,0,0.78), inset -1px -1px 0 rgba(255,255,255,0.04);
+    border: 2px solid var(--rs-edge);
+    background:
+        var(--rs-brush),
+        linear-gradient(180deg, #1E2836, #16202B);
+    box-shadow:
+        inset 2px 2px 0 rgba(150, 165, 184, 0.62),
+        inset 4px 4px 0 rgba(88, 100, 118, 0.44),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.88),
+        0 3px 0 rgba(0, 0, 0, 0.55);
 }
 
-.race-grid-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-.race-grid-heading {
+.race-grid-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+
+/* THE BAY'S FOOT. Whatever slack a 3x4 roster leaves under the last row used to
+   be ~50px of bare brushed plate with nothing on it — no rail, no code, no
+   graduation — which on a console built entirely out of installed hardware read
+   as an unfinished shelf. It is now the same machined graduation channel and
+   stencilled panel code the header rail carries, so the roster closes on a piece
+   of equipment instead of trailing off. */
+.race-grid-foot {
     display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 6px 5px;
+    padding: 2px 8px;
+    background: linear-gradient(180deg, #1E2735, #141C27);
+    border: 1px solid #0A0F17;
+    box-shadow: inset 0 1px 0 rgba(174, 196, 224, 0.24), inset 0 -1px 0 rgba(0, 0, 0, 0.8);
+}
+.race-grid-foot-code {
+    flex: none;
+    color: #7C8CA3;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+/* One honest pitch, clipped by the channel wall so no tick is drawn half. */
+.race-grid-foot-channel {
+    flex: 1 1 auto;
+    height: 7px;
+    overflow: hidden;
+    background:
+        repeating-linear-gradient(90deg,
+            rgba(168, 192, 224, 0.42) 0 1px,
+            rgba(0, 0, 0, 0) 1px 5px,
+            rgba(168, 192, 224, 0.20) 5px 6px,
+            rgba(0, 0, 0, 0) 6px 10px),
+        linear-gradient(180deg, #04070C, #080D14);
+    box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.9), inset 0 -1px 0 rgba(174, 196, 224, 0.18);
+}
+
+/* Embossed instrument title bar. */
+.race-grid-heading,
+.race-detail-instrument-bar {
+    display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 9px 12px;
-    color: #d2dbea;
-    background: linear-gradient(180deg, #172130, #101721);
-    border-bottom: 2px solid #04070b;
-    font-size: 0.66rem;
+    padding: 7px 13px;
+    color: #DAE3EF;
+    background:
+        var(--rs-brush),
+        linear-gradient(180deg, #35435A 0, #202C3D 52%, #161F2C 100%);
+    border-bottom: 2px solid var(--rs-edge);
+    box-shadow: inset 0 2px 0 rgba(186, 208, 236, 0.34), inset 0 -2px 0 rgba(0, 0, 0, 0.7);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.85);
 }
-.race-grid-heading small { color: #728198; font: inherit; letter-spacing: 0.06em; }
+.race-grid-heading small,
+.race-detail-instrument-bar small { color: var(--rs-dim); font: inherit; letter-spacing: 0.06em; text-transform: none; }
 
 .race-grid {
     min-height: 0;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    /* max-content, not minmax(170px, auto). The cards are <button> elements, and a button
-       that is itself the flex container does not report its content height to grid track
-       sizing — the `auto` max resolved to the 170px floor and never grew, so eight of the
-       twelve dossiers were cut off mid-sentence by the card's overflow:hidden. What it cut
-       was the signature line and the hull restrictions, i.e. exactly what a player needs
-       before picking or buying a race. max-content sizes the row to the tallest card;
-       .race-card's own min-height keeps the 170px floor. Measured: 8 clipped -> 0, heights
-       170-182, cards still equal within a row. minmax(170px, max-content) does NOT work. */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* max-content, not minmax(x, auto). The cards are <button> elements and a
+       button that is itself the grid container does not report its content
+       height to grid track sizing — `auto` collapsed to the floor and clipped
+       eight of the twelve dossiers. */
     grid-auto-rows: max-content;
     align-content: start;
-    gap: 8px;
-    padding: 9px;
+    /* THE ROSTER KEEPS REAL HEADROOM, NOT A PERFECT FIT.
+       Three rows of card at 1080p used to measure 810.3 against a 816px bay —
+       under two pixels a row — so any growth at all in the caption strip put a
+       scrollbar on a roster whose entire sizing argument is that all twelve
+       factions are visible at once. The bay is taller now (the apron and the
+       header's padding), the card foot is 3px, and the gutter is 5, which puts
+       ~10px a row between the roster and a scrollbar. */
+    gap: 5px;
+    padding: 5px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-color: #51657f #080d14;
+    scrollbar-color: #4A5C74 #05080D;
     scrollbar-width: thin;
 }
+
+/* --------------------------------------------------------------------- card
+
+   A card is a PLATE with a PORT cut into the top of it: two-step chamfer, a face
+   gradient, corner rivets on the same head as the housing bolts, a hard drop
+   beneath, and an :active that swaps the chamfer to inset so it presses. It is
+   the same material as the confirm button, at the same amplitude.
+
+   Every card is the same height by construction and not by luck. The row track
+   is max-content and the card is a grid of four fixed-height parts — the port,
+   a single-line name, a meter well and a gate rail — so nothing in the content
+   can make one card in a row taller than its neighbours. That is what lets a
+   row of meters be read across: every well in a row starts at the same y, so
+   bar heights compare directly.
+
+   The plate fill is ~12 luma up on the previous pass. It has to be: the port
+   cut into it is near-black and the meter well cut into it is near-black, and
+   if the plate is the same value as its own recesses then the card is one flat
+   dark rectangle with some marks on it. */
 
 .race-card {
     width: 100%;
     min-width: 0;
-    min-height: 170px;
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    padding: 11px;
     position: relative;
+    display: grid;
+    grid-auto-rows: max-content;
+    justify-items: center;
+    gap: 0;
+    /* The foot is 3px, not 5: the caption strip grew 12px when it stopped
+       amputating its own descenders, and the roster has to keep landing all
+       twelve factions on a 1080p screen without a scrollbar. This and the 1px
+       off the name's top margin are where that height comes from. */
+    padding: 10px 10px 3px;
     overflow: hidden;
-    text-align: left;
+    text-align: center;
     color: var(--rs-text);
     font: inherit;
-    background: linear-gradient(155deg, #1b2533, #111822 72%);
-    border: 1px solid #29364a;
+    --card-fill: linear-gradient(180deg, #47566A 0, #34424F 46%, #212C3B 100%);
+    /* Bottom pair only: the plate's top corners are inside the aperture, and a
+       fastener drawn under an image is a fastener nobody sees. */
+    --card-rivets:
+        var(--rs-rivet) 3px calc(100% - 3px) / 10px 10px no-repeat,
+        var(--rs-rivet) calc(100% - 3px) calc(100% - 3px) / 10px 10px no-repeat;
+    background: var(--card-rivets), var(--rs-brush), var(--card-fill);
+    border: 1px solid var(--rs-edge);
     border-radius: 2px;
-    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.055), inset -1px -1px 0 rgba(0,0,0,0.55);
+    box-shadow:
+        inset 2px 2px 0 var(--rs-chamfer-hi),
+        inset 4px 4px 0 var(--rs-chamfer-mid),
+        inset -2px -2px 0 var(--rs-chamfer-lo),
+        inset -4px -4px 0 var(--rs-chamfer-lo2),
+        0 3px 0 rgba(0, 0, 0, 0.65),
+        0 6px 10px rgba(0, 0, 0, 0.4);
     cursor: pointer;
-    transition: border-color 120ms ease, background 120ms ease, filter 120ms ease;
+    transition: transform 90ms ease, box-shadow 110ms ease;
 }
-.race-card::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #34465e; }
-.race-card:hover,
-.race-card:focus-visible { outline: none; border-color: var(--race-accent); background: linear-gradient(155deg, #243247, #141d29 72%); }
-.race-card.active {
-    border-color: var(--race-accent);
-    background: linear-gradient(155deg, rgba(45, 73, 98, 0.96), #111923 72%);
-    box-shadow: inset 0 0 0 1px rgba(116, 210, 230, 0.24), 0 0 16px rgba(80, 191, 220, 0.16);
-}
-.race-card.active::after { background: var(--race-accent); box-shadow: 0 0 9px var(--race-accent); }
-.race-card.locked { filter: saturate(0.5); }
-.race-card.locked:hover { filter: saturate(0.7); }
 
-.race-card-header { display: flex; align-items: center; gap: 9px; }
-.race-card-header img {
-    width: 34px;
-    height: 34px;
-    flex: 0 0 34px;
-    padding: 3px;
+/* HOVER PROMOTES THE PLATE AND LEAVES THE PAINTING ALONE.
+   It used to do the opposite: the only thing that changed anywhere in the frame
+   was the crest — the accent radial over it rose and the art brightened — so a
+   faction lost its colour identity at exactly the moment a player was inspecting
+   it, while the card it lives on did not move, lift, or brighten. On a wall of
+   twelve tiles meant to be browsed, the hover affordance was "the art got
+   paler".
+   Now the plate RISES toward the player: 2px of travel, a longer drop shadow
+   under it and a ~35% brighter top-left chamfer. Nothing touches the art. */
+#raceSelectionModal .race-card:hover {
+    background: var(--card-rivets), var(--rs-brush), var(--card-fill);
+    transform: translateY(-2px);
+    box-shadow:
+        inset 0 1px 0 rgba(226, 238, 252, 0.5),
+        inset 2px 2px 0 #C6D3E4,
+        inset 4px 4px 0 #7A8AA0,
+        inset -2px -2px 0 var(--rs-chamfer-lo),
+        inset -4px -4px 0 var(--rs-chamfer-lo2),
+        0 5px 0 rgba(0, 0, 0, 0.7),
+        0 12px 20px rgba(0, 0, 0, 0.55);
+}
+/* KEYBOARD FOCUS IS THE SELECTION BEZEL, HELD OFF THE PLATE.
+   It was the browser default before: a 1px white DASHED marquee drawn in the
+   inter-card gutter of a beveled steel console, sitting next to the solid amber
+   ring that means "selected" — two unrelated ring languages, with the dash
+   pattern doing the job that offset and colour should be doing. Same amber, same
+   weight; what distinguishes it is that it floats 3px OFF the card with a halo,
+   where selection is cut 3px INTO it. Id-scoped so it also wins on the selected
+   card, which can be focused and selected at once. */
+#raceSelectionModal .race-card:focus { outline: none; }
+#raceSelectionModal .race-card:focus-visible {
+    outline: 2px solid #E7A63A;
+    outline-offset: 3px;
+    box-shadow:
+        inset 2px 2px 0 #C6D3E4,
+        inset 4px 4px 0 #7A8AA0,
+        inset -2px -2px 0 var(--rs-chamfer-lo),
+        inset -4px -4px 0 var(--rs-chamfer-lo2),
+        0 0 0 1px #05080C,
+        0 0 12px rgba(231, 166, 58, 0.35),
+        0 5px 0 rgba(0, 0, 0, 0.72),
+        0 10px 18px rgba(0, 0, 0, 0.55);
+}
+.race-card:active {
+    transform: translateY(3px);
+    box-shadow:
+        inset 3px 3px 7px rgba(0, 0, 0, 0.85),
+        inset -2px -2px 0 rgba(198, 220, 246, 0.1),
+        0 0 0 rgba(0, 0, 0, 0.65);
+}
+
+/* Inspecting a locked faction is not selecting it: a cut steel keyline, not a
+   dotted marquee. Steel says "reading"; amber says "chosen". */
+.race-card.inspecting:not(.active) {
+    outline: 2px solid rgba(176, 198, 226, 0.62);
+    outline-offset: -3px;
+}
+
+/* Selection has to be unmistakable across a twelve-card wall, so it is stated
+   three times over: a 3px AMBER frame around the plate, a brighter top-left
+   chamfer, and the amber SELECTED tab.
+
+   THE RING IS OUTSIDE THE PLATE NOW, AND THAT IS THE WHOLE POINT.
+   It used to be `outline-offset: -3px` plus an inset ::before, so the amber sat
+   exactly where the card's own bottom chamfer lives — border, black step, dark
+   step, five pixels of machined edge — and PAINTED OVER IT. The selected card's
+   plate therefore appeared to stop 3-4px above its three row-mates (measured on
+   the review capture: amber ending at y432 where Silicon, Zephyr and Crystalline
+   showed plate down to y435), and row 1's bottom edge photographed ragged. The
+   selected card also carried a deeper drop than its neighbours, which blacked
+   out the gutter under it and made the same edge read shorter again.
+
+   Both are gone. The ring is drawn OUTSIDE the border box — as an outline at
+   offset 0 and, belt and braces, as a non-inset box-shadow spread, which is
+   drawn outside the padding box and so survives this card's own
+   `overflow: hidden` where a pseudo-element ring cannot. The drop is the same
+   drop every resting card has. Every plate in a row now begins and ends at the
+   same y whichever one is chosen; the amber lives in the 6px gutter, where it
+   costs no layout and hides nothing.
+
+   Amber, not the faction hue. Twelve cards already carry twelve hues; a
+   thirteenth coloured ring in a hue the card is already wearing is the weakest
+   possible signal. Amber is this console's reserved action colour — the same
+   amber as CONFIRM — so the selected card and the button that commits it are
+   visibly the same transaction. A selection indicator is functional, which is
+   exactly the case the house ban on coloured edges exempts.
+
+   THE RING IS DRAWN TWICE, ON PURPOSE.
+   `outline` alone does not survive on this page: style.css carries a global
+   `button:focus:not(:focus-visible) { outline: none }`, which at 0,2,1 outranks
+   a plain `.race-card.active` at 0,2,0 — so the instant a player CLICKED a card
+   with a mouse the selection ring vanished, on every card, every time. (It is
+   visible in the round-1 captures: present before the first click, gone after.)
+   The id-scoped selector wins that fight, and the box-shadow spread is the belt
+   and braces — a shadow on an element this sheet owns outright, which no global
+   reset can reach. It has to be a shadow on the CARD and not a ring on a
+   pseudo-element: the card clips its own children so the port art can bleed to
+   the plate edge, and anything drawn outside the padding box by a child is cut
+   off. The hover rule is also id-scoped, so this block has to be too, or
+   hovering the selected card drops it back to the hover chamfer. */
+#raceSelectionModal .race-card.active {
+    outline: 3px solid var(--rs-amber);
+    outline-offset: 0;
+    box-shadow:
+        inset 2px 2px 0 #B2C0D2,
+        inset 4px 4px 0 #6C7B90,
+        inset -2px -2px 0 var(--rs-chamfer-lo),
+        inset -4px -4px 0 var(--rs-chamfer-lo2),
+        0 0 0 3px var(--rs-amber),
+        0 3px 0 rgba(0, 0, 0, 0.65),
+        0 6px 10px rgba(0, 0, 0, 0.4);
+}
+/* THE SELECTED CARD DOES NOT MOVE UNDER THE CURSOR.
+   The hover lift is right for the eleven cards you are browsing and wrong for
+   the one you have already chosen: clicking a card left the pointer on it, so
+   the card you just committed to jumped 2px and stayed jumped, and the review's
+   two captures of the same frame disagreed about where its footer was. The
+   plate still promotes on hover — brighter chamfer, deeper drop — it just
+   stays where it was put. */
+#raceSelectionModal .race-card.active:hover {
+    transform: none;
+    box-shadow:
+        inset 0 1px 0 rgba(226, 238, 252, 0.5),
+        inset 2px 2px 0 #C6D3E4,
+        inset 4px 4px 0 #7A8AA0,
+        inset -2px -2px 0 var(--rs-chamfer-lo),
+        inset -4px -4px 0 var(--rs-chamfer-lo2),
+        0 0 0 3px var(--rs-amber),
+        0 3px 0 rgba(0, 0, 0, 0.65),
+        0 8px 14px rgba(0, 0, 0, 0.5);
+}
+
+/* The selected-card marker: the one place besides CONFIRM that is allowed
+   saturated amber. It takes the slot the headline figure uses on every other
+   card, so it can never collide with it. */
+.race-card-mark {
+    position: absolute;
+    z-index: 3;
+    top: 3px;
+    right: 9px;
+    display: none;
+    padding: 3px 7px;
+    background: linear-gradient(180deg, #FFD992 0, var(--rs-amber) 55%, #8A5F1B 100%);
+    color: #241703;
+    font-size: 11px;
+    line-height: 1;
+    letter-spacing: 0.1em;
+    text-shadow: 0 1px 0 rgba(255, 232, 186, 0.5);
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.55), inset -1px -1px 0 rgba(96, 52, 4, 0.6), 0 2px 0 rgba(0, 0, 0, 0.55);
+}
+.race-card.active .race-card-mark { display: block; }
+.race-card.active .race-card-sig { display: none; }
+
+/* ---------------------------------------------------------------- the PORT
+
+   The fourth surface class, and the one that puts painted art on this screen.
+
+   A PORT is a machined aperture with a faction crest lit EDGE TO EDGE inside
+   it. The crests are production art (lore/visual-reference/production/crests) —
+   riveted hazard-striped plate, bone ring cut by a vermilion route, bronze
+   shoal — and they carry material no CSS gradient can fake. The port mounts
+   them like instrument glass:
+
+     * SLOT geometry: inner shadow from the top-left, a catch-light on the
+       bottom lip, a hard black keyline. Same recess as the meter wells;
+     * one raking key light across the GLASS from the top-left, in the faction
+       hue at low strength. That single rake is what makes a bronze crest and a
+       bone crest belong to the same lighting model.
+
+   THE APERTURE IS CUT TO THE PLATE. NOTHING IS CROPPED.
+
+   The published crests are 256x193. The port is 256/193 and the art is mounted
+   `contain`, so every plate is shown whole. The previous pass ran a 3:2 aperture
+   with a cover fit and threw away 13% of every crest's height — Titan Lords lost
+   the tops of all three pylons AND the foot of its base, on a source PNG that
+   carries clear margin above and below the whole monument, and Silicon lost the
+   tops of its two tallest bars. It carried a hand-measured per-faction
+   `object-position` to steer the damage, which is compensation for a bug rather
+   than art direction, and at the extremes it did not even work.
+
+   Contain is seamless here because the plates are painted ON BLACK: their border
+   pixels measure luma 4.6-5.7 against this port's own 7.7, and the four plates
+   that are a pixel shorter than 193 letterbox by 0.26% — a quarter of a pixel at
+   card size. There is no flank, because there is nothing in the flank.
+
+   ONE KEY LIGHT, ONE COLOUR, THIRTEEN PORTS. The rake across the glass is
+   --rs-key, the same warm white on every faction. It used to be the faction's
+   own hue at 22%, which is a gel over a painting: at roster scale the wall read
+   green / cyan / magenta / purple / chartreuse and the crests read as tinted
+   rather than as lit.
+
+   The art is not brightened. The crests are painted at the right value and the
+   console is light enough to seat them. */
+
+.race-port {
+    position: relative;
+    display: block;
+    width: calc(100% + 20px);
+    margin: -10px -10px 0;
+    /* THE APERTURE IS NEVER NARROWER THAN THE PLATE'S OWN 1.326, so a crest can
+       never be cropped. It is a little wider, because the roster has to land
+       twelve cards on a 1080p screen and the height has to come from somewhere;
+       the plates letterbox into ~7px of mat on each flank and that mat is
+       INVISIBLE, because it is measured: the outermost pixel column of all
+       twelve crests runs luma 0.0 down its whole length (max 1.0), and this
+       mat is #000. There is no step for an edge to be seen at. */
+    aspect-ratio: 1.42;
+    overflow: hidden;
+    /* the mat. Black, because the plates are painted on black. */
+    background: #000;
+    box-shadow:
+        inset 0 3px 7px rgba(0, 0, 0, 0.95),
+        inset 3px 0 6px rgba(0, 0, 0, 0.8),
+        inset 0 -1px 0 rgba(178, 202, 232, 0.26),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.9);
+}
+/* THE TWELVE CRESTS ARE MOUNTED ON ONE SCALE AND ONE VALUE BAND.
+   They are twelve separately painted plates, and unmounted they measure like
+   twelve unrelated pictures: peak luma ran 134 (Shadow Realm) to 238
+   (Crystalline), so Shadow Realm's BRIGHTEST pixel was darker than most crests'
+   mid-tone and it sat in row 3 as a smudge next to a lit gold gem; optical
+   height ran 67.7% (Star Nomads) to 84.5% (Titan Lords), so the emblems were
+   drawn at eight different sizes. A roster is a system or it is a scrapbook.
+
+   Two per-faction numbers fix it and they come off a measurement, not a taste:
+
+     --crest-gain   multiplies the plate to a common peak of ~185/255. Because
+                    brightness() is a multiply, the mat stays at zero: 0 x 1.38
+                    is still 0, so no crest grows a visible box on the black.
+     --crest-scale  normalises OPTICAL HEIGHT — the painted subject's own
+                    bounding box — to ~80% of the plate. Height, not area: the
+                    Crystalline gem is genuinely narrow and matching it on area
+                    would have made it a fifth taller than every other emblem.
+                    Every scale-up here is smaller than the empty margin above
+                    and below that crest's own ink (measured per file), so the
+                    aperture still crops nothing that is painted.
+     --crest-sat    one clamp, for the Void Walkers' vermilion route, whose peak
+                    chroma is 211/255 against a roster that otherwise tops out
+                    at 184. It was the only fully saturated hue in the frame.
+
+   The manifest in race-selection.js carries all three; the defaults here are
+   the identity transform, so a faction with no entry is simply unmodified.
+
+   THERE IS EXACTLY ONE `filter` DECLARATION FOR THE CREST, AND THIS IS IT.
+   The sealed and inspected states used to REPLACE the whole property, and the
+   replacement dropped `saturate()` — so --crest-sat, emitted per faction and
+   consumed only here, did nothing at all on the eleven ports that are sealed in
+   every frame, which is every port the clamp exists for. The state deltas are
+   now three variables, so a state can change the knock-back it means to change
+   and cannot silently discard the two mounting numbers it does not.
+
+   grayscale(g) and saturate(1-g) are the same colour matrix, so `--port-sat`
+   carries what the sealed state used to spell as grayscale(0.34): 1 - 0.34. */
+.race-port-art {
+    /* state deltas: the resting port is the identity */
+    --port-bright: 1;
+    --port-contrast: 1.06;
+    --port-sat: 1.05;
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: none;
     object-fit: contain;
-    background: #070b11;
-    border: 1px solid #344258;
-    box-shadow: inset 1px 1px 4px rgba(0,0,0,0.8);
+    transform: scale(var(--crest-scale, 1));
+    filter:
+        brightness(calc(var(--port-bright) * var(--crest-gain, 1)))
+        contrast(var(--port-contrast))
+        saturate(calc(var(--port-sat) * var(--crest-sat, 1)));
 }
-.race-card-header img[src$="terran-emblem-v2.svg"],
-.race-detail-header img[src$="terran-emblem-v2.svg"] {
-    filter: drop-shadow(0 0 5px rgba(105, 215, 242, 0.55));
-    background: rgba(5, 18, 28, 0.72);
+/* Instrument glass: one warm raking key light from the top-left, a settled
+   shadow bottom-right and a seating vignette, all drawn OVER the art. */
+.race-port-glass {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(146deg,
+            rgba(var(--rs-key), 0.15) 0,
+            rgba(var(--rs-key), 0.04) 24%,
+            rgba(0, 0, 0, 0) 50%,
+            rgba(0, 0, 0, 0.34) 100%),
+        radial-gradient(ellipse 62% 54% at 28% 18%,
+            rgba(var(--rs-key), 0.10) 0, rgba(var(--rs-key), 0) 76%),
+        radial-gradient(ellipse 96% 88% at 50% 46%, rgba(0, 0, 0, 0) 46%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* A sealed faction is a TARGET, not an error. The crest is knocked back to a
+   cold half-lit read and the aperture carries a seal plate; hovering or
+   inspecting the card brings the art most of the way back, which is the whole
+   aspirational move — you can see what you would be unlocking, you just cannot
+   have it yet. Nothing here is greyed to the point of looking disabled, and
+   nothing is hidden.
+
+   THE SEAL IS ONE PIECE OF METAL.
+   It used to be two: a warm hazard tab with a COLD blue-grey lock chip stacked
+   on top of it, the chip's own drop shadow cutting the tab's diagonals mid-
+   stroke on both sides, and the whole assembly bled off the aperture's bottom
+   edge with no cap. Two unrelated materials colliding in a 30px corner, on
+   eleven of twelve cards.
+
+   IT IS NOW THE SAME PLATE THE FAC-nn CHIP IS. The bronze hazard tab sat BARE
+   on the painting on eleven of the twelve ports, a saturated warm block over the
+   bottom-right of every crest with nothing under it. The console already solves
+   this exact problem correctly, twice — the designation chip and the SERVICE
+   RECORD chip both flank a stripe block with a flat opaque dark field — so the
+   seal is that: an opaque #050810 plate with a 1px steel keyline, an 8px hazard
+   stripe block on its left, and the padlock in bronze ink on the flat field to
+   the right of it. Nothing legible ever sits on the diagonals, and no painting
+   ever has raw hazard tape laid over it.
+
+   The chip's height is set from the glyph, not guessed. The old 22px box with a
+   13px padlock clipped the body of the lock at the chip's bottom edge — visible
+   at 4x in the review capture. */
+/* The sealed knock-back still rides ON the faction's own gain AND its own
+   saturation clamp — it sets the three state deltas and nothing else, so both
+   mounting numbers survive it. 0.66 is 1 - 0.34, the grayscale this used to
+   spell before it was a variable. */
+.race-port[data-state="locked"] .race-port-art {
+    --port-bright: 0.72;
+    --port-contrast: 0.98;
+    --port-sat: 0.66;
+    transition: filter 140ms ease;
+}
+/* THE HAZARD BLOCK IS A WHOLE NUMBER OF CHEVRONS WIDE.
+   The stripes run at 135° on an 11px pitch, so a run only terminates on a
+   stripe edge if the block it lives in is a multiple of that pitch across. At
+   8px it was cut mid-chevron on every sealed port, and on the dossier medallion
+   — where the chip is 3x the size and sits against a lit rail — you could count
+   the one and a half stripes. 11px is one whole pitch, and the block's own black
+   keyline caps the run at both ends so it reads as a machined tab rather than as
+   tape that ran out. The seat is fully opaque now too: at 0.94 the chip was six
+   percent of whatever was behind it, which on a medallion is half painted plate
+   and half aperture mat. */
+.race-port-seal {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 20px;
+    padding: 2px 6px 2px 0;
+    pointer-events: none;
+    background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0) 0 11px, #050810 11px 100%),
+        repeating-linear-gradient(135deg, #C79640 0 5.5px, #17120A 5.5px 11px);
+    box-shadow:
+        inset 0 0 0 1px rgba(150, 172, 200, 0.32),
+        0 0 0 1px rgba(0, 0, 0, 0.9),
+        0 2px 4px rgba(0, 0, 0, 0.85);
+    color: #E8C784;
+}
+.race-port-seal .race-lock-glyph {
+    margin-left: 11px;
+    width: 12px;
+    height: 12px;
+    flex: none;
+}
+.race-lock-glyph {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    fill: currentColor;
+    shape-rendering: geometricPrecision;
+}
+
+/* --------------------------------------------------------- port furniture
+
+   The card's designation and its widest swing are stencilled ONTO the art's
+   dark margin rather than stacked above it. Both sit on their own opaque inset
+   chip so they never have to fight the crest for contrast, and both are pinned
+   to a corner the crests leave empty — the art is centred in a 4:3 field with
+   ~12% of clear ground on every side. */
+
+.race-card-index {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 5px;
+    background: rgba(4, 7, 11, 0.84);
+    box-shadow: inset 0 0 0 1px rgba(150, 172, 200, 0.26);
+    color: #AFBCCD;
+    font-size: 11px;
+}
+/* The faction code chip, in STEEL. It used to carry the faction hue in the ink
+   and in its fill, which — multiplied by twelve cards, each with a matching
+   coloured lamp beside it — turned a steel-and-bronze faction wall into a grid
+   of coloured debug tags at store-page scale. The painted crest one row above
+   identifies the faction; the three-letter code only has to be legible. */
+.race-card-index em {
+    padding: 0 3px;
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow: inset 0 0 0 1px rgba(150, 172, 200, 0.34);
+    color: var(--rs-steel-hi);
+    font-style: normal;
+}
+/* The status lamp: on-line, in steel, not a hue key. */
+.race-led {
+    width: 6px;
+    height: 6px;
+    flex: none;
     border-radius: 50%;
+    background: radial-gradient(circle at 34% 30%, #F0F6FF 0 1px, #A9BACE 1.8px, #55637A 3px);
+    box-shadow: 0 0 5px rgba(196, 216, 244, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.55);
 }
-.race-card-title { min-width: 0; flex: 1; }
-.race-card-index { display: block; color: #718097; font-size: 0.52rem; line-height: 1; }
+.race-card.locked .race-led {
+    background: radial-gradient(circle at 34% 30%, #8E9AAC 0 1px, #5C687C 1.8px, #333C4A 3px);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+/* The card's one figure: the discipline this doctrine bends hardest. Set in the
+   figure face (Rajdhani 600, tabular lining) rather than the code face, because
+   it is a reading and readings have to resolve at a glance. */
+.race-card-sig {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 2;
+    max-width: 52%;
+    overflow: hidden;
+    padding: 2px 5px;
+    background: rgba(4, 7, 11, 0.84);
+    box-shadow: inset 0 0 0 1px rgba(150, 172, 200, 0.26);
+    color: #BAC6D6;
+    font-family: var(--rs-num);
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: 0.03em;
+    line-height: 13px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.race-card-sig[data-tone="up"] { color: var(--rs-bronze-hi); }
+.race-card-sig[data-tone="down"] { color: var(--rs-oxide); }
+
 .race-card h3 {
-    margin: 3px 0 0;
+    max-width: 100%;
+    margin: 2px 0 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    /* Steel, embossed, no glow. Coloured blur behind type is the holographic
+       signature the direction rules out and it softens otherwise-crisp glyphs. */
+    color: var(--rs-steel-hi);
     font-family: 'Russo One', 'Segoe UI', sans-serif;
-    font-size: 0.88rem;
+    font-size: 0.8rem;
     font-weight: 400;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.015em;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9), 0 -1px 0 rgba(255, 255, 255, 0.1);
 }
-.race-card-status { flex: none; padding: 3px 5px; border: 1px solid #344258; font-size: 0.5rem; }
-.race-card-status.is-ready { color: #8de3b0; background: rgba(50, 145, 92, 0.12); border-color: rgba(76, 191, 123, 0.38); }
-.race-card-status.is-locked { color: #d19c70; background: rgba(160, 92, 47, 0.12); border-color: rgba(190, 117, 69, 0.35); }
-.race-card p { min-height: 2.5em; margin: 0; color: #a8b3c4; font-size: 0.73rem; line-height: 1.28; }
-.race-card .race-special {
+
+/* The card's prose lives in the dossier now; this keeps it in the accessibility
+   tree so a screen reader still hears what each faction is before choosing. */
+.rs-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* ---------------------------------------------- the deviation chart (card)
+
+   THIS IS THE DOSSIER PLOT AT CARD SCALE. Same encoding, same colours, same
+   baseline, same channel order, same fixed cap. One chart language for one
+   dataset — see .rs-plot, and change the two together or not at all.
+
+   WHAT IT REPLACES, and why every one of these was a real defect.
+
+   The old rail was seven free-floating segments in a well: irregular heights,
+   irregular gaps, no baseline rule visible under them, no axis, no channel
+   names, and a stray keyline between every pair. At 216px it photographed as a
+   damaged progress bar — Silicon showed a lone grey square hovering off-height
+   with gaps on both sides, Bioform's last four channels read as MISSING rather
+   than as at-standard. It was also a SECOND grammar for the exact seven numbers
+   the dossier was drawing as slabs in a machined box, forty pixels away.
+
+   The rail is now one machined CHANNEL divided into seven bays by 1px walls,
+   with NO gaps between them: the walls are the separation, so no two same-sign
+   readings can fuse and no reading can look detached. The ×1.00 rule runs
+   unbroken across all seven bays and is the brightest line in the instrument, so
+   a bar is unmistakably seated ON it. Fills grow out of the rule; the cap on the
+   end of a fill is 3px on every channel at every value, so the reading is
+   encoded once, as length.
+
+   And the seven channel codes are back underneath, stencilled at 9px in mono
+   against near-black — about 7:1, not the 3:1 they were struck at when they were
+   removed. An instrument that does not name its own axes is a decoration; the
+   header legend is 800px away and a player comparing two cards is not going to
+   go and find it. */
+
+.race-meters {
+    /* one token: the channel's own inset, shared by the bays, the rule and the
+       code row, so all three can only ever start and stop at the same x. */
+    --rail-pad: 6px;
+    width: 100%;
     display: grid;
-    gap: 2px;
-    padding: 6px 7px;
-    color: #d5deeb;
-    background: rgba(4, 7, 11, 0.42);
-    border: 1px solid var(--rs-line);
-    font-size: 0.68rem;
-    line-height: 1.22;
+    margin-top: 1px;
 }
-.race-card .race-special strong { color: var(--rs-amber); font-family: 'Share Tech Mono', monospace; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.08em; }
-.race-card .race-doctrine { margin-top: auto; color: #c47f73; font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; line-height: 1.2; }
+.race-meter-well {
+    position: relative;
+    display: block;
+    height: 26px;
+    background: linear-gradient(180deg, #070B12 0, #04070C 52%, #070B12 100%);
+    border: 1px solid #101722;
+    box-shadow:
+        inset 0 2px 5px rgba(0, 0, 0, 0.9),
+        inset 2px 0 4px rgba(0, 0, 0, 0.7),
+        inset 0 -1px 0 rgba(174, 196, 224, 0.24);
+}
+/* THE BAY WALLS RUN THE FULL INNER HEIGHT OF THE WELL.
+   At `inset: 4px` they stopped 4px short of the ceiling and 4px short of the
+   floor, so the "machined channel divided into bays" photographed as seven
+   disconnected hairlines floating above seven disconnected detents — an
+   unfinished chart, not an instrument. The walls are the channel; only the
+   FILLS are inset, and they are inset by their own cap height (see below). */
+.race-meter-cols {
+    position: absolute;
+    inset: 1px var(--rail-pad);
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0;
+}
+/* THE ×1.00 RULE: continuous, full track width, and the brightest thing in the
+   channel. Everything else in this instrument is measured against it. */
+.race-meter-rule {
+    position: absolute;
+    left: var(--rail-pad);
+    right: var(--rail-pad);
+    top: 50%;
+    height: 2px;
+    margin-top: -1px;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(206, 226, 250, 0.62) 0 1px, rgba(0, 0, 0, 0.8) 1px 2px);
+}
+/* A bay. The wall on its right edge is what lets the bays sit gapless. */
+.race-meter {
+    position: relative;
+    min-width: 0;
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.9), inset -2px 0 0 rgba(146, 172, 206, 0.17);
+}
+.race-meter:last-child { box-shadow: none; }
+/* The connecting fill: flat, unbevelled, seated on the rule. It is the stem of
+   the reading and not the reading itself — the cap is.
+
+   THE TRAVEL IS THE HALF-TRACK LESS THE CAP, so a full-scale reading tops out
+   with its whole 3px cap and both of the cap's bevel lines INSIDE the well. The
+   old form scaled the cap's offset by the bare half-track, which put a ×2.00
+   cap 2px past the top of the channel: on Titan Lords the ATK and DEF caps
+   merged with the well's top border and the CST cap merged with its floor, so
+   the three biggest readings on the card were the only three whose ends could
+   not be seen. Length still encodes the value and the cap is still 3px on every
+   channel at every reading. */
+.race-meter-fill {
+    position: absolute;
+    left: 2px;
+    right: 3px;
+    height: calc((50% - 3px) * var(--k, 0));
+}
+.race-meter-cap {
+    position: absolute;
+    left: 2px;
+    right: 3px;
+    height: 3px;
+    box-shadow: inset 0 1px 0 rgba(226, 240, 255, 0.4), inset 0 -1px 0 rgba(0, 0, 0, 0.7);
+}
+.race-meter[data-tone="up"] .race-meter-fill { bottom: 50%; background: #8A6117; }
+.race-meter[data-tone="up"] .race-meter-cap {
+    bottom: calc(50% + (50% - 3px) * var(--k, 0));
+    background: var(--rs-bronze-hi);
+}
+.race-meter[data-tone="down"] .race-meter-fill { top: 50%; background: #7C3322; }
+.race-meter[data-tone="down"] .race-meter-cap {
+    top: calc(50% + (50% - 3px) * var(--k, 0));
+    background: var(--rs-oxide);
+}
+/* A channel at rest: a NARROW steel detent parked on the rule. Narrow on
+   purpose — seven full-bay marks at the same y would hide the rule under
+   themselves and the instrument would photograph as one broken white line,
+   which is exactly how an earlier version of this chart failed. At this width
+   the bright rule stays visible either side of every detent inside its own bay,
+   so a flat doctrine reads as seven needles on a continuous scale. */
+.race-meter[data-tone="flat"] .race-meter-cap {
+    left: 50%;
+    right: auto;
+    width: 9px;
+    margin-left: -5px;
+    top: calc(50% - 2px);
+    height: 4px;
+    background: linear-gradient(180deg, #8695AB 0, #5A6779 55%, #333C4A 100%);
+}
+/* The channel names. 9px mono, ~7:1 on the plate, on the rail's own inset so a
+   code sits under the bay it names. */
+.race-meter-codes {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    padding: 1px var(--rail-pad) 0;
+    color: #94A4B9;
+    font-family: var(--rs-mono);
+    font-size: 9px;
+    letter-spacing: 0.02em;
+    line-height: 9px;
+    text-align: center;
+}
+
+/* ---------------------------------------------------------- card footer rail
+
+   Two gates, two treatments. A SERVICE gate is earned, so it wears hazard
+   chevrons on a fixed 22px tab. A REQUISITION gate is bought, so it wears a
+   bronze plate: paid content must not read as a warning state. In both cases
+   the caption sits on an opaque inset strip and never on the diagonals.
+
+   THE BOX IS SIZED BY ITS TYPE, NEVER THE OTHER WAY ROUND.
+   It used to be `height: 25px` holding a body that measures 32.9 — an 11px tag
+   line at 1.05, a 13px caption line at 1.18, 4px of padding and 2px of rule —
+   so 7.9px of the strip, INCLUDING its whole bottom edge, hung outside the
+   card and was cut off by the plate's own overflow. Every one of the twelve
+   captions lost its descenders with it: the g in "Win 3 games", the p in
+   "Colonize 20 planets", the y in "Earn 50000 crystal", the q and the $ tail
+   in "Acquire for $4.99". Measured on the review capture, the caption's ink
+   stopped dead at the clip line on all twelve.
+
+   Two things fix it and both are needed. The strip is now auto-height with a
+   floor, so it can never be shorter than the two lines it holds; and the
+   caption's line box is 1.34 rather than 1.18, because Rajdhani's descender at
+   13px reaches 16.5px from the line-box top and a 15.3px line box crops the
+   last of it even when the strip itself fits. Horizontal truncation is still
+   nowrap + ellipsis — it is the VERTICAL clip that was the bug. */
+
+.race-card-note {
+    width: 100%;
+    height: auto;
+    min-height: 36px;
+    margin-top: 4px;
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    align-items: stretch;
+    text-align: left;
+}
+/* An authorized faction has no gate, so it gets no gate flag — an empty tab is
+   worse than no tab. */
+.race-card-note[data-gate="open"] { grid-template-columns: minmax(0, 1fr); }
+.race-card-note[data-gate="open"] .race-note-flag { display: none; }
+.race-note-flag {
+    display: grid;
+    place-items: center;
+    background: linear-gradient(180deg, #2B3444, #161D28);
+    border: 1px solid #33415A;
+    border-right: 0;
+    box-shadow: inset 1px 1px 0 rgba(160, 180, 208, 0.24);
+    color: #DCC6A0;
+}
+.race-note-flag .race-lock-glyph { width: 12px; height: 12px; }
+/* Label over value, not label then value: at card width the objective wraps and
+   gets clipped when it has to share a line with its own tag, and a stacked
+   caption is the instrument-panel grammar anyway. */
+.race-note-body {
+    min-width: 0;
+    display: grid;
+    align-content: center;
+    /* asymmetric on purpose: the tag line has no descenders and the caption
+       does, so the air is spent under the type that needs it */
+    padding: 2px 7px 3px;
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid #33415A;
+    color: #A2B0C4;
+}
+.race-note-body b {
+    min-width: 0;
+    overflow: hidden;
+    color: #9BAABF;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.05;
+    letter-spacing: 0.08em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.race-note-body em {
+    min-width: 0;
+    overflow: hidden;
+    color: #B2BFD1;
+    font-size: 13px;
+    font-style: normal;
+    font-weight: 500;
+    /* 17.4px of line box for a face whose 13px descender reaches 16.5px from
+       the top of it. At 1.18 the box was 15.3px and every tail was shaved. */
+    line-height: 1.34;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Achievement / recruitment gate — sealed hatch. */
+.race-card-note[data-gate="service"] .race-note-flag {
+    background:
+        repeating-linear-gradient(135deg,
+            #C79640 0 5.5px,
+            #17120A 5.5px 11px);
+    border-color: #33415A;
+    color: #1A1208;
+}
+.race-card-note[data-gate="service"] .race-note-body em { color: #E0CEB0; }
+.race-card-note[data-gate="service"] .race-note-body b { color: #C4A778; }
+
+/* Purchasable — a requisition plate, not a hazard. */
+.race-card-note[data-gate="requisition"] .race-note-flag {
+    background: linear-gradient(180deg, #8A6A30 0, #56411E 60%, #332711 100%);
+    border-color: #33415A;
+    color: #F4E2BE;
+}
+.race-card-note[data-gate="requisition"] .race-note-body em { color: #DDCCAE; }
+.race-card-note[data-gate="requisition"] .race-note-body b { color: #BFA279; }
+
+/* ------------------------------------------------------------ locked plates
+
+   Aspirational, not broken. Nothing is hidden and nothing is greyed to the point
+   of reading as disabled: the crest is still there, still recognisable, just
+   held at half light behind a hazard band, and the plate around it is cooled so
+   the authorized factions carry the value on the page. The padlock, the gate
+   flag and the requirement caption stay at full strength, so the card states a
+   target and its price rather than a failure.
+
+   Hover and inspect bring the art back up to 88% — the reward is shown, on
+   demand, to the player who reaches for it. */
+
+.race-card.locked {
+    --card-fill: linear-gradient(180deg, #303B49 0, #232C39 46%, #161E29 100%);
+    box-shadow:
+        inset 0 0 0 1px rgba(0, 0, 0, 0.75),
+        inset 2px 2px 0 rgba(140, 154, 172, 0.46),
+        inset 4px 4px 0 rgba(84, 95, 112, 0.38),
+        inset -2px -2px 0 var(--rs-chamfer-lo),
+        inset -4px -4px 0 var(--rs-chamfer-lo2),
+        0 3px 0 rgba(0, 0, 0, 0.65);
+}
+.race-card.locked h3 { color: #9DAABE; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8); }
+/* Locked cards knock BACK, they do not go dark: the whole point of a shared
+   rail is that all twelve can be compared, and eleven of the twelve are sealed
+   for most players. */
+.race-card.locked .race-meters { opacity: 0.82; }
+.race-card.locked .race-card-index { color: #93A1B4; }
+.race-card.locked .race-card-sig { color: #8B98AA; }
+/* Only INSPECTING restores a sealed faction's art — you are looking at its
+   dossier, so you get to see what you would be unlocking. Hover does not: a
+   painting that changes when the pointer crosses it is the defect that made the
+   roster read as "the art got paler on hover". */
+.race-card.locked.inspecting .race-port-art { --port-bright: 1.02; --port-contrast: 1.04; --port-sat: 0.96; }
+.race-card.locked.inspecting .race-meters { opacity: 0.9; }
+.race-card.locked.inspecting h3 { color: #B4C1D2; }
+
+/* --------------------------------------------------------------- dossier bay */
 
 .race-detail-panel {
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
-    padding: 14px;
-    background: linear-gradient(rgba(75, 116, 162, 0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(75, 116, 162, 0.055) 1px, transparent 1px), #0a1019;
-    background-size: 22px 22px, 22px 22px, auto;
+    padding: 8px;
+    background:
+        linear-gradient(rgba(120, 160, 210, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(120, 160, 210, 0.05) 1px, transparent 1px),
+        var(--rs-brush),
+        linear-gradient(180deg, #1E2836, #16202B);
+    background-size: 22px 22px, 22px 22px, auto, auto;
 }
-.race-detail-content { min-height: 0; overflow-y: auto; padding: 3px 3px 12px; scrollbar-color: #51657f transparent; scrollbar-width: thin; }
-.race-detail-header { display: flex; align-items: center; gap: 13px; padding-bottom: 12px; border-bottom: 1px solid var(--rs-line); }
-.race-detail-header img {
-    width: 58px;
-    height: 58px;
-    padding: 5px;
-    object-fit: contain;
-    background: #060a10;
-    border: 1px solid var(--race-accent);
-    box-shadow: inset 2px 2px 7px rgba(0,0,0,0.8), 0 0 15px rgba(80, 191, 220, 0.14);
+
+/* WHERE THE SLACK GOES.
+   A flat doctrine's dossier is shorter than a lopsided one's, and the previous
+   pass spread the difference evenly between every panel with
+   `justify-content: space-between` — which on the default faction opened a
+   ~40px band of empty textured plate between the last instrument and the
+   footer stencil, and moved the panel's bottom edge from faction to faction.
+   Now every panel is packed from the top and exactly ONE track is flexible:
+   the homeworld plate. Spare height in the bay is spent on the painting, the
+   footer stencil is pinned to the foot, and the confirm rail never moves. */
+.race-detail-content {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow-y: auto;
+    padding: 1px 4px 1px 2px;
+    scrollbar-color: #4A5C74 transparent;
+    scrollbar-width: thin;
 }
-.race-detail-kicker { color: #7f8da1; font-size: 0.55rem; }
-.race-detail-header h3 { margin: 3px 0 0; font-family: 'Russo One', 'Segoe UI', sans-serif; font-size: clamp(1.15rem, 2vw, 1.55rem); font-weight: 400; letter-spacing: 0.025em; }
-.race-detail-description { margin: 12px 0; color: #b1bdcd; font-size: 0.82rem; line-height: 1.42; }
+.race-detail-content > * { flex: none; }
+
+/* A dossier for a faction with a long restriction list is taller than the bay.
+   That is fine — it is a dossier — but the cut has to READ as "there is more",
+   not as a panel title sliced in half. A mask on the scroll port fades the last
+   26px of the VIEWPORT, so it tracks the bottom edge exactly without any magic
+   offset for the confirm rail below it. The class is set from JS only when the
+   content actually overflows, so a dossier that fits never wears a fade across
+   its own footer stencil.
+
+   THE FADE IS A CUE, NOT A DIMMER. It used to run 34px deep and end at 10%
+   alpha, which took a LIVE row of chips down to about 40% — the value a
+   disabled control is drawn at on this console — so the one faction that still
+   overruns the bay looked like it had greyed out its own last instrument. 18px
+   ending at 55% still reads as "the plate carries on past the wall" and never
+   takes type below the contrast the rest of the panel is set at. */
+.race-detail-panel.is-scrollable .race-detail-content {
+    -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 18px), rgba(0, 0, 0, 0.55) 100%);
+    mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 18px), rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* ------------------------------------------------------------------- the hero
+
+   The dossier opens on the faction's PAINTED HOMEWORLD across the head of the
+   bay, with the crest medallion bolted into its bottom-left corner and the
+   entity name set on the plate beside it.
+
+   This is the change the whole pass turns on. Two art directors in a row said
+   the same thing about this screen — "there is no ART in this art", then "it is
+   a telemetry dashboard, 6% of the frame is painted and 92% of pixels are below
+   luma 51" — and both were right, because the only painted assets in the frame
+   were crests, and crests are painted DARK. production/homeworlds/ is painted
+   LIT: Terra's flooded gantries under a bronze sky, the Works' plated hemisphere
+   venting into a red dusk, the Ancients' installation adrift on its cross of
+   spars. A third of each of those paintings sits above luma 100.
+
+   The plate is the ONE flexible track in the dossier column, so every spare
+   pixel in the bay is spent on it: on a doctrine with nothing sealed the
+   painting grows, on one with a long restriction list it gives the height back.
+   The frame's bottom edge never moves and there is no empty band anywhere.
+
+   The medallion overlaps the plate rather than sitting under it, which buys the
+   crest 132px of aperture for 46px of column height, and reads as an emblem
+   bolted onto the world it belongs to. */
+
+.race-detail-hero {
+    position: relative;
+    flex: 1 1 auto;
+    /* THE FLOOR IS THE HEIGHT AT WHICH A 16:9 PAINTING IS STILL A PAINTING.
+       It used to be 146px — the head rail plus the medallion and its seat —
+       which is furniture, not art: a faction with four sealed branches and two
+       calibrated hulls took every spare pixel out of this track, and the 960x540
+       hero came back as a 455x146 letterbox at 3.1:1. On the Mechanicus dossier
+       the Works' plated hemisphere read as an unreadable brown smear behind the
+       title block, while Terra on the same component at ~320px read as shipped
+       art. Same panel, one state finished and one state broken.
+       At 230px the plate is 1.9:1 and the painting survives on every faction.
+       It is still the flexible track — an uncrowded dossier still spends its
+       slack here, and Terra still opens at ~380px — but it does not pay for a
+       long restriction list any more.
+
+       224 AND NOT 230 IS A SHRINK ALLOWANCE, NOT A SMALLER PLATE. The hero is
+       the only growable item in the column, so it absorbs whatever the bay has
+       spare and lands well above this number on eleven of the twelve factions
+       — the floor is only reached when the dossier is over-subscribed, and then
+       six pixels of plate is what stops a whole instrument dropping below the
+       fold. Shadow Realm, the densest dossier in the registry, is the one
+       faction that touches it: 224px is 2.0:1 against 230's 1.9:1. */
+    min-height: 224px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+    background: #05080D;
+    border: 1px solid var(--rs-edge);
+    box-shadow:
+        inset 0 3px 8px rgba(0, 0, 0, 0.9),
+        inset 3px 0 7px rgba(0, 0, 0, 0.8),
+        inset 0 -1px 0 rgba(178, 202, 232, 0.26),
+        0 3px 0 rgba(0, 0, 0, 0.6);
+}
+.race-world-art {
+    position: absolute;
+    inset: -2%;
+    display: block;
+    width: 104%;
+    height: 104%;
+    max-width: none;
+    object-fit: cover;
+    object-position: 50% 44%;
+    /* The sources carry a 1-2% painted black border; the 2% overscan crops it
+       so the painting meets the aperture wall with no seam. */
+    filter: contrast(1.04) saturate(1.04);
+}
+/* Glass over the painting: the same top-left rake every aperture on this screen
+   uses, plus the scrim the identity block is set on. The scrim is a gradient,
+   not a bar — the horizon of the painting stays visible through it. */
+.race-world-glass {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(146deg,
+            rgba(226, 240, 255, 0.10) 0,
+            rgba(226, 240, 255, 0.02) 22%,
+            rgba(0, 0, 0, 0) 46%,
+            rgba(0, 0, 0, 0.22) 100%),
+        linear-gradient(180deg,
+            rgba(4, 7, 12, 0.62) 0, rgba(4, 7, 12, 0.10) 22%,
+            rgba(4, 7, 12, 0.0) 40%, rgba(4, 7, 12, 0.62) 74%,
+            rgba(4, 7, 12, 0.94) 100%),
+        radial-gradient(ellipse 96% 88% at 50% 44%, rgba(0, 0, 0, 0) 44%, rgba(0, 0, 0, 0.5) 100%);
+}
+/* The plate's head rail: the world's name on the left, the clearance stamp on
+   the right. It is a FLEX ROW in the hero's own column, not two absolutely
+   positioned chips, so it can never end up underneath the medallion when a
+   crowded dossier squeezes the plate down to its floor. */
+.race-hero-rail {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px;
+}
+/* The world's name, stencilled on a chip. It names a PLACE. The engine gives
+   every commander a homeworld sector and nothing about it varies by faction,
+   so this line says where you are from and stops. */
+.race-world-tag {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 3px 7px;
+    background: rgba(4, 7, 11, 0.8);
+    box-shadow: inset 0 0 0 1px rgba(150, 172, 200, 0.28);
+    color: #DCE5F1;
+    font-family: var(--rs-num);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.race-world-tag i {
+    color: #93A2B6;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    font-style: normal;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+/* Sealed factions get a stencil at the rail's right end, built to the pattern
+   the SERVICE RECORD chip already gets right: an 18px hazard-stripe block on the
+   left, the word on a FLAT dark field beside it. It used to print its letters
+   directly on the diagonals, so eight glyphs at 11px fought a high-frequency
+   yellow/black pattern — the one place on this console where type sits on
+   hazard tape, next to two chips that solve it correctly. */
+.race-world-seal {
+    flex: none;
+    display: flex;
+    align-items: stretch;
+    background: #0A0F16;
+    box-shadow:
+        inset 1px 1px 0 rgba(190, 208, 232, 0.34),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.9);
+    color: #F0DFBE;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.race-world-seal::before {
+    content: '';
+    width: 18px;
+    flex: none;
+    background: repeating-linear-gradient(135deg, #C79640 0 5.5px, #17120A 5.5px 11px);
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.8);
+}
+.race-world-seal b { padding: 3px 9px; font-weight: 400; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95); }
+
+/* The identity lockup, docked to the foot of the plate over the scrim. */
+.race-hero-foot {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 132px minmax(0, 1fr);
+    align-items: end;
+    gap: 11px;
+    padding: 9px 11px 9px 9px;
+}
+.race-port.is-hero {
+    width: 132px;
+    margin: 0;
+    /* the plates' own aspect, same as the roster ports — the medallion shows the
+       whole crest, not a 4:3 slice of it */
+    aspect-ratio: 256 / 193;
+    border: 1px solid var(--rs-edge);
+    box-shadow:
+        inset 0 3px 8px rgba(0, 0, 0, 0.9),
+        inset 3px 0 6px rgba(0, 0, 0, 0.8),
+        inset 0 -1px 0 rgba(178, 202, 232, 0.3),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.9),
+        /* the medallion is BOLTED ON: a lit rail round the aperture and a hard
+           drop under it, so it sits proud of the painting behind it */
+        0 0 0 2px #47546A,
+        0 0 0 3px #05080C,
+        0 3px 6px rgba(0, 0, 0, 0.75),
+        0 6px 16px rgba(0, 0, 0, 0.6);
+}
+/* Held off the medallion's inner border and off the crest's plate edge. Flush
+   at 4px the chip's top-left corner landed exactly on the painted plate's right
+   edge, so one badge sat half on the art and half on the mat. */
+.race-port.is-hero .race-port-seal { right: 8px; bottom: 8px; }
+
+.race-detail-ident {
+    min-width: 0;
+    align-self: end;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding-bottom: 2px;
+}
+.race-detail-kicker {
+    color: #B4C1D3;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+}
+.race-detail-hero h3 {
+    margin: 3px 0 0;
+    color: #EEF3FA;
+    font-family: 'Russo One', 'Segoe UI', sans-serif;
+    font-size: clamp(1.06rem, 1.42vw, 1.34rem);
+    font-weight: 400;
+    line-height: 1.12;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.95), 0 -1px 0 rgba(255, 255, 255, 0.12), 0 2px 8px rgba(0, 0, 0, 0.85);
+}
+/* The faction's one-line pitch, set INSIDE the lockup under the name. It costs
+   the column nothing: the foot's height is set by the 101px medallion beside
+   it, and kicker + name + three lines of pitch still fit inside that. */
+/* On a sealed faction the clearance gate shares that column, so the pitch takes
+   two lines rather than three and the lockup still fits inside the plate. */
+.race-detail-content.is-locked .race-detail-tagline { -webkit-line-clamp: 2; }
+.race-detail-tagline {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    margin-top: 4px;
+    color: #C2CEDE;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.32;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+/* Signature: a neutral inset well. It used to be a khaki fill with scanlines —
+   the largest saturated block in the frame, competing with the confirm button
+   for the eye. Only the word is bronze now. */
 .race-detail-special {
     display: grid;
-    gap: 5px;
-    padding: 10px 12px;
-    background: rgba(145, 99, 31, 0.14);
-    border: 1px solid rgba(240, 162, 51, 0.34);
-    color: #dce4ef;
-    font-size: 0.78rem;
-    line-height: 1.35;
-}
-.race-detail-special strong,
-.race-detail-doctrine strong { color: #f7c56f; font-family: 'Share Tech Mono', monospace; font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.08em; }
-.race-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
-.race-detail-stat {
-    min-width: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 9px;
-    background: linear-gradient(180deg, #192230, #121923);
-    border: 1px solid #263347;
-    color: #9eabbd;
-    font-size: 0.7rem;
-}
-.race-detail-stat strong { color: #cbd5e3; font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; white-space: nowrap; }
-.race-detail-stat[data-tone="positive"] strong { color: #69d79b; }
-.race-detail-stat[data-tone="negative"] strong { color: #e17d72; }
-.race-detail-doctrine,
-.race-locked-note {
-    display: grid;
-    gap: 4px;
-    margin-top: 10px;
-    padding: 10px 12px;
-    background: rgba(255,255,255,0.025);
-    border: 1px solid #263347;
-    color: #b3becc;
-    font-size: 0.72rem;
+    gap: 0;
+    padding: 3px 10px 4px;
+    background: linear-gradient(180deg, #0D141E, #080D14);
+    border: 1px solid #2C3A50;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.72), inset 0 -1px 0 rgba(174, 196, 224, 0.2);
+    color: #DCE4EF;
+    font-size: 13px;
+    font-weight: 500;
     line-height: 1.4;
 }
-.race-locked-note { color: #e2a495; border-color: rgba(210, 112, 88, 0.42); background: rgba(130, 49, 33, 0.12); }
+.race-detail-special strong {
+    color: #DDAF5B;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+}
 
-.race-confirm-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 2px solid #04070b; }
-.race-confirm-note { display: flex; align-items: center; gap: 7px; color: #718097; font-size: 0.53rem; line-height: 1.3; }
-.race-confirm-note span { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #65d191; box-shadow: 0 0 7px #65d191; }
+/* --------------------------------------------------------- the doctrine plot
+
+   One instrument for every faction. Bars are anchored to the ×1.00 rule — up is
+   advantage, down is penalty — so a doctrine that bends nothing renders as
+   seven caps sitting on the baseline rather than as seven full-height columns
+   that read as "the values did not load". The axis is labelled on its rails and
+   the plot fills the well; the summary is a full-width row underneath, not
+   copy floating in the well's empty half. */
+
+.race-detail-instrument,
+.race-detail-fleet,
+.race-detail-doctrine,
+.race-detail-hulls {
+    flex: none;
+    border: 1px solid #2C3A50;
+    background:
+        var(--rs-brush),
+        linear-gradient(180deg, #222D3C, #18212C);
+    box-shadow: inset 2px 2px 0 rgba(134, 150, 172, 0.5), inset -2px -2px 0 rgba(0, 0, 0, 0.75);
+}
+.race-detail-instrument-bar { padding: 1px 10px 2px; font-size: 11px; }
+
+/* THE PLOT IS A GRID OF THREE ROWS: a readout rail, the well with its axis
+   column beside it, and the channel-code rail. --plot-pad is declared here
+   because the readout, the well's gridlines, the bar track and the code rail all
+   share it, and the moment they stop sharing it the chart stops lining up. */
+.rs-plot {
+    --plot-pad: 7px;
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    /* 10px, not 4: the ×2.00 / ×1.00 / ×0.50 labels were sitting hard against
+       the well's left wall with barely a gutter, so the axis read as part of
+       the instrument's frame rather than as its calibration. */
+    column-gap: 10px;
+    padding: 2px 9px 1px;
+}
+
+/* THE READOUT RAIL. Every reading, at ONE y, in channel order.
+   They used to alternate sides — amber above a slab, red below it — so reading
+   the row zig-zagged and no two figures could be compared without the eye
+   travelling. Now the row is a straight line and the colour is the only thing
+   that varies. The cost channel prints "×1.20 cost": that slab is plotted at the
+   effect (×0.83) and the noun is what stops the two numbers being read as one.
+   A cell is allowed to overflow into the gutter by design — the gutters are 7px
+   and the widest reading overruns its cell by 3px a side. */
+.rs-plot-read {
+    grid-column: 2;
+    grid-row: 1;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 7px;
+    padding: 0 var(--plot-pad) 3px;
+    font-family: var(--rs-num);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    line-height: 13px;
+    text-align: center;
+}
+.rs-plot-read span { min-width: 0; overflow: visible; white-space: nowrap; }
+.rs-plot-read [data-tone="up"] { color: var(--rs-bronze-hi); }
+.rs-plot-read [data-tone="down"] { color: var(--rs-oxide); }
+.rs-plot-read [data-tone="flat"] { color: #8492A8; }
+
+/* THE ALL-BASELINE READOUT. When nothing deviates, the rail carries one
+   stencilled finding across the whole instrument instead of seven copies of
+   ×1.00 — the figure and the detent under it were saying the same nothing
+   twice, in the dossier's prime real estate, on the faction this screen opens
+   on. It spans both plot columns so it can be set at plate scale rather than
+   squeezed into the well's own width. */
+.rs-plot-read[data-flat] {
+    grid-column: 1 / -1;
+    display: block;
+    padding: 1px 2px 4px;
+    text-align: center;
+}
+.rs-plot-read[data-flat] b {
+    display: block;
+    overflow: hidden;
+    color: #B9C6D8;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.07em;
+    line-height: 1.5;
+    text-transform: uppercase;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
+}
+
+.rs-plot-axis {
+    grid-column: 1;
+    grid-row: 2;
+    position: relative;
+    height: var(--rs-plot-h);
+    box-sizing: border-box;
+    /* a transparent 1px border so this column's padding box matches the well's,
+       and an axis label therefore lands on its gridline and not a pixel off it */
+    border: 1px solid transparent;
+    color: #93A2B7;
+    /* Rajdhani 600 tabular, exactly like the readings it calibrates. */
+    font-family: var(--rs-num);
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: 0.02em;
+    text-transform: none;
+}
+/* Each label sits at the exact y of the gridline it names. ×2.00 and ×0.50 used
+   to point at nothing at all — the rails were drawn UNDER the channel slots and
+   were therefore invisible — which is half the reason a slab could be plotted
+   out of band without anything catching it. */
+.rs-plot-axis span { position: absolute; right: 5px; transform: translateY(-50%); white-space: nowrap; }
+.rs-plot-axis span:nth-child(1) { top: var(--plot-pad); }
+.rs-plot-axis span:nth-child(2) { top: 50%; color: #C9D5E4; }
+.rs-plot-axis span:nth-child(3) { top: calc(100% - var(--plot-pad)); }
+
+.rs-plot-well {
+    grid-column: 2;
+    grid-row: 2;
+    position: relative;
+    height: var(--rs-plot-h);
+    box-sizing: border-box;
+    background: linear-gradient(180deg, #070B11 0, #04070C 52%, #070B11 100%);
+    border: 1px solid #101722;
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.9), inset 2px 0 5px rgba(0, 0, 0, 0.7), inset 0 -1px 0 rgba(174, 196, 224, 0.24);
+}
+/* THREE REAL GRIDLINES, EDGE TO EDGE.
+   The rails at ×2.00 and ×0.50, and the ×1.00 rule which is continuous and
+   brighter than either. They run the full width of the well AND are repeated
+   inside every channel's own recess (see .rs-col-slot), so they are unbroken
+   across the whole instrument and a slab that ends up on the wrong side of the
+   ×1.00 line has nowhere to hide. The previous chart had no continuous baseline
+   at all — the rule existed only as short dashes in the gutters BETWEEN columns,
+   never across a bar — which is why a ×1.20 reading could be drawn below ×1.00
+   for three rounds without anyone catching it. */
+.rs-plot-rule {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    pointer-events: none;
+    background: rgba(150, 180, 218, 0.30);
+}
+.rs-plot-rule[data-at="hi"] { top: var(--plot-pad); }
+.rs-plot-rule[data-at="lo"] { bottom: var(--plot-pad); }
+.rs-plot-base {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(50% - 1px);
+    height: 2px;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(206, 226, 250, 0.62) 0 1px, rgba(0, 0, 0, 0.75) 1px 2px);
+}
+
+.rs-plot-cols {
+    position: absolute;
+    inset: var(--plot-pad) 0;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 7px;
+    padding: 0 var(--plot-pad);
+}
+.rs-col {
+    position: relative;
+    min-width: 0;
+}
+/* Every channel is a machined recess whether or not it deviates — that is what
+   makes a flat doctrine read as seven channels of hardware at rest rather than
+   as data that failed to load. The three gridlines are drawn INTO the recess at
+   the same three y values the well draws them at, which is what makes them
+   continuous across the instrument instead of stopping at every slot wall. */
+.rs-col-slot {
+    position: absolute;
+    inset: 0;
+    display: block;
+    background: linear-gradient(180deg, #0C131C 0, #070C13 50%, #0C131C 100%);
+    /* walls on the SIDES only. A keyline round all four edges is what buried the
+       two rails: they sit exactly on the recess's top and bottom, and a 1px
+       black stroke drawn over the background hid them inside every channel while
+       leaving them visible in the gutters, so the chart appeared to have rails
+       made of dashes and an axis label pointing at nothing. */
+    box-shadow:
+        inset 2px 2px 4px rgba(0, 0, 0, 0.9),
+        inset 1px 0 0 rgba(0, 0, 0, 0.7),
+        inset -1px 0 0 rgba(160, 186, 220, 0.12);
+}
+/* The three gridlines, drawn INSIDE the recess and above its machining, at the
+   same three y values the well draws them at outside it. This is what makes
+   ×2.00 / ×1.00 / ×0.50 continuous across the whole instrument. */
+.rs-col-slot::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(180deg,
+            rgba(150, 180, 218, 0.34) 0 1px,
+            rgba(0, 0, 0, 0) 1px calc(50% - 1px),
+            rgba(206, 226, 250, 0.62) calc(50% - 1px) 50%,
+            rgba(0, 0, 0, 0.75) 50% calc(50% + 1px),
+            rgba(0, 0, 0, 0) calc(50% + 1px) calc(100% - 1px),
+            rgba(150, 180, 218, 0.34) calc(100% - 1px) 100%);
+}
+/* THE STEM. A narrow flat run from the ×1.00 rule to the value. It is not the
+   reading — the cap is — it is the thing that makes the reading's distance from
+   the baseline visible AS a distance. */
+.rs-col-bar {
+    position: absolute;
+    left: calc(50% - 6px);
+    right: calc(50% - 6px);
+    display: block;
+}
+/* THE CAP, and the only mark that carries the value. SIX PIXELS on every channel
+   at every reading, for ever. Thickness used to move with the reading as well as
+   position — ×1.40 was a chunky block and ×1.10 a hairline — so one number was
+   encoded twice, in two quantities, with neither declared. */
+.rs-col-cap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 6px;
+    box-shadow:
+        inset 1px 1px 0 rgba(226, 240, 255, 0.34),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.7);
+}
+/* Same travel rule as the card rail: the stem runs to the value, the cap sits
+   on the end of it, and the pair tops out flush with the ×2.00 / ×0.50 rail
+   instead of overshooting it by the cap's own height. Change these four and
+   .race-meter-fill / -cap together or not at all — they are one chart. */
+.rs-col[data-tone="up"] .rs-col-bar {
+    bottom: 50%;
+    height: calc((50% - 6px) * var(--k, 0));
+    background: #7E5714;
+}
+.rs-col[data-tone="up"] .rs-col-cap {
+    bottom: calc(50% + (50% - 6px) * var(--k, 0));
+    background: linear-gradient(180deg, var(--rs-bronze-hi) 0, #9C6E1C 100%);
+}
+.rs-col[data-tone="down"] .rs-col-bar {
+    top: 50%;
+    height: calc((50% - 6px) * var(--k, 0));
+    background: #71301F;
+}
+.rs-col[data-tone="down"] .rs-col-cap {
+    top: calc(50% + (50% - 6px) * var(--k, 0));
+    background: linear-gradient(180deg, var(--rs-oxide) 0, #8A3A26 100%);
+}
+/* ZERO DEVIATION: a milled steel detent parked on the rule, deliberately
+   NARROWER than its channel so the bright ×1.00 line stays visible either side
+   of it. Seven full-width marks at one y fuse into a single white bar, and that
+   is exactly how this instrument once photographed as "a broken divider rule
+   with no data in it". */
+.rs-col[data-tone="flat"] .rs-col-cap {
+    left: 50%;
+    right: auto;
+    width: 20px;
+    margin-left: -10px;
+    top: calc(50% - 3px);
+    background: linear-gradient(180deg, #97A5B9 0, #6B788D 40%, #4B5566 68%, #2E3745 100%);
+    box-shadow:
+        inset 1px 1px 0 rgba(238, 246, 255, 0.7),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.8),
+        0 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+/* The plot's footer rail carries the channel code AND this faction's placing on
+   that channel against the whole registry. A multiplier alone cannot tell a
+   player whether ×1.00 metal is good; "4/12" can. This used to be a second
+   instrument below the plot — seven horizontal ladders on the same seven
+   channels in the same order — and folding it into the axis both freed the bay
+   for the hero crest and the fleet sheet and put the rank where the number it
+   ranks is. */
+.rs-plot-codes {
+    grid-column: 2;
+    grid-row: 3;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 7px;
+    padding: 3px var(--plot-pad) 1px;
+    line-height: 1.08;
+}
+.rs-plot-codes span {
+    display: grid;
+    gap: 1px;
+    justify-items: center;
+    text-align: center;
+}
+.rs-plot-codes b {
+    color: #93A2B7;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+}
+.rs-plot-codes em {
+    color: #9EACC1;
+    font-family: var(--rs-num);
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+}
+/* Top-three placings run bright steel. Not amber — amber on this console means
+   "confirm", and a rank is not an action. */
+.rs-plot-codes span[data-top] b { color: #BCC8D9; }
+.rs-plot-codes span[data-top] em { color: #EDF2F9; }
+
+/* Deviation tally, full width under the plot. */
+.race-detail-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px 14px;
+    padding: 3px 10px 4px;
+    border-top: 1px solid #26334A;
+    background: rgba(198, 220, 250, 0.03);
+    color: #AEBBCD;
+    font-family: var(--rs-num);
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+.race-detail-summary span { display: flex; align-items: center; gap: 6px; }
+/* The legend swatches restate the three marks in the plot, so the flat one has
+   to be the same hollow notch and not a solid steel chip. */
+.race-detail-summary i {
+    width: 9px;
+    height: 9px;
+    flex: none;
+    box-shadow: inset 1px 1px 0 rgba(226, 240, 255, 0.28), inset -1px -1px 0 rgba(0, 0, 0, 0.7);
+}
+.race-detail-summary [data-tone="up"] i { background: linear-gradient(180deg, var(--rs-bronze-hi), #5C3D0B); }
+.race-detail-summary [data-tone="down"] i { background: linear-gradient(180deg, var(--rs-oxide), #4A1B12); }
+.race-detail-summary [data-tone="flat"] i {
+    height: 7px;
+    background: linear-gradient(180deg, #C9D5E5 0, #93A1B6 34%, #63718A 62%, #3A4453 100%);
+}
+.race-detail-summary small {
+    margin-left: auto;
+    color: #96A5BA;
+    font: inherit;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+
+/* -------------------------------------------------------------- fleet profile
+
+   Three bays, THREE DIFFERENT PAINTINGS, one per hull class. This is the module
+   that got the whole screen rejected, and the defect was not a styling one: the
+   frame mounted the faction's contact sheet and captioned it in thirds, and on
+   every one of the twelve sheets those thirds are the SAME model at three
+   scales. A bay labelled DREADNOUGHT held an enlarged scout. A store-page reader
+   catches that in two seconds.
+
+   Compounding it, the sheet is 512x171 (2.99) and it was shown in a 4.3 box
+   under object-fit:cover — 30% of every hull's height discarded, the capital
+   ship's stern clipped by the bay wall — with brightness(1.2) on top raising the
+   black level to compensate for the crop.
+
+   Each bay now mounts a separately painted 512px hull, downscaled to 160 and
+   trimmed. The bays are 4:3 and the source is square, so the crop is entirely
+   vertical and takes 12.5% off the top and bottom of a painting whose ship sits
+   in the middle third: nothing about any hull is clipped. No brightness lift —
+   the hulls are painted at value and this console is dark enough to seat them.
+   The dividers are machined bay walls between real bays, not hairlines faked
+   over a picture's own seams. */
+
+.race-fleet-frame {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px;
+    margin: 3px 8px 4px;
+    background: #0F1721;
+    box-shadow:
+        inset 0 0 0 1px rgba(0, 0, 0, 0.9),
+        inset 0 3px 7px rgba(0, 0, 0, 0.95),
+        inset 0 -1px 0 rgba(168, 192, 222, 0.2);
+}
+/* A BAY IS A PLATE WITH A PORT CUT IN IT AND A LABEL RAIL UNDER IT.
+   It used to be a flat 1px-bordered rectangle with the hull's name printed
+   straight onto the painting on a scrim — worst on the dreadnought, the widest
+   hull in every set, where the glyph stems landed on deck plating in both
+   states. The tile now carries the console's standard bevel, the art sits in a
+   machined recess, and the name has its own opaque rail beneath it. */
+.race-fleet-bay {
+    display: grid;
+    /* the rail takes the slack, so a two-line design name in one bay never
+       stretches the other two bays' ports out of their aspect */
+    grid-template-rows: auto minmax(18px, 1fr);
+    background: linear-gradient(180deg, #26313F, #171F2B);
+    box-shadow:
+        inset 1px 1px 0 rgba(178, 202, 232, 0.24),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.7);
+}
+/* 3:2, not 4:3. The source is square and the ship sits in its middle third, so
+   the crop stays entirely in the painting's dead ground — at 3:2 the bay still
+   shows the middle 67% of a hull that occupies the middle 33% — and the three
+   bays give the oversubscribed dossier column 12px back. The 940px-height
+   branch has always used this ratio for exactly the same reason. */
+.race-fleet-port {
+    position: relative;
+    display: block;
+    aspect-ratio: 3 / 2;
+    overflow: hidden;
+    background: #03060A;
+    box-shadow:
+        inset 1px 1px 4px rgba(0, 0, 0, 0.95),
+        inset 0 -1px 0 rgba(150, 176, 210, 0.16),
+        inset 0 0 0 1px rgba(0, 0, 0, 0.9);
+}
+/* The hulls are thirty-six separately painted files and they do not arrive on
+   one exposure — peak luma ran 66 on the Shadow Realm set to 200 on the Silicon
+   Collective's, so the Terran fleet sat at near-plate value and read as three
+   dark smudges on its own panel while other factions' read as lit. The gain is
+   the faction's, measured, and declared on the frame (see MOUNTING). */
+.race-fleet-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: brightness(var(--hull-gain, 1)) contrast(1.06) saturate(1.04);
+}
+/* The design name, on its own rail. Same treatment as the meter code row: mono,
+   near-black seat, ~7:1, and never over a painting. */
+.race-fleet-bay b {
+    display: grid;
+    align-content: center;
+    padding: 2px 3px 3px;
+    background: linear-gradient(180deg, #0A0F16, #05080D);
+    box-shadow: inset 0 1px 0 rgba(160, 186, 220, 0.18);
+    color: #C4D0E0;
+    font-family: var(--rs-mono);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.05em;
+    line-height: 12px;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------ doctrine chips */
+
+.race-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 3px 7px; }
+.race-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 7px 1px 2px;
+    background: linear-gradient(180deg, #131B26, #090E15);
+    border: 1px solid #33415A;
+    box-shadow: inset 1px 1px 0 rgba(158, 176, 200, 0.26), inset -1px -1px 0 rgba(0, 0, 0, 0.6);
+    color: #C3CFDE;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+}
+.race-chip i {
+    padding: 2px 4px;
+    background: rgba(150, 180, 216, 0.16);
+    color: #A6B6CC;
+    font-style: normal;
+    font-size: 11px;
+}
+.race-chip[data-kind="lock"] { color: var(--rs-oxide); }
+.race-chip[data-kind="lock"] i { color: #FFC4B8; background: rgba(150, 62, 42, 0.28); }
+.race-chip[data-kind="cap"] { color: #D9B87F; }
+.race-chip[data-kind="cap"] i { color: #F2DCB0; background: rgba(122, 94, 40, 0.3); }
+.race-chip[data-kind="hull"] { color: #A9B7CA; }
+/* Tally, pushed into what used to be the empty right half of the access box. */
+.race-chip-meta { margin-left: auto; color: #7E8DA1; }
+.race-chip-meta i { color: #6C7A8C; }
+
+/* ---------------------------------------------------------- hull calibration
+
+   The per-hull modifiers the engine applies on top of the doctrine multipliers
+   (races.applyShipModifiers). Real numbers, so the bottom of the bay carries
+   content instead of a ghosted watermark in an empty frame. */
+
+/* RESTRICTIONS · NONE ON RECORD.
+   A faction that seals nothing does not get a framed instrument box holding one
+   chip, and it certainly does not get two of them — which is what the default
+   faction's dossier used to open with, a full-width TECH & HULL ACCESS box
+   containing a single chip stacked on a full-width HULL CALIBRATION box
+   containing a single sentence. It gets a stamped plate that says so on one
+   line, and the bay spends the ~55px on the painting instead. */
+.race-detail-clear {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 10px;
+    background: linear-gradient(180deg, #1A2330, #111922);
+    border: 1px solid #2C3A50;
+    box-shadow: inset 1px 1px 0 rgba(140, 158, 182, 0.36), inset -1px -1px 0 rgba(0, 0, 0, 0.7);
+    color: #B7C4D6;
+    font-size: 11px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+}
+/* A machined stud in the plate, not a hazard flag: there is no hazard here. */
+.race-detail-clear i {
+    width: 10px;
+    height: 10px;
+    flex: none;
+    background: radial-gradient(circle at 34% 32%, #E6EEFA 0 1.2px, #96A5BA 2.2px, #4B5768 3.4px, #0A0E14 4.6px);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7);
+}
+.race-detail-clear b { color: #D3DDEA; font-weight: 400; }
+.race-detail-clear em {
+    margin-left: auto;
+    color: #8695AB;
+    font-style: normal;
+    letter-spacing: 0.09em;
+}
+
+.race-hull-list { display: grid; gap: 2px; padding: 3px 7px; }
+/* A calibration row is BOUNDED AT BOTH ENDS. It used to be a 7em name and a
+   chip pair packed left, so "BATTLESHIP [DEF][×1.50]" occupied a third of the
+   row and the remaining two thirds were empty field — twice over on the
+   Mechanicus dossier. The name is now docked left, the reading docked right, and
+   a machined leader channel spans whatever is between them, so the row is a
+   measured run rather than a label with a tail. */
+.race-hull-row {
+    display: grid;
+    grid-template-columns: max-content minmax(12px, 1fr) max-content;
+    align-items: center;
+    gap: 8px;
+    padding: 1px 8px;
+    background: linear-gradient(180deg, #232E3D, #161F2B);
+    border: 1px solid #2C3A50;
+    /* The console's standard plate bevel — bright top edge, black bottom edge.
+       This row used to carry a 0.28/0.55 pair that photographed as nothing at
+       all: a flat blue-grey slab with a hairline round it, the only unbeveled
+       surface in a dossier where every other panel is machined. */
+    box-shadow:
+        inset 0 1px 0 rgba(178, 202, 232, 0.24),
+        inset 1px 0 0 rgba(178, 202, 232, 0.14),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.7),
+        inset -1px 0 0 rgba(0, 0, 0, 0.5);
+}
+/* THE LEADER IS ONE ENGRAVED RULE, NOT A ROW OF BOXES.
+   It used to be a 7px channel filled with a 1px-every-6px tick pattern under an
+   inset shadow, which at row width drew ~44 hollow two-pixel rectangles with
+   visible strokes on all four sides. At 4x that is indistinguishable from
+   missing-glyph tofu and at 1x it reads as a text-leader hack; either way it was
+   the loudest thing in a panel where it is supposed to be the quietest. One
+   cut line — black over a catch-light — is what an engraved rule looks like
+   under this console's fixed top-left key. */
+.race-hull-lead {
+    height: 2px;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.85) 0 1px, rgba(178, 202, 232, 0.22) 1px 2px);
+}
+.race-hull-name { overflow: hidden; color: #A3B1C5; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.race-hull-reads { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+/* Code chip in the code face, reading in the figure face — the same split the
+   plot and the standing ladders use. */
+.race-hull-read {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 5px 1px 1px;
+    background: #06090E;
+    box-shadow: inset 0 0 0 1px rgba(140, 160, 190, 0.18);
+    color: #B6C3D4;
+    font-family: var(--rs-num);
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: 0.02em;
+    text-transform: none;
+}
+.race-hull-read i {
+    padding: 1px 3px;
+    background: rgba(150, 180, 216, 0.15);
+    color: #9CACC2;
+    font-family: var(--rs-mono);
+    font-style: normal;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+}
+.race-hull-read[data-tone="up"] { color: var(--rs-bronze-hi); }
+.race-hull-read[data-tone="up"] i { color: #F6DDAE; background: rgba(160, 118, 40, 0.24); }
+.race-hull-read[data-tone="down"] { color: var(--rs-oxide); }
+.race-hull-read[data-tone="down"] i { color: #FFC4B8; background: rgba(150, 62, 42, 0.24); }
+
+/* -------------------------------------------------------- locked dossier
+
+   Inspecting a sealed faction has to LOOK different from inspecting an
+   available one. The clearance gate sits inside the hero, beside the crest, and
+   the whole readout below it runs cold. */
+
+.race-detail-content.is-locked .race-detail-instrument,
+.race-detail-content.is-locked .race-detail-fleet,
+.race-detail-content.is-locked .race-detail-doctrine,
+.race-detail-content.is-locked .race-detail-hulls { opacity: 0.78; }
+.race-detail-content.is-locked .race-world-art { filter: grayscale(0.32) brightness(0.7) contrast(1.02); }
+
+/* The clearance gate, set inside the identity lockup directly under the faction
+   name. Same two treatments as the roster: a SERVICE gate is earned and wears
+   hazard chevrons, a REQUISITION gate is bought and wears a bronze plate,
+   because paid content must never read as an error state.
+
+   It lives IN the hero rather than under it because the foot's height is set by
+   the medallion beside it and the name stack does not fill that column — so the
+   gate occupies slack the bay had already spent, instead of adding 47px (a
+   service gate) or 89px (a requisition one, which carries a button) to a
+   dossier column that is oversubscribed at 1080p. */
+.race-hero-gate {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 9px;
+    margin-top: 6px;
+    padding: 0 9px 0 0;
+    /* declared only when there is a purchase row, so `grid-row: 1 / -1` on the
+       flag has an explicit last line to reach and runs the gate's full height;
+       a service gate keeps its single implicit row */
+    background: linear-gradient(180deg, #26313F, #151D28);
+    border: 1px solid #33415A;
+    box-shadow: inset 2px 2px 0 rgba(140, 155, 176, 0.44), inset -2px -2px 0 rgba(0, 0, 0, 0.7);
+}
+/* The padlock's own bay. `min-height` is the fix for a craft error visible at
+   4x in the review capture: the shackle and the body of the lock were clipped by
+   the chip's bottom edge, because the flag's height came from a two-line body
+   that a one-line objective does not fill. */
+.race-hero-gate:has(.race-purchase-btn) { grid-template-rows: auto auto; }
+.race-hero-gate-flag {
+    /* full height of the gate, so a requisition gate's button row does not
+       leave a bare stub of plate under the flag — the roster's note strip
+       carries its gate flag the same way, as a band down the whole left edge */
+    grid-row: 1 / -1;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    min-height: 30px;
+    color: #1A1208;
+}
+.race-hero-gate[data-gate="service"] .race-hero-gate-flag {
+    background: repeating-linear-gradient(135deg,
+        #C79640 0 5.5px,
+        #17120A 5.5px 11px);
+}
+.race-hero-gate[data-gate="requisition"] .race-hero-gate-flag {
+    background: linear-gradient(180deg, #8A6A30 0, #56411E 60%, #332711 100%);
+    color: #F4E2BE;
+}
+.race-hero-gate-flag .race-lock-glyph {
+    width: 14px;
+    height: 14px;
+    filter: drop-shadow(0 1px 0 rgba(255, 226, 172, 0.5));
+}
+.race-hero-gate-body { min-width: 0; display: grid; align-content: center; gap: 1px; padding: 4px 0; }
+.race-hero-gate-body b {
+    color: #A8B6CA;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+}
+.race-hero-gate-body em { color: #EAF0F8; font-size: 14px; font-style: normal; font-weight: 600; line-height: 1.15; }
+/* The purchase action takes its own row UNDER the objective rather than
+   squeezing in beside a two-line one, and it sits in the objective's column so
+   its two ends land on the gate's own inner edges. Spanning 1/-1 with a negative
+   margin (which is what it did when the gate was a full-width slab under the
+   plate) now breaks the button out past the gate's left border and stops it 9px
+   short of the right one — flush on one side and inset on the other, with its
+   drop shadow falling outside the plate. */
+.race-hero-gate .race-purchase-btn { grid-column: 2; margin: 1px 0 8px; width: auto; }
+
+/* Panel footer stencil, pinned to the foot of the bay. There is no residual
+   slack to absorb any more — the homeworld plate takes all of it — so this is
+   simply the last line of the dossier and it sits where it is put. */
+.race-detail-stamp-line {
+    margin-top: auto;
+    padding-top: 1px;
+    color: #7E8DA5;
+    font-size: 11px;
+    line-height: 1.25;
+    letter-spacing: 0.1em;
+    text-align: center;
+}
+
+.race-detail-empty {
+    display: grid;
+    gap: 6px;
+    justify-items: center;
+    align-content: center;
+    min-height: 220px;
+    padding: 20px;
+    color: var(--rs-muted);
+    text-align: center;
+}
+.race-detail-empty strong { color: #DBE4F0; font-family: 'Russo One', sans-serif; font-size: 0.95rem; font-weight: 400; }
+
+/* ------------------------------------------------------------- confirm rail */
+
+.race-confirm-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 2px; padding-top: 6px; border-top: 2px solid var(--rs-edge); box-shadow: inset 0 2px 0 rgba(180, 206, 240, 0.16); }
+.race-confirm-note { display: flex; align-items: center; gap: 7px; color: #9AA9BE; font-size: 11px; line-height: 1.3; }
+.race-confirm-note span { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #E4EEFA; box-shadow: 0 0 6px rgba(190, 216, 245, 0.95); }
+
 .race-confirm-btn,
 .race-purchase-btn {
     flex: none;
-    padding: 10px 15px;
+    padding: 11px 20px;
     color: #201403;
     font-family: 'Russo One', 'Segoe UI', sans-serif;
-    font-size: 0.68rem;
-    letter-spacing: 0.07em;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    background: linear-gradient(180deg, #ffd48c, #f0a233 54%, #9a5d11);
-    border: 2px solid #05070a;
+    background: linear-gradient(180deg, #FFD992 0, #E0A22C 52%, #8A5F1B 100%);
+    border: 2px solid #05070A;
     border-radius: 2px;
-    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.55), inset -2px -2px 0 rgba(100,55,5,0.55), 0 3px 0 #4d2e07;
+    box-shadow:
+        inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.6),
+        inset -2px -2px 0 rgba(96, 52, 4, 0.62),
+        0 3px 0 #4D2E07,
+        0 5px 12px rgba(0, 0, 0, 0.55);
     cursor: pointer;
+    text-shadow: 0 1px 0 rgba(255, 226, 170, 0.45);
 }
-.race-confirm-btn:hover,
+#raceSelectionModal .race-confirm-btn:hover,
+#raceSelectionModal .race-purchase-btn:hover {
+    filter: brightness(1.09);
+    background: linear-gradient(180deg, #FFD992 0, #E0A22C 52%, #8A5F1B 100%);
+}
 .race-confirm-btn:focus-visible,
-.race-purchase-btn:hover { filter: brightness(1.1); outline: 1px solid #ffe2aa; outline-offset: 2px; }
-.race-confirm-btn:active { transform: translateY(2px); box-shadow: inset 2px 2px 5px rgba(80,45,5,0.65); }
-.race-confirm-btn:disabled { cursor: not-allowed; filter: grayscale(0.7); opacity: 0.45; transform: none; }
-.race-purchase-btn { margin-top: 8px; }
+.race-purchase-btn:focus-visible { outline: 2px solid #FFE2AA; outline-offset: 3px; }
+.race-confirm-btn:active,
+.race-purchase-btn:active {
+    transform: translateY(3px);
+    box-shadow: inset 2px 2px 6px rgba(80, 45, 5, 0.7), inset -1px -1px 0 rgba(255, 255, 255, 0.18);
+}
+/* A LOCKED CONTROL IS THE SAME PLATE PRESSED IN, NEVER A DIFFERENT MATERIAL.
+   `filter: grayscale + opacity` turned the one control that fully lands the
+   brief into a flat grey slab with a 1px light border and no bevel geometry at
+   all — a greyed-out HTML button sitting on a WC2 console, which is exactly the
+   material the direction rules out. The bevel primitive is now identical to the
+   enabled plate's and simply INVERTED: dark step on the top edge, lit step on
+   the bottom, so the plate reads as seated in its own recess. The label is
+   engraved into it — dark fill, 1px light step under — rather than faded. */
+.race-confirm-btn:disabled {
+    cursor: not-allowed;
+    filter: none;
+    opacity: 1;
+    transform: none;
+    background: linear-gradient(180deg, #171E27 0, #222B37 58%, #2E3846 100%);
+    border-color: #05070A;
+    box-shadow:
+        inset 0 2px 0 rgba(0, 0, 0, 0.75),
+        inset 0 -2px 0 rgba(150, 170, 200, 0.3),
+        inset 0 0 0 1px #05080C,
+        inset 0 5px 10px rgba(0, 0, 0, 0.6);
+    color: #94A2B6;
+    text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.95), 0 1px 0 rgba(184, 202, 226, 0.2);
+}
+/* 11px floor applies to the price on this button too — it is a figure. */
+.race-purchase-btn { flex: none; padding: 8px 13px; font-size: 11px; }
+
+/* ------------------------------------------------------------------- toasts
+
+   The host page's toast is a rounded rectangle with a green rim that lands half
+   on top of the dossier's bottom-right corner. While this console owns the
+   screen it is restated as an instrument strip and docked into the apron band
+   below the housing, where it cannot cross a container edge. Scoped to this
+   surface only — the lobby's own toasts are untouched. */
+
+body:has(#raceSelectionModal) #toast-root {
+    right: max(16px, calc(50vw - 722px));
+    bottom: 14px;
+    z-index: 2100;
+}
+body:has(#raceSelectionModal) #toast-root .toast {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 260px;
+    padding: 9px 13px;
+    background:
+        var(--rs-brush, none),
+        linear-gradient(180deg, #202A38, #10161F);
+    border: 2px solid #04070B;
+    border-radius: 0;
+    box-shadow:
+        inset 2px 2px 0 rgba(107, 119, 135, 0.75),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.85),
+        0 4px 0 rgba(0, 0, 0, 0.6),
+        0 10px 26px rgba(0, 0, 0, 0.6);
+    color: #DFE6F0;
+    font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+body:has(#raceSelectionModal) #toast-root .toast::before {
+    content: 'SYS:// NOTICE';
+    flex: none;
+    padding: 2px 5px;
+    background: #05080D;
+    box-shadow: inset 0 0 0 1px rgba(140, 160, 190, 0.22);
+    color: #98A6BA;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 1500px) {
+    .race-selector-key-grid { grid-template-columns: repeat(3, auto); gap: 2px 12px; }
+}
+
+/* Laptop heights. The console is height-bound, not width-bound: at 900px there
+   are ~180px less to spend, so the ports, the chart wells and the plot all step
+   down together rather than the roster simply losing its bottom row.
+
+   The card port gives up aspect rather than disappearing — 2:1 instead of 16:9
+   keeps the crest as wide as the card and takes the height out of the flanking
+   black, which is dead ground anyway. The hero keeps its 4:3 and gives up column
+   width instead, because the hero IS the art and a squashed hero is worse than
+   a slightly smaller one. */
+@media (max-height: 940px) {
+    #raceSelectionModal { --rs-plot-h: 58px; }
+    .race-selector-header { min-height: 0; }
+    /* A WIDER APERTURE, NOT A TIGHTER CROP. The art is mounted `contain`, so
+       widening the port letterboxes the plate into more of the port's own black
+       ground rather than cutting anything off it. Nothing on this screen is
+       allowed to crop a crest, at any viewport.
+       1.85 rather than 16:9, because the caption strip below grew when it
+       stopped amputating its own descenders and this is where a height-bound
+       layout is supposed to pay for that — in dead black ground, not in type. */
+    .race-port { aspect-ratio: 1.85; }
+    .race-card h3 { font-size: 0.79rem; }
+    .race-meter-well { height: 27px; }
+    /* NO FIXED HEIGHT ON THE CAPTION STRIP AT ANY VIEWPORT. This used to pin it
+       to 29px against a body that measures 36, which is the same amputation the
+       base rule was carrying and it survived here after the base was fixed. The
+       height for the taller strip comes out of the port, which steps to 16:9 in
+       this block and gives back ~30px a card. */
+    .race-detail-hero { min-height: 190px; }
+    .race-hero-foot { grid-template-columns: 116px minmax(0, 1fr); padding: 7px 9px 7px 7px; }
+    .race-port.is-hero { width: 116px; }
+    .race-detail-hero h3 { font-size: 1.16rem; }
+    /* the PORT carries the aspect now, not the whole tile — the tile also holds
+       the design-name rail, and squeezing that into the ratio crushed the art */
+    .race-fleet-port { aspect-ratio: 3 / 2; }
+}
+
+@media (max-width: 1340px) {
+    .race-selector-key { display: none; }
+    .race-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1080px) {
+    .race-selection-main { grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.88fr); }
+    .race-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #raceSelectionModal { --rs-plot-h: 128px; }
+}
 
 @media (max-width: 900px) {
-    .race-selection-container { height: min(900px, calc(100vh - 24px)); min-height: 0; overflow-y: auto; grid-template-rows: auto auto; }
+    #raceSelectionModal { --rs-apron: 0px; }
+    .race-selection-container { height: min(940px, calc(100vh - 24px)); min-height: 0; overflow-y: auto; grid-template-rows: auto auto; }
     .race-selection-main { display: flex; flex-direction: column; overflow: visible; }
     .race-grid-shell,
     .race-detail-panel { min-height: auto; }
     .race-grid {
         grid-template-columns: none;
         grid-auto-flow: column;
-        grid-auto-columns: minmax(260px, 72vw);
+        grid-auto-columns: minmax(238px, 62vw);
         grid-auto-rows: auto;
         overflow-x: auto;
         overflow-y: hidden;
         scroll-snap-type: x proximity;
     }
-    .race-card { min-height: 174px; scroll-snap-align: start; }
+    .race-card { scroll-snap-align: start; }
     .race-detail-panel { display: block; }
     .race-detail-content { overflow: visible; }
-    .race-confirm-bar { margin-top: 10px; }
+    .race-confirm-bar { margin-top: 12px; }
+    body:has(#raceSelectionModal) #toast-root { right: 12px; left: 12px; bottom: 12px; }
 }
 
 @media (max-width: 560px) {
     #raceSelectionModal { padding: 7px; place-items: stretch; }
     .race-selection-container { width: 100%; height: calc(100vh - 14px); }
-    .race-selector-header { min-height: 0; padding: 13px 15px 11px; }
+    .race-selector-header { min-height: 0; gap: 10px; padding: 12px 12px 10px; }
     .race-selector-header p { display: none; }
-    .race-selector-eyebrow { font-size: 0.54rem; }
-    .race-selector-count { min-width: 60px; padding: 6px 8px; }
+    .race-selector-header h2 { font-size: 1.14rem; }
+    /* The heading takes the slack and the gauge keeps its width, or the gauge
+       gets pushed off the right edge of the plate. */
+    .race-selector-heading { width: auto; max-width: none; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+    .race-selector-eyebrow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .race-selector-rail { display: none; }
+    .race-selector-gauge { padding: 5px 9px; }
+    .race-selector-gauge-read strong { font-size: 1.2rem; }
     .race-selection-main { gap: 9px; padding: 9px; }
     .race-grid-heading small { display: none; }
-    .race-grid { grid-auto-columns: minmax(248px, 88vw); padding: 7px; }
-    .race-card { min-height: 168px; }
+    .race-grid { grid-auto-columns: minmax(230px, 84vw); padding: 7px; }
     .race-detail-panel { padding: 11px; }
-    .race-detail-header img { width: 48px; height: 48px; }
-    .race-detail-stat { padding: 7px 9px; }
+    /* Below this the identity block cannot hold a name beside a 132px
+       medallion on the plate, so the medallion steps down and the name takes
+       the width it needs. */
+    /* Full-bay width here, so the plate can afford to be a proper banner. */
+    .race-detail-hero { min-height: 200px; }
+    .race-hero-foot { grid-template-columns: 116px minmax(0, 1fr); gap: 10px; padding: 8px; }
+    .race-port.is-hero { width: 116px; }
+    .rs-plot { grid-template-columns: 40px minmax(0, 1fr); padding: 7px 8px 5px; }
     .race-confirm-bar { align-items: stretch; flex-direction: column; }
     .race-confirm-note { justify-content: center; }
-    .race-confirm-btn { width: 100%; padding: 12px 15px; }
+    .race-confirm-btn { width: 100%; padding: 13px 15px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .race-card, .race-confirm-btn { transition: none; }
+    .race-card, .race-confirm-btn, .race-purchase-btn { transition: none; }
+    .race-void-far, .race-void-near, .race-void-mark { transition: none; }
 }

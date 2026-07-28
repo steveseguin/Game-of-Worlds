@@ -204,18 +204,38 @@ test.describe('Lobby end-to-end flows', () => {
             contained: true,
             columnsSeparated: true
         });
+        // The roster now mounts the painted faction crests from the production art
+        // library instead of the old flat SVG badge, so pinning
+        // `terran-emblem-v2.svg` and its 160x160 intrinsic box pinned an asset
+        // choice rather than the thing this check exists to protect: that the
+        // emblem actually RESOLVES and decodes. A card whose crest 404s still
+        // lays out perfectly and passes every geometry assertion above it, which
+        // is precisely why the load is asserted separately.
+        //
+        // Intrinsic size is asserted as "real and plausible" rather than exact —
+        // the crests are letterbox-trimmed derivatives and are republished at
+        // different sizes as the layout is tuned. Note naturalWidth is only a
+        // trustworthy broken-image signal for raster art: an SVG with a viewBox
+        // and no intrinsic width reports 0 while rendering fine, which has caused
+        // a false "broken images" report on this project before.
         const terranEmblem = page.locator('.race-card.unlocked', { hasText: 'Terran Empire' }).locator('img');
-        await expect(terranEmblem).toHaveAttribute('src', /terran-emblem-v2\.svg$/);
+        await expect(terranEmblem).toHaveAttribute('src', /crests?-[\w-]*terran[\w-]*\.(png|webp)$/i);
         await expect.poll(() => terranEmblem.evaluate(image => ({
             complete: image.complete,
-            width: image.naturalWidth,
-            height: image.naturalHeight
-        }))).toEqual({ complete: true, width: 160, height: 160 });
+            hasPixels: image.naturalWidth > 0 && image.naturalHeight > 0,
+            bigEnough: image.naturalWidth >= 96 && image.naturalHeight >= 96
+        }))).toEqual({ complete: true, hasPixels: true, bigEnough: true });
         await page.locator('.race-selection-container').screenshot({ path: 'test-results/terran-race-desktop.png' });
 
+        // The dossier was rebuilt around a painted hero and an identity block;
+        // `.race-detail-header` no longer exists anywhere in the markup or the
+        // stylesheet, so this assertion was querying a dead selector. The faction
+        // name now sits in `.race-detail-ident h3`. What is being protected is
+        // unchanged: clicking a LOCKED card still opens that faction's dossier,
+        // and the confirm button stays disabled so it cannot be taken.
         const lockedCard = page.locator('.race-card.locked').filter({ hasText: 'Silicon Collective' });
         await lockedCard.click();
-        await expect(page.locator('.race-detail-header')).toContainText('Silicon Collective');
+        await expect(page.locator('.race-detail-ident')).toContainText('Silicon Collective');
         await expect(page.locator('#confirmRaceBtn')).toBeDisabled();
 
         await page.setViewportSize({ width: 390, height: 844 });
@@ -229,7 +249,18 @@ test.describe('Lobby end-to-end flows', () => {
                 noNestedVerticalRoster: styles.overflowY === 'hidden',
                 detailBelowRoster: shell.bottom <= detail.top,
                 detailNotSticky: getComputedStyle(document.querySelector('.race-detail-panel')).position !== 'sticky',
-                detailStatsTwoColumns: getComputedStyle(document.querySelector('.race-detail-grid')).gridTemplateColumns.split(' ').length === 2
+                // `.race-detail-grid` — a two-column stat grid — no longer exists;
+                // the dossier's numbers are now a doctrine instrument with meter
+                // rails, and querying the old class threw on getComputedStyle(null).
+                // The requirement it encoded was "the stats stay readable on a
+                // 390px phone", so assert that directly: the block is rendered and
+                // does not run off the side of the screen.
+                detailStatsFitViewport: (() => {
+                    const stats = document.querySelector('.race-detail-doctrine, .race-detail-instrument');
+                    if (!stats) return false;
+                    const r = stats.getBoundingClientRect();
+                    return r.width > 0 && r.left >= -1 && r.right <= innerWidth + 1;
+                })()
             };
         });
         expect(mobileLayout).toEqual({
@@ -237,7 +268,7 @@ test.describe('Lobby end-to-end flows', () => {
             noNestedVerticalRoster: true,
             detailBelowRoster: true,
             detailNotSticky: true,
-            detailStatsTwoColumns: true
+            detailStatsFitViewport: true
         });
         await page.locator('.race-selection-container').screenshot({ path: 'test-results/terran-race-mobile.png' });
 

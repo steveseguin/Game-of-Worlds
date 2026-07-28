@@ -7,31 +7,25 @@
     <title>Game of Worlds</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260725j">
+    <link rel="stylesheet" href="css/style.css?v=20260728j">
     <style>
-        /* Critical layout fixes & visual polish */
+        /* Layout-critical rules only. Every material/typographic decision for the in-game
+           HUD lives in css/style.css under `.game-page` — one console language shared with
+           the login and lobby consoles. What stays here is the geometry that the measured
+           layout in game-screen.js depends on, with the thresholds it must agree with. */
         html, body {
             width: 100vw;
             max-width: 100vw;
             overflow-x: hidden;
-            font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
-        }
-        body {
-            background: radial-gradient(circle at 18% 14%, rgba(94,129,244,0.18), transparent 30%),
-                        radial-gradient(circle at 82% 8%, rgba(90,245,196,0.14), transparent 26%),
-                        #0c1021 url('../images/spacebak.jpg') center/cover fixed !important;
-            color: #e8ecff;
         }
         #minimapid {
             position: fixed !important;
             right: 0 !important;
             bottom: 0 !important;
             z-index: 100;
-            border: 1px solid rgba(255,255,255,0.08) !important;
-            box-shadow: 0 -8px 24px rgba(0,0,0,0.4);
         }
         #avatarbox {
             position: fixed !important;
@@ -39,88 +33,9 @@
             top: 100px !important;
             z-index: 90;
         }
-        #controlPadGUI {
-            position: fixed !important;
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 10px 10px 0 0;
-            box-shadow: 0 -10px 30px rgba(0,0,0,0.4);
-        }
-        #sectordisplay {
-            position: fixed !important;
-            background: rgba(16,20,38,0.92);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px;
-            padding: 12px 16px;
-            box-shadow: 0 12px 28px rgba(0,0,0,0.45);
-            color: #e8ecff;
-            min-width: 240px;
-        }
-        #sectordisplay table { color: #cfd7ff; }
-        #sectordisplay td { font-size: 12px; padding: 3px 6px; }
-        #sectordisplay td:first-child { color: rgba(232,236,255,0.55); font-weight: 600; }
+        #controlPadGUI { position: fixed !important; }
+        #sectordisplay { position: fixed !important; }
 
-        /* Resource bar — modernized */
-        #resourceBar {
-            background: linear-gradient(120deg, rgba(33,44,92,0.92), rgba(23,30,68,0.94)) !important;
-            border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-            border-right: 1px solid rgba(255,255,255,0.08) !important;
-            border-radius: 0 0 14px 0 !important;
-            padding: 8px 16px !important;
-            color: #e8ecff;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.35);
-        }
-        #resourceBar span { color: #e8ecff; }
-        /* One block per resource: icon, then stock over per-turn rate, then the name.
-           Tabular figures stop the numbers jittering sideways every time income lands. */
-        #resourceBar .res {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            min-width: 0;
-        }
-        #resourceBar .res-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 26px;
-            height: 26px;
-            flex: none;
-        }
-        #resourceBar .res-icon svg { display: block; }
-        #resourceBar .res-figures {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            line-height: 1.05;
-            font-variant-numeric: tabular-nums;
-            font-feature-settings: "tnum" 1;
-        }
-        #resourceBar .res-stock {
-            font-size: 1.02em;
-            font-weight: 700;
-            letter-spacing: 0.2px;
-        }
-        #resourceBar .res-rate {
-            font-size: 0.72em;
-            font-weight: 600;
-            opacity: 0.78;
-        }
-        #resourceBar .res-name {
-            font-size: 0.68em;
-            font-weight: 600;
-            letter-spacing: 0.9px;
-            text-transform: uppercase;
-            opacity: 0.5;
-        }
-        #resourceBar #res-metal .res-stock, #resourceBar #res-metal .res-rate { color: #ffd3a8; }
-        #resourceBar #res-crystal .res-stock, #resourceBar #res-crystal .res-rate { color: #a7d8ff; }
-        #resourceBar #res-research .res-stock, #resourceBar #res-research .res-rate { color: #a8f0c9; }
-        /* A stalled economy is worth noticing, so a zero rate stops looking like income. */
-        #resourceBar .res-rate.is-zero { color: rgba(232,236,255,0.42) !important; }
         /* Hide the resource names first when the bar has to squeeze. */
         @media (max-width: 900px) {
             #resourceBar .res-name { display: none; }
@@ -143,28 +58,13 @@
            width. Two thresholds describing one decision is the defect; if `veryNarrow` moves,
            move this with it. */
         @media (max-width: 560px) {
-            #resourceBar { gap: 7px !important; padding: 6px 9px !important; }
+            #resourceBar { gap: 6px !important; padding: 5px 7px !important; }
             #resourceBar .res { gap: 4px; }
             #resourceBar .res-icon { width: 18px; height: 18px; }
             #resourceBar .res-icon svg { width: 18px; height: 18px; }
             #resourceBar .res-stock { font-size: 0.92em; letter-spacing: 0; }
             #resourceBar .res-rate { font-size: 0.64em; }
         }
-
-        /* Live requirement checklist: a met condition should read as met at a glance,
-           rather than the player re-deriving four static rules every time. */
-        .req-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-        .req-list li {
-            display: flex;
-            gap: 8px;
-            align-items: flex-start;
-            font-size: 12.5px;
-            line-height: 1.35;
-            color: rgba(232,236,255,0.62);
-        }
-        .req-list .req-mark { flex: none; width: 1.2em; text-align: center; font-weight: 700; }
-        .req-list li.is-met { color: #a8f0c9; }
-        .req-list li.is-blocked { color: #ffb4a8; }
 
         /* Touch targets. Several controls — End Turn among them — sat at 28-31px high,
            which is awkward on a phone. Desktop spacing is left exactly as it was; only
@@ -181,57 +81,6 @@
             }
         }
 
-        /* Costs on build/ship buttons reuse the treasury colours, so a bare number is
-           self-identifying without the undefined "430M 120C" shorthand. */
-        .cost-metal, .cost-crystal {
-            font-weight: 700;
-            font-variant-numeric: tabular-nums;
-        }
-        .cost-metal { color: #ffd3a8; }
-        .cost-metal::before { content: "⛁ "; opacity: 0.75; font-weight: 400; }
-        .cost-crystal { color: #a7d8ff; }
-        .cost-crystal::before { content: "◆ "; opacity: 0.75; font-weight: 400; }
-        .cost-note { opacity: 0.68; font-weight: 500; }
-        /* The building count/level chip after a structure's name. */
-        .building-button > span,
-        .defense-button > span {
-            opacity: 0.8;
-            font-weight: 700;
-        }
-
-        /* Turn time bar */
-        #turnTimeBar {
-            background: linear-gradient(120deg, rgba(33,44,92,0.92), rgba(23,30,68,0.94)) !important;
-            border-bottom: 1px solid rgba(255,255,255,0.08) !important;
-            border-left: 1px solid rgba(255,255,255,0.08) !important;
-            border-radius: 0 0 0 14px !important;
-            color: #cfd7ff;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.35);
-            font-size: 13px;
-        }
-        #nextTurnBtn {
-            background: linear-gradient(120deg, #42d8c8, #4c7cff) !important;
-            border: none !important;
-            color: #061024 !important;
-            font-weight: 700 !important;
-            padding: 7px 14px !important;
-            border-radius: 8px !important;
-            cursor: pointer;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-        }
-        #nextTurnBtn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(76,124,255,0.4); }
-        #nextTurnBtn:disabled {
-            opacity: 0.55;
-            cursor: not-allowed;
-            filter: saturate(0.65);
-        }
-        #nextTurnBtn:disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
-        #turnRedFlashWhenLow { color: #ffd3a8; }
-
-        /* Connection info */
         /* The responsive layout sets explicit widths on these panels; without
            border-box their padding and border push them past the viewport edge on
            narrow screens, which is how the income and victory lines ended up clipped
@@ -246,315 +95,115 @@
         #event-panel {
             box-sizing: border-box;
         }
-        #connectionInfo {
-            color: #cfd7ff;
-            font-size: 13px;
-            /* Allow the status text and buttons to wrap instead of forcing the bar
-               wider than the space the layout gave it. */
-            flex-wrap: wrap;
-            row-gap: 4px;
-        }
-        #connectionInfo button {
-            font-weight: 600 !important;
-            border-radius: 8px !important;
-            transition: transform 0.15s ease;
-        }
-        #connectionInfo button:hover { transform: translateY(-1px); }
-        #status { color: #a8f0c9; font-weight: 600; }
+        /* These three are laid out by game-screen.js (fixed position, measured stack). The
+           geometry lives here; the material lives in style.css.
 
-        /* Tab buttons modernized */
-        .tab-button {
-            background: rgba(20,26,48,0.95) !important;
-            color: #cfd7ff !important;
-            border: 1px solid rgba(255,255,255,0.08) !important;
-            border-bottom: none !important;
-            border-radius: 8px 8px 0 0 !important;
-            padding: 10px 16px !important;
-            font-weight: 600 !important;
-            font-size: 13px;
-            transition: background 0.15s ease, color 0.15s ease;
+           The max-widths used to be 500 and 560, while the resource bar above them is
+           `min(500 * scale, …)` — so three stacked bars in one column terminated at three
+           different x positions (540 / 500 / 560 at desktop scale), which is most of what
+           made the top left read as ragged. They now share the resource bar's own
+           expression, read off the --game-scale property game-screen.js publishes, so the
+           three right edges are the same number by construction rather than by luck.
+           Only above 760px: below that the layout gives these bars the full viewport
+           width on purpose, and capping them would make phone text wrap and cost a row. */
+        #empireSummary { position:fixed; top:42px; left:10px; z-index:235; max-width:500px; pointer-events:none; }
+        #victoryProgress { position:fixed; top:74px; left:10px; z-index:235; max-width:560px; white-space:normal; pointer-events:none; }
+        @media (min-width: 760px) {
+            #empireSummary,
+            #victoryProgress { max-width: calc(500px * var(--game-scale, 1)); }
         }
-        .tab-button:hover { background: rgba(76,124,255,0.18) !important; color: #fff !important; }
-        .tab-button.active {
-            background: linear-gradient(120deg, rgba(76,124,255,0.25), rgba(66,216,200,0.18)) !important;
-            color: #fff !important;
-            border-color: rgba(90,245,196,0.4) !important;
-        }
-        .tab-panel {
-            background: rgba(16,20,38,0.95) !important;
-            border: 1px solid rgba(255,255,255,0.08) !important;
-            border-radius: 0 8px 8px 8px !important;
-            max-height: calc(100% - 44px);
-            overflow-y: auto;
-            padding: 12px 14px !important;
-        }
-        .tab-panel::-webkit-scrollbar { width: 8px; }
-        .tab-panel::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-        .tab-panel::-webkit-scrollbar-thumb { background: rgba(76,124,255,0.4); border-radius: 4px; }
-        .tab-panel::-webkit-scrollbar-thumb:hover { background: rgba(76,124,255,0.6); }
+        #mapLegend { position:fixed; right:10px; bottom:260px; z-index:110; max-width:260px; }
 
-        /* Beveled, pressable controls — the same language as the login, lobby and landing
-           pages, which the game screen had never adopted despite being the page players
-           spend all their time on. Chunky faux-3D: light top-left edge, dark bottom-right,
-           a raised lip underneath, and a real press on :active.
-
-           Deliberately geometry-free. Only box-shadow and transform are touched, neither
-           of which reflows, so the measured HUD column in game-screen.js and the 44px
-           coarse-pointer targets are unaffected. The bevel is white/black alpha rather
-           than a coloured edge — a tinted accent stripe is banned, and this is the
-           technique the lobby already uses to get depth without one. */
-        #controlPadGUI button,
-        #sectordisplay button,
-        #turnTimeBar button,
-        #utilityButtons button,
-        #chatContainer button {
-            box-shadow:
-                inset 1px 1px 0 rgba(255, 255, 255, 0.14),
-                inset -2px -2px 0 rgba(0, 0, 0, 0.42),
-                0 2px 0 rgba(0, 0, 0, 0.5),
-                0 4px 10px rgba(0, 0, 0, 0.34) !important;
-            transition: transform 90ms ease, box-shadow 90ms ease;
+        /* The command pad, the chat rail and the chat feed sat at left:0 while the sector
+           survey above them is pinned to left:10 by the layout script — so the left column
+           had two different left edges as well as two different right edges. They move to
+           10 to join it, and #hullSpine fills the 10px channel that opens up, which is
+           what makes the survey and the console read as one installed assembly rather than
+           as two panels that happen to be stacked. Border-box on the pad so its 540px
+           request is the width it actually renders, matching the chat rail exactly. */
+        #controlPadGUI { left: 10px; box-sizing: border-box; }
+        #chatContainer, #chatFeed { left: 10px; }
+        #hullSpine {
+            position: fixed;
+            left: 0; top: 44px; bottom: 6px;
+            width: 10px;
+            z-index: 28;
+            pointer-events: none;
+            /* Rivet nodes every 60px. Last stop transparent on purpose — a radial
+               gradient floods its final colour across the whole box, so an opaque
+               outer stop would black the spine out entirely. */
+            background:
+                radial-gradient(circle at 5px 14px,
+                    rgba(206,224,248,0.62) 0 1.1px, rgba(0,0,0,0.7) 1.7px, rgba(0,0,0,0) 3.2px) repeat-y 0 0 / 100% 60px,
+                linear-gradient(90deg, #0c111a 0 1px, #3b465d 1px, #2a3346 55%, #121823);
+            box-shadow: inset -2px 0 0 rgba(0,0,0,0.85), inset 1px 0 0 rgba(196,216,244,0.28);
         }
-        #controlPadGUI button:active:not(:disabled),
-        #sectordisplay button:active:not(:disabled),
-        #turnTimeBar button:active:not(:disabled),
-        #utilityButtons button:active:not(:disabled),
-        #chatContainer button:active:not(:disabled) {
-            transform: translateY(2px);
-            box-shadow:
-                inset 2px 2px 5px rgba(0, 0, 0, 0.55),
-                0 0 0 rgba(0, 0, 0, 0) !important;
+        @media (max-width: 560px), (max-height: 460px) {
+            #controlPadGUI, #chatContainer, #chatFeed { left: 0; }
+            #hullSpine { display: none; }
         }
-        /* A disabled control should not look like it is waiting to be pressed. */
-        #controlPadGUI button:disabled,
-        #sectordisplay button:disabled,
-        #turnTimeBar button:disabled {
-            box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.05),
-                        inset -1px -1px 0 rgba(0, 0, 0, 0.3) !important;
-            transform: none;
-        }
-        @media (prefers-reduced-motion: reduce) {
-            #controlPadGUI button,
-            #sectordisplay button,
-            #turnTimeBar button,
-            #utilityButtons button,
-            #chatContainer button { transition: none; }
-        }
-
-        /* Building, defense, ship, tech buttons - polish */
-        .building-button {
-            background: linear-gradient(120deg, #164b33, #20613f) !important;
-            color: #f4fff8 !important;
-            border: 1px solid rgba(168,240,201,0.22) !important;
-            font-weight: 600 !important;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.45);
-            box-shadow: 0 4px 12px rgba(13,75,45,0.35);
-        }
-        .building-button:hover {
-            background: linear-gradient(120deg, #1b5d3e, #287a50) !important;
-        }
-        .building-button small,
-        .building-button span {
-            color: #d9f8e6 !important;
-            text-shadow: none;
-        }
-        .defense-button {
-            background: linear-gradient(120deg, #7e2a23, #9c342a) !important;
-            color: #fff6f4 !important;
-            border: 1px solid rgba(255,190,180,0.22) !important;
-            font-weight: 600 !important;
-            box-shadow: 0 4px 12px rgba(179,64,46,0.25);
-        }
-        .defense-button small,
-        .defense-button span {
-            color: #ffd8d1 !important;
-        }
-        .ship-button {
-            background: linear-gradient(120deg, #2c6ca8, #3a8ad6) !important;
-            font-weight: 600 !important;
-            box-shadow: 0 4px 12px rgba(44,108,168,0.25);
-        }
-        .tech-button {
-            background: linear-gradient(120deg, #1a78c2, #2196F3) !important;
-            font-weight: 600 !important;
-            box-shadow: 0 4px 12px rgba(33,150,243,0.25);
-        }
-        .tech-panel-header {
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:10px;
-            margin-bottom:10px;
-        }
-        .tech-branch {
-            margin-bottom:10px;
-            border:1px solid rgba(255,255,255,0.08);
-            border-radius:8px;
-            overflow:hidden;
-            background:rgba(255,255,255,0.035);
-        }
-        .tech-branch-title {
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:8px;
-            padding:7px 9px;
-            font-weight:700;
-            font-size:13px;
-        }
-        .tech-branch-title small {
-            opacity:0.72;
-            font-weight:500;
-            line-height:1.2;
-            text-align:right;
-        }
-        .tech-grid {
-            display:grid;
-            grid-template-columns:1fr;
-            gap:7px;
-            padding:8px;
-        }
-        .tech-card {
-            display:grid;
-            grid-template-columns:1fr auto;
-            gap:6px 10px;
-            align-items:center;
-            width:100%;
-            min-height:58px;
-            padding:8px;
-            border:1px solid rgba(255,255,255,0.12);
-            border-radius:7px;
-            background:rgba(10,14,28,0.72);
-            color:#eef3ff;
-            text-align:left;
-            cursor:pointer;
-        }
-        .tech-card:hover:not(:disabled) {
-            filter:brightness(1.12);
-        }
-        .tech-card:disabled {
-            cursor:not-allowed;
-            opacity:0.62;
-        }
-        .tech-card .tech-name {
-            font-weight:700;
-            font-size:13px;
-        }
-        .tech-card .tech-summary {
-            grid-column:1 / -1;
-            color:rgba(232,236,255,0.72);
-            font-size:11px;
-            line-height:1.25;
-        }
-        .tech-card .tech-cost {
-            font-size:12px;
-            font-weight:700;
-            color:#a8f0c9;
-            white-space:nowrap;
-            font-variant-numeric:tabular-nums;
-        }
-        .tech-card .tech-req {
-            grid-column:1 / -1;
-            color:#ffb4a8;
-            font-size:11px;
-        }
-        /* Per-race doctrine: a branch this race can't research (or has capped out). */
-        .tech-card.tech-locked {
-            opacity:0.5;
-            background:repeating-linear-gradient(135deg, rgba(44,14,18,0.9) 0 8px, rgba(26,11,15,0.9) 8px 16px);
-            border-color:rgba(255,120,110,0.38);
-        }
-        .tech-card.tech-locked .tech-cost { color:#ff938a; }
-        /* Per-race doctrine: a ship hull outside this race's allow-list. */
-        .ship-button.ship-locked {
-            opacity:0.42 !important;
-            background:repeating-linear-gradient(135deg, #3a2326 0 8px, #2a1a1d 8px 16px) !important;
-            box-shadow:none !important;
-            cursor:not-allowed !important;
-        }
-        /* Buildable by this race, but Military Shipyards tech is too low yet. */
-        .ship-button.ship-techlocked {
-            opacity:0.5 !important;
-            background:repeating-linear-gradient(135deg, #3a3320 0 8px, #2a2616 8px 16px) !important;
-            box-shadow:none !important;
-            cursor:not-allowed !important;
-        }
-        #empireSummary {
-            position:fixed;
-            top:42px;
-            left:10px;
-            z-index:235;
-            max-width:500px;
-            padding:5px 9px;
-            border-radius:7px;
-            border:1px solid rgba(255,255,255,0.08);
-            background:rgba(10,14,28,0.78);
-            color:#cfd7ff;
-            font-size:12px;
-            line-height:1.35;
-            pointer-events:none;
-        }
-        #victoryProgress {
-            position:fixed;
-            top:74px;
-            left:10px;
-            z-index:235;
-            max-width:560px;
-            padding:5px 9px;
-            border-radius:7px;
-            border:1px solid rgba(255,255,255,0.08);
-            background:rgba(10,14,28,0.78);
-            color:#dce4ff;
-            font-size:12px;
-            line-height:1.35;
-            white-space:normal;
-            pointer-events:none;
-        }
-        #mapLegend {
-            position:fixed;
-            right:10px;
-            bottom:260px;
-            z-index:110;
-            max-width:260px;
-            padding:8px 10px;
-            border:1px solid rgba(255,255,255,0.08);
-            border-radius:8px;
-            background:rgba(10,14,28,0.86);
-            color:#dce4ff;
-            font-size:11px;
-            line-height:1.45;
-        }
-        .legend-row {
-            display:flex;
-            align-items:center;
-            gap:7px;
-            white-space:nowrap;
-        }
-        .legend-swatch {
-            width:12px;
-            height:12px;
-            border-radius:3px;
-            border:1px solid rgba(255,255,255,0.24);
-            flex:0 0 auto;
-        }
-
-        /* Help overlay polish - inherited from inline already */
-        #helpBtn:hover, #audioBtn:hover { transform: translateY(-1px) !important; box-shadow: 0 8px 20px rgba(0,0,0,0.4) !important; }
 
         /* When the 3D galaxy view is active it replaces the legacy sector backdrop */
         body.g3d-active #sectorimg { display: none !important; }
         #galaxy3d canvas { cursor: grab; }
     </style>
 </head>
-<body>
-    <!-- Utility buttons - positioned near turn bar -->
-    <div id="utilityButtons" style="position:fixed;right:340px;top:10px;z-index:250;display:flex;gap:8px;align-items:center;">
-        <button id="audioBtn" style="width:36px;height:36px;border-radius:50%;border:none;background:linear-gradient(120deg,#ffb347,#ffcc33);color:#0c1021;font-weight:800;font-size:16px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0;" title="Toggle sound">🔊</button>
-        <button id="helpBtn" style="width:36px;height:36px;border-radius:50%;border:none;background:linear-gradient(120deg,#42d8c8,#4c7cff);color:#071021;font-weight:800;font-size:16px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0;" title="Help">?</button>
-        <button id="homeworldBtn" style="height:36px;border:none;background:rgba(255,192,64,0.92);color:#0c1021;font-weight:800;font-size:12px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0 10px;border-radius:7px;" title="Focus homeworld">Home</button>
-        <button id="surrenderBtn" style="height:36px;border:1px solid rgba(255,126,126,0.5);background:rgba(70,22,32,0.94);color:#ffb6b6;font-weight:800;font-size:12px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:inline-flex;align-items:center;justify-content:center;padding:0 10px;border-radius:7px;" title="Surrender this game">Surrender</button>
+<body class="game-page">
+    <!-- Structural, not decorative: the vertical rail the left column is bolted to. It
+         runs behind the survey and the console at the same x, which is what stops the
+         gap between them reading as a hole in the HUD. Purely presentational, so it is
+         hidden from assistive tech and takes no pointer events; the layout audit works
+         off a fixed list of panel ids and never sees it. -->
+    <div id="hullSpine" aria-hidden="true"></div>
+    <!-- Comms bay. The recessed well the chat transcript unfolds inside, sized between the
+         survey panel and the console by fitLeftColumn(). Decorative and measured from its
+         neighbours, so the layout audit's panel list is unaffected.
+
+         It used to be a flat dark fill with two stencils on it and nothing else — the
+         single largest contiguous region of the interface, containing zero information.
+         An instrument that is idle should look idle, not unfinished, so the bay now
+         carries a real empty-state face: the comms terminal plate from icon-system, a
+         six-segment signal meter reading zero, and the channel state in Share Tech Mono
+         over the scanline sheet from production/console/. The face is hidden the moment
+         #chatMessages has a child, because from then on the bay has actual traffic in it
+         and the idle readout would be lying (see the :has() rule in style.css). -->
+    <div id="commsBay" aria-hidden="true" data-code="MSG-09">
+        <span>Comms</span>
+        <div class="comms-idle">
+            <div class="comms-idle-face"></div>
+            <div class="comms-idle-readout">
+                <div class="comms-idle-line">No traffic &middot; channel open</div>
+                <div class="comms-meter">
+                    <i></i><i></i><i></i><i></i><i></i><i></i>
+                    <b>0 dB</b>
+                </div>
+            </div>
+        </div>
     </div>
-    <div id="viewTitle" style="position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:60;color:rgba(232,236,255,0.6);font-weight:600;letter-spacing:1.5px;font-size:11px;text-transform:uppercase;background:rgba(12,16,33,0.7);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:4px 14px;pointer-events:none;">Galaxy Map</div>
+    <!-- Hull switch bank. Square console keys on one bezel height, not web pills, so the
+         row reads as a single installed strip rather than four unrelated widgets. -->
+    <div id="utilityButtons" style="position:fixed;right:340px;top:10px;z-index:250;display:flex;gap:5px;align-items:center;">
+        <!-- The speaker mark is drawn by style.css on ::before, keyed off aria-pressed.
+             It cannot live in the markup: GameScreen.updateAudioButton() overwrites this
+             button's textContent with a 🔊 / 🔇 emoji on every mute toggle, which is a
+             full-colour glyph in a steel-and-amber console and immune to the palette.
+             The stylesheet zeroes the font size so that text never renders, and reads the
+             same aria-pressed attribute updateAudioButton() already maintains. aria-label
+             is what keeps the button named once its text is invisible — without it the
+             accessible name would be "speaker high volume". -->
+        <button id="audioBtn" class="gp-key gp-key--icon" title="Toggle sound" aria-label="Toggle sound"></button>
+        <!-- A DRAWN MARK, NOT A TYPED CHARACTER. This shipped as a literal "?" text
+             node set in the header font — the only affordance in the top bar that was
+             a keyboard character rather than a designed mark, sitting immediately
+             beside a drawn speaker. Same treatment as the chat-history chevrons on the
+             footer rail: a stroked vector on a square grid, square linecaps, mitred
+             joins, currentColor so it takes the key's own state colours. aria-label is
+             what names the button now that its label is artwork. -->
+        <button id="helpBtn" class="gp-key gp-key--icon" type="button" title="Help" aria-label="Help"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path d="M4.8 5.4V3.8H11.2V7.6L8 9.4V10.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/><path d="M6.9 12.6H9.1V14.8H6.9Z" fill="currentColor"/></svg></button>
+        <button id="homeworldBtn" class="gp-key gp-key--amber" title="Focus homeworld">Home</button>
+        <button id="surrenderBtn" class="gp-key gp-key--danger" title="Surrender this game">Surrender</button>
+    </div>
+    <div id="viewTitle" style="position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:60;pointer-events:none;">Galaxy Map</div>
     <!-- Chart-naming prompt. Appears only for the player who just swept a shoal, and only for
          a turn: see nameSector() in server/server.js. It is the one place a player writes
          something onto the shared map, so the options are generated server-side and the reply
@@ -566,7 +215,7 @@
                 <div data-name-heading style="font-weight:700;font-size:14px;">Name the shoal</div>
                 <div id="namePromptBlurb" style="opacity:0.7;font-size:12px;margin-top:2px;line-height:1.4;"></div>
             </div>
-            <button id="namePromptClose" style="background:transparent;border:none;color:#cfd7ff;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;" title="Leave it as it is">✕</button>
+            <button id="namePromptClose" type="button" style="background:transparent;border:none;color:#cfd7ff;cursor:pointer;line-height:0;padding:2px;" title="Leave it as it is" aria-label="Leave it as it is"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3 3 11 11M11 3 3 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg></button>
         </div>
         <div id="namePromptOptions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:11px;"></div>
     </div>
@@ -574,7 +223,7 @@
         <div style="max-width:720px;width:100%;background:#0f1424;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px;color:#e8ecff;box-shadow:0 18px 40px rgba(0,0,0,0.45);">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <h3 style="margin:0;font-size:20px;">Command Reference</h3>
-                <button id="helpClose" style="background:transparent;border:none;color:#cfd7ff;font-size:18px;cursor:pointer;">✕</button>
+                <button id="helpClose" type="button" style="background:transparent;border:none;color:#cfd7ff;cursor:pointer;line-height:0;padding:2px;" title="Close" aria-label="Close command reference"><svg viewBox="0 0 14 14" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 3 11 11M11 3 3 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg></button>
             </div>
             <!-- Codex tabs. Populated by js/codex.js; Quick Help stays the default tab so the
                  new-player path is unchanged. The lore tabs exist because the setting previously
@@ -603,9 +252,49 @@
     <!-- Treasury. Each resource shows what you HAVE and what arrives NEXT TURN, side by
          side, because every purchase decision is a comparison of exactly those two
          numbers. They used to live in two separate bars in two different notations. -->
+    <!-- ONE ICON SET, AND IT HAS MATERIAL IN IT.
+         Two revisions ago these were three unrelated illustration languages: an
+         airbrushed lump, a flat vector gem and thin mint line art. That was
+         fixed to three flat-facet solids in one bronze ramp — which unified the
+         row and then read as the cheapest thing on a HUD whose build cards two
+         panels below are painted 3D plates. Three flat polygons is not material.
+
+         These are the same three silhouettes with the same shared construction
+         rules, rebuilt so each facet is LIT rather than filled:
+           - one key light, top-left, on all three: the top and upper-left faces
+             carry the highlight ramp, the lower-right faces carry the shadow
+             ramp, exactly like the painted library;
+           - every facet is a gradient, not a flat value, so a face turns as it
+             recedes the way rolled metal and cut crystal do;
+           - one 1.4px near-black contour and mitred joins throughout, so the
+             set holds its shape against a lit steel plate;
+           - one optical mass: all three fill the same 24-unit box corner to
+             corner. The research mark used to be a small chip in a big empty
+             box, which is why the three-item row did not read as a set.
+         Warm bronze for metal, cool steel for crystal, warm bronze-gold for
+         research; the numerals are all off-white (style.css), so the mark is
+         what carries identity.
+
+         THE CRYSTAL RAMP IS CAPPED. It used to run #ffffff to #d9e5f4 on the
+         top facet with a second #ffffff specular at 75% — the brightest pixels
+         anywhere in the console, and the only cool white in a steel-and-amber
+         palette. Reduced to 10px on a build card's cost line, that 10px
+         secondary datum out-shouted the 12px item name directly above it, on
+         every card in the grid. The ramp now tops out at #c3cfe0 and runs down
+         to #5b6c85, and the specular sits at 0.4. Metal stays the brighter of
+         the pair, which is the order the economy is actually read in; the gem
+         stays legible on facet geometry, which is what the drawing was doing
+         the work with all along.
+
+         Gradient ids are prefixed per icon because <defs> ids are document-wide
+         and this page carries three of these inline in one row.
+
+         The same silhouettes are reduced to 10px for the cost chips on every
+         build and hull card (style.css, .cost-metal/.cost-crystal). One symbol
+         per resource, everywhere it appears. -->
     <div id="resourceBar">
         <div class="res" id="res-metal" title="Metal — hulls, buildings and defences">
-            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><path d="M4 15.5 8 8h8l4 7.5-4 3.5H8z" fill="#c98a52"/><path d="M8 8h8l-2 4H10z" fill="#ffd3a8"/><path d="M4 15.5 8 12h8l4 3.5-4 3.5H8z" fill="#a86f42" opacity=".55"/><path d="M9.5 4.5 12 3l2.5 1.5L12 6.2z" fill="#ffe6c9"/></svg></span>
+            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><defs><linearGradient id="mk-m-top" x1="0" y1="0" x2="0.45" y2="1"><stop offset="0" stop-color="#ffe6c4"/><stop offset="1" stop-color="#d5a367"/></linearGradient><linearGradient id="mk-m-face" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stop-color="#cb9153"/><stop offset="1" stop-color="#875826"/></linearGradient><linearGradient id="mk-m-end" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b5f2a"/><stop offset="1" stop-color="#492e12"/></linearGradient></defs><g stroke="#0a0e15" stroke-width="1.4" stroke-linejoin="miter"><path d="M4.4 9.6 8.6 5.4H19.4L15.2 9.6Z" fill="url(#mk-m-top)"/><path d="M4.4 9.6H15.2L16.7 17.6H2.9Z" fill="url(#mk-m-face)"/><path d="M15.2 9.6 19.4 5.4 21.1 13.4 16.7 17.6Z" fill="url(#mk-m-end)"/></g><path d="M5.9 9.1 9.2 6.4H18.3" fill="none" stroke="#fff2dd" stroke-opacity="0.5" stroke-width="0.9" stroke-linecap="butt"/></svg></span>
             <span class="res-figures">
                 <span class="res-stock" id="metalresource">0</span>
                 <span class="res-rate" id="metalincome">+0</span>
@@ -613,7 +302,7 @@
             <span class="res-name">Metal</span>
         </div>
         <div class="res" id="res-crystal" title="Crystal — probes, fleet movement and spycraft">
-            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><path d="M12 2.5 19 9l-7 12.5L5 9z" fill="#5aa8e8"/><path d="M12 2.5 19 9h-7z" fill="#bfe4ff"/><path d="M12 2.5 5 9h7z" fill="#8ecbff"/><path d="M12 9h7l-7 12.5z" fill="#3d86c4"/></svg></span>
+            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><defs><linearGradient id="mk-c-a" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#c3cfe0"/><stop offset="1" stop-color="#a6b6cc"/></linearGradient><linearGradient id="mk-c-b" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#b4c3d7"/><stop offset="1" stop-color="#96a7bf"/></linearGradient><linearGradient id="mk-c-c" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#a2b2c8"/><stop offset="1" stop-color="#8395ae"/></linearGradient><linearGradient id="mk-c-d" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#93a3ba"/><stop offset="1" stop-color="#6f7f97"/></linearGradient><linearGradient id="mk-c-e" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#7c8ca3"/><stop offset="1" stop-color="#5b6c85"/></linearGradient></defs><g stroke="#0a0e15" stroke-width="1.3" stroke-linejoin="miter"><path d="M8.2 2.8H15.8L18.4 9.4H5.6Z" fill="url(#mk-c-a)"/><path d="M8.2 2.8 5.6 9.4H2.6Z" fill="url(#mk-c-b)"/><path d="M15.8 2.8 18.4 9.4H21.4Z" fill="url(#mk-c-c)"/><path d="M2.6 9.4 12 21.8V9.4Z" fill="url(#mk-c-d)"/><path d="M21.4 9.4 12 21.8V9.4Z" fill="url(#mk-c-e)"/></g><path d="M9.2 4.1H14.6" fill="none" stroke="#ffffff" stroke-opacity="0.4" stroke-width="1" stroke-linecap="butt"/></svg></span>
             <span class="res-figures">
                 <span class="res-stock" id="crystalresource">0</span>
                 <span class="res-rate" id="crystalincome">+0</span>
@@ -621,7 +310,7 @@
             <span class="res-name">Crystal</span>
         </div>
         <div class="res" id="res-research" title="Research — technology levels">
-            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><circle cx="12" cy="12" r="2.6" fill="#a8f0c9"/><g fill="none" stroke="#6fd8a4" stroke-width="1.6"><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(120 12 12)"/></g></svg></span>
+            <span class="res-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true"><defs><linearGradient id="mk-r-body" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#c8933f"/><stop offset="1" stop-color="#7d5420"/></linearGradient><linearGradient id="mk-r-core" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#ffe2b1"/><stop offset="1" stop-color="#b98944"/></linearGradient></defs><path d="M8.2 2.6h3v3.8h-3zM12.8 2.6h3v3.8h-3zM8.2 17.6h3v3.8h-3zM12.8 17.6h3v3.8h-3zM2.6 8.2h3.8v3H2.6zM2.6 12.8h3.8v3H2.6zM17.6 8.2h3.8v3h-3.8zM17.6 12.8h3.8v3h-3.8z" fill="#7d5526" stroke="#0a0e15" stroke-width="1.1" stroke-linejoin="miter"/><g stroke="#0a0e15" stroke-width="1.4" stroke-linejoin="miter"><path d="M5.6 5.6h12.8v12.8H5.6z" fill="url(#mk-r-body)"/><path d="M9.3 9.3h5.4v5.4H9.3z" fill="url(#mk-r-core)"/></g><path d="M6.4 17.6V6.4h11.2l-1.7 1.7H8.1v9.5z" fill="#ffe9cc" fill-opacity="0.26"/><path d="M17.6 6.4v11.2H6.4l1.7-1.7h7.8V8.1z" fill="#000000" fill-opacity="0.34"/></svg></span>
             <span class="res-figures">
                 <span class="res-stock" id="researchresource">0</span>
                 <span class="res-rate" id="researchincome">+0</span>
@@ -632,24 +321,23 @@
     <div id="empireSummary">Empire: 0 worlds · 0 sectors · 0 ships</div>
     <div id="victoryProgress">Victory: loading</div>
 
-    <!-- Turn Time Bar -->
+    <!-- Turn clock. Mode stencil across the top, then the End Turn key beside a recessed
+         countdown readout — the two things a player checks in the same glance. -->
     <div id="turnTimeBar">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 14px;">
-            <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:rgba(232,236,255,0.55);font-weight:600;">
-                <span id="gameModeLabel">Quick Match</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-                <button id="nextTurnBtn"><b id="nextTurnText">Game Start</b></button>
-                <span style="font-size:12px;color:#cfd7ff;">Next turn in <b id="turnRedFlashWhenLow">…</b></span>
+        <div class="turn-stack">
+            <div class="turn-mode"><span id="gameModeLabel">Quick Match</span></div>
+            <div class="turn-row">
+                <button id="nextTurnBtn" class="gp-key gp-key--amber"><b id="nextTurnText">Game Start</b></button>
+                <span class="turn-clock">Next turn in <b id="turnRedFlashWhenLow">…</b></span>
             </div>
         </div>
     </div>
 
     <!-- Connection Info - positioned to the right of resource bar, before utility buttons -->
-    <div id="connectionInfo" style="position:fixed;top:12px;right:430px;z-index:240;display:flex;gap:8px;align-items:center;font-size:12px;">
-        <span style="color:#cfd7ff;"><span id="status">…</span> · <span id="connected">-</span></span>
-        <button onclick="Shop.open()" style="padding:6px 12px;background:linear-gradient(120deg,#f39c12,#e67e22);border:none;color:white;cursor:pointer;border-radius:7px;font-size:12px;font-weight:600;">Shop</button>
-        <button id="leaveGameBtn" title="Return to the lobby without abandoning this game" style="padding:6px 12px;background:rgba(48,75,104,0.9);border:1px solid rgba(126,190,255,0.4);color:white;cursor:pointer;border-radius:7px;font-size:12px;font-weight:600;">Lobby</button>
+    <div id="connectionInfo" style="position:fixed;top:12px;right:430px;z-index:240;display:flex;gap:6px;align-items:center;">
+        <span class="conn-readout"><span id="status">…</span> · <span id="connected">-</span></span>
+        <button onclick="Shop.open()" class="gp-key gp-key--amber gp-key--sm">Shop</button>
+        <button id="leaveGameBtn" class="gp-key gp-key--sm" title="Return to the lobby without abandoning this game">Lobby</button>
     </div>
 
     <!-- 3D galaxy map (main view). Sits above the starfield, below all HUD panels. -->
@@ -657,7 +345,18 @@
 
     <!-- Sector Display Background (legacy fallback when WebGL is unavailable) -->
     <div id="sectorimg" style="z-index:-2;background-repeat:no-repeat;position:fixed;width:calc(100% - 300px);height:calc(100% - 70px);top:70px;left:300px;pointer-events:none;"></div>
-    <div id="sectordisplay" style="position:fixed; top:80px;left:10px;display:block;z-index:110;">
+    <div id="sectordisplay" style="position:fixed; top:80px;left:10px;display:block;z-index:110;" data-code="SCN-02">
+        <!-- Instrument title bar. Sticky, because the panel scrolls inside a height the
+             layout hands it and a survey readout with no header is unreadable. -->
+        <div class="gp-titlebar">Sector Survey</div>
+        <div class="gp-body">
+        <!-- Two instrument columns above 900px (style.css .survey-cols): orders and state
+             on the left, the numeric survey and hull tables on the right. The panel is
+             now the same width as the console below it, and a 500px panel running one
+             narrow table down the middle would have traded raggedness for emptiness.
+             Wrappers only — every id the client scripts address is untouched. -->
+        <div class="survey-cols">
+        <div class="survey-col">
         <div class="sector-panel-heading">
             <div>
                 <div class="sector-panel-eyebrow">Selected Sector</div>
@@ -679,10 +378,14 @@
             <tr><td>Terraform Req.:</td><td><div style="display:inline-block" id="terraformlvl">N/A</div></td></tr>
             <tr><td>Building Slots:</td><td><div style="display:inline-block" id="sectorslots">N/A</div></td></tr>
         </table>
+        </div>
+        <div class="survey-col">
         <div id="sectorBuildings" class="sector-local-inventory">Buildings: unknown</div>
         <div id="sectorFleetSummary" class="sector-local-inventory">Fleet: unknown</div>
-        <div id="sectorIntel" style="display:none;max-width:280px;margin-top:8px;background:rgba(38,18,40,0.88);border:1px solid rgba(214,93,177,0.45);border-radius:10px;padding:8px 10px;font-size:12px;color:#e8ecff;line-height:1.5;"></div>
-        <br />
+        <!-- Intel readout. Was a magenta-bordered rounded card — the only rose object in
+             the HUD and a coloured edge border besides. It is a recessed well like every
+             other readout in this panel now; the material lives in style.css. -->
+        <div id="sectorIntel" class="sector-local-inventory sector-intel-note" style="display:none;"></div>
         <table border="0px" id="sectorShipTable">
             <tr>
                 <td>Ship Type:</td>
@@ -735,6 +438,9 @@
                 <td><div style="display:inline-block" id="fa6">N/A</div><div style="display:none;" id="fc6"><button>Cancel</button></div><br /></td>
             </tr>
         </table>
+        </div>
+        </div>
+        </div>
     </div>
 
     <!-- Old log area - hidden, replaced by avatar notifications -->
@@ -745,38 +451,74 @@
         </div>
     </div>
 
-    <!-- Control Pad -->
-    <div id="controlPadGUI" style="position:fixed;left:0;bottom:40px;width:500px;height:320px;z-index:100;background:rgba(20,24,40,0.98);">
+    <!-- Command pad. A recessed key-well of console tabs over one instrument plate.
+         The tab strip height is pinned by --pad-tabs-h in style.css because .tab-panel's
+         max-height is derived from it; the two must not drift. -->
+    <div id="controlPadGUI" style="position:fixed;bottom:40px;width:500px;height:320px;z-index:100;">
         <!-- Tab Buttons -->
-        <div style="display:flex;margin-bottom:-1px;">
-            <button id="buildtab" class="tab-button active">Build</button>
-            <button id="fleettab" class="tab-button">Fleet</button>
-            <button id="techtab" class="tab-button">Research</button>
-            <button id="colonizetab" class="tab-button">Colonize</button>
-            <button id="analyticstab" class="tab-button">Analytics</button>
+        <!-- The five tab marks are the SAME authored `data-icon` drawings the pad
+             headings below use, two points smaller. They are attributes rather
+             than child elements because controlpad.js addresses these buttons by
+             id and toggles `.active` on them, and because a background image
+             cannot become the only carrier of a label — the tab text is still
+             the accessible name. -->
+        <div class="pad-tabs">
+            <!-- BUILD carries `build` (a tower crane) and not `economy` (blocks and a
+                 stack). Sharing `economy` put a cluster of verticals on a ground line
+                 twenty pixels from ANALYTICS' bars on an axis, and at tab size those two
+                 silhouettes were the same object: two of the five primary tabs marked
+                 with what a player reads as one icon. The bar-and-axis drawing is now
+                 reserved for ANALYTICS alone. -->
+            <button id="buildtab" class="tab-button active" data-icon="build">Build</button>
+            <button id="fleettab" class="tab-button" data-icon="shipyard">Fleet</button>
+            <button id="techtab" class="tab-button" data-icon="research">Research</button>
+            <button id="colonizetab" class="tab-button" data-icon="colonize">Colonize</button>
+            <button id="analyticstab" class="tab-button" data-icon="analytics">Analytics</button>
         </div>
 
         <!-- Build Tab -->
-        <div id="build" class="tab-panel">
+        <div id="build" class="tab-panel" data-code="CON-01">
             <div id="buildSectorContext" class="local-order-context">Select an owned sector to construct there.</div>
-            <div style="font-weight:bold;margin-bottom:10px;">Local Economy Buildings</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
-                <button id="bb1" class="building-button" data-building-id="0" title="Metal Extractor: increases this sector's metal income. Uses one building slot.">⛏ Metal Extractor <span id="bbb1">0</span><br><small><span class="cost-metal">50</span> <span class="cost-crystal">20</span><span class="cost-note"> · sector metal</span></small></button>
-                <button id="bb2" class="building-button" data-building-id="1" title="Crystal Refinery: increases this sector's crystal income. Uses one building slot.">◆ Crystal Refinery <span id="bbb2">0</span><br><small><span class="cost-metal">40</span> <span class="cost-crystal">30</span><span class="cost-note"> · sector crystal</span></small></button>
-                <button id="bb3" class="building-button" data-building-id="2" title="Research Academy: increases empire research generated by this sector. Uses one building slot.">⌬ Research Academy <span id="bbb3">0</span><br><small><span class="cost-metal">60</span> <span class="cost-crystal">40</span><span class="cost-note"> · empire research</span></small></button>
-                <button id="bb4" class="building-button" data-building-id="3" title="Spaceport: builds ships locally. Higher tiers unlock larger hulls and more production.">🚀 Spaceport <span id="bbb4">0</span><br><small><span class="cost-metal">100</span> <span class="cost-crystal">50</span><span class="cost-note"> · builds ships</span></small></button>
+            <!-- NO GLYPH ELEMENTS IN THESE CARDS. Each button's mark is the painted
+                 building icon from icon-system/, published to public/images/ui/ and hung
+                 on ::before in style.css off the `data-building-id` that build.js already
+                 addresses. Two reasons it is a pseudo-element and not an <img> or an <i>:
+                 a pseudo-element is not a childNode, so build.js's positional indexing on
+                 the Spaceport card (below) is untouched; and a CSS background is
+                 decorative by construction, so nothing here becomes the sole carrier of a
+                 label a screen reader needs — the button text is still the button text. -->
+            <div class="pad-heading" data-icon="economy">Local Economy Buildings</div>
+            <div class="build-grid">
+                <button id="bb1" class="building-button" data-building-id="0" title="Metal Extractor: increases this sector's metal income. Uses one building slot.">Metal Extractor <span id="bbb1">0</span><br><small><span class="cost-metal">50</span> <span class="cost-crystal">20</span><span class="cost-note"> · sector metal</span></small></button>
+                <button id="bb2" class="building-button" data-building-id="1" title="Crystal Refinery: increases this sector's crystal income. Uses one building slot.">Crystal Refinery <span id="bbb2">0</span><br><small><span class="cost-metal">40</span> <span class="cost-crystal">30</span><span class="cost-note"> · sector crystal</span></small></button>
+                <button id="bb3" class="building-button" data-building-id="2" title="Research Academy: increases empire research generated by this sector. Uses one building slot.">Research Academy <span id="bbb3">0</span><br><small><span class="cost-metal">60</span> <span class="cost-crystal">40</span><span class="cost-note"> · empire research</span></small></button>
+                <!-- The Spaceport label is a bare leading TEXT NODE and must stay one.
+                     build.js retitles this one button by assigning to
+                     `button.childNodes[0].textContent` (it is the only structure with
+                     tiers rather than a count, so it becomes "Upgrade Spaceport to Lv N").
+                     Put any element first and the whole new label lands inside it while
+                     the original " Spaceport " text node survives after it — the button
+                     rendered "Upgrade Spaceport to Lv 2 Spaceport" the last time that was
+                     tried. Leave the leading text node alone unless build.js stops
+                     indexing children positionally.
+
+                     build.js prefixes every one of those labels with 🚀, a full-colour
+                     emoji this HUD has no other use for. normaliseSpaceportKey() below
+                     strips it and publishes the tier as `data-tier`, which is what picks
+                     the matching spaceport-level-0N plate in style.css. -->
+                <button id="bb4" class="building-button" data-building-id="3" data-tier="1" title="Spaceport: builds ships locally. Higher tiers unlock larger hulls and more production.">Spaceport <span id="bbb4">0</span><br><small><span class="cost-metal">100</span> <span class="cost-crystal">50</span><span class="cost-note"> · builds ships</span></small></button>
             </div>
-            <div style="font-weight:bold;margin-bottom:10px;">Local Defense & Special</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:15px;">
-                <button id="bb5" class="defense-button" data-building-id="4" title="Orbital Turret: fights alongside fleets defending this sector. The crossed-swords map badge marks local combat strength.">⚔ Orbital Turret <span id="bbb5">0</span><br><small><span class="cost-metal">80</span> <span class="cost-crystal">60</span><span class="cost-note"> · sector defence</span></small></button>
-                <button id="bb6" class="defense-button" data-building-id="5" title="Warp Gate: pairs with another owned gate for fast, safer travel between the two sectors.">◎ Warp Gate <span id="bbb6">0</span><br><small><span class="cost-metal">200</span> <span class="cost-crystal">150</span><span class="cost-note"> · fast transit</span></small></button>
+            <div class="pad-heading" data-icon="defense">Local Defense &amp; Special</div>
+            <div class="build-grid">
+                <button id="bb5" class="defense-button" data-building-id="4" title="Orbital Turret: fights alongside fleets defending this sector. The crossed-swords map badge marks local combat strength.">Orbital Turret <span id="bbb5">0</span><br><small><span class="cost-metal">80</span> <span class="cost-crystal">60</span><span class="cost-note"> · sector defence</span></small></button>
+                <button id="bb6" class="defense-button" data-building-id="5" title="Warp Gate: pairs with another owned gate for fast, safer travel between the two sectors.">Warp Gate <span id="bbb6">0</span><br><small><span class="cost-metal">200</span> <span class="cost-crystal">150</span><span class="cost-note"> · fast transit</span></small></button>
             </div>
         </div>
 
         <!-- Fleet Tab -->
-        <div id="fleet" class="tab-panel hidden">
+        <div id="fleet" class="tab-panel hidden" data-code="FLT-02">
             <div id="fleetSectorContext" class="local-order-context">Fleet in selected sector</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:13px;">
+            <div class="fleet-roster">
                 <div>Scouts: <span id="fleet-scouts">0</span></div>
                 <div>Frigates: <span id="fleet-frigates">0</span></div>
                 <div>Destroyers: <span id="fleet-destroyers">0</span></div>
@@ -787,88 +529,91 @@
                 <div>Carriers: <span id="fleet-carriers">0</span></div>
                 <div>Colony Ships: <span id="fleet-colony">0</span></div>
             </div>
-            <div id="fleetEmptyState" style="font-size:13px;color:rgba(232,236,255,0.6);">No ships of yours are in this sector.</div>
-            <div id="fleetTotal" style="margin-top:8px;font-size:12px;font-weight:700;color:#a7d8ff;"></div>
-            <div style="margin-top:15px;font-weight:bold;margin-bottom:5px;">Build Ships at Selected Spaceport</div>
+            <div id="fleetEmptyState" class="pad-empty">No ships of yours are in this sector.</div>
+            <div id="fleetTotal" class="fleet-total"></div>
+            <div class="pad-heading" data-icon="shipyard">Build Ships at Selected Spaceport</div>
             <div id="spaceportProductionStatus" class="local-order-context">Build a Spaceport to produce ships locally.</div>
-            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;">
-                <button class="ship-button" data-ship-id="3" title="Scout: inexpensive exploration and sensor vessel.">⌁ Scout<br><small>200M</small></button>
-                <button class="ship-button" data-ship-id="1" title="Frigate: basic frontline combat ship.">▸ Frigate<br><small>430M</small></button>
-                <button class="ship-button" data-ship-id="2" title="Destroyer: heavier line ship; needs Military Shipyards 1.">Destroyer<br><small style="color:#888;">780M · Yard 1</small></button>
-                <button class="ship-button" data-ship-id="4" title="Cruiser: durable mid-weight hull; needs Military Shipyards 1.">Cruiser<br><small style="color:#888;">980M 120C · Yard 1</small></button>
-                <button class="ship-button" data-ship-id="5" title="Battleship: heavy gunline; needs Military Shipyards 2.">Battleship<br><small style="color:#888;">1650M 220C · Yard 2</small></button>
-                <button class="ship-button" data-ship-id="8" title="Intruder: strike hull built around raiding; needs Military Shipyards 2.">Intruder<br><small style="color:#888;">1950M 133C · Yard 2</small></button>
-                <button class="ship-button" data-ship-id="7" title="Dreadnought: the heaviest hull in the game; needs Military Shipyards 3.">Dreadnought<br><small style="color:#888;">3200M 450C · Yard 3</small></button>
-                <button class="ship-button" data-ship-id="9" title="Carrier: fleet backbone with high staying power; needs Military Shipyards 3.">Carrier<br><small style="color:#888;">3000M 80C · Yard 3</small></button>
-                <button class="ship-button" data-ship-id="6" title="Colony Ship: the only way to settle a planet. Consumed on colonisation.">Colony Ship<br><small style="color:#888;">500M</small></button>
+            <!-- Same rule as the build grid: the hull plate is a ::before keyed off
+                 `data-ship-id`, and icon-system/icons/ships/01..09 maps one-for-one onto
+                 those ids. The geometric glyphs that used to sit here (◆ ◈ ⬢ ▤) were six
+                 different shapes with no relationship to the hulls they named. -->
+            <div class="ship-grid">
+                <button class="ship-button" data-ship-id="3" title="Scout: inexpensive exploration and sensor vessel.">Scout<br><small>200M</small></button>
+                <button class="ship-button" data-ship-id="1" title="Frigate: basic frontline combat ship.">Frigate<br><small>430M</small></button>
+                <button class="ship-button" data-ship-id="2" title="Destroyer: heavier line ship; needs Military Shipyards 1.">Destroyer<br><small>780M · Yard 1</small></button>
+                <button class="ship-button" data-ship-id="4" title="Cruiser: durable mid-weight hull; needs Military Shipyards 1.">Cruiser<br><small>980M 120C · Yard 1</small></button>
+                <button class="ship-button" data-ship-id="5" title="Battleship: heavy gunline; needs Military Shipyards 2.">Battleship<br><small>1650M 220C · Yard 2</small></button>
+                <button class="ship-button" data-ship-id="8" title="Intruder: strike hull built around raiding; needs Military Shipyards 2.">Intruder<br><small>1950M 133C · Yard 2</small></button>
+                <button class="ship-button" data-ship-id="7" title="Dreadnought: the heaviest hull in the game; needs Military Shipyards 3.">Dreadnought<br><small>3200M 450C · Yard 3</small></button>
+                <button class="ship-button" data-ship-id="9" title="Carrier: fleet backbone with high staying power; needs Military Shipyards 3.">Carrier<br><small>3000M 80C · Yard 3</small></button>
+                <button class="ship-button" data-ship-id="6" title="Colony Ship: the only way to settle a planet. Consumed on colonisation.">Colony Ship<br><small>500M</small></button>
             </div>
-            <div style="margin-top:15px;font-weight:bold;margin-bottom:10px;">Move Fleet</div>
-            <div style="font-size:13px;color:#aaa;">Select a destination, then use Move Ships in its sector panel. Fleets travel on a direct plotted line; every crossed sector can affect the journey.</div>
+            <div class="pad-heading" data-icon="move">Move Fleet</div>
+            <div class="pad-note">Select a destination, then use Move Ships in its sector panel. Fleets travel on a direct plotted line; every crossed sector can affect the journey.</div>
         </div>
 
         <!-- Tech Tab -->
-        <div id="techtree" class="tab-panel hidden">
+        <div id="techtree" class="tab-panel hidden" data-code="RND-03">
             <div class="tech-panel-header">
-                <div style="font-weight:bold;">Research Technologies</div>
-                <div style="font-size:12px;color:#a8f0c9;font-variant-numeric:tabular-nums;">Available: <b id="techResearchAvailable">0</b> research</div>
+                <div class="pad-heading" data-icon="research">Research Technologies</div>
+                <div class="tech-budget">Available: <b id="techResearchAvailable">0</b> research</div>
             </div>
             <div id="techTreeRoot"></div>
         </div>
 
         <!-- Colonize Tab -->
-        <div id="colonize" class="tab-panel hidden">
+        <div id="colonize" class="tab-panel hidden" data-code="COL-04">
             <div id="colonizeSectorContext" class="local-order-context">Select a sector to check whether you can settle it.</div>
-            <button id="colonizeBtn" class="building-button" style="width:100%;padding:14px;margin-bottom:12px;">Settle This World</button>
-            <div style="font-weight:bold;margin-bottom:8px;font-size:13px;">Requirements</div>
+            <button id="colonizeBtn" class="building-button colonize-key">Settle This World</button>
+            <div class="pad-heading" data-icon="requirements">Requirements</div>
             <ul id="colonizeChecklist" class="req-list">
                 <li data-req="planet"><span class="req-mark">•</span><span class="req-text">The sector must contain a planet</span></li>
                 <li data-req="ship"><span class="req-mark">•</span><span class="req-text">A Colony Ship must be in the sector</span></li>
                 <li data-req="terraform"><span class="req-mark">•</span><span class="req-text">Your Terraforming must meet the world's requirement</span></li>
                 <li data-req="unclaimed"><span class="req-mark">•</span><span class="req-text">Nobody else can already own it</span></li>
             </ul>
-            <div style="margin-top:10px;font-size:12px;color:rgba(232,236,255,0.6);">Settling consumes the Colony Ship.</div>
+            <div class="pad-note">Settling consumes the Colony Ship.</div>
         </div>
 
         <!-- Analytics Tab -->
-        <div id="analytics" class="tab-panel hidden">
+        <div id="analytics" class="tab-panel hidden" data-code="TEL-05">
             <!-- Standing orders. The server has run these every turn for a long time and
                  there was no way to see or change them, so an Epic player had metal spent
                  on their behalf by settings they could not reach. Off unless asked for. -->
-            <div style="font-weight:bold;margin-bottom:6px;">Standing Orders</div>
+            <div class="pad-heading" data-icon="orders">Standing Orders</div>
             <div id="standingOrdersStatus" class="local-order-context">Automation is off. Nothing is built without your order.</div>
-            <div style="display:grid;gap:7px;margin:8px 0 14px;font-size:13px;">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                    <input type="checkbox" id="soAutoRebuild" style="width:16px;height:16px;cursor:pointer;">
+            <div class="so-block">
+                <label class="so-row">
+                    <input type="checkbox" id="soAutoRebuild">
                     <span>Rebuild home economy — replace a missing Metal Extractor or Crystal Refinery on your homeworld</span>
                 </label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                    <input type="checkbox" id="soAutoScout" style="width:16px;height:16px;cursor:pointer;">
+                <label class="so-row">
+                    <input type="checkbox" id="soAutoScout">
                     <span>Keep scouts flying — build scouts up to the number below</span>
                 </label>
-                <label style="display:flex;align-items:center;gap:8px;padding-left:24px;color:rgba(232,236,255,0.72);">
+                <label class="so-row so-row--indent">
                     <span>Scouts to maintain</span>
-                    <input type="number" id="soTargetScouts" min="0" max="6" value="2"
-                           style="width:56px;padding:4px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(20,25,40,0.9);color:#e8ecff;">
+                    <input type="number" id="soTargetScouts" min="0" max="6" value="2">
                 </label>
-                <div style="font-size:12px;color:rgba(232,236,255,0.55);">
+                <div class="pad-note">
                     Orders run at the start of each turn and only spend what you can afford.
                     Anything they do is reported in Recent events.
                 </div>
             </div>
 
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">
-                <div style="font-weight:bold;">Combat Analytics</div>
-                <button id="combatAnalyticsRefresh" class="ghost" type="button" style="padding:7px 10px;">Refresh</button>
+            <div class="tech-panel-header">
+                <div class="pad-heading" data-icon="analytics">Combat Analytics</div>
+                <button id="combatAnalyticsRefresh" class="ghost gp-key gp-key--sm" type="button">Refresh</button>
             </div>
-            <div style="font-size:12px;color:rgba(232,236,255,0.62);margin-bottom:8px;line-height:1.35;">Who is winning fights, what they are losing, and where. Fills in as battles resolve.</div>
-            <div id="combatAnalyticsStatus" class="analytics-status-idle" style="font-size:12px;color:#bdd5ff;margin-bottom:10px;">Loading live combat telemetry...</div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px;margin-bottom:10px;">
+            <div class="pad-note">Who is winning fights, what they are losing, and where. Fills in as battles resolve.</div>
+            <div id="combatAnalyticsStatus" class="analytics-status-idle">Loading live combat telemetry...</div>
+            <div class="analytics-meters">
                 <div>Battles: <b id="combatAnalyticsBattleCount">0</b></div>
                 <div>Updated: <b id="combatAnalyticsUpdatedAt">-</b></div>
                 <div title="Match reference, useful when reporting a problem">Match: <b id="combatAnalyticsGameId">-</b></div>
             </div>
             <div id="combatAnalyticsPlayers" style="display:grid;gap:8px;"></div>
-            <div style="font-weight:bold;margin:12px 0 6px;">Recent Battles</div>
+            <div class="pad-heading" data-icon="battles">Recent Battles</div>
             <div id="combatAnalyticsRecent" style="display:grid;gap:6px;"></div>
             <details class="operations-detail" id="strategyWatchPanel" open>
                 <summary>Strategic Watch</summary>
@@ -885,16 +630,72 @@
         </div>
     </div>
 
-    <!-- Mini Map -->
-    <div id="minimapid"></div>
-    <div id="mapLegend">
-        <div class="legend-row"><span class="legend-swatch" style="background:#ffc040;"></span>Home</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:#40c040;"></span>Owned/live</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:#c04040;"></span>Enemy seen</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:#3fc1c9;"></span>Your fleet (unclaimed)</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:#c08040;"></span>Asteroid/star hazard</div>
-        <div class="legend-row"><span class="legend-swatch" style="background:#202020;"></span>Black hole</div>
-        <div style="margin-top:5px;color:rgba(220,228,255,0.72);">H home, C colony ship, T turret, W gate, E enemy fleet, P probe lost. Dim tiles are old memory.</div>
+    <!-- Mini Map. minimap.js owns this element's children (it clears innerHTML on every
+         repaint), so the instrument bezel, scan grid, scanlines and stencil label are all
+         carried on ::before / ::after, which survive that. `data-chart` is the bottom
+         rail's stencil text; fitTacticalChart() below rewrites it with the live charted
+         count, and the value here is what the rail reads before the first map arrives. -->
+    <div id="minimapid" data-chart="STANDBY"></div>
+    <!-- Chart frame. The chart is a bare hex lattice with no frame of reference: at turn
+         one about six of its 112 cells are charted and the other 106 are an undifferentiated
+         honeycomb, with no compass, no scale and nothing saying how much of the map that
+         cluster represents. This is that frame — north mark, cell scale, and the charted
+         count — and it is a SIBLING of #minimapid rather than a child because minimap.js
+         clears that element's children. Positioned from the minimap's measured rect by
+         fitTacticalChart(), the same way #commsBay is positioned from the survey's, so it
+         cannot drift from the instrument it labels. Decorative: everything it states is
+         either signage or a summary of tiles that already carry their own aria-labels. -->
+    <div id="chartFrame" aria-hidden="true">
+        <!-- A MACHINED BEZEL, NOT A HAIRLINE. The ring shipped as stroke-width 1 at
+             0.34 opacity, which at 21px rendered as a muddy brown circle with visible
+             stair-stepping around the curve — a smudge behind the needle rather than an
+             instrument, and the same thin-line idiom the rest of the HUD has stopped
+             using. It is now stamped: a 3px near-black under-ring with the bronze ring
+             drawn full-strength on top of it, plus four cardinal pips at 12/3/6/9. The
+             under-ring is what kills the aliasing — the ring no longer has to hold an
+             edge against the panel on its own. The needle is shortened so its tip clears
+             the north pip instead of growing out of it. -->
+        <div class="chart-compass">
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                <circle cx="12" cy="12" r="8" fill="none" stroke="#0a0e15" stroke-width="3.4"/>
+                <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                <path d="M10.3 0.1H13.7V3.3H10.3Z M10.3 20.7H13.7V23.9H10.3Z M0.1 10.3H3.3V13.7H0.1Z M20.7 10.3H23.9V13.7H20.7Z" fill="#0a0e15"/>
+                <path d="M10.8 0.6H13.2V2.8H10.8Z M10.8 21.2H13.2V23.4H10.8Z M0.6 10.8H2.8V13.2H0.6Z M21.2 10.8H23.4V13.2H21.2Z" fill="currentColor"/>
+                <path d="M12 5.0 L14.9 12 L12 10.0 L9.1 12 Z" fill="currentColor"/>
+                <path d="M12 19.0 L9.1 12 L12 14.0 L14.9 12 Z" fill="currentColor" opacity="0.38"/>
+            </svg>
+            <b>N</b>
+        </div>
+        <div class="chart-scale">
+            <span class="chart-scale-bar"></span>
+            <span class="chart-scale-label">1 cell = 1 sector</span>
+        </div>
+    </div>
+    <div id="mapLegend" data-code="KEY-07">
+        <div class="gp-titlebar">Map Key</div>
+        <div class="gp-body">
+            <!-- NO INLINE FILLS, AND NO SECOND HOOK. Every chip used to carry
+                 `style="background:#c08040"`, and two also carried `data-pattern`.
+                 An inline style outranks any stylesheet selector and the `background`
+                 SHORTHAND resets background-image to none, so the two entries that most
+                 needed to be told apart shipped as the two flattest chips in the key.
+                 Everything a chip looks like now hangs off `data-key` alone: the muted
+                 fill, the plate lighting, and the mark stamped into it. `data-pattern`
+                 is gone rather than left in place as an attribute nothing reads.
+
+                 The six marks are what actually separate the rows — a home spire, a
+                 claimed hex, crossed blades, a chevron pair, a hazard triangle, a void
+                 annulus. Home and the asteroid/star hazard are both warm and twenty
+                 units of hue at 11px was never going to carry that distinction; a spire
+                 and a warning triangle carry it in greyscale. -->
+            <div class="legend-row"><span class="legend-swatch" data-key="home"></span>Home</div>
+            <div class="legend-row"><span class="legend-swatch" data-key="owned"></span>Owned/live</div>
+            <div class="legend-row"><span class="legend-swatch" data-key="enemy"></span>Enemy seen</div>
+            <div class="legend-row"><span class="legend-swatch" data-key="fleet"></span>Your fleet (unclaimed)</div>
+            <div class="legend-row"><span class="legend-swatch" data-key="hazard"></span>Asteroid/star hazard</div>
+            <div class="legend-row"><span class="legend-swatch" data-key="void"></span>Black hole</div>
+            <div class="legend-note">H home, C colony ship, T turret, W gate, E enemy fleet, P probe lost. Dim tiles are old memory.</div>
+        </div>
     </div>
 
     <!-- Multi-Move Dialog -->
@@ -921,18 +722,28 @@
     </div>
 
     <!-- Chat Input -->
-    <div id="chatFeed" style="position:fixed;left:0;bottom:368px;width:500px;max-width:100%;max-height:140px;z-index:151;padding:8px 10px;box-sizing:border-box;pointer-events:none;">
+    <div id="chatFeed" style="position:fixed;bottom:368px;width:500px;max-width:100%;max-height:140px;z-index:151;padding:8px 10px;box-sizing:border-box;pointer-events:none;">
         <div id="chatMessages"></div>
     </div>
-    <div id="chatContainer" style="position:fixed;bottom:0;left:0;width:500px;max-width:100%;height:40px;z-index:150;background:rgba(10,14,28,0.95);padding:5px 10px;box-sizing:border-box;display:flex;gap:6px;align-items:center;">
-        <button id="chatHistoryUp" type="button" title="Previous chat" style="height:30px;width:30px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;">^</button>
-        <button id="chatHistoryDown" type="button" title="Latest chat" style="height:30px;width:30px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;">v</button>
+    <!-- Footer rail. The two history keys were labelled with a literal caret and a
+         literal capital V set in the body sans — not chevrons, just the characters that
+         look a bit like them — and they were ~30px wide next to ~90px text keys, so the
+         row had four buttons at two unrelated widths. Real chevron paths now, and two
+         width modules (32px icon / 96px text) so the strip has a metre. The right padding
+         is gone so the input terminates on the rail's own edge instead of 11px short of
+         it. -->
+    <div id="chatContainer" style="position:fixed;bottom:0;width:500px;max-width:100%;height:40px;z-index:150;padding:5px 10px;box-sizing:border-box;display:flex;gap:5px;align-items:center;">
+        <button id="chatHistoryUp" class="gp-key gp-key--tiny gp-key--icon-sm" type="button" title="Previous chat" aria-label="Previous chat"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 8 L6 4 L10 8" fill="none" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+        <button id="chatHistoryDown" class="gp-key gp-key--tiny gp-key--icon-sm" type="button" title="Latest chat" aria-label="Latest chat"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4 L6 8 L10 4" fill="none" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
         <!-- The build pad occupies roughly a third of the screen. This hands that space
              back on demand without changing anyone's default layout. -->
-        <button id="controlPadToggle" type="button" title="Hide the command panel and enlarge the map" aria-pressed="false" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;">Hide panel</button>
-        <button id="minimapToggle" type="button" title="Hide the minimap and enlarge the map" aria-pressed="false" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#cfd7ff;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;">Hide minimap</button>
-        <form id="chatForm" style="margin:0;height:100%;flex:1;">
-            <input id="chat" type="text" aria-label="Chat message" style="width:100%;height:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(20,25,40,0.9);color:#e8ecff;font-size:14px;" placeholder="Type and press enter to chat" />
+        <button id="controlPadToggle" class="gp-key gp-key--tiny gp-key--text" type="button" title="Hide the command panel and enlarge the map" aria-pressed="false">Hide panel</button>
+        <button id="minimapToggle" class="gp-key gp-key--tiny gp-key--text" type="button" title="Hide the minimap and enlarge the map" aria-pressed="false">Hide minimap</button>
+        <!-- No inline `margin:0`: the stylesheet cancels the rail's right padding with a
+             negative right margin so the input ends on the rail's edge, and an inline
+             margin outranks it. -->
+        <form id="chatForm" style="height:100%;flex:1;">
+            <input id="chat" type="text" aria-label="Chat message" placeholder="Type and press enter to chat" />
         </form>
     </div>
 
@@ -972,29 +783,353 @@
     <script src="js/epic-music.js?v=20260725c"></script>
     <script src="js/sound.js?v=20260712b"></script>
     <script src="js/tech.js?v=20260612a"></script>
-    <script src="js/notification-system.js?v=20251105"></script>
-    <script src="js/avatar-notifications.js?v=20260725a"></script>
+    <script src="js/notification-system.js?v=20260728a"></script>
+    <script src="js/avatar-notifications.js?v=20260728a"></script>
     <script src="js/advisor.js?v=20260726b"></script>
     <script src="js/media.js?v=20260725b"></script>
     <script src="js/combat-analytics.js?v=20260726a"></script>
     <script src="/config.js?v=20260614b"></script>
     <script src="js/shop-enhanced.js?v=20260726b"></script>
     <script src="js/game-screen.js?v=20260725x"></script>
-    <script type="module" src="js/galaxy3d.js?v=20260725n"></script>
-    <script type="module" src="js/battle3d.js?v=20260725c"></script>
-    <script src="js/onboarding.js?v=20260725a"></script>
+    <script type="module" src="js/galaxy3d.js?v=20260728b"></script>
+    <script type="module" src="js/battle3d.js?v=20260728b"></script>
+    <script src="js/onboarding.js?v=20260728a"></script>
     <script src="js/connect.js?v=20260726b"></script>
-    <script src="js/tour.js?v=20260712c"></script>
+    <script src="js/tour.js?v=20260728a"></script>
     <script src="js/game.js?v=20260726a"></script>
     <script src="js/codex.js?v=20260726b"></script>
     <script src="js/name-picker.js?v=20260726b"></script>
     <script src="js/loader.js?v=20251105"></script>
     <script>
+        /* Re-measure the right-hand stack when it changes shape.
+         *
+         * game-screen.js stacks the checklist, the probe card, the event panel and the
+         * advisor by MEASURING each one and placing the next below it — which is correct,
+         * and is only ever run on load and on resize. Every panel in that stack is created
+         * or filled at runtime and GROWS: the event panel does not exist until the first
+         * event, and the cluster reading pushes three long paragraphs into it seconds after
+         * the layout pass that measured it as absent. The advisor was therefore placed at
+         * the top of the stack, the event panel then appeared underneath it at its own
+         * hard-coded top, and the two occupied the same 340x92 rectangle — which is the
+         * leak the art review found first: an orange header fragment, a chevron, a rule and
+         * two pieces of body copy showing through the 13px slot beside the toast.
+         *
+         * The stylesheet closes the slot (the toast is the full column width now, with no
+         * separate avatar tile beside it). This closes the cause: the stack is re-measured
+         * whenever one of its members changes size or is added to the document.
+         *
+         * Two guards, because applyResponsiveLayout() writes width and max-height onto the
+         * very elements being observed and would otherwise feed itself:
+         *   - a quiet window right after our own pass, during which observations are the
+         *     echo of that pass and are ignored;
+         *   - a signature of the stack's measured heights, so a pass that changed nothing
+         *     does not schedule another one.
+         */
+        /* Left column: close the gutter, and give the comms feed a bay of its own.
+         *
+         * The ~90px band of bare starfield between SECTOR SURVEY and the command console
+         * is not empty space — it is where the chat transcript unfolds. #chatFeed is
+         * anchored above the console and grows UPWARDS, and its only clamp is against the
+         * status bars at the very top, not against the survey panel, so a busy chat has
+         * always printed over the bottom of the survey. That is why the band looks like a
+         * hole: something lives there, and nothing reserves it.
+         *
+         * Both halves are fixed here by MEASUREMENT rather than by re-deriving
+         * game-screen.js's height formulas in a second place (which is the bug this
+         * codebase has already had twice, in two different files, over one number):
+         *   - the survey is given the room between its own top and the console's top,
+         *     minus a reserved comms band, so it fills its bay instead of floating;
+         *   - the feed is capped to that same band, so it can never climb into the panel
+         *     above it.
+         * Both writes only ever SHRINK: the survey's height is still clamped by the
+         * !important max-height game-screen.js computed, and the feed's cap is re-written
+         * by game-screen.js on every pass, so a stale value degrades to exactly today's
+         * behaviour rather than to an overlap.
+         *
+         * THE SURVEY TAKES WHAT IT NEEDS, NOT WHAT IS LEFT. It used to be stretched to
+         * every pixel the column had spare, which is fine at 1080p, where its content
+         * very nearly fills it — and is a 390px hole at 1440p, where a seven-row readout
+         * was being held open to 834px. That hole is what the art review reported as "the
+         * single largest contiguous region of the interface, and it contains nothing".
+         * The panel is now sized to its own scrollHeight and the slack goes to the comms
+         * bay, which has an instrument face to fill it with (style.css, `.comms-idle`).
+         * Neither number is hard-coded: the content is measured with the height cleared,
+         * and the band is whatever is left.
+         */
+        (function() {
+            const COMMS_BAND = 92;   // px the chat transcript always gets
+            const SURVEY_FLOOR = 140; // never starve the survey to feed the band
+
+            function fitLeftColumn() {
+                const survey = document.getElementById('sectordisplay');
+                const pad = document.getElementById('controlPadGUI');
+                const feed = document.getElementById('chatFeed');
+                if (!survey) return;
+                const shown = el => el && getComputedStyle(el).display !== 'none';
+                let band = COMMS_BAND;
+
+                if (shown(survey)) {
+                    const floor = shown(pad) ? pad.getBoundingClientRect().top : window.innerHeight - 8;
+                    const top = survey.getBoundingClientRect().top;
+                    const available = floor - top;
+                    // Natural content height, read with our own height removed so the
+                    // measurement is of the content and not of the last pass's answer.
+                    survey.style.height = '';
+                    const natural = Math.ceil(survey.scrollHeight) + 2;   // +2 for the plate border
+                    const ceiling = Math.floor(available - COMMS_BAND - 10);
+                    const height = Math.max(SURVEY_FLOOR, Math.min(natural, ceiling));
+                    survey.style.height = height > 80 ? height + 'px' : '';
+                    band = Math.max(0, available - height - 10);
+                } else {
+                    survey.style.height = '';
+                }
+
+                if (shown(feed)) {
+                    const cap = Math.max(0, band - 8);
+                    const current = parseFloat(getComputedStyle(feed).maxHeight);
+                    const next = Number.isFinite(current) ? Math.min(current, cap) : cap;
+                    if (next < 24) feed.style.setProperty('display', 'none', 'important');
+                    else feed.style.setProperty('max-height', Math.floor(next) + 'px', 'important');
+                }
+
+                // The bay itself: a recessed comms well filling the band, so the column
+                // reads survey / comms / console / input with no unexplained starfield
+                // between the modules. Purely presentational and sized from the two
+                // measured neighbours, so it cannot introduce a collision of its own.
+                const bay = document.getElementById('commsBay');
+                if (bay) {
+                    const surveyBox = shown(survey) ? survey.getBoundingClientRect() : null;
+                    const padBox = shown(pad) ? pad.getBoundingClientRect() : null;
+                    const top = surveyBox ? surveyBox.bottom + 8 : 0;
+                    const height = (padBox ? padBox.top : window.innerHeight - 8) - 8 - top;
+                    if (!surveyBox || !padBox || height < 26) {
+                        bay.style.display = 'none';
+                    } else {
+                        bay.style.display = 'block';
+                        bay.style.left = Math.round(surveyBox.left) + 'px';
+                        bay.style.width = Math.round(surveyBox.width) + 'px';
+                        bay.style.top = Math.round(top) + 'px';
+                        bay.style.height = Math.round(height) + 'px';
+                    }
+                }
+            }
+
+            window.addEventListener('resize', () => setTimeout(fitLeftColumn, 140));
+            document.addEventListener('DOMContentLoaded', () => setTimeout(fitLeftColumn, 260));
+            window.__gpFitLeftColumn = fitLeftColumn;
+
+            /* Now that the panel is sized to its content, the content changing has to
+             * re-run the split — selecting a sector adds rows, and a survey clipped to
+             * the previous selection's height would scroll for no visible reason.
+             * The observer watches the BODY, whose height is content-driven, while this
+             * function writes the PANEL's height.
+             *
+             * That is ALMOST a closed loop and it has to be guarded twice. Sizing the
+             * panel changes whether it needs a scrollbar; a scrollbar changes the body's
+             * width; a narrower body rewraps taller; taller content re-triggers this
+             * observer — and the HUD never settles. `scrollbar-gutter: stable` in
+             * style.css removes the width step, and the signature check below refuses to
+             * act on an observation that resolves to the height already written, so even
+             * if some future overflow style reopens the path it cannot run away. */
+            if (typeof ResizeObserver === 'function') {
+                let pending = null;
+                let lastApplied = '';
+                const observer = new ResizeObserver(() => {
+                    if (pending) return;
+                    pending = setTimeout(() => {
+                        pending = null;
+                        const survey = document.getElementById('sectordisplay');
+                        const before = survey ? survey.style.height : '';
+                        fitLeftColumn();
+                        const after = survey ? survey.style.height : '';
+                        // Two consecutive passes that land on the same answer mean the
+                        // observation was the echo of our own write, not new content.
+                        if (after === before && after === lastApplied) return;
+                        lastApplied = after;
+                    }, 140);
+                });
+                const arm = () => {
+                    const body = document.querySelector('#sectordisplay .gp-body');
+                    if (body) observer.observe(body);
+                };
+                document.addEventListener('DOMContentLoaded', arm);
+                if (document.readyState !== 'loading') arm();
+            }
+        })();
+
+        /* The Spaceport key: strip build.js's emoji, publish its tier.
+         *
+         * build.js writes this button's label as `🚀 Upgrade Spaceport to Lv N ` straight
+         * onto childNodes[0], so the rocket cannot be removed from the markup — it is
+         * re-applied on every refresh, and it is the one full-colour emoji left in a HUD
+         * whose entire icon language is painted steel. Two jobs here, both idempotent:
+         *
+         *   1. delete any emoji codepoint from that text node;
+         *   2. read the tier out of the label build.js just wrote and publish it as
+         *      `data-tier`, which is what selects the matching spaceport-level-0N plate
+         *      in style.css. "Spaceport" is tier 1, "Upgrade … to Lv N" is tier N (the
+         *      plate you are buying), "Spaceport Lv 4" is tier 4.
+         *
+         * The observer only ever writes when the text actually contains an emoji, so its
+         * own mutations do not re-trigger it. This is a shim for a defect in a file this
+         * change does not own; when build.js stops writing the emoji, step 1 becomes a
+         * no-op and step 2 still has to stay.
+         */
+        (function() {
+            const EMOJI = /[\u{1F000}-\u{1FAFF}\u{FE0F}\u{200D}]/gu;
+
+            function normaliseSpaceportKey() {
+                const button = document.getElementById('bb4');
+                if (!button) return;
+                const node = button.childNodes[0];
+                if (!node || node.nodeType !== Node.TEXT_NODE) return;
+                const text = node.textContent;
+                if (EMOJI.test(text)) {
+                    // Collapse the space the emoji left behind as well, or the label
+                    // starts one space in and no longer lines up with its neighbours.
+                    node.textContent = text.replace(EMOJI, '').replace(/^\s+/, '');
+                }
+                const tier = /\bLv\s*(\d)/.exec(button.textContent);
+                button.dataset.tier = tier ? tier[1] : '1';
+            }
+
+            function watch() {
+                const button = document.getElementById('bb4');
+                if (!button) return;
+                normaliseSpaceportKey();
+                new MutationObserver(normaliseSpaceportKey)
+                    .observe(button, { childList: true, characterData: true, subtree: true });
+            }
+            document.addEventListener('DOMContentLoaded', watch);
+            if (document.readyState !== 'loading') watch();
+        })();
+
+        /* Tactical chart frame: keep the compass and scale bolted to the instrument.
+         *
+         * #chartFrame has to be a sibling of #minimapid (minimap.js clears that element's
+         * children), so it is placed the same way #commsBay is: from the neighbour's
+         * MEASURED rectangle, never from a copy of the layout script's numbers. It also
+         * carries the charted count, which is read off the tiles themselves — the chart
+         * cannot claim more coverage than it is drawing.
+         *
+         * The observer watches `data-intel`, which is the attribute minimap.js flips as
+         * sectors become known. It deliberately does NOT watch `data-chart`, the attribute
+         * written here, or every update would trigger the next one.
+         */
+        (function() {
+            let pending = null;
+
+            function fitTacticalChart() {
+                pending = null;
+                const map = document.getElementById('minimapid');
+                const frame = document.getElementById('chartFrame');
+                if (!map || !frame) return;
+                const rect = map.getBoundingClientRect();
+                if (getComputedStyle(map).display === 'none' || rect.width < 220 || rect.height < 160) {
+                    frame.style.display = 'none';
+                    return;
+                }
+                frame.style.display = 'block';
+                frame.style.left = Math.round(rect.left) + 'px';
+                frame.style.top = Math.round(rect.top) + 'px';
+                frame.style.width = Math.round(rect.width) + 'px';
+                frame.style.height = Math.round(rect.height) + 'px';
+
+                // Count the HEXAGONS, not everything carrying data-intel. GalaxyMap in
+                // ui.js — which is what actually draws this chart, not minimap.js —
+                // stamps the state onto both the <path> and its wrapping <svg>, so a
+                // charted sector contributes two marked elements and an unexplored one
+                // contributes one. Counting attributes reported "12/118" for six known
+                // sectors on a 112-cell chart: two wrong numbers in one readout. The
+                // shape selector also covers minimap.js's <polygon> tiles, in case that
+                // renderer is ever the one holding the container.
+                const tiles = map.querySelectorAll('path[data-intel], polygon[data-intel]');
+                if (!tiles.length) return;
+                let charted = 0;
+                tiles.forEach(tile => { if (tile.getAttribute('data-intel') !== 'fog') charted += 1; });
+                const next = `CHARTED ${charted}/${tiles.length}`;
+                if (map.getAttribute('data-chart') !== next) map.setAttribute('data-chart', next);
+            }
+
+            function schedule() {
+                if (pending) return;
+                pending = setTimeout(fitTacticalChart, 120);
+            }
+
+            window.addEventListener('resize', schedule);
+            document.addEventListener('DOMContentLoaded', () => setTimeout(fitTacticalChart, 300));
+            // The minimap is collapsed by a class on <body>, not by a style on the chart.
+            // Body only, NO subtree: a document-wide class observer would fire on every
+            // tab switch and every button state change in the HUD.
+            new MutationObserver(schedule).observe(document.body, {
+                attributes: true, attributeFilter: ['class']
+            });
+            const map = document.getElementById('minimapid');
+            if (map) {
+                new MutationObserver(schedule).observe(map, {
+                    attributes: true, attributeFilter: ['data-intel'], subtree: true, childList: true
+                });
+            }
+            window.__gpFitTacticalChart = schedule;
+        })();
+
+        (function() {
+            const IDS = ['event-panel', 'onboardingCard', 'probeSuggestionCard', 'avatar-notification-system'];
+            if (typeof ResizeObserver !== 'function') return;
+
+            let settledAt = 0;
+            let pending = null;
+            let lastSignature = '';
+
+            function signature() {
+                return IDS.map(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return '-';
+                    const box = el.getBoundingClientRect();
+                    return `${Math.round(box.top)}:${Math.round(box.height)}`;
+                }).join('|');
+            }
+
+            function relayout() {
+                pending = null;
+                const before = signature();
+                if (before === lastSignature) return;
+                lastSignature = before;
+                settledAt = Date.now();
+                window.GameScreen?.applyResponsiveLayout?.();
+                window.__gpFitLeftColumn?.();
+                window.__gpFitTacticalChart?.();
+                // The pass moves things, so the signature it produced is the one to
+                // compare against next time - not the one that triggered it.
+                lastSignature = signature();
+                settledAt = Date.now();
+            }
+
+            function schedule() {
+                if (Date.now() - settledAt < 250) return;   // our own reflow talking back
+                if (pending) return;
+                pending = setTimeout(relayout, 120);
+            }
+
+            const observer = new ResizeObserver(schedule);
+            const watched = new WeakSet();
+            function watch() {
+                IDS.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el && !watched.has(el)) { watched.add(el); observer.observe(el); }
+                });
+            }
+            watch();
+            // The event panel and the advisor are appended to <body> long after this runs,
+            // so new members have to be picked up as they arrive.
+            new MutationObserver(() => { watch(); schedule(); })
+                .observe(document.body, { childList: true });
+        })();
+
         (function() {
             const btn = document.getElementById('helpBtn');
             const overlay = document.getElementById('helpOverlay');
             const close = document.getElementById('helpClose');
-            const audioBtn = null;
             function toggle(show) {
                 if (!overlay) return;
                 overlay.style.display = show ? 'flex' : 'none';
@@ -1015,15 +1150,40 @@
                     if (e.target === overlay) toggle(false);
                 });
             }
-            if (false) {
-                audioBtn.addEventListener('click', () => {
-                    if (window.MediaManager) {
-                        const enabled = window.MediaManager.toggleMusic();
-                        // Audio mute is handled by GameScreen.
-                        audioBtn.textContent = enabled ? '🔊' : '🔈';
-                    }
-                });
-            }
+            // The audio key is wired by GameScreen.initializeAudioButton(); a second
+            // dead handler used to sit here behind `if (false)`, writing its own emoji.
+        })();
+
+        /* Publish the player's race onto <body> so the stylesheet can seat their
+         * crest at the head of the empire line (style.css, `[data-race]`).
+         *
+         * connect.js publishes the race on GAME_STATE.player.raceAccess when the
+         * server's `techstate::` frame arrives — the same object build.js reads to
+         * decide which hulls this race may build, so if it is wrong the Fleet tab is
+         * wrong too and this is not the thing that broke. It is deliberately ABSENT
+         * until that frame lands (rather than defaulting to 1), so polling it cannot
+         * stamp the wrong crest on the HUD for a second.
+         *
+         * A poll rather than a hook because the alternative is monkey-patching a
+         * function in a file this change does not own, and because a race cannot
+         * change mid-match: this runs a handful of times and then never again. If
+         * the frame never arrives it gives up after ~40s and the HUD is exactly what
+         * it was before, minus a crest.
+         */
+        (function() {
+            let tries = 0;
+            const timer = setInterval(() => {
+                const id = Number(window.GAME_STATE?.player?.raceAccess?.raceId || 0);
+                if (id >= 1 && id <= 12) {
+                    document.body.setAttribute('data-race', String(id));
+                    clearInterval(timer);
+                    // The crest adds ~19px to a row the left column measures, so the
+                    // stack has to be re-fitted around it rather than left overlapping.
+                    window.GameScreen?.applyResponsiveLayout?.();
+                } else if (++tries > 80) {
+                    clearInterval(timer);
+                }
+            }, 500);
         })();
     </script>
 </body>

@@ -1,75 +1,225 @@
 /* ============================================================
    GAME OF WORLDS — Landing console
-   StarCraft-era command-deck UI: gunmetal panels, hazard amber,
-   cyan telemetry, real game sprites, live starfield.
+   Beveled riveted metal command deck (WC2 / SC1 era), matched to
+   the access terminal and the command lobby: gunmetal plates with a
+   light top-left edge and a dark bottom-right edge, stencilled panel
+   codes, framed instruments, buttons you can press.
+
+   Rules this file keeps:
+   · no decorative accent-coloured edge borders or stripes — plain
+     ink/neutral borders only. Focus rings and selection outlines are
+     functional and stay.
+   · every panel is a plate that was installed, not a div that
+     happened. Each carries a code, a bevel and a shadow that says
+     which way is up.
    ============================================================ */
 
+/* ============================================================
+   THE FACES — self-hosted, because a wordmark cannot be a third-party request
+
+   All three faces used to load ONLY from fonts.googleapis.com, with no @font-face
+   rule anywhere in this file. Rendered with that host blocked, the entire document
+   — including the 98px wordmark, the one piece of type this page is judged on —
+   came back in Segoe UI. And because the CDN stylesheet is render-blocking and
+   `display=swap` re-lays the block when it lands, the hero title box measured 592px
+   in fallback against 437px once Russo One arrived: a visible reflow of the biggest
+   element on the page on every cold load.
+
+   The latin subsets are now served from this origin (67 KB for all five files), so
+   there is no third-party in the critical path at all. The FALLBACK families below
+   exist for the window before the woff2 lands: metric overrides pull Segoe UI /
+   Arial onto Russo One's and Rajdhani's proportions so the swap does not move
+   layout. They are declared with local() only — nothing to download, and if the
+   lookup misses, the stack falls through to the plain family names after them.
+   ============================================================ */
+@font-face {
+    font-family: 'Russo One';
+    font-style: normal; font-weight: 400; font-display: swap;
+    src: url('../images/ui/font-russo-one-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal; font-weight: 500; font-display: swap;
+    src: url('../images/ui/font-rajdhani-500-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal; font-weight: 600; font-display: swap;
+    src: url('../images/ui/font-rajdhani-600-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal; font-weight: 700; font-display: swap;
+    src: url('../images/ui/font-rajdhani-700-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+    font-family: 'Share Tech Mono';
+    font-style: normal; font-weight: 400; font-display: swap;
+    src: url('../images/ui/font-share-tech-mono-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Metric-matched stand-ins. Russo One sets ~26% narrower than Segoe UI at the same
+   px size, which is where the 592 -> 437 reflow came from. */
+@font-face {
+    font-family: 'GoW Display Fallback';
+    src: local('Segoe UI Semibold'), local('Segoe UI'), local('Arial'), local('Helvetica');
+    size-adjust: 80%; ascent-override: 108%; descent-override: 27%; line-gap-override: 0%;
+}
+@font-face {
+    font-family: 'GoW UI Fallback';
+    src: local('Segoe UI'), local('Arial'), local('Helvetica');
+    size-adjust: 88%; ascent-override: 105%; descent-override: 28%; line-gap-override: 0%;
+}
+@font-face {
+    font-family: 'GoW Mono Fallback';
+    src: local('Consolas'), local('Courier New'), local('monospace');
+    size-adjust: 96%; ascent-override: 100%; descent-override: 24%; line-gap-override: 0%;
+}
+
 :root {
-    --void:        #05070d;
-    --void-2:      #080b14;
-    --panel:       #0c111c;
-    --panel-2:     #0a0e17;
-    --steel:       #141c2b;
-    --edge:        rgba(126,164,214,0.14);
-    --edge-bright: rgba(150,190,240,0.34);
+    /* hull */
+    --void:     #070a10;
+    --ink:      #05070d;
+    --steel-hi: #445064;
+    --steel-2:  #2b3447;
+    --steel-3:  #1d2433;
+    --steel-4:  #141a26;
+    --recess:   #070b12;
 
-    --amber:       #ffb43e;
-    --amber-soft:  #ffd58a;
-    --amber-deep:  #c97e1f;
-    --cyan:        #5fd2ff;
-    --cyan-dim:    rgba(95,210,255,0.55);
-    --danger:      #ff5e3a;
-    --ok:          #54e08a;
+    /* instruments
+       Steel + amber/bronze, and nothing else. There is deliberately no --cyan here
+       any more: it had leaked into the thumbnail tags, the patch LEDs, every third
+       ticker item and the tactical readout, and a page cannot claim a two-family
+       palette while running a third hue through its chrome. The only saturated
+       colour left outside this set is what the twelve painted crests are cast in,
+       and those are bronze, iron and bone — inside the family already. */
+    --amber:     #f0a233;
+    --amber-hi:  #ffce80;
+    --amber-lo:  #9a5d11;
+    --bronze:    #c79a47;
+    --bronze-lo: #7d5f2b;
+    --danger:    #d24a30;
+    --ok:        #57bf64;
+    --ok-hi:     #9af0a0;
 
-    --text:        #d2ddf2;
-    --muted:       #8593b4;
-    --faint:       #5d6b8c;
+    --text:  #cdd6e6;
+    --muted: #8b94a8;
+    /* Measured: #5e6678 on --steel-3 is 2.70:1 — under the 3:1 floor even for large
+       text, and it was carrying 0.62rem mono at 0.2em tracking. Every field label on
+       the page (FACTIONS / TURN ENGINE / ORIGIN, ECO / TECH / WAR, the brief's keys)
+       was below the readability floor, which inverted the hierarchy: the one unlock
+       chip rendered in amber was the only one of twelve anybody could read.
+       #8590a6 is 4.62:1 on the same plate. */
+    --faint: #8590a6;
+    --legal: #7f8b9f;
 
-    --maxw: 1180px;
-    --gap: clamp(2.5rem, 5vw, 5rem);
+    /* One rivet, defined once. A 2px dot the same value as the border reads as a dust
+       speck at 1:1; a rivet has to be a DOME — a lit crown up-left, a dark crescent
+       down-right and a ring of shadow where it meets the plate — or the page's entire
+       riveted-hardware premise fails at the one detail that invites close inspection. */
+    --rivet-hi:  rgba(214,230,252,0.92);
+    --rivet-mid: rgba(74,86,108,0.95);
+    --rivet-lo:  rgba(4,6,10,0.95);
 
-    --font-display: 'Orbitron', 'Segoe UI', sans-serif;
-    --font-ui: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
-    --font-mono: 'Share Tech Mono', ui-monospace, 'Courier New', monospace;
+    --maxw: 1360px;
+    --gap: clamp(2rem, 3.2vw, 3rem);
+    /* Measured by landing.js: the command rail's height plus the 5px of hazard tape
+       hanging under it. Everything that has to clear the rail keys off this one
+       number. The literal is only the pre-measurement fallback. */
+    --hud-h: 62px;
+
+    --font-display: 'Russo One', 'GoW Display Fallback', 'Segoe UI', sans-serif;
+    --font-ui: 'Rajdhani', 'GoW UI Fallback', 'Segoe UI', system-ui, sans-serif;
+    --font-mono: 'Share Tech Mono', 'GoW Mono Fallback', ui-monospace, 'Courier New', monospace;
 
     font-size: 16px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+/* ============================================================
+   THE SKY
+
+   Painted on the ROOT ELEMENT, and that is load-bearing rather than stylistic. The
+   obvious construction — a fixed pseudo-element on body at z-index -1 — is correct
+   per spec and renders correctly in a normal browser, but this document also
+   carries a WebGL canvas, and under ANGLE's software backend the compositor
+   promoted that fixed layer and painted it OVER the entire console. Every scrolled
+   frame came out as a starfield with the page ghosted behind it.
+
+   The root element's background is painted as the canvas background. There is no
+   z-index that can lift it, no layer promotion that can reorder it, and nothing in
+   the document can end up behind it. For a backdrop that is the correct mechanism,
+   not a workaround.
+
+   Layer order, front to back:
+     1-2  gutter falloff + centre vignette — depth, so the outer 300px of a 1920
+          frame is not a flat fill with a standard deviation of one luminance level
+     3-4  the star tile, laid twice at two scales (see pageSky in landing.js)
+     5-6  the two coloured washes and the base ramp
+     7    the legacy plate, which still carries the finest grain
+   ============================================================ */
+html {
+    scroll-behavior: smooth;
+    background-color: var(--void);
+    background-image:
+        linear-gradient(90deg, rgba(2,3,6,0.88) 0, rgba(2,3,6,0.34) 10%, rgba(2,3,6,0) 23%),
+        linear-gradient(270deg, rgba(2,3,6,0.88) 0, rgba(2,3,6,0.34) 10%, rgba(2,3,6,0) 23%),
+        radial-gradient(132% 110% at 50% 44%, rgba(0,0,0,0) 48%, rgba(0,0,0,0.62) 100%),
+        var(--page-sky, none),
+        var(--page-sky, none),
+        radial-gradient(1200px 700px at 80% -6%, rgba(66,104,158,0.20), transparent 60%),
+        radial-gradient(900px 600px at 4% 108%, rgba(170,115,55,0.10), transparent 60%),
+        linear-gradient(180deg, var(--void) 0%, #05070d 46%, var(--void) 100%),
+        url('../images/spacebak.jpg');
+    /* Two lays of ONE tile at two scales: the visible repeat period becomes the LCM
+       of 690 and 447 rather than either, so no bright star marches down the gutter
+       at a findable interval. */
+    background-size:
+        auto, auto, auto,
+        690px 690px, 447px 447px,
+        auto, auto, auto, 600px 400px;
+    background-position: 0 0, 0 0, 0 0, 0 0, 137px 61px, 0 0, 0 0, 0 0, 0 0;
+    background-repeat: no-repeat, no-repeat, no-repeat, repeat, repeat, no-repeat, no-repeat, no-repeat, repeat;
+    background-attachment: fixed, fixed, fixed, fixed, fixed, fixed, fixed, fixed, fixed;
+}
 
 body {
     margin: 0;
     min-height: 100vh;
     color: var(--text);
     font-family: var(--font-ui);
-    font-size: 1.06rem;
-    line-height: 1.55;
-    letter-spacing: 0.01em;
-    background: var(--void);
+    font-size: 1.05rem;
+    line-height: 1.52;
+    letter-spacing: 0.005em;
+    /* Transparent, NOT --void: the sky lives on the root element (see above), and an
+       opaque body background would paint straight over it. */
+    background: transparent;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overflow-x: hidden;
 }
-/* fixed starfield backdrop — a pseudo-element avoids background-attachment:fixed repaint artifacts */
-body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-        radial-gradient(1200px 700px at 78% -8%, rgba(70,120,180,0.18), transparent 60%),
-        radial-gradient(900px 600px at 8% 110%, rgba(180,120,60,0.10), transparent 60%),
-        linear-gradient(180deg, var(--void) 0%, #06080f 40%, var(--void) 100%),
-        url('../images/spacebak.jpg') repeat;
-    background-size: auto, auto, auto, 600px 400px;
-}
+/* Fixed sky behind the whole document — a pseudo-element avoids the repaint
+   artifacts of background-attachment:fixed.
+
+   --page-sky is a seeded, tileable starfield PNG baked by landing.js (see pageSky).
+   It is laid TWICE at two different scales so the visible repeat period is the LCM
+   of 620 and 413 rather than either of them: a single tiled star layer marches a
+   recognisable bright star down the gutter at a fixed interval and the eye finds it
+   immediately. Falls back to `none` if the bake never ran, in which case the
+   gradients and the legacy plate below still carry the page. */
+/* Everything that is DOCUMENT sits above the sky. Explicit, because the page also
+   carries fixed overlays at 20/21/48/50/59/60 and an implicit `auto` in the middle
+   of that stack is exactly the ambiguity the compositor resolved wrongly. */
+.console, .hud-foot, .page-tape { position: relative; z-index: 1; }
 
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
-::selection { background: var(--amber); color: #1a1205; }
+::selection { background: var(--amber); color: #2a1803; }
 
 /* ---------- global overlays ---------- */
 .scanlines, .vignette {
@@ -78,99 +228,382 @@ img { max-width: 100%; display: block; }
     pointer-events: none;
     z-index: 60;
 }
+/* A 0.17-black line multiplied at 0.5 opacity is a 9% luminance notch, and on the
+   one white element in the product — the wordmark — a 9% notch every four pixels is
+   visible banding through the glyphs. It also took the same bite out of the planet's
+   lit hemisphere, which is the best asset on the page. Halved twice: a finer 3px
+   period at a third of the strength still reads as a CRT at arm's length and no
+   longer dirties anything bright. */
+/* Down again, to 0.24. The page's brightest object is now a cast logotype whose
+   whole value is in a 3px chamfer, and a black line every third pixel across it is
+   a notch in exactly the feature the eye is reading. The CRT still registers at
+   arm's length on the flat plates, which is the only place it was ever earning
+   anything. */
 .scanlines {
     background: repeating-linear-gradient(
         to bottom,
         rgba(0,0,0,0) 0,
         rgba(0,0,0,0) 2px,
-        rgba(0,0,0,0.18) 3px,
-        rgba(0,0,0,0) 4px);
-    mix-blend-mode: multiply;
-    opacity: 0.5;
+        rgba(0,0,0,0.13) 3px);
+    opacity: 0.24;
 }
 .vignette {
-    background: radial-gradient(120% 100% at 50% 38%, transparent 55%, rgba(0,0,0,0.55) 100%);
+    background: radial-gradient(120% 100% at 50% 38%, transparent 54%, rgba(0,0,0,0.58) 100%);
     z-index: 59;
 }
+
+/* ============================================================
+   PLATE LANGUAGE
+   One raised plate, one recessed well, one rivet field. Everything
+   below is built out of these three, so the whole page reads as one
+   fabricated console instead of a stack of unrelated cards.
+
+   A plate is now MATERIAL x SHADING x HARDWARE, in that order, and the
+   separation is the whole point:
+
+     material  --plate-metal, a 512px tile baked in landing.js: mottle,
+               brush streaks, per-pixel grain, ~170 lit pits, scratches.
+               Identical on every plate, because it is the same steel.
+     shading   the chamfer and the sheen, in CSS, because those are a
+               function of the plate's SIZE and must not tile.
+     hardware  four domed rivets, one per corner.
+
+   Why it had to change: a linear-gradient is a mathematically perfect
+   ramp — measured across a card face, its luminance standard deviation
+   inside any 8px window is exactly zero. Rolled steel never does that,
+   and the eye reads a perfect ramp as plastic. Three separate art
+   directors wrote "no metal in them" about the old stack. The missing
+   property was not shape, it was TOOTH, and no number of extra gradient
+   stops can add tooth.
+
+   The last gradient in the list is the pre-bake fallback: if the tile
+   never installs, the plate is exactly what it used to be rather than
+   nothing.
+   ============================================================ */
+.plate,
+.pillar,
+.race,
+.log__row,
+.theatre__frame,
+.enlist__inner,
+.module__bar,
+.chip,
+.hero__stats,
+.hero__brief,
+.theatre__readout,
+.enlist__readout,
+.hud-foot__plate {
+    position: relative;
+    /* Each rivet is THREE stops of one radial gradient — a 35%/30% crown highlight,
+       a mid-steel body and a near-black roll-off — plus a separate offset shadow
+       disc under it. That is the difference between a dome and a dot, and it is what
+       survives being looked at on a page whose whole premise is riveted plate. */
+    background:
+        radial-gradient(circle 4px at 10px 10px, #7d8ca6 0 12%, #46516a 52%, #10151f 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at 11.5px 11.6px, rgba(0,0,0,0.80), rgba(0,0,0,0) 76%),
+        radial-gradient(circle 4px at calc(100% - 10px) 10px, #7d8ca6 0 12%, #46516a 52%, #10151f 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at calc(100% - 8.5px) 11.6px, rgba(0,0,0,0.80), rgba(0,0,0,0) 76%),
+        radial-gradient(circle 4px at 10px calc(100% - 10px), #74829b 0 12%, #414c63 52%, #0e131c 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at 11.5px calc(100% - 8.4px), rgba(0,0,0,0.80), rgba(0,0,0,0) 76%),
+        radial-gradient(circle 4px at calc(100% - 10px) calc(100% - 10px), #74829b 0 12%, #414c63 52%, #0e131c 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at calc(100% - 8.5px) calc(100% - 8.4px), rgba(0,0,0,0.80), rgba(0,0,0,0) 76%),
+        /* SHEEN — one broad specular roll off the top-left lamp. A sheet of steel is
+           never one value across its width; this is the low-frequency part of that.
+           SIZED IN PX, for the same reason the lip is: a percentage ellipse is a
+           function of the element, so `120% 160%` covered the entire face of a 52px
+           chip and there was nowhere left for the material to show. A lamp does not
+           get bigger because the plate it is over is smaller. */
+        radial-gradient(460px 300px at 58px -66px,
+            rgba(200,222,255,0.085) 0%,
+            rgba(178,202,240,0.028) 34%,
+            rgba(0,0,0,0) 72%),
+        /* CHAMFER, top and bottom. Three px of struck lip that steps down in value,
+           then BARE FACE, then the plate rolls into its own foot.
+           Both ends in px now. The foot used to start at 30% and reach 0.74 — which on
+           the hero's 52px chips and 75px gauge strip meant the lip owned the top 10px,
+           the foot owned everything below 16px, and the 512px steel tile underneath had
+           about five pixels to be visible in. The hero furniture was consequently the
+           flattest hardware on a page whose faction cards two screens down show obvious
+           grain and scratch passes. A foot is a physical edge: 16px of it, whatever the
+           plate is. */
+        linear-gradient(180deg,
+            rgba(232,246,255,0.58) 0 1px,
+            rgba(178,204,242,0.36) 1px 3px,
+            rgba(138,166,210,0.19) 3px 6px,
+            rgba(104,130,172,0.09) 6px 10px,
+            rgba(0,0,0,0) 14px,
+            rgba(0,0,0,0) calc(100% - 16px),
+            rgba(0,0,0,0.20) calc(100% - 9px),
+            rgba(0,0,0,0.44) calc(100% - 4px),
+            rgba(0,0,0,0.74) 100%),
+        /* CHAMFER, left and right, in one pass. Weaker than the horizontals because
+           one lamp up-left grazes a vertical wall rather than facing it. */
+        linear-gradient(90deg,
+            rgba(222,238,255,0.38) 0 1px,
+            rgba(162,190,232,0.21) 1px 3px,
+            rgba(120,148,192,0.09) 3px 6px,
+            rgba(0,0,0,0) 11px,
+            rgba(0,0,0,0) calc(100% - 11px),
+            rgba(0,0,0,0.10) calc(100% - 6px),
+            rgba(0,0,0,0.26) calc(100% - 3px),
+            rgba(0,0,0,0.50) 100%),
+        /* MATERIAL */
+        var(--plate-metal, none),
+        /* FALLBACK MATERIAL — and it is not a spare tyre, it is what the HERO shows.
+           The tile is baked behind the planet and lands about three seconds in, so
+           every plate above the fold — both mode chips, the stats rack, the brief —
+           spends the whole first impression on this layer, and a screenshot taken at
+           four seconds photographs it.
+           It used to be `#3a465d 0%, #2a3346 30%, --steel-3 66%, #171d29 100%`, a
+           percentage-anchored ramp, which on a 59px chip is a 39-code slide from top
+           edge to bottom edge with nothing flat anywhere in it: measured, the chip
+           face fell 50 -> 32 across its bare band, 0.66 codes every pixel, which is
+           precisely the "perfect ramp reads as plastic" this whole block exists to
+           get away from. The same gradient on a 400px card is a gentle roll, so the
+           defect only ever showed on the small hardware — which is the hardware in
+           the hero.
+           Now it is anchored in PX and it is the MATERIAL'S OWN VALUE: nine pixels of
+           rolled-sheet lift at the top, settled by 22px, then a genuine bare-face
+           plateau at #242b3a — the exact base colour of the baked tile, so the
+           handover when the tile lands is a change of texture and not a change of
+           value — and 24px of roll into the foot. On the 59px chip that is a 13px
+           flat band and a 7-code total fall instead of 18; on a card it is flat from
+           22px to 24px off the bottom. The SHADING is the chamfer and the sheen above
+           this, both already in px, and they are the layers that are allowed to know
+           how big the plate is. */
+        linear-gradient(180deg,
+            #334054 0,
+            #2a3446 9px,
+            #242b3a 22px,
+            #242b3a calc(100% - 24px),
+            #1e2534 calc(100% - 9px),
+            #171d29 100%);
+    background-repeat:
+        no-repeat, no-repeat, no-repeat, no-repeat,
+        no-repeat, no-repeat, no-repeat, no-repeat,
+        no-repeat, no-repeat, no-repeat,
+        repeat, no-repeat;
+    background-size:
+        auto, auto, auto, auto, auto, auto, auto, auto,
+        auto, auto, auto,
+        512px 512px, auto;
+    /* The tile offset is per-plate (see the grids below): one 512px tile laid at the
+       same origin on twelve cards in a grid puts the same scratch in the same corner
+       twelve times, which is the one way a real material can still read as wallpaper. */
+    background-position:
+        0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0,
+        0 0, 0 0, 0 0,
+        var(--plate-off, 0 0), 0 0;
+    border: 2px solid var(--ink);
+    /* Dark edges FIRST: box-shadow paints first-on-top, so the light top lip must not
+       be allowed to win at the top-right corner of a plate lit from the top-left. */
+    box-shadow:
+        inset 0 -3px 0 rgba(0,0,0,0.88),
+        inset -3px 0 0 rgba(0,0,0,0.72),
+        inset 0 1px 0 rgba(226,242,255,0.22),
+        inset 2px 0 0 rgba(160,186,224,0.18),
+        0 3px 0 var(--ink),
+        0 10px 22px rgba(0,0,0,0.48);
+}
+/* Plates that answer the pointer stand prouder than plates that do not, so the stack
+   tells you what is furniture and what is a control before you touch it. */
+.pillar, .race, .log__row {
+    box-shadow:
+        inset 0 -3px 0 rgba(0,0,0,0.88),
+        inset -3px 0 0 rgba(0,0,0,0.74),
+        inset 0 1px 0 rgba(226,242,255,0.24),
+        inset 2px 0 0 rgba(160,186,224,0.20),
+        0 4px 0 var(--ink),
+        0 12px 24px rgba(0,0,0,0.50);
+}
+/* Nine offsets, prime-ish and unrelated to the grid pitch, cycled across both card
+   grids. Two cards in the same row never show the same pit in the same place. */
+.pillar:nth-child(9n+1), .race:nth-child(9n+1), .log__row:nth-child(9n+1) { --plate-off: 0 0; }
+.pillar:nth-child(9n+2), .race:nth-child(9n+2), .log__row:nth-child(9n+2) { --plate-off: -137px -61px; }
+.pillar:nth-child(9n+3), .race:nth-child(9n+3), .log__row:nth-child(9n+3) { --plate-off: -283px -197px; }
+.pillar:nth-child(9n+4), .race:nth-child(9n+4) { --plate-off: -71px -331px; }
+.pillar:nth-child(9n+5), .race:nth-child(9n+5) { --plate-off: -389px -113px; }
+.pillar:nth-child(9n+6), .race:nth-child(9n+6) { --plate-off: -211px -409px; }
+.pillar:nth-child(9n+7), .race:nth-child(9n+7) { --plate-off: -457px -269px; }
+.race:nth-child(9n+8) { --plate-off: -19px -157px; }
+.race:nth-child(9n+9) { --plate-off: -331px -47px; }
 
 /* ---------- shared atoms ---------- */
 .kicker {
     font-family: var(--font-mono);
-    font-size: 0.78rem;
-    letter-spacing: 0.32em;
-    color: var(--cyan);
+    font-size: 0.74rem;
+    letter-spacing: 0.26em;
+    color: var(--bronze);
     text-transform: uppercase;
-    margin: 0 0 1.1rem;
+    margin: 0 0 1rem;
     display: inline-flex;
     align-items: center;
     gap: 0.6rem;
 }
 .kicker__tick {
-    width: 26px; height: 1px;
-    background: linear-gradient(90deg, var(--cyan), transparent);
-    box-shadow: 0 0 6px var(--cyan);
+    width: 22px; height: 2px;
+    background: var(--bronze);
+    box-shadow: 0 1px 0 var(--ink);
 }
 
 .led {
-    width: 9px; height: 9px;
+    width: 8px; height: 8px;
     border-radius: 50%;
     background: var(--ok);
-    box-shadow: 0 0 8px var(--ok), 0 0 2px #fff inset;
-    animation: pulse 2.4s ease-in-out infinite;
+    box-shadow: 0 0 7px var(--ok), inset 0 0 2px #fff;
+    animation: blink 2.4s steps(2) infinite;
 }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+@keyframes blink { 50% { opacity: 0.32; } }
 
-/* ---------- buttons ---------- */
+/* ---------- stencilled code chip ----------
+   A STAMPED PLATE, not a hole.
+
+   These were a flat black rectangle with a 1px border, punched into the most
+   textured surfaces in the design — and there are two dozen of them. On a card
+   they read as a die-cut hole rather than as a plate riveted over the seam,
+   because a hole is exactly what a flat black rectangle with no bevel is.
+
+   What makes it hardware is the housing's own material: a dark steel vertical
+   ramp with a lit top-left inner edge and a dark bottom-right one, the same bevel
+   geometry every plate on the page carries, one value darker — plus a hard struck
+   lip along its own top edge, which is what says "plate lying on the seam" rather
+   than "hole cut in it".
+
+   There used to be a --tab-rail device here: on tabs that STRADDLE a plate's top
+   edge it painted a continuation of the plate's bright chamfer line ACROSS the
+   tab, at the y where the rail runs either side. Geometrically clever, visually
+   fatal — the tabs are 19-21px tall and the rail landed at 9-10px, so a bright
+   steel line ran straight through the middle of every glyph and cut SYS://BRIEF
+   at x-height. Type is never a surface for a highlight to cross. The tab now
+   carries its own lip and simply sits on top of the rail, which is what a riveted
+   cover plate does. */
+.module__code, .pillar__code, .log__ver, .race__lock, .readout__code, .enlist__code,
+.hero__brief__code, .hud-foot__code, .race::before {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--bronze);
+    padding: 4px 8px;
+    background: linear-gradient(180deg, #2a3446 0%, #19202d 54%, #0a0e16 100%);
+    border: 2px solid var(--ink);
+    box-shadow:
+        inset 0 1px 0 rgba(214,234,255,0.26),
+        inset 1px 0 0 rgba(170,196,236,0.13),
+        inset -1px -1px 0 rgba(0,0,0,0.9),
+        0 1px 0 rgba(0,0,0,0.75);
+    white-space: nowrap;
+}
+
+/* ============================================================
+   BUTTONS — raised, and they go down when you press them
+   ============================================================ */
 .btn {
-    --btn-accent: var(--amber);
     position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 0.7rem;
+    gap: 0.65rem;
     font-family: var(--font-display);
-    font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.05em;
     line-height: 1;
     text-transform: uppercase;
     cursor: pointer;
-    transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+    border: 2px solid var(--ink);
+    transition: filter .12s ease, transform .07s ease, box-shadow .07s ease;
 }
-.btn__sub, .btn__chev { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0.08em; opacity: 0.85; }
+.btn__sub, .btn__chev { font-family: var(--font-mono); letter-spacing: 0.08em; }
 .btn__short { display: none; }
 
+/* ONE lighting idiom per control.
+   The previous pass gave both buttons a hard two-stop gradient AND a soft blurred
+   drop shadow: a stamped plate that also casts an ambient blur, which is two
+   physics in one object. The hard step also produced a visible mach band straight
+   across the middle of a 60px face.
+   Now: a three-stop ramp with no coincident midpoint (so there is nothing for the
+   eye to lock onto), and a HARD stepped bevel shadow — two flat offsets in
+   descending value, no blur anywhere. On :active the whole stack flips to an inset
+   and the cap travels down, so it genuinely depresses instead of dimming.
+   The light is top-left only, because every plate on this page shares one lamp. */
 .btn--key {
-    font-size: 0.82rem;
-    padding: 0.72rem 1.2rem;
-    color: var(--amber-soft);
-    background: linear-gradient(180deg, rgba(28,36,54,0.95), rgba(14,20,33,0.95));
-    border: 1px solid var(--edge-bright);
-    border-radius: 4px;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 3px 0 #05070d, 0 6px 14px rgba(0,0,0,0.5);
+    font-size: 0.8rem;
+    padding: 0.7rem 1.15rem 0.7rem 1.1rem;
+    color: #f2e2c2;
+    border-radius: 2px;
+    /* Bronze, not slate: this is the same FAMILY as the amber primaries, held one
+       step down in value so it reads as the lower-priority sibling rather than as a
+       control from a different console. */
+    border-color: #241705;
+    background: linear-gradient(180deg, #9d7c40 0%, #75551f 47%, #4b3312 100%);
+    /* Dark edges FIRST. box-shadow paints first-on-top, so listing the light top lip
+       first let it win at the top-RIGHT corner and put a 2px cream notch on the dark
+       side of a plate that is lit from the top-left. The bevel has to obey one lamp
+       at every corner, not just along the straights. */
+    box-shadow:
+        inset -2px 0 0 rgba(30,17,3,0.88),
+        inset 0 -2px 0 rgba(30,17,3,0.92),
+        inset 0 2px 0 rgba(255,236,196,0.34),
+        inset 2px 0 0 rgba(255,232,190,0.14),
+        0 3px 0 #3d2809,
+        0 4px 0 var(--ink);
+    text-shadow: 0 1px 0 rgba(20,12,2,0.9);
 }
-.btn--key:hover { color: #fff; border-color: var(--amber); box-shadow: inset 0 0 12px rgba(255,180,62,0.25), 0 3px 0 #05070d, 0 0 18px rgba(255,180,62,0.35); transform: translateY(-1px); }
-.btn--key .btn__chev { color: var(--amber); }
+.btn--key .btn__chev { color: #ffe0a8; margin-left: -0.18rem; }
+.btn--key:hover { filter: brightness(1.13); color: #fff4de; }
+.btn--key:active {
+    transform: translateY(3px);
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.55), inset 0 -1px 0 rgba(255,236,196,0.12);
+}
 
 .btn--primary {
-    font-size: 1.02rem;
-    padding: 1.05rem 2.1rem;
-    color: #1a1205;
-    background: linear-gradient(180deg, var(--amber-soft), var(--amber) 55%, var(--amber-deep));
-    border: 1px solid rgba(255,220,150,0.6);
-    border-radius: 5px;
-    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 10px 28px rgba(255,150,40,0.32), inset 0 1px 0 rgba(255,255,255,0.5);
-    text-shadow: 0 1px 0 rgba(255,255,255,0.25);
+    font-size: 1rem;
+    padding: 1.02rem 1.9rem;
+    color: #2a1803;
+    border-radius: 2px;
+    /* dark bronze, not pure ink: a 2px black outline around a bright amber cap reads
+       as a sticker die-cut and sits on the page rather than in it */
+    border-color: #3a2405;
+    background: linear-gradient(180deg, #ffd894 0%, #f0a93c 46%, #c9822a 100%);
+    /* Dark edges first — see .btn--key. */
+    box-shadow:
+        inset -2px 0 0 rgba(90,52,6,0.95),
+        inset 0 -2px 0 rgba(90,52,6,0.95),
+        inset 0 2px 0 rgba(255,247,228,0.85),
+        inset 2px 0 0 rgba(255,238,200,0.22),
+        0 3px 0 #6b4a18,
+        0 5px 0 #2a1c08;
+    text-shadow: 0 1px 0 rgba(255,238,200,0.55);
 }
-.btn--primary .btn__sub { color: #3a2606; opacity: 0.78; }
-.btn--primary:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 16px 38px rgba(255,150,40,0.5), inset 0 1px 0 rgba(255,255,255,0.6); }
-.btn--primary:active { transform: translateY(0); }
-.btn--xl { font-size: 1.18rem; padding: 1.25rem 2.8rem; }
+/* The cream 1px lift under every glyph is what made this read as disabled: on a thin
+   mono face at 0.84em the highlight is a third of the stroke and washes the letter
+   out. Dark type, no lift, and a bronze rule to separate it from the display face. */
+.btn--primary .btn__sub {
+    color: #331e02;
+    font-size: 0.8em;
+    letter-spacing: 0.1em;
+    text-shadow: none;
+    padding-left: 0.7rem;
+    /* a neutral dark rule, the same value as the button's own inner shadow — a
+       separator between two labels, not a coloured accent edge */
+    border-left: 2px solid rgba(24,13,1,0.4);
+}
+.btn--primary:hover { filter: brightness(1.07); }
+.btn--primary:active {
+    transform: translateY(3px);
+    box-shadow:
+        inset 0 2px 3px rgba(0,0,0,0.50),
+        inset 0 -1px 0 rgba(255,238,200,0.25);
+}
+.btn--xl { font-size: 1.14rem; padding: 1.2rem 2.5rem; }
 
-.btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
+.btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
 
 /* ============================================================
-   TOP COMMAND BAR
+   TOP COMMAND BAR — hull header plate
    ============================================================ */
+/* The first thing on the page was the least installed thing on it: a flat gradient
+   strip with a 1px edge. It is now built from the same parts as PNL-02 — a struck
+   top lip, a long face, a dark foot, a louvre/vent run filling the dead span
+   between the wordmark and the readout, and a rivet at each end. */
 .hud-bar {
     position: sticky;
     top: 0;
@@ -178,40 +611,195 @@ img { max-width: 100%; display: block; }
     display: flex;
     align-items: center;
     gap: 1rem;
-    padding: 0.7rem clamp(0.9rem, 2.5vw, 1.6rem);
-    background: linear-gradient(180deg, rgba(8,11,19,0.92), rgba(8,11,19,0.78));
-    border-bottom: 1px solid var(--edge);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    padding: 0.6rem clamp(0.9rem, 2.5vw, 1.5rem);
+    background:
+        radial-gradient(circle 4px at 13px 50%, #7d8ca6 0 12%, #46516a 52%, #10151f 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at 14.5px calc(50% + 1.6px), rgba(0,0,0,0.8), rgba(0,0,0,0) 76%),
+        radial-gradient(circle 4px at calc(100% - 13px) 50%, #7d8ca6 0 12%, #46516a 52%, #10151f 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at calc(100% - 11.5px) calc(50% + 1.6px), rgba(0,0,0,0.8), rgba(0,0,0,0) 76%),
+        /* the same struck lip and long fall as every plate, but as SHADING over the
+           material rather than as the material itself */
+        linear-gradient(180deg,
+            rgba(212,232,255,0.34) 0 1px,
+            rgba(150,180,224,0.18) 1px 3px,
+            rgba(0,0,0,0.10) 3px 40%,
+            rgba(0,0,0,0.40) 46%,
+            rgba(0,0,0,0.58) 88%,
+            rgba(0,0,0,0.72) 100%),
+        var(--plate-metal, none),
+        linear-gradient(180deg, #2b3548 0%, #1a2130 46%, #0e131d 100%);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+    background-size: auto, auto, auto, auto, auto, 512px 512px, auto;
+    border-bottom: 2px solid var(--ink);
+    box-shadow:
+        inset 0 2px 0 rgba(190,212,244,0.14),
+        inset 0 -3px 0 rgba(0,0,0,0.75),
+        0 6px 16px rgba(0,0,0,0.55);
 }
+/* ---------- the command rail's middle span ----------
+   Forty-five percent of the header — about 870px of a 1920 frame — was ONE
+   repeating-linear-gradient tick pattern with no plate breaks, no bolts, no
+   stencilling and no wear: a flat CSS texture sitting in the middle of a page that
+   is otherwise milled hardware, and the first thing on screen in every frame.
+
+   It is now a RUN OF PLATES. Four members bolted end to end at different widths,
+   each carrying the page's own baked steel, each with its own inset bevel (light
+   top-left, dark bottom-right) and a bolt head at every joint. Two are louvred at
+   different pitches and depths so the ribbing visibly stops being one tile; two are
+   stencilled with panel codes in the language the rest of the page already speaks. */
+.hud-vent {
+    flex: 1 1 auto;
+    min-width: 0;
+    align-self: stretch;
+    display: flex;
+    align-items: stretch;
+    gap: 3px;
+    margin: 0.15rem 0.3rem;
+    /* the seam the plates are bolted to */
+    background: linear-gradient(180deg, #10151f, #05070d);
+    border: 2px solid var(--ink);
+    box-shadow: inset 0 1px 0 rgba(190,212,244,0.10), inset 0 -1px 0 rgba(0,0,0,0.9);
+    padding: 2px;
+}
+.hud-vent__plate {
+    position: relative;
+    min-width: 0;
+    background:
+        /* bolt heads at the joints — a lit crown, a dark roll-off, its own shadow */
+        radial-gradient(circle 3.2px at 7px 50%, #c3d2e8 0 18%, #5a6883 56%, #10151f 92%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 4px at 8.4px calc(50% + 1.4px), rgba(0,0,0,0.85), rgba(0,0,0,0) 74%),
+        radial-gradient(circle 3.2px at calc(100% - 7px) 50%, #c3d2e8 0 18%, #5a6883 56%, #10151f 92%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 4px at calc(100% - 5.6px) calc(50% + 1.4px), rgba(0,0,0,0.85), rgba(0,0,0,0) 74%),
+        var(--vent-face, none),
+        /* shading: a struck top lip and a dark foot, over the material */
+        linear-gradient(180deg,
+            rgba(222,240,255,0.30) 0 1px,
+            rgba(154,184,226,0.14) 1px 2px,
+            rgba(0,0,0,0) 46%,
+            rgba(0,0,0,0.22) 78%,
+            rgba(0,0,0,0.46) 100%),
+        var(--plate-metal, none),
+        linear-gradient(180deg, #46536a 0%, #2c3646 54%, #171e2b 100%);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat, repeat, no-repeat;
+    background-size: auto, auto, auto, auto, auto, auto, 512px 512px, auto;
+    background-position: 0 0, 0 0, 0 0, 0 0, var(--vent-off, 0 0), 0 0, var(--vent-off, 0 0), 0 0;
+    border: 1px solid var(--ink);
+    box-shadow:
+        inset 1px 1px 0 rgba(196,218,252,0.16),
+        inset -1px -1px 0 rgba(0,0,0,0.88);
+}
+/* Three louvre pitches and three depths, so the run cannot read as one tile. */
+.hud-vent__plate--flute {
+    flex: 1 1 30%;
+    --vent-face: repeating-linear-gradient(90deg, rgba(0,0,0,0.40) 0 2px, rgba(214,234,255,0.10) 2px 3px, rgba(0,0,0,0) 3px 9px);
+}
+.hud-vent__plate--fine {
+    flex: 1 1 22%;
+    --vent-face: repeating-linear-gradient(90deg, rgba(0,0,0,0.28) 0 1px, rgba(214,234,255,0.08) 1px 2px, rgba(0,0,0,0) 2px 6px);
+    --vent-off: 137px 61px;
+}
+.hud-vent__plate--wide {
+    flex: 1 1 38%;
+    --vent-face: repeating-linear-gradient(90deg, rgba(0,0,0,0.50) 0 3px, rgba(214,234,255,0.13) 3px 4px, rgba(0,0,0,0) 4px 14px);
+    --vent-off: 283px 197px;
+}
+/* A stencilled member. Flex-basis is content, so the codes never squeeze. */
+.hud-vent__plate--code {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 14px;
+    --vent-off: 71px 331px;
+}
+.hud-vent__plate--code i {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: 0.54rem;
+    letter-spacing: 0.2em;
+    color: rgba(160,177,204,0.62);
+    text-shadow: 0 1px 0 rgba(0,0,0,0.9);
+}
+/* The run has to STAND DOWN, member by member, as the rail runs out of room.
+   The other four things on this bar are fixed-width, so below about 1340px the vent
+   is the only flexible item left and it collapses — at 1180 the five members were
+   sharing 130px and the whole run read as a squashed accordion. A vent with one
+   plate in it is a vent; a vent with five slivers in it is a mistake.
+   Scoped to .hud-bar: the same part now closes the module title bars and the enlist
+   head band, and those runs sit in a full-width span that never gets squeezed. */
+@media (max-width: 1340px) {
+    .hud-bar .hud-vent__plate--fine, .hud-bar .hud-vent__plate--code { display: none; }
+}
+@media (max-width: 1120px) {
+    .hud-bar .hud-vent__plate--wide { display: none; }
+    /* the module bars lose their stencil before their louvres, in that order */
+    .module__vent .hud-vent__plate--code { display: none; }
+}
+@media (max-width: 760px) {
+    .module__vent .hud-vent__plate--fine { display: none; }
+}
+/* The rail's FOOT — a machined under-rail, not hazard tape.
+   This was a 5px amber/black diagonal stripe running the full bottom edge of the
+   header, which is precisely the decorative accent-coloured edge the project bans
+   outright. The job it was doing — giving the rail a visible thickness so content
+   passes BEHIND hardware rather than being cut by a line — is a material job, so it
+   is done in material: a lit lip, a dark steel web, a bolt every 34px, and a hard
+   black shut line at the bottom. Same read, no accent. */
 .hud-bar::after {
     content: "";
     position: absolute;
-    left: 0; right: 0; bottom: -3px;
-    height: 3px;
-    background: repeating-linear-gradient(45deg, var(--amber-deep) 0 10px, #0b0e16 10px 20px);
-    opacity: 0.6;
+    left: 0; right: 0; bottom: -6px;
+    height: 6px;
+    background:
+        /* a rivet every 96px, not a tick every 34: at a tight pitch the pattern reads
+           as a row of teeth rather than as hardware holding a member on */
+        radial-gradient(circle 1.6px at 48px 3px, rgba(216,232,255,0.75), rgba(0,0,0,0) 74%),
+        linear-gradient(180deg, #4a586f 0 1px, #2a3444 1px 3px, #141a27 3px 5px, #04060b 5px 6px);
+    background-repeat: repeat-x, repeat;
+    background-size: 96px 6px, auto;
+    border-bottom: 1px solid var(--ink);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.9);
 }
 
-.brand { display: inline-flex; align-items: center; gap: 0.85rem; }
+/* Content does not get guillotined at the tape's edge — it dissolves into the rail.
+   A fixed scrim the depth of one line of type, hung immediately under the measured
+   rail height, so a section boundary anywhere in the scroll reads as "passing
+   behind the console" rather than as a half-loaded panel. */
+.hud-veil {
+    position: fixed;
+    top: var(--hud-h);
+    left: 0; right: 0;
+    height: 28px;
+    z-index: 48;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(6,9,15,0.97), rgba(6,9,15,0.52) 40%, rgba(6,9,15,0.16) 74%, rgba(6,9,15,0));
+}
+
+.brand { display: inline-flex; align-items: center; gap: 0.8rem; }
 .brand__sigil {
     position: relative;
-    width: 30px; height: 30px;
+    width: 28px; height: 28px;
     display: grid; place-items: center;
     flex: none;
 }
-.brand__sigil span {
-    position: absolute;
-    border: 1.5px solid var(--amber);
+.brand__sigil span { position: absolute; }
+.brand__sigil span:nth-child(1) {
+    inset: 0; transform: rotate(45deg);
+    border: 2px solid var(--ink);
+    background: linear-gradient(135deg, var(--amber-hi), var(--amber) 55%, var(--amber-lo));
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.5), inset -1px -1px 0 rgba(80,45,5,0.7);
 }
-.brand__sigil span:nth-child(1) { inset: 0; transform: rotate(45deg); opacity: 0.45; }
-.brand__sigil span:nth-child(2) { inset: 7px; background: var(--amber); box-shadow: 0 0 10px var(--amber); }
-.brand__sigil span:nth-child(3) { inset: 3px; border-color: var(--cyan); transform: rotate(45deg); opacity: 0.6; animation: spin 9s linear infinite; }
-@keyframes spin { to { transform: rotate(405deg); } }
+.brand__sigil span:nth-child(2) { inset: 8px; transform: rotate(45deg); background: var(--ink); }
+.brand__sigil span:nth-child(3) { display: none; }
 
 .brand__text { display: flex; flex-direction: column; line-height: 1; }
-.brand__name { font-family: var(--font-display); font-weight: 900; font-size: 1.02rem; letter-spacing: 0.14em; color: #fff; }
-.brand__sub { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.28em; color: var(--cyan-dim); margin-top: 4px; }
+.brand__name {
+    font-family: var(--font-display);
+    font-size: 0.96rem;
+    letter-spacing: 0.05em;
+    color: #eef3fb;
+    text-shadow: 0 1px 0 var(--ink);
+}
+.brand__sub { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.22em; color: var(--bronze); margin-top: 5px; }
 
 .hud-status {
     margin-left: auto;
@@ -223,42 +811,87 @@ img { max-width: 100%; display: block; }
     overflow: hidden;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: 0.66rem;
     letter-spacing: 0.1em;
     color: var(--muted);
-    padding: 0.4rem 0.8rem;
-    border: 1px solid var(--edge);
-    border-radius: 3px;
-    background: rgba(6,9,15,0.6);
+    padding: 0.42rem 0.75rem;
+    background: var(--recess);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.78), inset -1px -1px 0 rgba(255,255,255,0.04);
 }
 .hud-stardate { display: inline-flex; align-items: center; gap: 0.5rem; }
 .hud-status__label { color: var(--faint); }
 .hud-status__val { color: var(--text); }
-.hud-status__val[data-online] { color: var(--ok); }
-.hud-divider { width: 1px; height: 14px; background: var(--edge-bright); }
+.hud-status__val[data-online] { color: var(--ok-hi); }
+.hud-divider { width: 2px; height: 13px; background: var(--ink); box-shadow: 1px 0 0 rgba(255,255,255,0.07); }
 
+/* Framed, like everything else on this rail. Unframed text floating beside a
+   riveted plate and a bevelled key is the one element that never got installed —
+   these now sit in the same recessed mono slot as the COMMAND NET readout. */
 .hud-links {
     display: flex;
-    align-items: center;
-    gap: 1rem;
+    align-items: stretch;
+    gap: 2px;
     font-family: var(--font-mono);
     font-size: 0.68rem;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
+    /* 4px at the foot: each key casts a 2px shelf and the housing has to have room
+       for it, or the depth cue is clipped by the housing's own border. */
+    padding: 2px 2px 4px;
+    background: var(--recess);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.78), inset -1px -1px 0 rgba(255,255,255,0.04);
 }
-.hud-links a { color: var(--muted); }
-.hud-links a:hover, .hud-links a:focus-visible { color: var(--cyan); }
+/* SWITCHES, not text in a hole.
+   The rail carries three controls and only one of them — ENTER COMMAND — had a
+   pressable treatment; these two were flat mono type recessed into a slot, so the
+   nav read as one button and two labels. Same bevel geometry as the primary key
+   (light top-left inner edge, dark bottom-right, a hard shelf beneath) in a
+   NEUTRAL steel ramp, so the rail reads as three switches at two weights rather
+   than as two different kinds of thing. No accent edge anywhere in it. */
+.hud-links a {
+    color: #b9c4d8;
+    padding: 0.34rem 0.62rem;
+    display: inline-flex;
+    align-items: center;
+    /* A key in a console does not have a two-line caption. Without this the phone
+       breakpoint wrapped "LORE ARCHIVE" and the whole command rail grew a line. */
+    white-space: nowrap;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #4a5771 0%, #333e53 47%, #1e2634 100%);
+    box-shadow:
+        inset -1px 0 0 rgba(0,0,0,0.72),
+        inset 0 -1px 0 rgba(0,0,0,0.80),
+        inset 0 1px 0 rgba(214,232,255,0.26),
+        inset 1px 0 0 rgba(180,206,244,0.14),
+        0 2px 0 #080c13;
+    text-shadow: 0 1px 0 rgba(4,6,11,0.9);
+    transition: filter .12s ease, transform .07s ease, box-shadow .07s ease;
+}
+.hud-links a:hover { color: var(--amber-hi); filter: brightness(1.18); }
+.hud-links a:active {
+    transform: translateY(2px);
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.6), inset 0 -1px 0 rgba(214,232,255,0.10);
+}
+.hud-links a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 /* ============================================================
    HERO
    ============================================================ */
 .hero {
     position: relative;
-    min-height: min(92vh, 820px);
+    /* above the hull rails: the hero is the viewscreen, and the housing does not run
+       across the glass */
+    z-index: 21;
+    /* Fill the first screen under the sticky rail, but leave a deliberate sliver of the
+       next module showing so the page reads as scrollable. The 960 cap stops the hero
+       becoming a two-metre-tall poster on a 1440p display. */
+    min-height: min(calc(100svh - 3.9rem), 960px);
     display: flex;
     align-items: center;
     overflow: hidden;
-    border-bottom: 1px solid var(--edge);
+    border-bottom: 2px solid var(--ink);
     isolation: isolate;
 }
 .hero__canvas {
@@ -273,22 +906,52 @@ img { max-width: 100%; display: block; }
     z-index: 0;
     inset: 0;
     background:
-        radial-gradient(closest-side at 72% 46%, rgba(120,170,230,0.20), transparent 70%),
-        radial-gradient(closest-side at 73% 47%, rgba(255,180,90,0.08), transparent 60%);
+        radial-gradient(closest-side at 68% 46%, rgba(110,160,220,0.20), transparent 70%),
+        radial-gradient(closest-side at 69% 47%, rgba(255,180,90,0.07), transparent 60%);
     pointer-events: none;
 }
+/* Key-art scrim: the globe's day side drifts across the copy column as the world turns,
+   and body text over a lit continent is unreadable at any type weight. A one-sided
+   gradient buys the headline its ground without dimming the planet. */
+.hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: radial-gradient(72% 108% at 24% 50%,
+        rgba(4,6,11,0.90) 0%,
+        rgba(4,6,11,0.72) 40%,
+        rgba(4,6,11,0.30) 66%,
+        rgba(4,6,11,0.0) 84%);
+}
+/* A flat 2D reference grid drawn ACROSS a foreground celestial body destroys the
+   depth read instantly — and that is exactly what the previous mask did: a
+   radial-gradient sized 110% of a 1920 frame does not reach `transparent` until
+   x ≈ 2020px, so the grid never cleared the globe and ruled faint lines straight
+   through the terminator.
+   A linear mask in x is used instead, because the thing that must be cleared is at
+   a known horizontal position: the globe's left limb sits at ~48% of the viewport
+   in the desktop framing, and the grid is fully gone by 44%. A vertical mask does
+   the same job in the portrait layout, where the world sits low instead of right. */
 .hero__grid {
     position: absolute;
     inset: 0;
     z-index: 2;
     pointer-events: none;
     background-image:
-        linear-gradient(rgba(95,210,255,0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(95,210,255,0.05) 1px, transparent 1px);
-    background-size: 64px 64px;
-    -webkit-mask-image: radial-gradient(120% 90% at 30% 50%, #000 30%, transparent 75%);
-    mask-image: radial-gradient(120% 90% at 30% 50%, #000 30%, transparent 75%);
-    opacity: 0.6;
+        linear-gradient(rgba(150,180,220,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(150,180,220,0.05) 1px, transparent 1px);
+    background-size: 58px 58px;
+    -webkit-mask-image:
+        linear-gradient(90deg, #000 0 26%, rgba(0,0,0,0.55) 36%, transparent 44%),
+        radial-gradient(70% 96% at 24% 50%, #000 30%, transparent 100%);
+    mask-image:
+        linear-gradient(90deg, #000 0 26%, rgba(0,0,0,0.55) 36%, transparent 44%),
+        radial-gradient(70% 96% at 24% 50%, #000 30%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+    opacity: 0.8;
 }
 
 .hero__inner {
@@ -299,84 +962,226 @@ img { max-width: 100%; display: block; }
     margin: 0 auto;
     padding: clamp(2rem, 5vw, 3rem) clamp(1.25rem, 4vw, 2.5rem);
 }
-.hero__copy { max-width: 38rem; }
+.hero__copy { max-width: 37rem; }
 
+/* ONE lockup, one recipe, twice.
+   The two lines used to carry different shadow treatments — a soft diffuse blue-grey
+   blur on "GAME OF" and a hard dark offset on "WORLDS" — inside a single wordmark,
+   which is the sort of thing a store-page reviewer spots without knowing why.
+   Both lines now run the identical five-stop stack: a 1px lit lip along the top of the
+   glyph, two mid-tone steps down the face, a hard 2px ink extrusion, and one cast
+   shadow to lift the whole thing off the planet. Colour is the only difference.
+   The fills sit a shade below white/full-amber on purpose, so the top lip has
+   something to be brighter than — that step is what makes the type read as struck
+   rather than as flat fill plus drop shadow.
+   NOT a background-clip gradient: with background-clip:text the fill paints at the
+   background layer and text-shadow paints above it, so a hard downward extrusion
+   covers everything but the top 3px of the glyph. That failure has already shipped
+   here once. */
+.hero__title,
+.hero__title span {
+    text-shadow:
+        0 -1px 0 var(--wm-lip),
+        0 1px 0 var(--wm-1),
+        0 2px 0 var(--wm-2),
+        0 4px 0 var(--ink),
+        0 10px 24px rgba(0,0,0,0.85);
+}
 .hero__title {
+    position: relative;
     font-family: var(--font-display);
-    font-weight: 900;
-    font-size: clamp(3.2rem, 9vw, 6.6rem);
-    line-height: 0.92;
-    margin: 0 0 1.4rem;
-    letter-spacing: 0.02em;
-    color: #fff;
-    text-shadow: 0 0 28px rgba(120,180,255,0.35), 0 6px 30px rgba(0,0,0,0.6);
+    font-size: clamp(3rem, 8.4vw, 6.1rem);
+    line-height: 0.96;
+    margin: 0 0 1.3rem;
+    letter-spacing: 0.005em;
+    color: #d7e2f3;
+    --wm-lip: #ffffff;
+    --wm-1: #8f9db6;
+    --wm-2: #4d586e;
 }
 .hero__title span {
+    color: var(--amber);
+    --wm-lip: #ffeac2;
+    --wm-1: #c07d24;
+    --wm-2: #6d4009;
+}
+/* ---- the cast logotype ----
+   The canvas is drawn from the h1's own computed font and box, so it lands exactly
+   where the live text was and the block reserves its own height. It carries no
+   information: the h1 text is still in the document, and goes transparent only once
+   `is-baked` says there is something to replace it with. */
+.hero__title__bake {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .28s ease;
+}
+.hero__title.is-baked .hero__title__bake { opacity: 1; }
+/* The live text fades out on the SAME curve the canvas fades in on. Dropping it
+   instantly while the canvas took half a second to arrive left the wordmark missing
+   for that half second — the one element on the page that must never blink. */
+.hero__title,
+.hero__title span { transition: color .28s ease; }
+.hero__title.is-baked,
+.hero__title.is-baked span {
     color: transparent;
-    background: linear-gradient(180deg, var(--amber-soft), var(--amber) 60%, var(--amber-deep));
-    -webkit-background-clip: text;
-    background-clip: text;
-    text-shadow: 0 0 36px rgba(255,180,62,0.45);
+    text-shadow: none;
 }
 .hero__lede {
-    font-size: clamp(1.08rem, 1.7vw, 1.32rem);
+    font-size: clamp(1.06rem, 1.6vw, 1.26rem);
     color: var(--text);
-    max-width: 33rem;
-    margin: 0 0 2rem;
+    max-width: 32rem;
+    margin: 0 0 1.9rem;
     font-weight: 500;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.85);
 }
 
-.hero__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.25rem 1.6rem; }
-.mode-chips { display: flex; gap: 0.7rem; flex-wrap: wrap; }
+.hero__actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 1rem 1.3rem; }
+
+/* THE INSTRUMENT RACK.
+   One column, one width, one pitch. Three plates of identical material stacked
+   vertically must share a right edge or they read as three unrelated components
+   that happened to land in a column — which is precisely what a reviewer called
+   out: 780 / 718 / 820, with 2.2rem then 1rem of gap.
+   32rem is not arbitrary: it is the narrowest the rack can be and still hold the
+   brief's longest row — "300 CRYSTAL · READS A SECTOR WITHOUT RISKING A FLEET" — on
+   one line, which is the constraint that decides the whole column's width. */
+.hero__stack {
+    --stack-gap: 1.25rem;
+    max-width: 32rem;
+    margin-top: 1.6rem;
+}
+.hero__stack > * + * { margin-top: var(--stack-gap); }
+/* A matched PAIR, not two chips that happened to end up next to each other.
+   As a flex row they were sized by their contents (210px and 198px) and then
+   shrunk below it, so the last glyph of "an afternoon" was sitting on top of the
+   bottom-right rivet. An equal-track grid makes them the same width by
+   construction and the padding below clears the hardware. */
+.mode-chips {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+    width: 100%;
+}
 .chip {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 0.5rem 0.9rem;
-    border: 1px solid var(--edge-bright);
-    border-radius: 3px;
-    background: rgba(8,12,20,0.66);
-    backdrop-filter: blur(3px);
+    justify-content: center;
+    gap: 3px;
+    /* 1.15rem right padding, not 0.85: the corner rivet occupies the first 16px
+       inside the border and type must not land on it. */
+    padding: 0.5rem 1.15rem;
+    border-radius: 2px;
+    min-width: 0;
 }
-.chip b { font-family: var(--font-display); font-size: 0.86rem; letter-spacing: 0.18em; color: var(--cyan); }
-.chip i { font-family: var(--font-mono); font-style: normal; font-size: 0.7rem; letter-spacing: 0.08em; color: var(--muted); }
+.chip b { font-family: var(--font-display); font-size: 0.8rem; letter-spacing: 0.1em; color: var(--amber-hi); text-shadow: 0 1px 0 var(--ink); }
+.chip i { font-family: var(--font-mono); font-style: normal; font-size: 0.68rem; letter-spacing: 0.05em; color: var(--muted); }
 
+/* instrument gauges, in a recessed strip.
+   An equal-track grid, not a content-sized flex row: the strip has to fill the
+   rack's width exactly, and three cells of unequal width inside it would just
+   move the ragged edge indoors. */
 .hero__stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2.4rem;
-    margin: 2.6rem 0 0;
-    padding-top: 1.6rem;
-    border-top: 1px solid var(--edge);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    margin: 0;
+    padding: 0.85rem 0.4rem;
+    border-radius: 2px;
+    width: 100%;
 }
-.hero__stats div { display: flex; flex-direction: column; gap: 0.35rem; }
-.hero__stats dt { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.22em; color: var(--faint); margin: 0; }
-.hero__stats dd { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; color: var(--amber-soft); }
+.hero__stats div {
+    display: flex; flex-direction: column; gap: 0.3rem;
+    padding: 0.15rem 1.35rem;
+    min-width: 0;
+    border-right: 2px solid var(--ink);
+    box-shadow: 1px 0 0 rgba(255,255,255,0.06);
+}
+.hero__stats div:last-child { border-right: 0; box-shadow: none; }
+.hero__stats dt { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.2em; color: var(--faint); margin: 0; }
+.hero__stats dd {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.16rem;
+    color: var(--amber-hi);
+    text-shadow: 0 1px 0 var(--ink);
+}
 
-/* ---- ticker ---- */
+/* A fourth instrument row. The copy column used to stop 120px short of the ticker and
+   leave the hero's lower-left quadrant as unstructured black; this bottoms the column
+   out against the tape and gives the doctrine a one-glance statement of what the game
+   does to you before you have scrolled anywhere. */
+.hero__brief {
+    margin: 0;
+    padding: 0.5rem;
+    border-radius: 2px;
+    width: 100%;
+}
+.hero__brief dl {
+    margin: 0;
+    padding: 0.55rem 0.85rem 0.6rem;
+    background: var(--recess);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.82), inset -1px -1px 0 rgba(255,255,255,0.045);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.09em;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.3rem 0.9rem;
+}
+.hero__brief dt { color: var(--faint); margin: 0; }
+.hero__brief dd { color: var(--text); margin: 0; }
+.hero__brief dd b { color: var(--amber-hi); font-weight: 400; }
+.hero__brief dd i { font-style: normal; color: #e08a72; }
+.hero__brief__code {
+    position: absolute;
+    top: -9px; left: 12px;
+    z-index: 3;
+}
+
+/* ---- ticker: a recessed tape running in a hull channel ----
+   Masked at both ends. A marquee that hard-cuts a word in half at the viewport edge
+   is the single cheapest tell that nobody finished the component; items should
+   dissolve into the channel the way tape disappears into a housing. */
 .ticker {
     position: absolute;
     bottom: 0; left: 0; right: 0;
     z-index: 4;
     overflow: hidden;
-    border-top: 1px solid var(--edge);
-    background: rgba(5,7,12,0.82);
-    backdrop-filter: blur(4px);
+    /* A machined channel the tape runs in: a lit lip above it, a hard shadow cast
+       down into the recess, and a dark foot. The tape is stock; the housing is
+       hardware, and it has to read as hardware. */
+    border-top: 2px solid var(--ink);
+    background:
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.030) 0 1px, transparent 1px 13px),
+        linear-gradient(180deg, #0a0e17, #06090f);
+    box-shadow:
+        inset 0 3px 7px rgba(0,0,0,0.85),
+        inset 0 1px 0 rgba(0,0,0,0.9),
+        inset 0 -2px 0 rgba(190,212,244,0.07),
+        0 -1px 0 rgba(190,212,244,0.10);
+    /* the fade is a fraction of the viewport, not a fixed 5.5rem: on a 430px phone a
+       fixed inset would dissolve two fifths of the tape */
+    --ticker-fade: clamp(2rem, 5vw, 5.5rem);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--ticker-fade), #000 calc(100% - var(--ticker-fade)), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 var(--ticker-fade), #000 calc(100% - var(--ticker-fade)), transparent 100%);
 }
 .ticker__track {
     display: inline-flex;
-    gap: 3.5rem;
+    gap: 3.2rem;
     white-space: nowrap;
-    padding: 0.55rem 0;
+    padding: 0.5rem 0;
     font-family: var(--font-mono);
-    font-size: 0.74rem;
-    letter-spacing: 0.16em;
+    font-size: 0.72rem;
+    letter-spacing: 0.15em;
     color: var(--muted);
-    animation: ticker 28s linear infinite;
+    animation: ticker 34s linear infinite;
 }
 .ticker__track span { display: inline-flex; align-items: center; }
-.ticker__track span:nth-child(3n+1) { color: var(--cyan); }
-.ticker__track span:nth-child(3n) { color: var(--amber-soft); }
+.ticker__track span:nth-child(3n+1) { color: #a6b3c8; }
+.ticker__track span:nth-child(3n) { color: var(--bronze); }
 @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 /* ============================================================
@@ -390,468 +1195,1359 @@ img { max-width: 100%; display: block; }
     flex-direction: column;
     gap: var(--gap);
 }
-.module { padding: clamp(3rem, 6vw, 5rem) 0 0; }
+/* Every section boundary has to land clear of the command rail: scroll-margin for
+   anchored jumps, and enough top padding that a heading is rarely sitting under the
+   rail mid-scroll either. Both key off the measured rail height. */
+.module, .theatre, .enlist, .hero {
+    scroll-margin-top: calc(var(--hud-h) + 2rem);
+}
+/* This padding is load-bearing, not taste. Trimmed to 2.2rem to close the gap between
+   sections, the doctrine heading landed with its cap heights exactly under the hazard
+   tape at one screen of scroll — a hard collision. Section rhythm loses this argument. */
+.module { padding: clamp(2.9rem, 5.4vw, 4.4rem) 0 0; }
 
-.module__head { max-width: 46rem; margin-bottom: clamp(2rem, 4vw, 3rem); }
+/* The head is NOT capped, because the instrument bar lives inside it and a title bar
+   narrower than the grid it titles reads as a layout bug. The 48rem measure cap belongs
+   to the prose, which is the only thing that needs one. */
+.module__head { margin-bottom: clamp(1.6rem, 3vw, 2.4rem); }
+
+/* embossed instrument title bar */
+.module__bar {
+    display: flex;
+    align-items: stretch;
+    gap: 0.7rem;
+    padding: 0.4rem 0.45rem;
+    margin-bottom: 1.35rem;
+    border-radius: 2px;
+    width: 100%;
+}
+.module__code { display: inline-flex; align-items: center; }
 .module__id {
-    font-family: var(--font-mono);
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-display);
     font-size: 0.8rem;
-    letter-spacing: 0.3em;
-    color: var(--cyan);
-    margin: 0 0 0.9rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+    text-shadow: 0 1px 0 var(--ink);
+    margin: 0;
+    padding-right: 0.4rem;
+}
+/* The span that closes a module bar is a RUN OF BOLTED PLATES — the same part the
+   command rail carries — not one tick pattern.
+   What was here: `repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 2px, transparent
+   2px 7px)` at 0.7 opacity, stretched across ~1200px in each of the three widest
+   elements on the page, with no plate breaks, no bolt heads, no stencilling and no
+   wear. The header rail was rebuilt to fix exactly that flaw and the fix was never
+   applied to the bars below it. This is that swap: the markup and the .hud-vent
+   rules already existed. */
+.module__vent, .enlist__vent {
+    /* the rail's own margins are for a 62px header; inside a 30px title bar the
+       plates run the full height of the seam */
+    margin: 0;
+    padding: 1px;
+    gap: 2px;
+}
+.module__vent { min-width: 3rem; }
+/* The enlist plate's head band is positioned, not flowed — it sits between the
+   SYS://ENLIST tab and the panel's top-right gusset. */
+.enlist__vent {
+    position: absolute;
+    top: 17px; left: 12.2rem; right: 52px;
+    height: 26px;
+    z-index: 2;
+    pointer-events: none;
+}
+@media (max-width: 700px) { .enlist__vent { display: none; } }
+
+/* ---------- the H2 treatment ----------
+   The page's H1 is a modelled beveled logotype; its H2s were carrying a single
+   hard zero-blur black offset — the exact "text with a drop shadow" the direction
+   names as cheap — so the subheads looked less made than the thing above them.
+
+   One stack, the logotype's own, three jobs:
+     · a 1px lit lip along the TOP of the glyph, so the letterform has a struck
+       edge to be brighter than its face,
+     · two short hard steps down-right, which is an extrusion under the page's one
+       top-left lamp rather than a shadow cast by nothing,
+     · one soft ambient pass to seat the whole thing on the plate.
+   Declared once, used by every H2 on the page. */
+.module__title, .theatre__copy h2, .enlist__inner h2 {
+    text-shadow:
+        0 -1px 0 rgba(206,224,255,0.34),
+        1px 1px 0 #0b0f18,
+        2px 2px 0 #070a11,
+        0 4px 7px rgba(0,0,0,0.58);
 }
 .module__title {
     font-family: var(--font-display);
-    font-weight: 700;
-    font-size: clamp(1.9rem, 4vw, 3rem);
-    line-height: 1.04;
-    margin: 0 0 1rem;
-    color: #fff;
-    letter-spacing: 0.01em;
+    font-size: clamp(1.75rem, 3.6vw, 2.7rem);
+    line-height: 1.06;
+    margin: 0 0 0.85rem;
+    color: #f0f5fd;
+    letter-spacing: 0.005em;
+    max-width: 48rem;
 }
-.module__lede { font-size: 1.12rem; color: var(--muted); margin: 0; max-width: 44rem; }
-
-/* ---- panel base (corner brackets) ---- */
-.pillar, .race, .log__row, .theatre__frame, .enlist__inner {
-    position: relative;
-    background:
-        linear-gradient(180deg, rgba(16,22,34,0.92), rgba(9,13,21,0.92));
-    border: 1px solid var(--edge);
-}
-.pillar::before, .pillar::after,
-.theatre__frame::before, .theatre__frame::after {
-    content: "";
-    position: absolute;
-    width: 14px; height: 14px;
-    border: 1.5px solid var(--edge-bright);
-    pointer-events: none;
-}
-.pillar::before { top: 8px; left: 8px; border-right: 0; border-bottom: 0; }
-.pillar::after  { bottom: 8px; right: 8px; border-left: 0; border-top: 0; }
+.module__lede { font-size: 1.08rem; color: var(--muted); margin: 0; max-width: 45rem; }
 
 /* ============================================================
    01 · DOCTRINE
    ============================================================ */
+/* THREE columns, declared, not derived. auto-fit at minmax(292px) resolved to four
+   tracks once the console column widened, which laid six cards out as 4 + 2 — a
+   ragged row with two empty cells beside it, and thumbnails too narrow to read. Six
+   items want 3x2 or 2x3 and nothing else, so say so. */
 .doctrine-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.1rem;
 }
+/* Deliberately NOT matched to the dossier's 1300px step, tempting as the symmetry
+   is. The dossier drops to two tracks early because a faction card carries a
+   fixed-pitch meter that clips below ~240px of body. A doctrine card carries a
+   BAKED IMAGE at 688x276, and its well is exactly 344 CSS px at the design width —
+   so two tracks between 1021 and 1300 would ask a 688px bake to fill 1000 device
+   pixels on a HiDPI laptop. Three narrow tracks keep the art at or under 1:1;
+   two wide ones would upscale it. The image wins. */
+@media (max-width: 1020px) { .doctrine-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .pillar {
-    padding: 1.75rem 1.6rem 1.9rem;
-    border-radius: 6px;
-    overflow: hidden;
-    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+    padding: 1.5rem 1.4rem 1.6rem;
+    border-radius: 3px;
+    transition: filter .16s ease, transform .12s ease, box-shadow .12s ease;
 }
 .pillar:hover {
-    transform: translateY(-4px);
-    border-color: var(--edge-bright);
-    box-shadow: 0 18px 40px rgba(0,0,0,0.5);
+    transform: translateY(-3px);
+    filter: brightness(1.07);
+    box-shadow:
+        inset 2px 2px 0 rgba(176,198,232,0.22),
+        inset -2px -2px 0 rgba(0,0,0,0.55),
+        0 6px 0 var(--ink),
+        0 16px 30px rgba(0,0,0,0.55);
 }
+.pillar__code {
+    position: absolute;
+    top: -10px; left: 14px;
+    z-index: 3;
+}
+/* Russo One is a DISPLAY face and it was being asked to do subhead work: at 18px
+   the dot of a lowercase i collapses into the adjacent e, so "Seize" read as
+   "Setze". The letterform collision is a lowercase problem, so size will not fix
+   it — the fix is to set it in the case the face is drawn for, with the tracking a
+   caps setting needs. It also puts these headings in the same voice as the panel
+   codes and the instrument titles, which is where they belong. */
 .pillar h3 {
     font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.22rem;
+    font-size: 1.0rem;
     margin: 0 0 0.6rem;
-    color: #fff;
-    letter-spacing: 0.02em;
+    color: #eef3fb;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    text-shadow: 0 1px 0 var(--ink);
 }
-.pillar p { margin: 0; color: var(--muted); font-size: 1.0rem; }
-.pillar p b { color: var(--amber-soft); font-weight: 600; }
+.pillar p { margin: 0; color: var(--muted); font-size: 0.99rem; }
+.pillar p b { color: var(--amber-hi); font-weight: 600; }
 
+/* recessed viewport */
 .pillar__art {
     position: relative;
-    height: 120px;
-    margin: -0.4rem -0.4rem 1.2rem;
+    /* isolate: the grade scrim below blends in `multiply`, and it must composite
+       against THIS well's contents rather than against the card and the starfield
+       behind it. */
+    isolation: isolate;
+    /* 2.5:1, matched to the 688x276 bake so `cover` never has to crop it */
+    aspect-ratio: 688 / 276;
+    height: auto;
+    margin: 0.35rem 0 1.1rem;
     display: grid;
     place-items: center;
-    border-radius: 4px;
     background:
-        radial-gradient(closest-side at 50% 50%, rgba(95,210,255,0.10), transparent 72%),
-        repeating-linear-gradient(90deg, rgba(255,255,255,0.018) 0 2px, transparent 2px 4px),
-        #070a11;
-    border: 1px solid var(--edge);
+        radial-gradient(120% 100% at 50% 40%, #0a1322, #04060b 78%);
+    border: 2px solid var(--ink);
+    box-shadow:
+        inset 3px 3px 10px rgba(0,0,0,0.9),
+        inset -1px -1px 0 rgba(190,212,244,0.09),
+        inset 0 -2px 0 rgba(0,0,0,0.7);
     overflow: hidden;
 }
-.pillar__art img {
-    max-height: 108px;
-    width: auto;
-    mix-blend-mode: screen;
-    filter: drop-shadow(0 0 10px rgba(120,180,255,0.25));
+/* THE GRADE, part two: one scrim over every well.
+   Six pictures from four different sources — a canvas bake, two sector/homeworld
+   plates and two campaign paintings — arrive with four different black points and
+   four different keys, and a grid of six is judged as one image before any single
+   card is read. The filter below normalises value and chroma per card; this
+   normalises the ATMOSPHERE: an identical steel-blue haze multiplied over every
+   well, plus the identical inner vignette that makes the well read as a recess.
+   Multiplied, not laid over, so a black pixel stays black — the vignette's own
+   inset shadow multiplies to exactly what it used to composite to. */
+.pillar__art::before {
+    content: "";
+    position: absolute; inset: 0; pointer-events: none;
+    z-index: 2;
+    background: linear-gradient(176deg,
+        rgba(206,226,255,0.24) 0%,
+        rgba(170,194,238,0.30) 52%,
+        rgba(138,164,212,0.36) 100%);
+    mix-blend-mode: multiply;
+    box-shadow: inset 0 0 46px rgba(0,0,0,0.62);
 }
-/* This card carries three resource sprites where its neighbours carry one full-bleed
-   illustration, and it looked unfinished next to them: three small stickers adrift on an
-   empty panel. The cause was not the gap - the source sprites are 25x25, so the max-height
-   here (46px, then 68px) never applied at all and they always drew at native size on a
-   120px panel. height forces the upscale that max-height could not; image-rendering keeps
-   the enlargement crisp instead of smeared, which suits sprites this small. */
-.pillar__art--row { gap: 1.1rem; grid-auto-flow: column; }
-.pillar__art--row img {
-    height: 62px;
-    width: auto;
-    image-rendering: pixelated;
-    /* These sprites used to be colour type 2 (no alpha) and so carried an opaque
-       rgb(51,51,51) box, invisible at 25px and glaring at 62px. They now have a real alpha
-       channel, so plain compositing is correct - screen would only wash the colours out. */
-    mix-blend-mode: normal;
-    filter: drop-shadow(0 0 10px rgba(120,180,255,0.4));
+
+/* THE GRADE, part one. Declared ONCE for both the canvas bake and the painted
+   plates, so no card can drift out of the family. --plate-sat / --plate-lift /
+   --plate-contrast are authored per card in the markup and are trims on top of a
+   shared base, not six unrelated treatments.
+   ORDER MATTERS and it is not the obvious one. contrast() pivots on mid-grey, and
+   every picture in this row has a median around 0.1-0.25 — so contrast() applied
+   FIRST is not a punch, it is a second brightness cut of 15-25% that lands hardest
+   on exactly the shadow detail these plates have least of. Brightness first, then
+   whatever shaping the card needs. */
+/* ABSOLUTE, not a stretched grid item — and this was a live bug, not tidiness.
+   `width:100%; height:100%` on a grid item inside a `place-items:center` container
+   whose own height comes from `aspect-ratio` does not resolve: the row is auto, so
+   the percentage height has nothing definite to resolve against, the browser falls
+   back to the image's intrinsic aspect, and a 512x512 painting laid out 362px wide
+   is 362px TALL inside a 144px well. `object-fit: cover` then has nothing to do —
+   the box already matches the image's aspect — and `object-position` becomes a
+   no-op. What actually reached the screen was whatever band of the picture the
+   overflow happened to leave visible; on the asteroid plate that was the source's
+   own black vignette, i.e. a third of the card was a hard black band.
+   `inset: 0` gives both children a definite box the size of the well, so cover
+   crops and the authored object-position in the markup means what it says. */
+.pillar__bake, .pillar__plate {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    /* --plate-warm pulls a cold source back toward the page's one key. The asteroid
+       plate and the fleet plate are both painted under a blue-white star and arrive
+       ~14 codes cooler in R-B than the four warm ones; a shared scrim cannot fix that
+       because it is shared. Defaults to 0, so it costs nothing on the cards that do
+       not need it. */
+    filter:
+        saturate(var(--plate-sat, 0.78))
+        sepia(var(--plate-warm, 0))
+        brightness(var(--plate-lift, 1))
+        contrast(var(--plate-contrast, 1));
 }
-.pillar__art--ship img { max-height: 64px; }
+
+/* Baked art (see landing.js). Full-bleed, because it IS the viewport's contents
+   rather than a subject floating in it — the CSS scan grid is baked into the plate
+   so the family resemblance survives the opaque fill. */
+.pillar__bake {
+    display: block;
+    opacity: 0;
+    transition: opacity .45s ease;
+}
+.pillar__bake.is-baked { opacity: 1; }
+
+/* Painted plates from the library, in the same well as the bake.
+   Cropped by the well rather than letterboxed into it: the aspect is set by the
+   viewport, and object-position (authored per card in the markup) chooses which
+   band of the painting survives. The value trim seats them at the same black point
+   as the bake beside them — an untouched painting is a stop brighter than a plate
+   authored for this palette, and one bright card in a row of six breaks the row
+   before anyone reads what is on it. */
+.pillar__plate {
+    /* --plate-zoom pushes past `cover` where a painting's subject is small in its
+       own frame: the convoy plate is a wide field with the hulls in the middle
+       third, and at 1:1 cover it read as an empty dark band. Authored per card in
+       the markup, and the derivative is published big enough to survive it. */
+    transform: scale(var(--plate-zoom, 1));
+}
 
 .pillar__tag {
     position: absolute;
-    top: 8px; right: 8px;
+    top: 7px; right: 7px;
+    z-index: 3;
     font-family: var(--font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.18em;
-    color: var(--cyan);
+    font-size: 0.58rem;
+    letter-spacing: 0.16em;
+    color: var(--bronze);
     padding: 3px 7px;
-    background: rgba(5,8,14,0.8);
-    border: 1px solid var(--edge);
-    border-radius: 2px;
+    background: rgba(4,7,12,0.92);
+    border: 2px solid var(--ink);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.07);
 }
-.pillar--danger .pillar__art { background:
-        radial-gradient(closest-side at 50% 50%, rgba(255,94,58,0.12), transparent 72%),
-        repeating-linear-gradient(90deg, rgba(255,255,255,0.018) 0 2px, transparent 2px 4px),
-        #0a0708; }
-.pillar--danger .pillar__art::after {
-    content: "";
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    height: 4px;
-    background: repeating-linear-gradient(45deg, var(--danger) 0 8px, #120606 8px 16px);
-    opacity: 0.55;
-}
-.pillar--danger .pillar__tag { color: var(--danger); }
-
-/* CSS glyphs for pillars without a sprite */
-.glyph { position: relative; width: 76px; height: 76px; }
-.glyph--tempo::before, .glyph--tempo::after {
-    content: ""; position: absolute; inset: 0;
-    border-radius: 50%;
-    border: 2px solid var(--amber);
-    box-shadow: 0 0 14px rgba(255,180,62,0.35);
-}
-.glyph--tempo::after { inset: 12px; border-color: var(--cyan); opacity: 0.7; }
-.glyph--tempo {
-    background:
-        linear-gradient(to top, var(--amber) 0 50%, transparent 50%) center/2px 26px no-repeat,
-        linear-gradient(to right, transparent 0 50%, var(--cyan) 50%) center/22px 2px no-repeat;
-    animation: spin 7s linear infinite;
-}
-.glyph--ai {
-    border: 2px solid var(--cyan);
-    border-radius: 8px;
-    box-shadow: 0 0 16px rgba(95,210,255,0.3), inset 0 0 14px rgba(95,210,255,0.18);
-    background:
-        radial-gradient(circle at 50% 50%, var(--cyan) 0 5px, transparent 6px),
-        repeating-linear-gradient(0deg, rgba(95,210,255,0.18) 0 1px, transparent 1px 9px),
-        repeating-linear-gradient(90deg, rgba(95,210,255,0.18) 0 1px, transparent 1px 9px);
-}
-.glyph--ai::before, .glyph--ai::after {
-    content: ""; position: absolute;
-    width: 10px; height: 2px; background: var(--cyan);
-    top: 50%; box-shadow: 0 0 8px var(--cyan);
-}
-.glyph--ai::before { left: -12px; }
-.glyph--ai::after { right: -12px; }
+/* The hazard stripe used to appear along the bottom of two of six wells, which made
+   the device read as an accident rather than as a system — and its diagonal was
+   guillotined mid-stroke at both ends of the band. Hazard tape stays where it is
+   deliberate and complete: under the command rail and across the head of the
+   enlist plate. A danger card is now marked by its TAG, which is the semantic
+   channel, not by a decoration two of its siblings happen to lack. */
+.pillar--danger .pillar__tag { color: #ff9f86; }
 
 /* ============================================================
-   BATTLE THEATRE
+   BATTLE THEATRE — a viewscreen bolted into the hull
    ============================================================ */
-.theatre { padding-top: clamp(1rem, 3vw, 2rem); }
+.theatre { padding-top: clamp(0.5rem, 2vw, 1.5rem); }
+/* A viewscreen: painted glass in a hull frame. The frame keeps the plate's chamfer
+   and rivets (they are the housing); the picture is a real image behind them, so
+   this is the one panel on the page that is allowed not to be steel in the middle. */
 .theatre__frame {
-    position: relative;
     display: grid;
     grid-template-columns: 1.4fr 0.8fr;
-    gap: clamp(1.5rem, 4vw, 3rem);
+    gap: clamp(1.4rem, 3.5vw, 2.8rem);
     align-items: center;
-    padding: clamp(2rem, 5vw, 3.6rem);
-    border-radius: 8px;
+    padding: clamp(1.8rem, 4vw, 3rem);
+    min-height: 22rem;
+    border-radius: 3px;
     overflow: hidden;
-    background:
-        radial-gradient(120% 150% at 88% 50%, rgba(95,160,230,0.14), transparent 58%),
-        linear-gradient(180deg, rgba(14,20,32,0.93), rgba(8,11,19,0.95)),
-        url('../images/spacebak.jpg') repeat;
-    background-size: auto, auto, 600px 400px;
-    border-color: var(--edge-bright);
+    background: #04060b;
 }
-.theatre__ship {
+/* The plate is 1400x788 and the frame is never wider than 1280 (--maxw less the
+   console's padding), so this is always a DOWNSCALE. The previous derivative was
+   1000px into the same frame — a 1.28x upscale at 1080p and 2.5x on a 2560
+   display — and at that magnification a painted hull edge is mush.
+   object-position 50%: at this frame's 3.5:1 the crop is entirely vertical, so the
+   x term does nothing and the y term decides which band of the painting survives.
+   34% centres the capital ship. 46% was cutting its prow off the top. */
+.theatre__art {
     position: absolute;
-    right: -4%;
-    top: 50%;
-    width: min(64%, 660px);
-    transform: translateY(-50%) rotate(-9deg);
-    mix-blend-mode: screen;
-    opacity: 0.55;
-    filter: drop-shadow(0 0 34px rgba(95,160,230,0.35));
+    inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    object-position: 50% 34%;
+    z-index: 0;
+    pointer-events: none;
+}
+/* The copy sits on the left third of a painting whose left third is a lit hull.
+   One directional scrim buys the text its ground; a second, weaker pass down the
+   whole frame seats the picture back behind the housing so the plate still reads as
+   a window rather than as a photograph with a border drawn on it. */
+.theatre__scrim {
+    position: absolute;
+    inset: 0;
     z-index: 1;
     pointer-events: none;
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 28%, #000 100%);
-    mask-image: linear-gradient(90deg, transparent, #000 28%, #000 100%);
+    background:
+        /* the housing's own rivets and chamfer have to ride ABOVE the glass: an inset
+           box-shadow on the frame paints with its background, and the picture is
+           positioned content, so it would cover the entire bevel */
+        radial-gradient(circle 4px at 10px 10px, #7d8ca6 0 12%, #46516a 52%, #10151f 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at 11.5px 11.6px, rgba(0,0,0,0.80), rgba(0,0,0,0) 76%),
+        radial-gradient(circle 4px at calc(100% - 10px) 10px, #7d8ca6 0 12%, #46516a 52%, #10151f 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at calc(100% - 8.5px) 11.6px, rgba(0,0,0,0.80), rgba(0,0,0,0) 76%),
+        radial-gradient(circle 4px at 10px calc(100% - 10px), #74829b 0 12%, #414c63 52%, #0e131c 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at 11.5px calc(100% - 8.4px), rgba(0,0,0,0.80), rgba(0,0,0,0) 76%),
+        radial-gradient(circle 4px at calc(100% - 10px) calc(100% - 10px), #74829b 0 12%, #414c63 52%, #0e131c 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 5px at calc(100% - 8.5px) calc(100% - 8.4px), rgba(0,0,0,0.80), rgba(0,0,0,0) 76%),
+        /* Only as dark as the copy needs and no darker. The first pass took the right
+           half down to 0.42 as well, which bought nothing — nothing is written there —
+           and cost the picture the only part of it a visitor can actually see. */
+        /* 0.72 at the left edge, not 0.94. At 0.94 the frame's first ~380px were
+           flat black with no picture in them at all — a viewscreen showing
+           nothing, next to copy about what is on the screen. The hull silhouette
+           has to survive behind the text; the type carries its own shadow and
+           does not need the picture deleted to be legible. */
+        linear-gradient(90deg, rgba(4,6,11,0.72) 0%, rgba(4,6,11,0.62) 34%, rgba(4,6,11,0.26) 58%, rgba(4,6,11,0.02) 82%),
+        linear-gradient(180deg, rgba(4,6,11,0.34) 0%, rgba(4,6,11,0.06) 32%, rgba(4,6,11,0.38) 100%),
+        radial-gradient(130% 130% at 52% 48%, rgba(0,0,0,0) 52%, rgba(0,0,0,0.46) 100%);
+    background-repeat: no-repeat;
+    box-shadow:
+        inset 0 -3px 0 rgba(0,0,0,0.88),
+        inset -3px 0 0 rgba(0,0,0,0.74),
+        inset 0 1px 0 rgba(226,242,255,0.22),
+        inset 2px 0 0 rgba(160,186,224,0.18);
 }
-.theatre__frame::before { content:""; position:absolute; top:12px; left:12px; width:20px; height:20px; border:2px solid var(--amber); border-right:0; border-bottom:0; }
-.theatre__frame::after  { content:""; position:absolute; bottom:12px; right:12px; width:20px; height:20px; border:2px solid var(--amber); border-left:0; border-top:0; }
+@media (max-width: 760px) {
+    /* Portrait: the readout stacks under the copy and the picture has to carry a much
+       taller box, so the scrim goes vertical or the lower half is unreadable. */
+    .theatre__scrim {
+        background:
+            linear-gradient(180deg, rgba(4,6,11,0.72) 0%, rgba(4,6,11,0.90) 34%, rgba(4,6,11,0.94) 100%),
+            radial-gradient(120% 120% at 50% 50%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.60) 100%);
+    }
+}
+/* The viewscreen is bolted in at four corners; see the .gusset rule further down.
+   It used to carry two thin amber L-strokes at opposite corners — the sleek-glow
+   language this direction rules out, and asymmetric enough that the pair read as a
+   bug rather than as a decision. */
+.theatre__frame { --gusset-inset: 12px; }
 .theatre__copy { position: relative; z-index: 2; max-width: 34rem; }
 .theatre__copy h2 {
     font-family: var(--font-display);
-    font-weight: 900;
-    font-size: clamp(1.8rem, 3.6vw, 2.9rem);
-    line-height: 1.02;
-    margin: 0 0 1rem;
-    color: #fff;
-    text-shadow: 0 4px 24px rgba(0,0,0,0.7);
+    font-size: clamp(1.7rem, 3.4vw, 2.6rem);
+    line-height: 1.08;
+    margin: 0 0 0.9rem;
+    color: #f0f5fd;
 }
-.theatre__copy p { color: #c2cfe6; margin: 0 0 1.8rem; font-size: 1.1rem; }
+/* the picture behind the copy is lighter now, so the type carries its own ground */
+.theatre__copy p { color: #ccd7ea; margin: 0 0 1.6rem; font-size: 1.06rem; text-shadow: 0 2px 7px rgba(3,5,10,0.9); }
 
 .theatre__readout {
     position: relative;
     z-index: 2;
     font-family: var(--font-mono);
-    background: rgba(5,8,13,0.7);
-    border: 1px solid var(--edge);
-    border-radius: 5px;
-    padding: 1.1rem 1.2rem;
-    backdrop-filter: blur(3px);
+    padding: 0.5rem;
+    border-radius: 2px;
 }
-.readout__line { display: flex; justify-content: space-between; gap: 1rem; margin: 0; padding: 0.55rem 0; border-bottom: 1px dashed var(--edge); font-size: 0.86rem; }
-.readout__line:last-child { border-bottom: 0; }
+.readout__code { display: block; text-align: center; margin-bottom: 0.5rem; }
+.readout__lines {
+    background: var(--recess);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.82);
+    padding: 0.35rem 0.75rem;
+}
+.readout__line {
+    display: flex; justify-content: space-between; gap: 1rem;
+    margin: 0; padding: 0.5rem 0;
+    border-bottom: 2px solid rgba(0,0,0,0.6);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04);
+    font-size: 0.84rem;
+}
+.readout__line:last-child { border-bottom: 0; box-shadow: none; }
 .readout__line span { color: var(--faint); letter-spacing: 0.12em; }
-.readout__line b { color: var(--cyan); font-weight: 400; letter-spacing: 0.06em; }
-.readout__line b.hot { color: var(--danger); }
+.readout__line b { color: var(--amber-hi); font-weight: 400; letter-spacing: 0.05em; }
+.readout__line b.hot { color: #ff8a6a; }
 
 /* ============================================================
    02 · FACTION DATABASE
    ============================================================ */
+/* Twelve cards: 3x4 at the console width, 2x6 below it. Declared for the same
+   reason the doctrine grid is — auto-fill resolved to a fourth track once the column
+   widened, and a 4x3 dossier squeezes the meters below their useful length. */
 .dossier {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
-    gap: 1.1rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    counter-reset: fac;
 }
+/* The column count is decided by what a CARD needs, not by what the viewport can
+   fit. A faction card carries a 96px crest well plus a body that has to hold a
+   16-lamp meter at a 12px pitch — 239px — so the body cannot go below ~240px
+   without the gauges being clipped mid-lamp. Working back through the padding and
+   the gutters, three tracks stop being viable at 1300 and two at 860. The old
+   1020 breakpoint left a 280px band where three tracks produced 164px bodies and
+   the meters showed eight and a half lamps of sixteen. */
+@media (max-width: 1300px) { .dossier { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 860px) { .dossier { grid-template-columns: minmax(0, 1fr); } }
 .race {
-    position: relative;
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 1.1rem;
-    padding: 1.3rem 1.3rem 1.4rem;
-    border-radius: 6px;
-    border: 1px solid var(--edge);
-    /* Beveled console chrome, matching the login and lobby screens: a light inner
-       edge top-left and a dark one bottom-right, so the card reads as a physical
-       panel rather than a flat rectangle. Neutral greys only — no accent edges. */
-    box-shadow:
-        inset 1px 1px 0 rgba(255, 255, 255, 0.07),
-        inset -1px -1px 0 rgba(0, 0, 0, 0.55),
-        0 2px 10px rgba(0, 0, 0, 0.35);
-    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
-    overflow: hidden;
+    gap: 1rem;
+    padding: 1.5rem 1.2rem 1.25rem;
+    border-radius: 3px;
+    counter-increment: fac;
+    transition: filter .16s ease, transform .12s ease, box-shadow .12s ease;
 }
 .race:hover {
-    /* Press the bevel a touch brighter on hover instead of only shifting colour. */
-    box-shadow:
-        inset 1px 1px 0 rgba(255, 255, 255, 0.12),
-        inset -1px -1px 0 rgba(0, 0, 0, 0.6),
-        0 4px 16px rgba(0, 0, 0, 0.45);
-}
-.race::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(140% 90% at 0% 0%, color-mix(in srgb, var(--fac) 14%, transparent), transparent 55%);
-    pointer-events: none;
-    opacity: 0.7;
-}
-.race:hover {
+    /* Press the plate brighter and lift it. Deliberately NOT a coloured border: an
+       accent-coloured edge is banned page-wide, and the faction colour already lives
+       where it belongs — in the emblem ring and the meters. */
     transform: translateY(-3px);
-    border-color: var(--fac);
-    box-shadow: 0 16px 36px rgba(0,0,0,0.5), -2px 0 18px color-mix(in srgb, var(--fac) 40%, transparent);
+    filter: brightness(1.08);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.13),
+        inset 2px 2px 0 rgba(190,212,244,0.40),
+        inset -2px -2px 0 rgba(0,0,0,0.80),
+        0 7px 0 var(--ink),
+        0 16px 30px rgba(0,0,0,0.55);
+}
+/* stencilled file number, generated rather than authored twelve times.
+   Material and bevel come from the shared stamped-plate rule above. */
+.race::before {
+    content: "FAC-" counter(fac, decimal-leading-zero);
+    position: absolute;
+    top: -10px; left: 14px;
+    z-index: 3;
+    font-size: 0.6rem;
 }
 
+/* ---- the crest, in a recessed well ----
+   These were twelve flat SVG glyphs sitting in a glowing coloured disc with a
+   dashed ring rotating around them — an icon set, not a faction. The library holds
+   twelve PAINTED crests, each cast in its own material: hammered bronze for the
+   Terrans, bone lattice for the Void Walkers, riveted iron for the Titan Lords.
+   They arrive already carrying relief, wear and a light direction, so the well
+   around them stops being a badge and becomes what it should have been all along —
+   a plate bolted into the card with the crest struck into it.
+
+   The disc is gone with the ring. A painted rectangular plate does not belong in a
+   circular hole, and cropping one to fit would eat the very edges that carry the
+   casting. The faction hue went with them: the crests differentiate by MATERIAL,
+   which is a stronger signal than twelve saturated swatches inside a steel-and-amber
+   page ever was. */
+/* The well was serving `crests-128-*` — a 128x98 file — into a 96x74 box behind a
+   scanline overlay, so the sculpted bronze that exists in the 256px derivative
+   arrived as a featureless tan lump and the CRT ruling moiréd against the relief.
+   Worse, the crests are painted on their own near-black ground, and an opaque PNG
+   dropped into a lighter frame reads as a black TILE pasted on the plate rather
+   than as a casting struck into it.
+
+   Three changes, in order of what they buy:
+     · the 256px file at every density, into a bigger well — the relief is the
+       whole point of these assets and it needs the pixels to survive,
+     · `mix-blend-mode: screen`, which keys the matte out against the well floor:
+       black contributes nothing, so what lands on the plate is the casting and
+       its own lit edges, with no rectangle around it,
+     · no scanlines over the emblem. They stay elsewhere; at this size they are
+       ruled across a fifth of the detail that makes an insignia readable. */
 .race__emblem {
     position: relative;
-    width: 76px; height: 76px;
-    display: grid; place-items: center;
-    border-radius: 50%;
-    background: radial-gradient(closest-side, color-mix(in srgb, var(--fac) 18%, #070a11), #070a11);
-    border: 1px solid color-mix(in srgb, var(--fac) 40%, var(--edge));
+    /* isolate so the screen blend below composites against THIS well's floor and
+       nothing further back */
+    isolation: isolate;
+    width: 104px; height: 80px;
+    display: grid; place-items: stretch;
+    /* 3px of well floor around the casting: several of the twelve are painted right
+       out to their own edge, and flush against the frame they read as cropped. */
+    padding: 3px;
+    /* A milled STEEL rebate, not a black hole. The floor value matters more than it
+       looks: the crest above is composited in `screen`, so the floor is literally
+       what the crest's own black ground becomes. Against near-black it became
+       near-black again and the emblem still read as a tile pasted on the card;
+       against milled steel the ground disappears and only the casting is left,
+       which is the whole point of keying it. Vignetted to the corners and lit over
+       the top-left lip like every other plate. */
+    background:
+        radial-gradient(126% 126% at 40% 30%, #2a3446 0%, #1a2130 46%, #0c111a 78%, #06090f 100%);
+    border: 2px solid var(--ink);
+    box-shadow:
+        inset 3px 3px 7px rgba(0,0,0,0.95),
+        inset 0 2px 0 rgba(0,0,0,0.8),
+        inset -1px -1px 0 rgba(190,212,244,0.13),
+        0 1px 0 rgba(196,218,252,0.16);
     overflow: hidden;
     flex: none;
 }
+/* ONE TREATMENT, TWELVE CASTINGS.
+   Measured over the twelve source PNGs, the crests were arriving as five different
+   materials in five different palettes: ink coverage ran 6.2% (Shadow Realm) to
+   40.4% (Terran) — a 6.5x spread — peak luminance 167 to 242, and mean chroma 3.6%
+   (a flat grey line device) to 61% (a fully saturated orange spiral). Twelve
+   identical recessed tiles then did the one thing that makes that worse: they
+   framed it, so the grid emphasised how unlike each other the contents were.
+   Three passes, in order of what they buy:
+     · a DUOTONE onto the page's own bronze/steel ramp. `grayscale(.72)` keeps a
+       quarter of each casting's own hue — the crests are meant to differ by
+       MATERIAL — and the sepia/hue-rotate/saturate after it puts every one of them
+       under the same lamp. Full grayscale was tried and is worse: it takes the
+       bronze out of the bronze ones too.
+     · --crest-gain, authored per faction below, which normalises peak luminance
+       into one band. This is the difference between a row of castings and a row
+       where two are near-invisible smudges next to a bright gold gem.
+     · one shared 7% inset, so a crest painted out to its own edge and one floating
+       in its own frame occupy the same optical area.
+   drop-shadow is deliberately NOT in this stack: the image composites in `screen`,
+   where black contributes nothing, so a black shadow would be invisible. The seat
+   the crest needs is the well's own inner shadow, which it already has. */
 .race__emblem img {
-    width: 48px; height: 48px;
+    width: 100%; height: 100%;
     object-fit: contain;
-    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--fac) 70%, transparent));
+    padding: 7%;
     z-index: 2;
+    /* keys the ground out against the well floor. `screen` alone does NOT: these
+       PNGs are opaque plates whose backing sits at 19-22 codes, not at black, and
+       20 screened over a steel floor is a visible +4 rectangle the size of the
+       image box. url(#crest-key) — defined in landing.html — sets a 0.105 black
+       point FIRST, so the backing and its printed grid arrive at the blend as
+       actual zero and the ground genuinely disappears. Order matters: the toe has
+       to run before the duotone, or the duotone's own lift puts the backing back. */
+    mix-blend-mode: screen;
+    filter:
+        url(#crest-key)
+        grayscale(0.72) sepia(0.62) hue-rotate(-8deg) saturate(2.3)
+        contrast(1.16) brightness(var(--crest-gain, 1));
 }
-.race__emblem::after { /* scanline sweep */
+/* Peak-luminance normalisation, measured off the sources (99.5th percentile of the
+   alpha-weighted luma, target ~205): 216 216 222 240 214 184 180 177 242 175 194 167. */
+.race:nth-child(1)  .race__emblem img { --crest-gain: 0.95; }
+.race:nth-child(2)  .race__emblem img { --crest-gain: 0.92; }
+.race:nth-child(3)  .race__emblem img { --crest-gain: 0.92; }
+.race:nth-child(4)  .race__emblem img { --crest-gain: 0.86; }
+.race:nth-child(5)  .race__emblem img { --crest-gain: 0.96; }
+.race:nth-child(6)  .race__emblem img { --crest-gain: 1.11; }
+.race:nth-child(7)  .race__emblem img { --crest-gain: 1.14; }
+.race:nth-child(8)  .race__emblem img { --crest-gain: 1.16; }
+.race:nth-child(9)  .race__emblem img { --crest-gain: 0.86; }
+.race:nth-child(10) .race__emblem img { --crest-gain: 1.18; }
+.race:nth-child(11) .race__emblem img { --crest-gain: 1.06; }
+.race:nth-child(12) .race__emblem img { --crest-gain: 1.24; }
+.race__emblem::after { /* one soft specular off the top-left lip — no ruling */
     content: "";
     position: absolute;
     inset: 0;
-    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 4px);
+    background: linear-gradient(158deg, rgba(198,220,255,0.11) 0%, rgba(198,220,255,0.02) 34%, rgba(198,220,255,0) 52%);
     z-index: 3;
     pointer-events: none;
 }
-.race__ring {
-    position: absolute;
-    inset: 6px;
-    border-radius: 50%;
-    border: 1px dashed color-mix(in srgb, var(--fac) 60%, transparent);
-    opacity: 0.6;
-    z-index: 1;
-}
-.race:hover .race__ring { animation: spin 6s linear infinite; }
 
 /* The role and ability lines run to two or three lines depending on the race, which left
-   every card's meters at a different height across a row. Make the body a column and pin
-   the meters to its bottom, so they line up no matter how long the copy above them runs. */
-.race__body { min-width: 0; display: flex; flex-direction: column; }
+   every card's meters at a different height across a row. An explicit four-row grid with
+   the ability block on the 1fr track absorbs the difference in ONE place — so the divider
+   and the meters pin to the bottom of every card in a row, whatever length the copy above
+   them runs to, and the slack collects where it is least visible instead of opening a
+   void immediately above the groove. */
+.race__body {
+    min-width: 0;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+}
+/* Caps, for the same reason the doctrine headings are: Russo One's lowercase
+   collapses at subhead size. "TERRAN EMPIRE" is also how a faction would be
+   stencilled on the hull it flies. */
 .race__name {
     font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.12rem;
-    margin: 0.1rem 0 0.25rem;
-    color: #fff;
-    letter-spacing: 0.015em;
+    font-size: 0.97rem;
+    margin: 0 0 0.3rem;
+    color: #eef3fb;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    text-shadow: 0 1px 0 var(--ink);
 }
-.race__role { margin: 0 0 0.7rem; font-size: 0.92rem; color: var(--muted); }
+/* Both blocks reserve the space their longest sibling needs.
+   Without it a two-line ability next to a three-line one made the shorter card
+   stretch, and all of that stretch collected as one 60px void immediately above the
+   groove — the row read as unfinished data. Reserving the lines up front means the
+   slack lands as ordinary leading inside the block, where nobody reads it as a gap. */
+.race__role { margin: 0 0 0.6rem; font-size: 0.9rem; color: var(--muted); min-height: 3.05em; }
+/* PROSE IS NOT A CODE.
+   "Adaptable — no weak discipline, every tech and hull" was set in Share Tech Mono
+   at 12.6px, stacked directly under a Rajdhani description: two body faces inside
+   200px of one card, with mono's wide tracking making the wrapped second line look
+   broken. The type stack has three faces and each has a job — Russo One heads,
+   Rajdhani prose, mono for labels and codes. The word ABILITY is a label and keeps
+   the mono; the sentence after it is prose and is set in the same face and size as
+   the line above it. Label and value separate by weight and colour, which is what
+   they should have been doing all along. */
 .race__ability {
-    font-family: var(--font-mono);
-    font-size: 0.82rem;
+    font-family: var(--font-ui);
+    font-size: 0.9rem;
+    font-weight: 600;
     color: var(--text);
-    margin: 0 0 0.85rem;
-    line-height: 1.4;
+    margin: 0 0 0.8rem;
+    line-height: 1.36;
+    /* two lines, which is what all but three of the twelve run to. Reserving three
+       put a blank line into every short card; reserving two means a row of two-line
+       cards closes up entirely, and only a row containing a three-liner carries any
+       slack — one line of it, absorbed by the 1fr track above the groove. */
+    min-height: 2.72em;
 }
+/* Fixed steel across all twelve cards. This label used to be recoloured per faction,
+   so the word "ABILITY" arrived in a different hue on every card — a field label that
+   recolours per record is not theming, it is noise. */
 .race__ability span {
     display: inline-block;
-    color: var(--fac);
-    letter-spacing: 0.18em;
-    font-size: 0.66rem;
-    margin-right: 0.5rem;
+    font-family: var(--font-mono);
+    font-weight: 400;
+    color: var(--faint);
+    letter-spacing: 0.16em;
+    font-size: 0.62rem;
+    margin-right: 0.45rem;
     vertical-align: 1px;
 }
 
-.race__bars { display: grid; gap: 0.4rem; max-width: 240px; margin-top: auto; }
-.bar { display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 0.6rem; }
+/* Segmented LED meters in a recessed track.
+   The meters are pinned to the bottom of the card so they line up across a row whatever
+   length the ability copy runs to. The engraved groove above them turns the resulting
+   slack into a deliberate instrument boundary instead of a gap nobody chose. */
+.race__bars {
+    display: grid;
+    gap: 0.38rem;
+    /* 34px label + 0.55rem gap + (16 × 12px + 4px border) */
+    max-width: 239px;
+    margin-top: auto;
+    padding-top: 0.75rem;
+    border-top: 2px solid rgba(0,0,0,0.55);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.055);
+}
+/* A SEGMENTED gauge whose lamps are not all the same width is not a gauge, it is a
+   rendering artifact — and deriving the cell from a PERCENTAGE of a fractional
+   track width is what produced it. A 251.4px track divided by 16 gives a 15.7px
+   cell; the browser rounds each cut independently, so lamps land at 15 or 16px at
+   random and a fill whose last cut falls a fraction of a pixel short of the next
+   one leaves a bright 1.5px sliver hanging off the end of the bar. Every one of
+   the thirty-six meters on this page had a different set of them.
+
+   The cell is now an INTEGER NUMBER OF PIXELS, declared once. Track, fill and cuts
+   are all whole multiples of it, so every lamp is identical by construction and the
+   fill can only ever end on a cut. The track is then ROUNDED DOWN to a whole number
+   of cells rather than merely capped at sixteen of them, so a card too narrow for
+   sixteen shows fifteen whole lamps and a wider gutter instead of fifteen and a
+   sliver. --cell steps down at the breakpoints where the dossier is tightest. */
+.bar { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 0.55rem; }
 .bar i { font-family: var(--font-mono); font-style: normal; font-size: 0.62rem; letter-spacing: 0.1em; color: var(--faint); }
-.bar span { height: 6px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+/* A MILLED CHANNEL, not a black rectangle. Thirty-six of these are on screen at
+   once and they were the only element on an otherwise well-built steel plate with
+   no material in them at all: a solid amber block in a solid black box.
+   The trough now takes the same rebate the readouts do — a hard inner shadow down
+   from the top-left lip, a hairline of returned light along the bottom — and the
+   empty cells carry the channel's own rhythm so the unlit half of the gauge is a
+   machined part rather than a gap. */
+.bar span {
+    --n: 16;
+    --cell: 12px;
+    position: relative;
+    height: 13px;
+    /* THE CHANNEL IS DERIVED FROM THE CELL, not the other way round.
+       `width: 100%` capped at sixteen cells is exact only while the card is wide
+       enough for all sixteen; the moment the dossier drops to two tracks, or a
+       browser rounds the 0.55rem gutter differently, the content box is a
+       FRACTION of a cell and the last lamp is guillotined into a 1-2px sliver
+       against the channel wall — which is what a 5x inspection found on every
+       card. round(down) makes the inner width a whole multiple of the cell at
+       every width there is, so the run always ends on a wall. The plain 100% under
+       it is the fallback: a browser without round() drops the second declaration
+       at parse time and lands exactly where this rule used to be. */
+    width: 100%;
+    width: calc(round(down, 100% - 4px, var(--cell)) + 4px);
+    /* +4px for the two borders: box-sizing is border-box page-wide, and without it
+       the padding box would be 4px short of a whole number of cells — which is the
+       fractional-track bug again, one step further in. */
+    max-width: calc(var(--n) * var(--cell) + 4px);
+    background: linear-gradient(180deg, #020308 0%, #070b13 62%, #0c121c 100%);
+    border: 2px solid var(--ink);
+    box-shadow:
+        inset 2px 2px 6px rgba(0,0,0,0.82),
+        inset -1px 0 0 rgba(190,212,244,0.07),
+        inset 0 -1px 0 rgba(190,212,244,0.11);
+    overflow: hidden;
+}
+/* Bronze, not the faction hue. Twelve cards each tinting three meters a different
+   saturated colour turned a disciplined two-family page into a swatch board; the
+   faction's identity now lives in exactly one place, its crest.
+   The lamp is a LIT CELL: a struck 1px crown, a full-chroma body, a shaded foot,
+   and a faint amber bleed onto the channel wall either side of it. */
 .bar b {
     display: block; height: 100%;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--fac) 70%, #fff), var(--fac));
-    box-shadow: 0 0 8px color-mix(in srgb, var(--fac) 60%, transparent);
-    border-radius: 2px;
+    width: calc(var(--seg, 8) * var(--cell));
+    max-width: 100%;
+    background: linear-gradient(180deg,
+        #ffeecb 0 1px,
+        #f5d497 1px 2px,
+        #e0b264 2px 42%,
+        var(--bronze) 42% 66%,
+        #8d6931 66% 92%,
+        #3f2c0d 92% 100%);
+    box-shadow: 0 0 7px rgba(240,162,51,0.34);
+}
+/* segment cuts — a dark score with a lit wall on its far side, so each lamp reads
+   as a discrete part seated in the channel rather than as a slice of one long fill */
+.bar span::after {
+    content: "";
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(90deg,
+        transparent 0 calc(var(--cell) - 2px),
+        rgba(3,5,10,0.96) calc(var(--cell) - 2px) calc(var(--cell) - 1px),
+        rgba(196,218,252,0.10) calc(var(--cell) - 1px) var(--cell));
 }
 
+/* The unlock condition is the most interesting fact on a faction card, and eleven
+   of the twelve were rendered in a grey that failed the contrast floor while the
+   twelfth sat in amber — so the only thing a scan of the grid returned was
+   "STARTER". All twelve now read, in bronze, with the playable one lifted to amber.
+   Pinned by ONE rule with an explicit inset and a max-width, because the previous
+   arrangement let a long caption ("WIN 3 GAMES") reach the card border and overlap
+   the corner rivet while a short one floated 21px clear. */
+/* right:31px, not 16. The corner rivet's crown sits at 100%-10px with a 5px
+   radius, so at right:16 the longest caption closed to within a pixel of the
+   dome — two pieces of hardware fighting for the same 9px of plate. 31 puts
+   16px of clear steel between the tab's shoulder and the rivet's edge. */
 .race__lock {
     position: absolute;
-    top: 0; right: 0;
-    font-family: var(--font-mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.14em;
-    color: var(--muted);
-    padding: 5px 9px;
-    background: rgba(5,8,14,0.85);
-    border-left: 1px solid var(--edge);
-    border-bottom: 1px solid var(--edge);
-    border-bottom-left-radius: 5px;
-    z-index: 4;
+    top: -10px; right: 31px;
+    z-index: 3;
+    max-width: calc(100% - 46px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--bronze);
 }
-.chip--starter { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--edge)); }
-.chip--premium { color: var(--amber); }
-.race--premium { border-color: color-mix(in srgb, var(--amber) 32%, var(--edge)); }
-.race--premium .race__emblem { box-shadow: 0 0 18px rgba(255,180,62,0.2); }
+.chip--starter { color: var(--amber-hi); }
+/* Premium is not another colour, it is another PART: a stamped amber cap where the
+   others are recessed slots. */
+.chip--premium {
+    color: #2a1803;
+    background: linear-gradient(180deg, var(--amber-hi) 0 46%, var(--amber) 46% 100%);
+    border-color: #3a2405;
+    box-shadow: inset 0 1px 0 rgba(255,247,228,0.75), inset -1px -1px 0 rgba(90,52,6,0.9), 0 2px 0 var(--ink);
+}
+/* Same recessed well, plus a faint amber bleed at its mouth — the premium crests are
+   lit from inside the cabinet. Rebuilt on the new recipe: this rule used to carry the
+   old circular badge's raised-bevel shadow verbatim, so the three premium wells were
+   the only ones on the page that stood proud instead of sinking in. */
+.race--premium .race__emblem {
+    box-shadow:
+        inset 2px 2px 5px rgba(0,0,0,0.92),
+        inset -1px -1px 0 rgba(190,212,244,0.10),
+        inset 0 2px 0 rgba(0,0,0,0.75),
+        0 0 14px rgba(240,162,51,0.20),
+        0 1px 0 rgba(190,212,244,0.10);
+}
 
 /* ============================================================
    03 · FIELD LOG
    ============================================================ */
-.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.85rem; }
+/* A FIXED instrument gutter, not `auto auto`. With auto columns each row's tag chip
+   sized itself, so the three headlines and the three body paragraphs each started at a
+   different x — three ragged left edges stacked vertically. Nine pixels of lamp, a
+   constant-width tag well, then the copy: one left edge for the whole log. */
 .log__row {
     display: grid;
-    grid-template-columns: auto auto 1fr;
+    grid-template-columns: 9px 8rem 1fr;
     align-items: start;
-    gap: 1.1rem 1.4rem;
-    padding: 1.3rem 1.5rem;
-    border-radius: 6px;
-    border: 1px solid var(--edge);
-    transition: border-color .2s ease, transform .2s ease;
+    gap: 1rem 1.15rem;
+    padding: 1.15rem 1.6rem;
+    border-radius: 3px;
+    transition: filter .16s ease, transform .12s ease;
 }
-.log__row:hover { transform: translateX(4px); border-color: var(--edge-bright); }
+.log__row:hover { transform: translateX(4px); filter: brightness(1.07); }
 .log__led {
-    width: 10px; height: 10px; margin-top: 6px;
+    width: 9px; height: 9px; margin-top: 7px;
     border-radius: 50%;
-    background: var(--cyan);
-    box-shadow: 0 0 10px var(--cyan);
-    animation: pulse 3s ease-in-out infinite;
+    background: var(--amber);
+    box-shadow: 0 0 8px rgba(240,162,51,0.8), 0 1px 0 var(--ink);
+    animation: blink 3s steps(2) infinite;
 }
 .log__ver {
-    font-family: var(--font-mono);
-    font-size: 0.66rem;
-    letter-spacing: 0.16em;
-    color: var(--cyan);
-    padding: 5px 9px;
-    border: 1px solid var(--edge);
-    border-radius: 3px;
-    background: rgba(5,8,14,0.6);
-    white-space: nowrap;
     margin-top: 2px;
+    align-self: start;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
 }
-.log__copy h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.12rem; margin: 0 0 0.35rem; color: #fff; }
-.log__copy p { margin: 0; color: var(--muted); }
+.log__copy h3 {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    margin: 0 0 0.3rem;
+    color: #eef3fb;
+    text-shadow: 0 1px 0 var(--ink);
+}
+/* capped so the line stops short of the plate's right edge instead of running into it */
+.log__copy p { margin: 0; color: var(--muted); font-size: 0.99rem; max-width: 68ch; }
 
 /* ============================================================
    ENLIST
    ============================================================ */
-.enlist { padding: clamp(2rem, 5vw, 4rem) 0 0; }
+.enlist { padding: clamp(1rem, 3vw, 2rem) 0 0; }
+/* THE RECRUITMENT BOARD — three members, all of them carrying something.
+   The previous build was left-weighted: a square-cropped picture bleeding off the
+   left edge, the copy stranded beside it, and 400x350 of blank brushed steel to
+   its right filled only by two thin amber corner brackets (which appeared on the
+   RIGHT corners only, so the asymmetry read as a bug). It also ran a 7px amber
+   hazard stripe along the plate's entire top border — the exact decorative accent
+   edge this project bans outright.
+   Now: a mounted picture at its own 1:2, the order in the middle, and a framed
+   instrument holding the right — the device the theatre band already uses and the
+   one composition on this page nobody argued with. No accent edge anywhere in it. */
+/* ONE CONTENT BOX, THREE MEMBERS.
+   The three columns used to be `align-items: center`, so each floated at its own
+   height inside the row: the poster ran y330-780, the copy y410-707 and the MUS-01
+   readout y430-685 — three tops, three bottoms, none of them agreeing. What that
+   photographs as is a ~100px empty band above the kicker, an ~85px band below the
+   CTA and a ~110px field of bare steel under the instrument, i.e. a panel that ran
+   out of content. `stretch` gives all three the same two rules; the readout and the
+   copy then distribute inside it (see below) rather than sitting in the middle of
+   a box far taller than they are. */
 .enlist__inner {
-    position: relative;
-    text-align: center;
-    padding: clamp(2.6rem, 6vw, 4.5rem) 1.5rem;
-    border-radius: 10px;
-    border-color: var(--edge-bright);
-    background:
-        radial-gradient(80% 120% at 50% 0%, rgba(255,180,62,0.10), transparent 60%),
-        linear-gradient(180deg, rgba(16,22,34,0.94), rgba(9,13,21,0.94));
+    --enl-pad-t: clamp(3.4rem, 5vw, 4.2rem);
+    --enl-pad-x: clamp(1.5rem, 3vw, 2.6rem);
+    --enl-pad-b: clamp(2.2rem, 3.5vw, 3rem);
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 1fr) 16rem;
+    gap: clamp(1.6rem, 3vw, 2.6rem);
+    align-items: stretch;
+    text-align: left;
+    padding: var(--enl-pad-t) var(--enl-pad-x) var(--enl-pad-b);
+    border-radius: 3px;
     overflow: hidden;
 }
+/* MOUNTED, not pasted. The plate is 360x720 and was being served into a ~360x352
+   window under object-fit:cover, which threw away the dense constellation web that
+   IS the picture and left mostly empty sky with a small silhouette at the bottom.
+   The window now carries the painting's own 1:2, so nothing is discarded, and it
+   sits in the same recessed well the crests do — 2px ink, an inner shadow, and a
+   hairline of returned light along its foot. */
+.enlist__poster {
+    position: relative;
+    z-index: 2;
+    margin: 0;
+    padding: 0;
+    /* The picture SETS the row height — it is the one member with a fixed aspect —
+       so it starts on the top rule and the stencil strip under it closes on the
+       bottom one. */
+    display: flex;
+    flex-direction: column;
+}
+.enlist__window {
+    display: block;
+    position: relative;
+    aspect-ratio: 1 / 2;
+    overflow: hidden;
+    background: #04060b;
+    border: 2px solid var(--ink);
+    box-shadow:
+        inset 3px 3px 9px rgba(0,0,0,0.92),
+        inset -1px -1px 0 rgba(190,212,244,0.12),
+        0 2px 0 rgba(0,0,0,0.75),
+        0 1px 0 rgba(196,218,252,0.14) inset;
+}
+.enlist__window img {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    object-position: 50% 50%;
+}
+/* One soft specular off the top-left, so the window reads as glass in a frame
+   rather than as a rectangle of print. */
+.enlist__window::after {
+    content: "";
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(158deg, rgba(198,220,255,0.10) 0%, rgba(198,220,255,0.02) 30%, rgba(198,220,255,0) 46%),
+        radial-gradient(120% 120% at 50% 46%, rgba(0,0,0,0) 56%, rgba(0,0,0,0.42) 100%);
+}
+/* The plate number goes on the PLATE, under the window, on its own stencilled
+   strip. Printed over the artwork it collided with the lit instrument detail in
+   the painting and there was no scrim under it. */
+.enlist__poster figcaption {
+    margin-top: auto;
+    padding: 5px 6px 6px;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.13em;
+    text-align: center;
+    color: var(--bronze);
+    background: linear-gradient(180deg, #222b3a 0%, #151b27 54%, #080c14 100%);
+    border: 2px solid var(--ink);
+    box-shadow:
+        inset 0 1px 0 rgba(214,234,255,0.20),
+        inset -1px -1px 0 rgba(0,0,0,0.88),
+        0 1px 0 rgba(0,0,0,0.7);
+}
+/* Fills its track. Capped at 50rem and centred, it started two words in from the
+   panel's own padding line and stopped 114px short of the opposite one — a column
+   floating inside a column. The measure that matters is set on the lede. */
+/* Distributed, not centred: the kicker lands on the row's top rule and the CTA's
+   foot on its bottom one, so the copy column reads as a block that was set into the
+   panel rather than one floating in it. The slack that used to collect as two dead
+   bands above and below now lands as leading between the four members, where nobody
+   reads it as a gap. */
+.enlist__copy {
+    position: relative;
+    z-index: 2;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.4rem;
+    /* the kicker and the CTA both carry hardware; keep them off the row's rules by
+       a hair rather than exactly on them */
+    padding: 0.25rem 0;
+}
+/* The members' own bottom margins would ADD to the distributed gaps, so the
+   intervals would come out at different sizes. The flex distribution owns the
+   rhythm between members; inside .enlist__say the headline keeps its own. */
+.enlist__copy > .kicker { margin-bottom: 0; }
+.enlist__say {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+.enlist__say > .enlist__lede { margin-bottom: 0; }
+/* The instrument that fills what used to be dead steel. Same part as the theatre
+   band's TAC-07 feed, and every row of it is a fact this page already states.
+   It fills its column's full height now — five rows in a 450px box left a third of
+   the card as bare plate. */
+.enlist__readout {
+    position: relative;
+    z-index: 2;
+    font-family: var(--font-mono);
+    padding: 0.5rem;
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+}
+.enlist__readout .readout__lines {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+@media (max-width: 1180px) {
+    /* the readout is the first thing to stand down: the picture and the order are
+       the panel, the instrument is the dressing */
+    .enlist__inner { grid-template-columns: 13rem minmax(0, 1fr); }
+    .enlist__readout { display: none; }
+}
+@media (max-width: 1040px) {
+    /* Below this the window would be under 200px wide, which is not a picture, it is
+       a thumbnail of one. The copy takes the plate back and the painting stands down.
+       The head band goes back to the panel's own left edge with it. */
+    .enlist__inner { grid-template-columns: minmax(0, 1fr); text-align: center; }
+    .enlist__poster { display: none; }
+}
+/* The head band: stencilled code, then a bolted plate run filling the span it would
+   otherwise leave as bare gradient. See .enlist__vent above. */
+.enlist__code { position: absolute; top: 16px; left: 52px; z-index: 3; }
 .enlist__inner .kicker { justify-content: center; }
+/* Sized so the line lands on the panel's inner padding line rather than 114px
+   short of it — the copy column's right edge is now set by the headline, which is
+   the only element in the block long enough to set it. */
 .enlist__inner h2 {
     font-family: var(--font-display);
-    font-weight: 900;
-    font-size: clamp(1.9rem, 4.5vw, 3.2rem);
-    margin: 0 0 1rem;
-    color: #fff;
-    text-shadow: 0 0 30px rgba(255,180,62,0.25);
+    font-size: clamp(1.75rem, 4.4vw, 3.05rem);
+    line-height: 1.1;
+    margin: 0 0 0.9rem;
+    color: #f2f6fd;
 }
-.enlist__lede { color: var(--muted); font-size: 1.12rem; max-width: 40rem; margin: 0 auto 2.2rem; }
-.enlist__corner { position: absolute; width: 26px; height: 26px; border: 2px solid var(--amber); }
-.enlist__corner--tl { top: 14px; left: 14px; border-right: 0; border-bottom: 0; }
-.enlist__corner--tr { top: 14px; right: 14px; border-left: 0; border-bottom: 0; }
-.enlist__corner--bl { bottom: 14px; left: 14px; border-right: 0; border-top: 0; }
-.enlist__corner--br { bottom: 14px; right: 14px; border-left: 0; border-top: 0; }
+/* `margin: 0 auto` centred the lede inside a left-aligned block, so it started two
+   words in from the heading above it and read as an accidental indent. */
+.enlist__lede { color: var(--muted); font-size: 1.08rem; max-width: 43rem; margin: 0 0 2rem; }
+@media (max-width: 1040px) { .enlist__lede { margin: 0 auto 2rem; } }
+/* ============================================================
+   BOLTED GUSSETS — one part, used wherever a plate is fixed to the hull
+
+   The enlist plate and the theatre viewscreen both used to carry thin glowing amber
+   L-strokes at two of their four corners: the sleek-holographic language this
+   direction rules out, and an asymmetry that reads as a bug rather than a decision.
+   A gusset is a PLATE — a chamfered steel pad with a domed bolt through it — and
+   there are four of them, because that is how many corners a panel has.
+   ============================================================ */
+.gusset {
+    position: absolute;
+    width: 26px; height: 26px;
+    z-index: 3;
+    pointer-events: none;
+    background:
+        radial-gradient(circle 3.2px at 50% 50%, #9cabc4 0 15%, #4d5872 52%, #0f141e 88%, rgba(0,0,0,0) 100%),
+        radial-gradient(circle 4px at calc(50% + 1.4px) calc(50% + 1.4px), rgba(0,0,0,0.85), rgba(0,0,0,0) 74%),
+        linear-gradient(140deg, #3d4860 0%, #29323f 46%, #131924 100%);
+    background-repeat: no-repeat;
+    border: 2px solid var(--ink);
+    box-shadow:
+        inset 1px 1px 0 rgba(204,226,255,0.22),
+        inset -1px -1px 0 rgba(0,0,0,0.88),
+        0 2px 0 rgba(0,0,0,0.7);
+}
+.gusset--tl { top: var(--gusset-inset, 16px); left: var(--gusset-inset, 16px); }
+.gusset--tr { top: var(--gusset-inset, 16px); right: var(--gusset-inset, 16px); }
+.gusset--bl { bottom: var(--gusset-inset, 16px); left: var(--gusset-inset, 16px); }
+.gusset--br { bottom: var(--gusset-inset, 16px); right: var(--gusset-inset, 16px); }
+@media (max-width: 560px) { .gusset { display: none; } }
 
 /* ============================================================
-   FOOTER
+   FOOTER — hull base
+
+   Was five type treatments collapsed into one inline row with arbitrary gaps, a
+   dashed CSS border standing in for a divider, links indistinguishable from the
+   non-interactive tagline, and a copyright line below the contrast floor. Now: a
+   three-column grid with equal gaps, the page's own plate divider, links that
+   announce themselves, and legal type that can be read.
    ============================================================ */
+/* The footer was the only region on the page with no material in it: fully
+   transparent, the starfield showing straight through the wordmark row, with ~190px
+   of dead black between the divider and the base sill. Everything above it is
+   beveled steel, so it read as a hole in the hull rather than the base of it.
+   It is now a plate like every other plate — same recessed ground, same top rail,
+   same dark foot, same corner rivets — and the rhythm inside it is tightened to the
+   spacing the rest of the document uses. */
 .hud-foot {
     max-width: var(--maxw);
     margin: var(--gap) auto 0;
-    padding: 2.5rem clamp(1.25rem, 4vw, 2.5rem) 3rem;
+    padding: 0 clamp(1.25rem, 4vw, 2.5rem) 1.4rem;
 }
-.hud-foot__line { height: 1px; background: linear-gradient(90deg, transparent, var(--edge-bright), transparent); margin-bottom: 1.6rem; }
-.hud-foot__row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.6rem 2rem; align-items: baseline; }
-.hud-foot__brand { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.1em; color: var(--text); margin: 0; }
-.hud-foot__brand span { font-family: var(--font-mono); font-size: 0.7rem; color: var(--cyan-dim); letter-spacing: 0.2em; }
-.hud-foot__credit { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); margin: 0; }
-.hud-foot__guide { margin-left: auto; font-family: var(--font-mono); font-size: 0.76rem; color: var(--cyan-dim); letter-spacing: 0.12em; text-decoration: none; text-transform: uppercase; }
-.hud-foot__guide:hover, .hud-foot__guide:focus-visible { color: var(--cyan); text-decoration: underline; text-underline-offset: 0.3em; }
-.hud-foot__links { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; }
-.hud-foot__links .hud-foot__guide { margin-left: 0; }
-.hud-foot__legal { font-family: var(--font-mono); font-size: 0.72rem; color: var(--faint); margin: 1rem 0 0; letter-spacing: 0.1em; }
+.hud-foot__plate {
+    padding: 1.4rem clamp(1.3rem, 3vw, 2.1rem) 1.2rem;
+    border-radius: 3px;
+}
+/* A plate divider, not a dashed rule. At 7px with a hard 2px/9px tick pattern this
+   read as a CSS dashed border — a placeholder. Twice the depth, a softer tick and a
+   real bevel makes it the same piece of hardware as the instrument bars above. */
+.hud-foot__line {
+    height: 12px;
+    margin-bottom: 1.1rem;
+    position: relative;
+    background:
+        /* score lines every 26px, not every 11: at a tight pitch a 12px bar reads as a
+           CSS dashed border, which is precisely the placeholder look this replaced */
+        radial-gradient(circle 2.2px at 10px 4px, rgba(208,224,248,0.7), rgba(0,0,0,0) 72%),
+        radial-gradient(circle 2.2px at calc(100% - 10px) 4px, rgba(208,224,248,0.7), rgba(0,0,0,0) 72%),
+        repeating-linear-gradient(90deg, rgba(0,0,0,0.34) 0 2px, transparent 2px 26px),
+        linear-gradient(180deg, #3a465d, var(--steel-3) 52%, var(--steel-4));
+    background-repeat: no-repeat, no-repeat, repeat, no-repeat;
+    border: 2px solid var(--ink);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.12),
+        inset 2px 2px 0 rgba(190,212,244,0.22),
+        inset -2px -2px 0 rgba(0,0,0,0.8),
+        0 3px 0 var(--ink);
+}
+.hud-foot__row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.8rem 2.4rem;
+    align-items: center;
+}
+/* A small TREATED lockup, not naked white Russo One immediately after a hero that
+   cast the same two words in metal: the diamond mark, then the wordmark struck with
+   the same one-lamp recipe the H2s carry, then the mono subtitle. */
+.hud-foot__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0;
+}
+.hud-foot__mark {
+    width: 18px; height: 18px;
+    flex: none;
+    transform: rotate(45deg);
+    border: 2px solid var(--ink);
+    background: linear-gradient(135deg, var(--amber-hi), var(--amber) 55%, var(--amber-lo));
+    box-shadow:
+        inset 1px 1px 0 rgba(255,255,255,0.55),
+        inset -1px -1px 0 rgba(80,45,5,0.75),
+        0 1px 0 var(--ink);
+}
+.hud-foot__name {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    letter-spacing: 0.05em;
+    color: #e9f0fb;
+    text-shadow:
+        0 -1px 0 rgba(206,224,255,0.32),
+        1px 1px 0 #0b0f18,
+        2px 2px 0 #070a11,
+        0 3px 6px rgba(0,0,0,0.6);
+}
+.hud-foot__sub { font-family: var(--font-mono); font-size: 0.68rem; color: var(--bronze); letter-spacing: 0.2em; }
+/* Three columns of a footer row need about 1000px between them. Below that the
+   wordmark broke over two lines, "PLAYER GUIDE" over two and "LORE & ART ARCHIVE"
+   over three, all inside 860px — five ragged fragments where there should be three
+   lines of type. The row stacks instead, and nothing inside it is allowed to wrap. */
+.hud-foot__name, .hud-foot__sub, .hud-foot__guide { white-space: nowrap; }
+@media (max-width: 1000px) {
+    .hud-foot__row { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 1rem; }
+    .hud-foot__links { justify-content: flex-start; }
+    .hud-foot__credit { text-align: left; }
+}
+/* "Created by Steve Seguin in 2012 · rebuilt for the modern web." is a sentence, not
+   a code. Same rule as .race__ability: mono is for labels and readouts. */
+.hud-foot__credit { font-size: 0.95rem; color: var(--muted); margin: 0; text-align: right; }
+/* Links look like links — but a 2px amber rule sitting 6px below the baseline and
+   overhanging the word at both ends is not an underline, it is a leftover
+   border-bottom, and it was pulling more amber weight than the footer wordmark
+   beside it. One hairline, close to the baseline, at under half strength; full
+   bronze only when the link is actually being addressed. */
+.hud-foot__guide {
+    font-family: var(--font-mono); font-size: 0.74rem;
+    color: var(--bronze); letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 0.25rem 0;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    text-decoration-color: rgba(199,154,71,0.45);
+}
+.hud-foot__guide:hover, .hud-foot__guide:focus-visible { color: var(--amber-hi); text-decoration-color: var(--bronze); }
+.hud-foot__guide:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+.hud-foot__links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem 1.6rem; }
+.hud-foot__legal {
+    display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap;
+    font-family: var(--font-mono); font-size: 0.72rem;
+    color: var(--legal); margin: 1.05rem 0 0; letter-spacing: 0.1em;
+    padding-top: 0.9rem;
+    border-top: 2px solid rgba(0,0,0,0.55);
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.05);
+}
+.hud-foot__code { color: var(--bronze); }
+
+/* The page is bookended. The command rail closes on a machined under-rail; without a
+   mirrored member at the base the document simply stops and the last thing a visitor
+   sees is undifferentiated black. Was an amber hazard stripe — same ban, same fix as
+   .hud-bar::after: a bolted hull sill in steel, lit on top, dark underneath. */
+.page-tape {
+    height: 10px;
+    background:
+        /* one rivet per 128px, domed — the same part as the rails, not a tick run */
+        radial-gradient(circle 2.2px at 64px 4px, rgba(220,236,255,0.85) 0 22%, rgba(90,104,131,0.7) 60%, rgba(0,0,0,0) 78%),
+        radial-gradient(circle 2.6px at 65px 5.4px, rgba(0,0,0,0.8), rgba(0,0,0,0) 74%),
+        linear-gradient(180deg, #4b5a72 0 2px, #2b3547 2px 5px, #141a27 5px 8px, #04060b 8px 10px);
+    background-repeat: repeat-x, repeat-x, repeat;
+    background-size: 128px 10px, 128px 10px, auto;
+    border-top: 2px solid var(--ink);
+    box-shadow: inset 0 1px 0 rgba(226,242,255,0.16), 0 -6px 14px rgba(0,0,0,0.6);
+}
+
+/* ------------------------------------------------------------
+   THE FRAME CLOSES
+
+   Three horizontal alignments were competing in the same frame: content stopped at
+   the text measure, the hull rails stood 90px outside it, and the base tape ran
+   full bleed 0 to 1920 — so the rails rose past the top of the footer rule with
+   nothing attaching to them and the hull conceit visibly failed to shut.
+   One rule, applied to every member that is part of the FRAME rather than part of
+   the content: the base tape takes the hull's outer footprint, and the footer rule
+   becomes the cross-member spanning rail-inner to rail-inner. Only above 1300px,
+   which is exactly where the rails exist.
+   ------------------------------------------------------------ */
+@media (min-width: 1301px) {
+    .page-tape {
+        max-width: calc(var(--maxw) + 6.5rem);
+        margin: 0 auto;
+        border-left: 2px solid var(--ink);
+        border-right: 2px solid var(--ink);
+    }
+    .hud-foot__line {
+        width: calc(var(--maxw) + 6.5rem - 28px);
+        left: 50%;
+        transform: translateX(-50%);
+    }
+}
 
 /* ============================================================
-   REVEAL (progressive enhancement; visible without JS)
+   HULL RAILS
+
+   The centred column floated in ~400px of bare margin on either side at desktop
+   widths, so the page read as a document with wide gutters rather than as a console
+   you are looking through. Two recessed channels pinned to the column edges, full
+   viewport height, rivetted at a fixed pitch: the margin becomes structure.
+
+   Fixed rather than in-flow on purpose — the rivets hold station while the content
+   scrolls past them, which is what sells them as part of the housing rather than
+   part of the page. Hidden below 1300px, where there is no margin left to structure
+   and they would crowd the copy instead.
    ============================================================ */
-.js .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
-.js .reveal.in { opacity: 1; transform: none; }
+.hull {
+    position: fixed;
+    inset: 0;
+    /* Under the hero (21) so the viewscreen is never crossed by a mullion, over the
+       console sections so the rails frame them. */
+    z-index: 20;
+    pointer-events: none;
+    max-width: calc(var(--maxw) + 6.5rem);
+    margin: 0 auto;
+}
+.hull__rail {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 14px;
+    background:
+        /* rivet: lit crown, then its own shadow half a pixel down-right */
+        radial-gradient(circle 2.8px at 6px 22px, rgba(226,238,255,0.95), rgba(0,0,0,0) 68%),
+        radial-gradient(circle 3.4px at 8px 24px, rgba(0,0,0,0.92), rgba(0,0,0,0) 68%),
+        /* a plate seam every other rivet, so the rail is fabricated in sections */
+        linear-gradient(180deg, rgba(0,0,0,0.85) 0 3px, rgba(255,255,255,0.09) 3px 4px, transparent 4px),
+        linear-gradient(90deg,
+            #05070d 0 1px,
+            #6a7893 1px 3px,
+            #3b4659 3px 45%,
+            #232b3b 45% 72%,
+            #0c1119 72% 92%,
+            #04060b 92%);
+    background-repeat: repeat-y, repeat-y, repeat-y, no-repeat;
+    background-size: 14px 84px, 14px 84px, 14px 168px, 100% 100%;
+    box-shadow:
+        inset 0 0 0 1px rgba(0,0,0,0.92),
+        0 0 20px rgba(0,0,0,0.8);
+}
+.hull__rail--l { left: 0; }
+.hull__rail--r { right: 0; transform: scaleX(-1); }
+
+/* ---- the rails TERMINATE ----
+   A flat gradient strip floating in black with no top or bottom cap reads as a
+   stray line, not as hull structure. Each rail now runs into a machined end cap at
+   both ends — a chamfered block the width of the rail, lit on top and dark
+   underneath at the head, mirrored at the foot — so the run visibly begins at the
+   command rail's hazard band and ends at the footer plate. */
+.hull__rail::before, .hull__rail::after {
+    content: "";
+    position: absolute;
+    left: -3px; right: -3px;
+    height: 16px;
+    background: linear-gradient(180deg, #7f8da8 0 2px, #3b4659 2px 7px, #1a2130 7px 12px, #04060b 12px 16px);
+    border: 1px solid var(--ink);
+    box-shadow: 0 0 10px rgba(0,0,0,0.9);
+}
+.hull__rail::before { top: 0; }
+.hull__rail::after  { bottom: 0; transform: scaleY(-1); }
+
+/* ---- the gutters are HULL, not void ----
+   On a 1920 frame the outer 237px on each side carried six dim dots and one 11px
+   line: a quarter of the screen doing nothing on a page whose whole premise is
+   that you are looking through a console. Two low-contrast passes, both keyed off
+   the rail's own position so they read as one piece of structure:
+     · a chamfered plate edge running the page margin, so the gutter has a surface
+       rather than being the absence of one,
+     · a stencilled frame number every 400px down each margin — the same voice as
+       the panel codes, at a value you only notice when you look for it. */
+/* 26px, hugging the rail. This is a HARD limit, not a taste one: the gutter
+   between the rail's inner face and the content column's first pixel closes to
+   26px at 1301px of viewport, which is the narrowest width at which the hull is
+   drawn at all. At 92px the plate reached 14px into the column and laid a
+   half-opacity veil down the left edge of every heading on the page — the "T" of
+   "Twelve ways to rule" rendered two-tone. Structure in the margin must stay in
+   the margin. */
+.hull__edge {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 26px;
+    background:
+        linear-gradient(90deg,
+            rgba(0,0,0,0.62) 0 1px,
+            rgba(158,184,224,0.13) 1px 2px,
+            rgba(70,86,112,0.06) 2px 10px,
+            rgba(0,0,0,0.20) 18px,
+            rgba(0,0,0,0) 100%),
+        repeating-linear-gradient(180deg,
+            rgba(0,0,0,0) 0 198px,
+            rgba(0,0,0,0.55) 198px 199px,
+            rgba(160,186,226,0.07) 199px 200px,
+            rgba(0,0,0,0) 200px 400px);
+}
+.hull__edge--l { left: 14px; }
+.hull__edge--r { right: 14px; transform: scaleX(-1); }
+/* Gated at 1441px, where the margin is wide enough to hold them clear of the
+   column: at 1441 the gutter runs 14..80 and the stamps take 20..72. */
+.hull__stamps {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 52px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    letter-spacing: 0.22em;
+    color: rgba(133,144,166,0.30);
+    text-align: center;
+}
+.hull__stamps--l { left: 22px; }
+.hull__stamps--r { right: 22px; }
+.hull__stamps i { font-style: normal; display: block; }
+@media (max-width: 1440px) { .hull__stamps { display: none; } }
+@media (max-width: 1300px) { .hull { display: none; } }
+
+/* ============================================================
+   REVEAL — an ADDITIVE entrance, never a visibility gate
+
+   This used to be `.js .reveal { opacity: 0 }` with the `in` class restoring it.
+   That makes the page's CONTENT conditional on a class arriving on time, and it
+   shipped a completely blank viewport: at 1920x1080, one screen of scroll, 1.2s
+   after the scroll, #doctrine had `.in` applied and was still computing to
+   opacity 0 — the transition had never been given a frame to start in because a
+   canvas bake owned the thread. An empty region where the first content block
+   should be is disqualifying, and no observer tuning fixes it, because the bug is
+   the premise: JS was deciding whether text is visible.
+
+   At rest the section is VISIBLE. `.in` plays a keyframe that starts from the
+   offset state and lands on the resting one, so a stalled main thread costs you
+   an animation and never the content. `animation` rather than `transition` for
+   the same reason: an animation has an authored start value and does not need a
+   painted "before" frame to interpolate from.
+   ============================================================ */
+.js .reveal { opacity: 1; transform: none; }
+.js .reveal.in { animation: reveal-rise .55s cubic-bezier(.22,.61,.36,1) both; }
+@keyframes reveal-rise {
+    from { opacity: 0; transform: translateY(22px); }
+    to   { opacity: 1; transform: none; }
+}
 
 /* ============================================================
    RESPONSIVE
@@ -859,9 +2555,16 @@ img { max-width: 100%; display: block; }
 @media (max-width: 1120px) {
     .hud-stardate { display: none; }
 }
+/* Short laptop screens: the hero already has to fit a wordmark, a lede, a CTA row and
+   a gauge strip above the ticker, and the brief is the row that can go. */
+@media (max-height: 780px) {
+    .hero__brief { display: none; }
+}
 @media (max-width: 880px) {
     .hud-status { display: none; }
     .theatre__frame { grid-template-columns: 1fr; }
+    /* the fourth instrument row is a desktop luxury; on a phone the hero has to fit */
+    .hero__brief { display: none; }
     .hero { min-height: 86vh; padding: 1rem 0 0; }
     .hero__inner { padding-top: 3rem; padding-bottom: 6rem; }
     .hero__inner::before {
@@ -869,32 +2572,58 @@ img { max-width: 100%; display: block; }
         position: absolute;
         inset: -2rem -1.5rem;
         z-index: -1;
-        background: radial-gradient(120% 75% at 32% 42%, rgba(5,7,13,0.82), rgba(5,7,13,0.4) 58%, transparent 80%);
+        background: radial-gradient(120% 75% at 32% 42%, rgba(5,7,13,0.86), rgba(5,7,13,0.45) 58%, transparent 80%);
         pointer-events: none;
     }
-    .hero__canvas, .hero__grid { -webkit-mask-image: none; mask-image: none; }
-    .theatre__ship { opacity: 0.32; width: min(80%, 480px); right: -10%; }
+    .hero__canvas { -webkit-mask-image: none; mask-image: none; }
+    /* In portrait the world sits low and centred rather than right, so the grid has
+       to be cleared downward instead of sideways — but it still has to be cleared.
+       Setting the mask to `none` here was what let the reference grid rule straight
+       across the globe on a phone. */
+    .hero__grid {
+        -webkit-mask-image: linear-gradient(180deg, #000 0 30%, transparent 52%);
+        mask-image: linear-gradient(180deg, #000 0 30%, transparent 52%);
+        -webkit-mask-composite: source-over;
+        mask-composite: add;
+    }
+    .hud-bar .hud-vent { display: none; }
+    /* the portrait layout has its own scrim behind the copy; stacking both buries the
+       planet entirely and the hero goes flat black */
+    .hero::after { display: none; }
 }
 @media (max-width: 560px) {
-    body { font-size: 1.02rem; }
-    .hud-bar { gap: 0.75rem; padding: 0.6rem 1rem; }
+    body { font-size: 1.01rem; }
+    .hud-bar { gap: 0.7rem; padding: 0.55rem 0.9rem; }
     .brand__sub { display: none; }
-    .btn--key { font-size: 0.74rem; padding: 0.6rem 0.95rem; }
+    /* "GAME OF WORLDS" wrapped to two lines on a 430px phone and took the whole
+       command rail with it. One size down keeps the mark on one line. */
+    .brand__name { font-size: 0.8rem; white-space: nowrap; }
+    .btn--key { font-size: 0.72rem; padding: 0.58rem 0.85rem; }
     .btn__full { display: none; }
     .btn__short { display: inline; }
     .hud-links a:first-child { display: none; }
     .hud-links { margin-left: auto; font-size: 0.62rem; }
-    .hero__title { font-size: clamp(2.8rem, 14vw, 4rem); }
-    .hero__stats { gap: 1.5rem; }
-    .hero__actions { gap: 1.1rem; }
+    .hero__title { font-size: clamp(2.7rem, 13.5vw, 3.9rem); }
+    /* grid, not wrap: wrapping leaves a divider hanging off the end of the first row */
+    .hero__stats { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
+    .hero__stats div { padding: 0.15rem 0.55rem; }
+    .hero__stats dt { font-size: 0.55rem; letter-spacing: 0.13em; }
+    .hero__stats dd { font-size: 0.95rem; }
+    .hero__actions { gap: 1rem; }
+    .mode-chips { width: 100%; }
+    .chip { padding: 0.5rem 0.9rem; }
+    .chip i { font-size: 0.62rem; }
     .btn--primary { width: 100%; justify-content: center; }
-    .dossier { grid-template-columns: 1fr; }
     .doctrine-grid { grid-template-columns: 1fr; }
     .race { grid-template-columns: 1fr; text-align: left; }
-    .race__emblem { width: 64px; height: 64px; }
+    .race__emblem { width: 96px; height: 74px; }
     .race__bars { max-width: none; }
-    .log__row { grid-template-columns: auto 1fr; }
+    .log__row { grid-template-columns: 8rem 1fr; padding: 1.1rem 1.15rem; }
     .log__led { display: none; }
+    .module__vent, .enlist__vent { display: none; }
+    .hud-foot__row { grid-template-columns: 1fr; justify-items: start; }
+    .hud-foot__links { justify-content: flex-start; }
+    .hud-foot__credit { text-align: left; }
 }
 
 /* ============================================================
@@ -905,7 +2634,6 @@ img { max-width: 100%; display: block; }
     /* Gentle ambient motion (ticker marquee, star twinkle, status LEDs, slow planet spin) is kept
        by design intent. Only the disorienting transforms are reduced: scroll-reveal jumps,
        hover lifts, and the cursor-driven parallax (the parallax is gated in landing.js). */
-    .js .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
-    .feature-list li:hover, .race-card:hover { transform: none; }
-    .cta-button:hover, .cta-button:focus-visible { transform: none; }
+    .js .reveal, .js .reveal.in { opacity: 1 !important; transform: none !important; animation: none !important; }
+    .pillar:hover, .race:hover, .log__row:hover { transform: none; }
 }

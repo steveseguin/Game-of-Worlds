@@ -13,14 +13,59 @@
     <meta property="og:description" content="Probe the dark. Seize the hazards. Command real fleets across a living galaxy of twelve factions.">
     <meta property="og:image" content="images/title2.png">
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/landing.css?v=20260726a">
+    <!-- The three faces are served from THIS origin (see the @font-face block at the
+         head of landing.css). With fonts.googleapis.com blocked the whole document —
+         wordmark included — used to render in Segoe UI, and the render-blocking CDN
+         stylesheet plus display=swap reflowed the 98px hero title on every cold load.
+         Russo One is preloaded because the wordmark is the one element on this page
+         that must not arrive twice. -->
+    <link rel="preload" href="images/ui/font-russo-one-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="images/ui/font-rajdhani-600-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="css/landing.css?v=20260728r40">
 </head>
 <body>
+    <!-- THE BLACK POINT THE CREST PNGs DO NOT HAVE.
+         The twelve faction crests are opaque plates, not cut-outs: measured, every
+         one of them carries a flat backing at 19-22 codes with a faint grid printed
+         into it, and only the outermost 3px ring is true black. The emblem wells
+         composite the casting in `screen`, where black contributes nothing — but 20
+         does, so each PNG's own backing was lifting the milled-steel well floor by
+         ~4 codes and the image box read as a lighter rectangle inside the recess.
+         contrast() cannot fix that: it pivots on mid-grey, so crushing a 20-code toe
+         with it costs a stop of the artwork.
+         This is a levels black point and nothing else: out = (in - 0.105) / 0.895,
+         clamped. The backing and its grid go to exactly zero — so `screen` truly has
+         nothing to add there — the white point is untouched, and the mid-tones of the
+         casting compress by about a tenth, which reads as a slightly crisper strike.
+         sRGB, not the linearRGB an SVG filter defaults to, because the value being
+         keyed was measured in sRGB. -->
+    <svg width="0" height="0" aria-hidden="true" focusable="false"
+         style="position:absolute;width:0;height:0;overflow:hidden">
+        <filter id="crest-key" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+            <feComponentTransfer>
+                <feFuncR type="linear" slope="1.117" intercept="-0.117"/>
+                <feFuncG type="linear" slope="1.117" intercept="-0.117"/>
+                <feFuncB type="linear" slope="1.117" intercept="-0.117"/>
+            </feComponentTransfer>
+        </filter>
+    </svg>
     <div class="scanlines" aria-hidden="true"></div>
     <div class="vignette" aria-hidden="true"></div>
+    <!-- hull rails: the side margins are structure, not void (desktop only).
+         The frame stamps are hull markings, not content — a reader who never sees
+         them loses nothing, which is why the whole block is aria-hidden. -->
+    <div class="hull" aria-hidden="true">
+        <span class="hull__edge hull__edge--l"></span>
+        <span class="hull__edge hull__edge--r"></span>
+        <span class="hull__rail hull__rail--l"></span>
+        <span class="hull__rail hull__rail--r"></span>
+        <span class="hull__stamps hull__stamps--l">
+            <i>FR·04</i><i>FR·05</i><i>FR·06</i><i>FR·07</i>
+        </span>
+        <span class="hull__stamps hull__stamps--r">
+            <i>SB·04</i><i>SB·05</i><i>SB·06</i><i>SB·07</i>
+        </span>
+    </div>
 
     <!-- ======================= TOP COMMAND BAR ======================= -->
     <header class="hud-bar">
@@ -33,6 +78,18 @@
                 <span class="brand__sub">// GALACTIC CONQUEST</span>
             </span>
         </a>
+
+        <!-- The middle span of the rail is a RUN OF BOLTED PLATES, not one tiled
+             gradient: four members at different widths, two louvred at different
+             pitches, two stencilled, a bolt head at every joint. Decorative hull
+             marking — a reader who never sees it loses nothing. -->
+        <span class="hud-vent" aria-hidden="true">
+            <span class="hud-vent__plate hud-vent__plate--flute"></span>
+            <span class="hud-vent__plate hud-vent__plate--code"><i>PNL-04</i></span>
+            <span class="hud-vent__plate hud-vent__plate--fine"></span>
+            <span class="hud-vent__plate hud-vent__plate--code"><i>PWR-11</i></span>
+            <span class="hud-vent__plate hud-vent__plate--wide"></span>
+        </span>
 
         <div class="hud-status" aria-hidden="true">
             <span class="led led--ok"></span>
@@ -56,6 +113,8 @@
             <span class="btn__chev" aria-hidden="true">▸</span>
         </a>
     </header>
+    <!-- content dissolves under the rail rather than being guillotined by it -->
+    <div class="hud-veil" aria-hidden="true"></div>
 
     <!-- ======================= HERO ======================= -->
     <section class="hero" id="top">
@@ -66,7 +125,11 @@
         <div class="hero__inner">
             <div class="hero__copy">
                 <p class="kicker"><span class="kicker__tick"></span>INCOMING TRANSMISSION // SECTOR 0</p>
-                <h1 class="hero__title">GAME&nbsp;OF<br><span>WORLDS</span></h1>
+                <!-- The heading text stays in the document — it is the page's h1 and
+                     the thing search and assistive tech read. landing.js casts it as a
+                     beveled logotype into the canvas and only then turns the live text
+                     transparent, so a failed bake leaves the CSS treatment standing. -->
+                <h1 class="hero__title">GAME&nbsp;OF<br><span>WORLDS</span><canvas class="hero__title__bake" aria-hidden="true"></canvas></h1>
                 <p class="hero__lede">
                     Twelve factions. One contested galaxy. Probe the dark, seize the
                     hazards that kill lesser fleets, and rewrite who rules the stars.
@@ -75,21 +138,39 @@
                 <div class="hero__actions">
                     <a class="btn btn--primary" href="/login.html">
                         DEPLOY FLEET
-                        <span class="btn__sub">▸ PLAY FREE</span>
+                        <span class="btn__sub">PLAY FREE</span>
                     </a>
+                </div>
+
+                <!-- ONE instrument column, one right edge.
+                     The chip row, the gauge strip and the brief used to size themselves
+                     to their own contents (fit-content on two of them), so three
+                     identical steel plates stacked vertically ended at three different
+                     x — 780, 718, 820 — with 2.2rem then 1rem between them. A stack of
+                     plates in a console is a RACK: same width, same pitch. -->
+                <div class="hero__stack">
                     <div class="mode-chips" role="list">
                         <span class="chip" role="listitem"><b>QUICK</b><i>3-minute turns · an afternoon</i></span>
                         <!-- 120 turns at a turn a day is four months, not "weeks". Kept in step with the
                              body copy below, which now says the same thing. -->
                         <span class="chip" role="listitem"><b>EPIC</b><i>one turn a day · for months</i></span>
                     </div>
-                </div>
 
-                <dl class="hero__stats" aria-label="Game facts">
-                    <div><dt>FACTIONS</dt><dd>12</dd></div>
-                    <div><dt>TURN ENGINE</dt><dd>REAL-TIME</dd></div>
-                    <div><dt>ORIGIN</dt><dd>EST. 2012</dd></div>
-                </dl>
+                    <dl class="hero__stats" aria-label="Game facts">
+                        <div><dt>FACTIONS</dt><dd>12</dd></div>
+                        <div><dt>TURN ENGINE</dt><dd>REAL-TIME</dd></div>
+                        <div><dt>ORIGIN</dt><dd>EST. 2012</dd></div>
+                    </dl>
+
+                    <div class="hero__brief">
+                        <span class="hero__brief__code" aria-hidden="true">SYS://BRIEF</span>
+                        <dl aria-label="Standing hazard brief">
+                            <dt>PROBE</dt><dd>300 CRYSTAL · READS A SECTOR WITHOUT RISKING A FLEET</dd>
+                            <dt>BELT</dt><dd>50% LOSS IN TRANSIT · <b>0% ONCE YOU OWN IT</b></dd>
+                            <dt>BLACK HOLE</dt><dd><i>TOTAL LOSS</i> · NEVER A DICE ROLL</dd>
+                        </dl>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -118,15 +199,46 @@
         <!-- ======================= 01 · DOCTRINE ======================= -->
         <section class="module reveal" id="doctrine" aria-labelledby="doctrine-h">
             <div class="module__head">
-                <p class="module__id">// 01 — FIELD DOCTRINE</p>
+                <div class="module__bar">
+                    <span class="module__code">PNL-01</span>
+                    <p class="module__id">Field Doctrine</p>
+                    <!-- The span that used to close this bar was ~1200px of ONE
+                         repeating-linear-gradient tick pattern: no plate breaks, no bolt
+                         heads, no stencilling, no wear — the exact flaw the command rail
+                         was rebuilt to fix, left standing in the three widest elements on
+                         the page. It is the same run of bolted plates now. -->
+                    <span class="hud-vent module__vent" aria-hidden="true">
+                        <span class="hud-vent__plate hud-vent__plate--flute"></span>
+                        <span class="hud-vent__plate hud-vent__plate--code"><i>PWR-02</i></span>
+                        <span class="hud-vent__plate hud-vent__plate--fine"></span>
+                        <span class="hud-vent__plate hud-vent__plate--wide"></span>
+                    </span>
+                </div>
                 <h2 class="module__title" id="doctrine-h">How the galaxy is won</h2>
-                <p class="module__lede">Exploration is a gamble, not a formality. Every sector you enter can hand you a homeworld — or erase your fleet. This is the game's spine.</p>
+                <p class="module__lede">Exploration is a gamble, not a formality. Every sector you enter can hand you a homeworld — or erase your fleet. This is the game’s spine.</p>
             </div>
 
             <div class="doctrine-grid">
+                <!-- SIX PICTURES, ONE GRADE.
+                     Three of these cards used to carry canvas bakes — an asteroid field,
+                     an extraction rig and a dreadnought drawn out of paths. However
+                     carefully a 2D canvas is shaded it is still DRAWN, and next to two
+                     paintings it read as three missing assets: flat-filled polygons, a
+                     rig assembled from rounded rectangles, and a hull the starfield was
+                     visible straight through (the stars are emissive and the hull was
+                     not, so every star under the ship survived the composite).
+                     The library holds painted plates of all three subjects. They are in
+                     the wells now, under the single grade declared on .pillar__bake /
+                     .pillar__plate so the row shares one black point and one key.
+                     DOC-01 keeps its bake: a black hole has no lit surface, so it is the
+                     one subject in the set that is emissive rather than shaded, and the
+                     painted collapsar in the library is too dark to survive at 138px. -->
                 <article class="pillar pillar--danger">
+                    <span class="pillar__code">DOC-01</span>
                     <div class="pillar__art">
-                        <img src="images/type2.gif" alt="A black hole — swirling darkness collapsing to a void." loading="lazy" decoding="async">
+                        <canvas class="pillar__bake" data-thumb="hole" width="688" height="276"
+                                style="--plate-lift: 0.86; --plate-sat: 0.66"
+                                role="img" aria-label="A black hole: a lensed accretion disc arching over the shadow, with a photon ring hard against it."></canvas>
                         <span class="pillar__tag">HAZARD</span>
                     </div>
                     <h3>Explore at your peril</h3>
@@ -134,8 +246,12 @@
                 </article>
 
                 <article class="pillar pillar--danger">
+                    <span class="pillar__code">DOC-02</span>
                     <div class="pillar__art">
-                        <img src="images/type1.gif" alt="An asteroid belt strewn with glinting ore." loading="lazy" decoding="async">
+                        <img class="pillar__plate" src="images/ui/sectors-512-type-01-asteroid-shoal.png"
+                             alt="" aria-hidden="true" width="512" height="512"
+                             style="object-position: 50% 49%; --plate-lift: 1.34; --plate-sat: 0.46; --plate-warm: 0.26"
+                             loading="lazy" decoding="async">
                         <span class="pillar__tag">CONTEST</span>
                     </div>
                     <h3>Seize the hazards</h3>
@@ -143,10 +259,27 @@
                 </article>
 
                 <article class="pillar">
-                    <div class="pillar__art pillar__art--row">
-                        <img src="images/metal.png" alt="Refined metal ore." loading="lazy" decoding="async">
-                        <img src="images/crystal.png" alt="A crystal cluster." loading="lazy" decoding="async">
-                        <img src="images/research.png" alt="Research data." loading="lazy" decoding="async">
+                    <span class="pillar__code">DOC-03</span>
+                    <!-- The Works: a hull-city under its own smoke, already published for
+                         the faction dossier. "Every world you hold becomes a factory" is
+                         literally what this painting is of.
+                         LIFT ALONE COULD NOT SEAT THIS ONE. The source is the flattest
+                         picture in the row — smoke over a hull-city is a 2.7:1 span where
+                         the other five run 4:1 to 22:1 — so brightness(0.60) matched the
+                         row's mean by throwing the whole top end away: 99th-percentile
+                         luma 67 against 88-200 for its neighbours, i.e. the only plate
+                         with no highlights at all. Contrast is the trim that answers
+                         that, because it moves the top end and the mean in opposite
+                         directions: 0.88/1.22 puts p99 at 94 (DOC-06 is 94) and mean at
+                         33 (DOC-05 is 33), so the card joins the row at BOTH ends rather
+                         than only at its black point. The cost is 4% of the pixels
+                         clipping to true black, all of them inside the well's own
+                         vignette, where there was nothing to see. -->
+                    <div class="pillar__art">
+                        <img class="pillar__plate" src="images/ui/homeworlds-06-works-960x540.png"
+                             alt="" aria-hidden="true" width="448" height="252"
+                             style="object-position: 50% 72%; --plate-lift: 0.88; --plate-contrast: 1.22; --plate-sat: 0.92"
+                             loading="lazy" decoding="async">
                         <span class="pillar__tag">ECONOMY</span>
                     </div>
                     <h3>Forge an empire</h3>
@@ -154,17 +287,29 @@
                 </article>
 
                 <article class="pillar">
-                    <div class="pillar__art pillar__art--ship">
-                        <img src="images/dreadnaught.png" alt="A top-down dreadnought warship." loading="lazy" decoding="async">
+                    <span class="pillar__code">DOC-04</span>
+                    <div class="pillar__art">
+                        <img class="pillar__plate" src="images/ui/campaign-01-sesses-two-seconds.png"
+                             alt="" aria-hidden="true" width="640" height="427"
+                             style="object-position: 50% 40%; --plate-lift: 0.82; --plate-sat: 0.50; --plate-warm: 0.16"
+                             loading="lazy" decoding="async">
                         <span class="pillar__tag">WARFARE</span>
                     </div>
                     <h3>Command real fleets</h3>
-                    <p>Raid supply lines with fast interceptors; break worlds with orbital dreadnoughts. Read the enemy's doctrine and counter it with the right tech at the right turn.</p>
+                    <p>Raid supply lines with fast interceptors; break worlds with orbital dreadnoughts. Read the enemy’s doctrine and counter it with the right tech at the right turn.</p>
                 </article>
 
                 <article class="pillar">
-                    <div class="pillar__art pillar__art--glyph">
-                        <span class="glyph glyph--tempo" aria-hidden="true"></span>
+                    <span class="pillar__code">DOC-05</span>
+                    <!-- Was a canvas-baked turn dial: a diagram, not a picture, and it
+                         sat between four painted plates. This is the library's own
+                         painting of a convoy queued to leave on schedule, which is what
+                         the card is actually about. Decorative — the copy carries it. -->
+                    <div class="pillar__art">
+                        <img class="pillar__plate" src="images/ui/campaign-03-the-schedule.png"
+                             alt="" aria-hidden="true" width="1000" height="667"
+                             style="object-position: 50% 44%; --plate-zoom: 1.28; --plate-lift: 1.50; --plate-sat: 0.90"
+                             loading="lazy" decoding="async">
                         <span class="pillar__tag">TEMPO</span>
                     </div>
                     <h3>Quick or Epic</h3>
@@ -172,15 +317,26 @@
                          90 turns at three minutes each — an afternoon — and the QUICK chip
                          further up the page already said so, so the page contradicted itself
                          on the one thing a visitor most needs to know before starting: how
-                         much of their day this wants. Epic's income boost is real
+                         much of their day this wants. Epic’s income boost is real
                          (EPIC_RESOURCE_MULTIPLIER is 12) and stays. -->
                     <p>Play out a whole campaign across an afternoon of three-minute turns — or trade one decisive move a day with friends for months. Epic mode boosts income so every order lands hard.</p>
                 </article>
 
                 <article class="pillar">
-                    <div class="pillar__art pillar__art--glyph">
-                        <span class="glyph glyph--ai" aria-hidden="true"></span>
-                        <span class="pillar__tag">AI CORE</span>
+                    <span class="pillar__code">DOC-06</span>
+                    <!-- Was a canvas-baked processor die — round-cap strokes on a grey
+                         rectangle, with no key light and no material. A card about who
+                         you play against wants people in it. -->
+                    <div class="pillar__art">
+                        <!-- The only painting on the page with human faces in it, and it was
+                             out-shouting the black hole two cards up. Pulled hardest of the
+                             six: the grade below is shared, this is the one card that also
+                             gives up chroma. -->
+                        <img class="pillar__plate" src="images/ui/campaign-09-trace-market.png"
+                             alt="" aria-hidden="true" width="760" height="507"
+                             style="object-position: 50% 30%; --plate-lift: 0.78; --plate-sat: 0.46"
+                             loading="lazy" decoding="async">
+                        <span class="pillar__tag">OPPONENTS</span>
                     </div>
                     <h3>Allies &amp; foes on tap</h3>
                     <p>Fill empty seats in seconds. Drill against an AI-only sandbox, or blend humans and bots so a match always fires — no waiting on a full lobby.</p>
@@ -190,19 +346,35 @@
 
         <!-- ======================= BATTLE THEATRE ======================= -->
         <section class="theatre reveal" aria-labelledby="theatre-h">
+            <!-- The viewscreen shows a picture, not a sprite. This replaced a 660px-wide
+                 game asset laid over the panel at mix-blend-mode:screen and 50% opacity,
+                 which is a compositing trick standing in for artwork. The library holds a
+                 painted plate of exactly this subject — a capital ship and its escorts
+                 under way through a shoal — so the frame now contains the scene the copy
+                 beside it describes. Decorative: the paragraph carries the meaning. -->
             <div class="theatre__frame">
-                <img class="theatre__ship" src="images/dreadnaught.png" alt="" aria-hidden="true" loading="lazy" decoding="async">
+                <img class="theatre__art" src="images/ui/supporting-landing-hero-1600x900.png"
+                     alt="" aria-hidden="true" width="1400" height="788" loading="lazy" decoding="async">
+                <span class="theatre__scrim" aria-hidden="true"></span>
+                <!-- bolted into the hull at four corners, in steel — see .gusset -->
+                <span class="gusset gusset--tl" aria-hidden="true"></span>
+                <span class="gusset gusset--tr" aria-hidden="true"></span>
+                <span class="gusset gusset--bl" aria-hidden="true"></span>
+                <span class="gusset gusset--br" aria-hidden="true"></span>
                 <div class="theatre__copy">
                     <p class="kicker"><span class="kicker__tick"></span>THEATRE OF WAR</p>
                     <h2 id="theatre-h">The bridge is yours.<br>Give the order.</h2>
                     <p>Capital ships hang over a burning frontier. Every turn, somewhere in the grid, a fleet commits and a world changes hands. Step onto the bridge and make the next move count.</p>
-                    <a class="btn btn--primary" href="/login.html">TAKE THE BRIDGE <span class="btn__sub">▸ PLAY FREE</span></a>
+                    <a class="btn btn--primary" href="/login.html">TAKE THE BRIDGE <span class="btn__sub">PLAY FREE</span></a>
                 </div>
                 <div class="theatre__readout" aria-hidden="true">
-                    <p class="readout__line"><span>SECTOR</span><b>07 · CONTESTED</b></p>
-                    <p class="readout__line"><span>FLEET</span><b>DREADNOUGHT × 4</b></p>
-                    <p class="readout__line"><span>THREAT</span><b class="hot">BLACK HOLE</b></p>
-                    <p class="readout__line"><span>ORDER</span><b>SIEGE // HOLD</b></p>
+                    <span class="readout__code">TAC-07 // LIVE FEED</span>
+                    <div class="readout__lines">
+                        <p class="readout__line"><span>SECTOR</span><b>07 · CONTESTED</b></p>
+                        <p class="readout__line"><span>FLEET</span><b>DREADNOUGHT × 4</b></p>
+                        <p class="readout__line"><span>THREAT</span><b class="hot">BLACK HOLE</b></p>
+                        <p class="readout__line"><span>ORDER</span><b>SIEGE // HOLD</b></p>
+                    </div>
                 </div>
             </div>
         </section>
@@ -210,188 +382,211 @@
         <!-- ======================= 02 · FACTION DATABASE ======================= -->
         <section class="module reveal" id="factions" aria-labelledby="factions-h">
             <div class="module__head">
-                <p class="module__id">// 02 — FACTION DATABASE</p>
+                <div class="module__bar">
+                    <span class="module__code">PNL-02</span>
+                    <p class="module__id">Faction Database</p>
+                    <span class="hud-vent module__vent" aria-hidden="true">
+                        <span class="hud-vent__plate hud-vent__plate--wide"></span>
+                        <span class="hud-vent__plate hud-vent__plate--code"><i>PWR-07</i></span>
+                        <span class="hud-vent__plate hud-vent__plate--flute"></span>
+                        <span class="hud-vent__plate hud-vent__plate--fine"></span>
+                    </span>
+                </div>
                 <h2 class="module__title" id="factions-h">Twelve ways to rule</h2>
                 <p class="module__lede">No two factions play alike. Each rewrites production, speed, and war — and most must be earned. Start as the Terrans; unlock the rest through conquest.</p>
             </div>
 
             <div class="dossier">
                 <!-- 1 -->
-                <article class="race" style="--fac:#5aa9ff">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/terran-emblem-v2.svg" alt="Terran Empire insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-01-terran.png"
+                                                  width="256" height="193" alt="Terran Empire insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Terran Empire</h3>
                         <p class="race__role">Balanced human powers · steady on every front</p>
-                        <p class="race__ability"><span>ABILITY</span>Adaptable — no weak discipline, and every tech and hull</p>
+                        <p class="race__ability"><span>ABILITY</span>Adaptable — no weak discipline, every tech and hull</p>
+                        <!-- Three identical bars read as unpopulated data, not as a balanced
+                             faction. Terran is level, not flat: one segment of spread. -->
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:55%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:55%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:55%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:9"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:10"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:9"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock chip--starter">STARTER</span>
                 </article>
                 <!-- 2 -->
-                <article class="race" style="--fac:#3ee0cf">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/silicon-icon.svg" alt="Silicon Collective insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-02-silicon.png"
+                                                  width="256" height="193" alt="Silicon Collective insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Silicon Collective</h3>
                         <p class="race__role">A machine hive of pure computation</p>
                         <p class="race__ability"><span>ABILITY</span>Neural Network — research +30%, hulls 10% cheaper</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:55%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:82%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:50%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:9"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:13"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:8"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock">WIN 3 GAMES</span>
                 </article>
                 <!-- 3 -->
-                <article class="race" style="--fac:#7fd957">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/zephyr-icon.svg" alt="Zephyr Swarm insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-03-zephyr.png"
+                                                  width="256" height="193" alt="Zephyr Swarm insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Zephyr Swarm</h3>
                         <p class="race__role">A hive mind that drowns the map in cheap hulls</p>
                         <p class="race__ability"><span>ABILITY</span>Swarm — ships cost 30% less, and hit 20% softer</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:55%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:45%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:52%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:9"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:7"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:8"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock">COLONISE 20 WORLDS</span>
                 </article>
                 <!-- 4 -->
-                <article class="race" style="--fac:#8fd9ff">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/crystalline-icon.svg" alt="Crystalline Entity insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-04-crystalline.png"
+                                                  width="256" height="193" alt="Crystalline Entity insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Crystalline Entity</h3>
                         <p class="race__role">Energy beings sheathed in living crystal</p>
                         <p class="race__ability"><span>ABILITY</span>Crystal Matrix — ships gain +30% shields</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:62%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:62%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:80%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:10"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:10"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:13"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock">MINE 50,000 CRYSTAL</span>
                 </article>
                 <!-- 5 -->
-                <article class="race" style="--fac:#b18bff">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/void-icon.svg" alt="Void Walkers insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-05-void-walkers.png"
+                                                  width="256" height="193" alt="Void Walkers insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Void Walkers</h3>
                         <p class="race__role">Ancients who fold space and strike from nowhere</p>
                         <p class="race__ability"><span>ABILITY</span>Phase Shift — fleets move 50% faster</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:50%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:68%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:54%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:8"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:11"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:9"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock">PLAY 25 GAMES</span>
                 </article>
                 <!-- 6 -->
-                <article class="race" style="--fac:#ff9a4d">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/mechanicus-icon.svg" alt="Mechanicus insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-06-mechanicus.png"
+                                                  width="256" height="193" alt="Mechanicus insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Mechanicus</h3>
-                        <p class="race__role">A machine civilisation that simply won't stop</p>
+                        <p class="race__role">A machine civilisation that simply won’t stop</p>
                         <p class="race__ability"><span>ABILITY</span>Forge Doctrine — +40% ship defence on slow, costly hulls</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:62%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:50%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:82%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:10"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:8"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:13"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock">BUILD 500 SHIPS</span>
                 </article>
                 <!-- 7 -->
-                <article class="race" style="--fac:#62e08a">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/bioform-icon.svg" alt="Bioform Collective insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-07-bioform.png"
+                                                  width="256" height="193" alt="Bioform Collective insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Bioform Collective</h3>
                         <p class="race__role">Living ships that evolve the longer they survive</p>
                         <p class="race__ability"><span>ABILITY</span>Living Hulls — ships grown 10% cheaper on strong crystal</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:55%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:55%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:58%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:10"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:8"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:9"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock">WIN 50 BATTLES</span>
                 </article>
                 <!-- 8 -->
-                <article class="race" style="--fac:#ffc24d">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/nomad-icon.svg" alt="Star Nomads insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-08-star-nomads.png"
+                                                  width="256" height="193" alt="Star Nomads insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Star Nomads</h3>
                         <p class="race__role">Rootless fleets that build anywhere and run fast</p>
                         <p class="race__ability"><span>ABILITY</span>Nomadic — the fastest, cheapest fleet; thin armour</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:52%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:55%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:60%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:8"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:9"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:10"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock">EXPLORE 100 SECTORS</span>
                 </article>
                 <!-- 9 -->
-                <article class="race" style="--fac:#ffd97a">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/ancient-icon.svg" alt="The Ancients insignia" loading="lazy" decoding="async"></div>
+                <article class="race">
+                    <div class="race__emblem"><img src="images/ui/crests-512-09-ancients.png"
+                                                  width="256" height="193" alt="The Ancients insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">The Ancients</h3>
                         <p class="race__role">Precursors wielding every tech — at a steep price</p>
                         <p class="race__ability"><span>ABILITY</span>Precursor Tech — fastest research, deadliest hulls, +50% cost</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:45%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:88%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:86%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:7"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:14"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:14"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock">REFER 3 ALLIES</span>
                 </article>
                 <!-- 10 -->
-                <article class="race race--premium" style="--fac:#ff6cf0">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/quantum-icon.svg" alt="Quantum Entities insignia" loading="lazy" decoding="async"></div>
+                <article class="race race--premium">
+                    <div class="race__emblem"><img src="images/ui/crests-512-10-quantum.png"
+                                                  width="256" height="193" alt="Quantum Entities insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Quantum Entities</h3>
                         <p class="race__role">Pure energy that teleports across the board</p>
                         <p class="race__ability"><span>ABILITY</span>Quantum Entanglement — research, crystal and guns; +30% hulls</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:64%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:82%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:70%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:10"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:13"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:11"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock chip--premium">◆ PREMIUM</span>
                 </article>
                 <!-- 11 -->
-                <article class="race race--premium" style="--fac:#ffae5c">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/titan-icon.svg" alt="Titan Lords insignia" loading="lazy" decoding="async"></div>
+                <article class="race race--premium">
+                    <div class="race__emblem"><img src="images/ui/crests-512-11-titan-lords.png"
+                                                  width="256" height="193" alt="Titan Lords insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Titan Lords</h3>
                         <p class="race__role">Giants who field colossal, devastating ships</p>
                         <p class="race__ability"><span>ABILITY</span>Colossal — 2× power, 2× cost</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:62%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:40%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:100%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:10"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:6"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:16"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock chip--premium">◆ PREMIUM</span>
                 </article>
                 <!-- 12 -->
-                <article class="race race--premium" style="--fac:#9b7bff">
-                    <div class="race__emblem"><span class="race__ring"></span><img src="images/shadow-icon.svg" alt="Shadow Realm insignia" loading="lazy" decoding="async"></div>
+                <article class="race race--premium">
+                    <div class="race__emblem"><img src="images/ui/crests-512-12-shadow-realm.png"
+                                                  width="256" height="193" alt="Shadow Realm insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Shadow Realm</h3>
                         <p class="race__role">Cloaked raiders who strike from the dark</p>
                         <p class="race__ability"><span>ABILITY</span>Cloak — hides your fleet composition from weak scouts</p>
                         <div class="race__bars">
-                            <div class="bar"><i>ECO</i><span><b style="width:58%"></b></span></div>
-                            <div class="bar"><i>TECH</i><span><b style="width:62%"></b></span></div>
-                            <div class="bar"><i>WAR</i><span><b style="width:62%"></b></span></div>
+                            <div class="bar"><i>ECO</i><span><b style="--seg:9"></b></span></div>
+                            <div class="bar"><i>TECH</i><span><b style="--seg:10"></b></span></div>
+                            <div class="bar"><i>WAR</i><span><b style="--seg:10"></b></span></div>
                         </div>
                     </div>
                     <span class="race__lock chip--premium">◆ PREMIUM</span>
@@ -402,7 +597,16 @@
         <!-- ======================= 03 · FIELD LOG ======================= -->
         <section class="module reveal" id="log" aria-labelledby="log-h">
             <div class="module__head">
-                <p class="module__id">// 03 — FIELD LOG</p>
+                <div class="module__bar">
+                    <span class="module__code">PNL-03</span>
+                    <p class="module__id">Field Log</p>
+                    <span class="hud-vent module__vent" aria-hidden="true">
+                        <span class="hud-vent__plate hud-vent__plate--fine"></span>
+                        <span class="hud-vent__plate hud-vent__plate--code"><i>PWR-19</i></span>
+                        <span class="hud-vent__plate hud-vent__plate--wide"></span>
+                        <span class="hud-vent__plate hud-vent__plate--flute"></span>
+                    </span>
+                </div>
                 <h2 class="module__title" id="log-h">Latest from the front</h2>
                 <p class="module__lede">The live build ships fixes and features on a steady cadence. Recent transmissions:</p>
             </div>
@@ -438,31 +642,97 @@
         <!-- ======================= ENLIST ======================= -->
         <section class="enlist reveal" aria-labelledby="enlist-h">
             <div class="enlist__inner">
-                <span class="enlist__corner enlist__corner--tl" aria-hidden="true"></span>
-                <span class="enlist__corner enlist__corner--tr" aria-hidden="true"></span>
-                <span class="enlist__corner enlist__corner--bl" aria-hidden="true"></span>
-                <span class="enlist__corner enlist__corner--br" aria-hidden="true"></span>
-                <p class="kicker"><span class="kicker__tick"></span>AWAITING ORDERS, COMMANDER</p>
-                <h2 id="enlist-h">The galaxy won't conquer itself.</h2>
-                <p class="enlist__lede">Free to play in your browser. No download, no wait — pick a faction and take your first sector in under a minute.</p>
-                <a class="btn btn--primary btn--xl" href="/login.html">START YOUR CONQUEST <span class="btn__sub">▸ PLAY FREE</span></a>
+                <span class="enlist__code" aria-hidden="true">SYS://ENLIST</span>
+                <!-- Was a ::after tick strip, same flaw as the module bars. -->
+                <span class="hud-vent enlist__vent" aria-hidden="true">
+                    <span class="hud-vent__plate hud-vent__plate--flute"></span>
+                    <span class="hud-vent__plate hud-vent__plate--code"><i>SYS-04</i></span>
+                    <span class="hud-vent__plate hud-vent__plate--wide"></span>
+                    <span class="hud-vent__plate hud-vent__plate--fine"></span>
+                </span>
+                <span class="gusset gusset--tl" aria-hidden="true"></span>
+                <span class="gusset gusset--tr" aria-hidden="true"></span>
+                <span class="gusset gusset--bl" aria-hidden="true"></span>
+                <span class="gusset gusset--br" aria-hidden="true"></span>
+
+                <!-- The recruitment plate. "AWAITING ORDERS, COMMANDER" was standing
+                     over an empty slab; the painting is a commander at his console
+                     under the whole charted sky, which is the thing the line is about.
+                     It is 360x720 and is now shown at its own 1:2 in a mounted well,
+                     with the plate number on a stencilled strip UNDER the picture
+                     rather than printed across it. Decorative — the heading and the
+                     lede carry it for a reader who never sees the image. -->
+                <figure class="enlist__poster">
+                    <span class="enlist__window">
+                        <img src="images/ui/posters-01-the-lamps-are-out.png" alt=""
+                             width="360" height="720" loading="lazy" decoding="async">
+                    </span>
+                    <figcaption>PLATE 01 · “THE LAMPS ARE OUT”</figcaption>
+                </figure>
+
+                <!-- Three members, not four: the kicker sits on the panel's top rule,
+                     the CTA's foot on its bottom one, and the headline and its own
+                     supporting line stay TOGETHER in the middle. Distributing all four
+                     evenly put 78px between a headline and the sentence that explains
+                     it, which is a caption floating away from its picture. -->
+                <div class="enlist__copy">
+                    <p class="kicker"><span class="kicker__tick"></span>AWAITING ORDERS, COMMANDER</p>
+                    <div class="enlist__say">
+                        <h2 id="enlist-h">The galaxy won’t conquer itself.</h2>
+                        <p class="enlist__lede">Free to play in your browser. No download, no wait — pick a faction and take your first sector in under a minute.</p>
+                    </div>
+                    <a class="btn btn--primary btn--xl" href="/login.html">START YOUR CONQUEST <span class="btn__sub">PLAY FREE</span></a>
+                </div>
+
+                <!-- The instrument that used to be 400x350 of blank steel. Every row
+                     restates something already on this page, so it carries no
+                     information a screen reader would lose by skipping it.
+                     Five rows left ~110px of bare plate under the card while the
+                     picture beside it ran 150px further down — three members, three
+                     different bottoms. It carries the rows it was obviously missing
+                     now, and the grid stretches all three to one pair of rules. -->
+                <div class="enlist__readout" aria-hidden="true">
+                    <span class="readout__code">MUS-01 // ENLISTMENT</span>
+                    <div class="readout__lines">
+                        <p class="readout__line"><span>FACTIONS</span><b>12 · 1 STARTER</b></p>
+                        <p class="readout__line"><span>QUICK</span><b>3-MIN TURNS</b></p>
+                        <p class="readout__line"><span>EPIC</span><b>ONE TURN A DAY</b></p>
+                        <p class="readout__line"><span>SEATS</span><b>2 – 1000</b></p>
+                        <p class="readout__line"><span>MAP</span><b>SCALES TO THE TABLE</b></p>
+                        <p class="readout__line"><span>AI</span><b>FILLS ANY SEAT</b></p>
+                        <p class="readout__line"><span>CLIENT</span><b>BROWSER</b></p>
+                        <p class="readout__line"><span>PRICE</span><b>FREE</b></p>
+                    </div>
+                </div>
             </div>
         </section>
     </main>
 
+    <!-- The base of the hull is a PLATE, like everything above it. It used to be a
+         transparent region with the starfield showing through the wordmark row. -->
     <footer class="hud-foot">
         <div class="hud-foot__line" aria-hidden="true"></div>
-        <div class="hud-foot__row">
-            <p class="hud-foot__brand">GAME OF WORLDS <span>// GALACTIC CONQUEST</span></p>
-            <nav class="hud-foot__links" aria-label="Footer navigation">
-                <a class="hud-foot__guide" href="/docs/">Player Guide</a>
-                <a class="hud-foot__guide" href="/lore/">Lore &amp; Art Archive</a>
-            </nav>
-            <p class="hud-foot__credit">Created by Steve Seguin in 2012 · rebuilt for the modern web.</p>
+        <div class="hud-foot__plate">
+            <div class="hud-foot__row">
+                <p class="hud-foot__brand">
+                    <span class="hud-foot__mark" aria-hidden="true"></span>
+                    <span class="hud-foot__name">GAME OF WORLDS</span>
+                    <span class="hud-foot__sub">// GALACTIC CONQUEST</span>
+                </p>
+                <nav class="hud-foot__links" aria-label="Footer navigation">
+                    <a class="hud-foot__guide" href="/docs/">Player Guide</a>
+                    <a class="hud-foot__guide" href="/lore/">Lore &amp; Art Archive</a>
+                </nav>
+                <p class="hud-foot__credit">Created by Steve Seguin in 2012 · rebuilt for the modern web.</p>
+            </div>
+            <p class="hud-foot__legal">
+                <span class="hud-foot__code" aria-hidden="true">PLT-09 // HULL BASE</span>
+                <span>© 2026 Game of Worlds. All systems nominal.</span>
+            </p>
         </div>
-        <p class="hud-foot__legal">© 2026 Game of Worlds. All systems nominal.</p>
     </footer>
+    <div class="page-tape" aria-hidden="true"></div>
 
-    <script type="module" src="js/landing.js?v=20260725a"></script>
+    <script type="module" src="js/landing.js?v=20260728r40"></script>
 </body>
 </html>
