@@ -16,15 +16,296 @@
    Degrades silently to the CSS starfield if WebGL is unavailable.
    ============================================================ */
 
-import * as THREE from './vendor/three.module.min.js';
-import { EffectComposer } from './vendor/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from './vendor/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from './vendor/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
-import { FXAAShader } from './vendor/addons/shaders/FXAAShader.js';
-import { OutputPass } from './vendor/addons/postprocessing/OutputPass.js';
+/* THREE IS NOT ON THE CRITICAL PATH, AND USED TO BE.
+   These were seven static imports, so 780 KB of renderer had to arrive and parse
+   before a single line of this file ran — before the stardate ticked, before the
+   plate material was armed, before the scroll reveal was wired. Measured on a cold
+   load that is the largest single item on the page and none of it draws anything a
+   visitor reads. The hero is a decorative canvas behind the copy; the copy, the
+   headline and the two CTAs do not depend on it and must not wait for it.
+   It is fetched after first paint now, by armHero() at the foot of this file, which
+   also declines to fetch it at all when the visitor has asked their browser to save
+   data. The bindings are module-level so everything below reads unchanged. */
+let THREE, EffectComposer, RenderPass, UnrealBloomPass, ShaderPass, FXAAShader, OutputPass;
+
+async function loadRenderer() {
+    const [three, ec, rp, bloom, sp, fx, op] = await Promise.all([
+        import('./vendor/three.module.min.js'),
+        import('./vendor/addons/postprocessing/EffectComposer.js'),
+        import('./vendor/addons/postprocessing/RenderPass.js'),
+        import('./vendor/addons/postprocessing/UnrealBloomPass.js'),
+        import('./vendor/addons/postprocessing/ShaderPass.js'),
+        import('./vendor/addons/shaders/FXAAShader.js'),
+        import('./vendor/addons/postprocessing/OutputPass.js')
+    ]);
+    THREE = three;
+    EffectComposer = ec.EffectComposer;
+    RenderPass = rp.RenderPass;
+    UnrealBloomPass = bloom.UnrealBloomPass;
+    ShaderPass = sp.ShaderPass;
+    FXAAShader = fx.FXAAShader;
+    OutputPass = op.OutputPass;
+}
+
+/* ============================================================
+   WHICH RASTERISER IS THIS — asked before spending 733 KB finding out
+
+   MEASURED, and this is the entire reason the block exists: on a software
+   rasteriser `getContext('webgl2')` ON ITS OWN takes 1,376 ms on the main thread.
+   One unbroken, unsliceable native call, starting ~80 ms after first contentful
+   paint. There is no task granularity that survives that — DEPLOY FLEET is
+   painted, lit and inviting, and for the next two seconds a click on it does
+   nothing: no hover, no press, no navigation, no scroll. The page looks finished
+   and is dead.
+
+   So the renderer string is read BEFORE any of it, from a 1x1 context on an
+   OffscreenCanvas inside a worker, where that same 1.4 s is somebody else's
+   thread and the document keeps servicing input. If the answer is SwiftShader,
+   llvmpipe or Mesa softpipe — the fallbacks Chrome uses on VMs, RDP and Citrix
+   sessions, blocklisted drivers and --disable-gpu — the hero never fetches
+   three.js at all. That population then loads 610 KB instead of 1,343 KB, blocks
+   for nothing, and gets the finished CSS treatment the Save-Data path already
+   proves is a good hero rather than a 1.3 fps slideshow of a better one.
+
+   Second-order win on real hardware: the probe warms ANGLE, so the main thread's
+   own context creation comes back in single digits of milliseconds.
+   ============================================================ */
+const SOFTWARE_GL = /swiftshader|software|llvmpipe|basic render|microsoft basic|softpipe|mesa offscreen|generic renderer/i;
+
+/* How long a 1x1 context may take before the DELAY is itself the answer. Measured on
+   this page: a hardware ANGLE/D3D11 context comes back in 5-80ms even from a cold GPU
+   process; SwiftShader took 2,207ms in the worker on a normal load of this document.
+   Nothing between those two numbers is ambiguous, so 900ms is a wide moat rather than
+   a threshold anyone has to tune — and it catches the case a renderer string cannot:
+   a driver that reports as hardware and performs like a spreadsheet. */
+const SLOW_CONTEXT_MS = 900;
+
+function probeRasteriser() {
+    return new Promise(resolve => {
+        let settled = false;
+        const done = v => { if (settled) return; settled = true; resolve(v); };
+        /* 6s, and the first version of this said 2.5s — which was a real bug, found
+           by measurement rather than by review. 2.5s came from timing the probe on a
+           blank document (53ms) and multiplying generously. On the actual landing
+           page, with the tile bakery already on another thread, the same probe takes
+           2,207ms — so the timeout fired FIRST, every load, and the page fetched
+           733KB of renderer for SwiftShader anyway. The bail-out is now well clear of
+           the slowest thing it is measuring, and it costs a fast machine nothing
+           because a fast machine answers in milliseconds. */
+        const bail = setTimeout(() => done('unknown'), 6000);
+        const finish = v => { clearTimeout(bail); done(v); };
+        let w = null;
+        try {
+            if (typeof Worker !== 'function' || typeof OffscreenCanvas !== 'function') return finish('unknown');
+            const t0 = now();
+            const src = `self.onmessage=function(){
+                var name='',ok=false;
+                try{
+                    var c=new OffscreenCanvas(1,1);
+                    var gl=c.getContext('webgl2')||c.getContext('webgl');
+                    if(gl){
+                        ok=true;
+                        var d=gl.getExtension('WEBGL_debug_renderer_info');
+                        if(d)name=String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL));
+                        var l=gl.getExtension('WEBGL_lose_context');if(l)l.loseContext();
+                    }
+                }catch(e){}
+                self.postMessage({name:name,ok:ok});
+            };`;
+            const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+            w = new Worker(url);
+            URL.revokeObjectURL(url);
+            w.onmessage = (e) => {
+                const d = e.data || {};
+                const took = now() - t0;
+                try { w.terminate(); } catch (err) { /* already gone */ }
+                if (!d.ok) return finish('none');
+                if (d.name && SOFTWARE_GL.test(d.name)) return finish('software');
+                // The clock is the second witness, and the more honest one: it does not
+                // care what the driver calls itself.
+                if (took > SLOW_CONTEXT_MS) return finish('software');
+                /* An EMPTY string is not "software", it is "we were not told":
+                   Firefox masks WEBGL_debug_renderer_info by default and so does
+                   privacy.resistFingerprinting. Guessing static there would cost
+                   every one of those visitors the page's key art on hardware that
+                   renders it at 60fps. Unknown starts at the top tier and is
+                   demoted by measurement instead — see the frame guard in hero(). */
+                finish('gpu');
+            };
+            w.onerror = () => { try { w.terminate(); } catch (err) { /* already gone */ } finish('unknown'); };
+            w.postMessage(0);
+        } catch (err) { finish('unknown'); }
+    });
+}
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* Declared HERE, not beside the slicer that used to own it. The paint gate below
+   measures frame intervals and runs during module evaluation, so a `const` further
+   down the file is in the temporal dead zone at exactly the moment it is needed —
+   on the one code path (a document that has already painted before this module
+   ran) that is hardest to reproduce and would have thrown for real visitors. */
+const now = () => (window.performance && performance.now ? performance.now() : Date.now());
+
+/* ============================================================
+   THE GATE — measured readiness, not a guess at it
+
+   The previous version of this was `afterFirstPaint`: two nested rAFs, then a
+   requestIdleCallback. It was a reasonable guess and it was WRONG in both
+   directions, which is why the CTA kept coming back dead.
+
+   Wrong about paint: a rAF callback fires when the browser is ABOUT to produce a
+   frame, not when a frame has reached the screen. On a software rasteriser this
+   page's first frame is expensive — 117 gradients, 59 box-shadows and three
+   blend layers all have to be rasterised — so both rAFs fired, the idle callback
+   fired, three.js started downloading and parsing, and only THEN did the first
+   pixel appear. Measured on the audit harness: FCP 2,972ms against a load event
+   at 2,210ms. First paint landing after load is not a subtle mis-ordering, it is
+   the page spending its whole budget on decoration in front of the words.
+
+   Wrong about idle: requestIdleCallback means "no work is queued", which on a
+   freshly-parsed document is true a few milliseconds after parsing and says
+   nothing at all about whether the compositor has caught up or whether an input
+   would be serviced promptly.
+
+   So this asks the two questions directly, and waits for whichever answers first:
+
+     · `paint` PerformanceObserver, buffered — fires when first-contentful-paint
+       is actually recorded, i.e. after a frame with content reached the screen.
+       This is the only API that answers "has the visitor seen anything".
+     · TWO CONSECUTIVE rAF FRAMES UNDER 20ms. A frame clock is the cheapest
+       honest proxy for "would a click be serviced now": if the browser has just
+       turned two frames around inside a vsync interval, the main thread is not
+       holding anything.
+     · a real input on the hero CTA — see armInteractive(). If the visitor has
+       already reached for the button, the page IS interactive, by demonstration.
+
+   Plus a hard backstop, because a background tab never paints and never runs rAF
+   and the page must still finish arming itself when it is brought forward.
+   ============================================================ */
+const painted = (() => {
+    let resolved = false;
+    const waiting = [];
+    /* Claim the deferral BEFORE the first paint and from the module itself, so the
+       two full-viewport veils are only ever held back by code that is definitely
+       running and will definitely release them. See .veil-wait in landing.css. */
+    document.documentElement.classList.add('veil-wait');
+    const fire = () => {
+        if (resolved) return;
+        resolved = true;
+        /* The two decorative full-viewport overlays are held at opacity:0 until this
+           class lands — see the note beside .scanlines in landing.css. They are the
+           cheapest thing on the page to defer and among the most expensive to paint,
+           because they cover every pixel of the viewport and sit above everything. */
+        document.documentElement.classList.add('lit');
+        for (const fn of waiting.splice(0)) fn();
+    };
+    try {
+        const po = new PerformanceObserver((list) => {
+            for (const e of list.getEntries()) {
+                if (e.name === 'first-contentful-paint') { po.disconnect(); fire(); }
+            }
+        });
+        po.observe({ type: 'paint', buffered: true });
+    } catch (err) {
+        // Safari < 14.1 and every non-Chromium engine without PerformancePaintTiming.
+        requestAnimationFrame(() => requestAnimationFrame(fire));
+    }
+    // Backstop: a hidden tab never paints, and a document that somehow never fires
+    // the entry must not strand the whole page's furniture behind it.
+    setTimeout(fire, 2000);
+    return fn => (resolved ? fn() : waiting.push(fn));
+})();
+
+/* Two consecutive cheap frames, measured, starting only once something is on screen.
+   `quiet` is the signal that the main thread is genuinely handing frames back. */
+function whenThreadIsQuiet(fn, hardCapMs = 1600) {
+    let done = false;
+    const go = () => { if (done) return; done = true; fn(); };
+    painted(() => {
+        let last = now();
+        let calm = 0;
+        const cap = now() + hardCapMs;
+        const tick = () => {
+            const t = now();
+            const dt = t - last;
+            last = t;
+            if (dt < 20) calm++; else calm = 0;
+            if (calm >= 2 || t > cap) go();
+            else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    });
+    // Same backstop reasoning as `painted`, one notch further out.
+    setTimeout(go, 3500);
+}
+
+/* ============================================================
+   THE CTA IS THE GATE, and it is the only honest one
+
+   Every decorative bake on this page now waits behind `whenInteractive`, and what
+   that waits for is the hero's DEPLOY FLEET button proving it can answer.
+
+   The failure this replaces is worth stating plainly, because it survived two
+   rounds of fixing it the clever way. The button paints early — it is a few
+   hundred bytes of markup with a bevel on it, it is on screen inside the first
+   frame, and it looks completely finished. Then a procedural bake takes the
+   thread, and for the next second a real visitor's pointer does nothing: no
+   hover state, no press, no navigation. A button that is lit and unresponsive is
+   worse than a button that has not arrived, because the visitor has already
+   decided to click it. Measured driver-side, that window was 972 / 987 / 1188 /
+   1359 / 4112 ms across five cold loads.
+
+   Previous attempts moved the cost around — off the render loop, into a worker,
+   into smaller slices — and every one of them still STARTED the cost on a
+   timetable of its own choosing, then hoped the button would be quick enough.
+   The ordering is inverted here. Nothing starts until one of these is true:
+
+     · the visitor has actually touched the button. A serviced pointerover or
+       pointerdown is not a proxy for interactivity, it IS interactivity — the
+       page just did the thing it was being accused of failing to do. And this is
+       the case that matters most, because it is the visitor who is in a hurry.
+     · `focus`, for the keyboard visitor who tabbed to it and would otherwise be
+       held behind the frame test they never trigger.
+     · two consecutive rAF frames under 20ms after first contentful paint,
+       i.e. the browser has demonstrated it is turning frames around promptly.
+     · a cap, so a page nobody touches — a background tab, a screenshot harness,
+       a visitor reading the lede — still gets its art.
+
+   The consequence is that the bakes start LATER on a slow machine, which is the
+   correct direction: the slower the machine, the more the visitor needs the
+   thread and the less they need a procedural nebula.
+   ============================================================ */
+const whenInteractive = (() => {
+    let resolved = false;
+    const waiting = [];
+    let cta = null;
+    const fire = () => {
+        if (resolved) return;
+        resolved = true;
+        if (cta) for (const t of ['pointerover', 'pointerdown', 'focus']) cta.removeEventListener(t, fire);
+        for (const fn of waiting.splice(0)) nextTask(fn);
+    };
+    painted(() => {
+        cta = document.querySelector('.hero__actions .btn--primary, .hero__actions .btn');
+        if (cta) {
+            // passive: this listener must never be a reason a scroll or a tap is slow.
+            for (const t of ['pointerover', 'pointerdown']) cta.addEventListener(t, fire, { passive: true });
+            cta.addEventListener('focus', fire);
+        }
+        whenThreadIsQuiet(fire);
+    });
+    return fn => (resolved ? nextTask(fn) : waiting.push(fn));
+})();
+
+/**
+ * Run after the browser has had a chance to paint.
+ * Kept as the name the rest of the file already reads by; it is now a real
+ * first-contentful-paint signal rather than a two-rAF guess at one.
+ */
+function afterFirstPaint(fn) {
+    painted(() => nextTask(fn));
+}
 
 /* ---------- stardate readout ---------- */
 (function stardate() {
@@ -39,6 +320,103 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
     }
     tick();
     setInterval(tick, 1000);
+})();
+
+/* ============================================================
+   The faction meters, in words
+
+   ECO / TECH / WAR were pure pixels: `<div class="bar"><i>ECO</i><span><b
+   style="--seg:9"></b></span></div>`. No role, no value, no text alternative. A
+   screen-reader user heard "ECO TECH WAR" thirty-six times and learned nothing —
+   and these bars are the ONLY comparative data on the page, the single thing that
+   answers "which faction should I pick". A sighted player can weigh Silicon
+   Collective's tech against Mechanicus's war; a blind player was told twelve
+   factions exist and given no way to choose between them. The prose does not cover
+   it: "a machine hive of pure computation" is not a number.
+
+   The number is appended to the label the meter already has, so it costs no new
+   ARIA and no new role — the <i> simply reads "ECO 9 of 16" now.
+
+   GENERATED FROM --seg AND --n, never typed. Thirty-six hand-written strings beside
+   thirty-six inline custom properties is a drift bug with a date on it: this project
+   has already shipped a landing page advertising abilities the engine did not have.
+   The spoken value and the lit value are now the same number by construction.
+   ============================================================ */
+/* AND IT RUNS AFTER FIRST PAINT, because the one getComputedStyle below is not free
+   at module-evaluation time — it is the most expensive call on the page.
+
+   Measured with long-animation-frame attribution: the module script's own frame spent
+   142ms in forcedStyleAndLayoutDuration, and this was it. A `type="module"` script
+   evaluates before the first paint, so at this moment the document has never had its
+   style resolved; asking for one computed value therefore does not read a cached
+   number, it performs the WHOLE first style resolution of a page carrying 117
+   gradients and 59 box-shadows, synchronously, in front of the pixels. After paint the
+   same call is free, because the resolution it was forcing has already happened.
+
+   Nothing is lost by waiting. This appends screen-reader text to labels that are three
+   screens below the fold; it changes no pixel, moves no box, and an accessibility tree
+   is rebuilt on change, so a reader that arrives later finds the numbers regardless. */
+afterFirstPaint(function meterValues() {
+    const bars = document.querySelectorAll('.race__bars .bar');
+    if (!bars.length) return;
+    /* --n is declared on the trough in CSS (the channel is cut into n cells), so it is
+       read from there rather than restated as a literal in a second place. ONCE,
+       though, not thirty-six times: every getComputedStyle() here forces a style
+       resolution, and per-bar this block cost 30ms of the main thread on its own for a
+       number that is identical on all of them. */
+    const firstTrack = bars[0].querySelector('span');
+    const n = (firstTrack && parseFloat(getComputedStyle(firstTrack).getPropertyValue('--n'))) || 16;
+    for (const bar of bars) {
+        const label = bar.querySelector('i');
+        const fill = bar.querySelector('b');
+        if (!label || !fill || label.querySelector('.sr-only')) continue;
+        const seg = parseFloat(fill.style.getPropertyValue('--seg'));
+        if (!isFinite(seg)) continue;
+        const out = document.createElement('span');
+        out.className = 'sr-only';
+        out.textContent = ` ${seg} of ${n}`;
+        label.appendChild(out);
+    }
+});
+
+/* ============================================================
+   Ticker: a stop button, and an honest reduced-motion answer
+
+   The hazard tape starts on its own, loops forever, runs beside the headline and
+   the CTA, and had no pause, stop or hide control anywhere — a WCAG 2.1 SC 2.2.2
+   failure at Level A, not AA. The reduced-motion answer is in the stylesheet (the
+   marquee simply stops); this is the control everyone else gets, because a visitor
+   who has not set that preference may still want the movement beside the copy they
+   are reading to stop.
+
+   The choice is remembered. A player who stops the tape once should not have to
+   stop it again on every visit — a control that forgets is a control that annoys.
+   ============================================================ */
+(function tickerControl() {
+    const ticker = document.querySelector('.ticker');
+    const btn = document.getElementById('tickerPause');
+    if (!ticker || !btn) return;
+    // Under reduce the marquee does not run at all, so a pause control would be a
+    // button that does nothing. The stylesheet takes the whole cap out of the layout.
+    if (reduceMotion) return;
+
+    const KEY = 'gow.landing.ticker';
+    let paused = false;
+    try { paused = localStorage.getItem(KEY) === 'paused'; } catch (err) { /* private mode */ }
+
+    function apply() {
+        ticker.classList.toggle('is-paused', paused);
+        btn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+        // The NAME says what the button will do next; aria-pressed says what state it
+        // is in. Both, because a name alone leaves a toggle ambiguous mid-press.
+        btn.setAttribute('aria-label', paused ? 'Resume the status ticker' : 'Pause the status ticker');
+    }
+    btn.addEventListener('click', () => {
+        paused = !paused;
+        apply();
+        try { localStorage.setItem(KEY, paused ? 'paused' : 'running'); } catch (err) { /* private mode */ }
+    });
+    apply();
 })();
 
 /* ---------- scroll reveal ----------
@@ -97,16 +475,16 @@ function mulberry32(a) {
    the tile size, which is what stops a bright star marching down the gutter at a
    visible interval.
 
-   Cheap — about 6ms — and seeded, so the gutters are identical frame to frame and
-   a regression there is diffable like anything else.
-   ============================================================ */
-(function pageSky() {
-    const S = 512;
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = S;
-    const g = cv.getContext('2d');
-    if (!g) return () => {};
+   Seeded, so the gutters are identical frame to frame and a regression there is
+   diffable like anything else.
 
+   A GENERATOR, and it is baked off-thread. It used to be an IIFE that ran at module
+   evaluation — i.e. in front of first paint, on the one thread the browser needs to
+   paint with. It is now one of the two tiles tileBakery() hands to a worker (see
+   below); the yields are what lets the main-thread fallback path stay under a frame
+   when there is no worker to hand it to.
+   ============================================================ */
+function* paintSkyTile(g, S) {
     const RAMP = [
         [255, 152, 84], [255, 196, 135], [255, 232, 199],
         [255, 255, 247], [222, 235, 255], [179, 207, 255]
@@ -131,6 +509,7 @@ function mulberry32(a) {
             }
         }
     }
+    yield;
 
     /* 44 per tile, not 300. The tile is laid twice at 690px and 447px, so the count
        on a 1920x1080 frame is 44*(2073600/476100) + 44*(2073600/199809) ≈ 650 — a
@@ -183,22 +562,9 @@ function mulberry32(a) {
                 }
             }
         }
+        if ((i & 3) === 3) yield;
     }
-
-    /* A blob URL, not a data URL. The same tile as a base64 data URL is a ~200KB
-       string living in a CSS custom property that every style recalculation has to
-       carry around; a blob is a 40-character reference to bytes the browser already
-       holds. Falls back to a data URL where createObjectURL is unavailable, and to
-       the CSS gradients alone if neither works. */
-    const install = url => document.documentElement.style.setProperty('--page-sky', `url("${url}")`);
-    try {
-        if (cv.toBlob && window.URL && URL.createObjectURL) {
-            cv.toBlob(b => { if (b) install(URL.createObjectURL(b)); else install(cv.toDataURL('image/png')); }, 'image/png');
-        } else {
-            install(cv.toDataURL('image/png'));
-        }
-    } catch (err) { /* tainted or unsupported: the CSS gradients stand alone */ }
-})();
+}
 
 /* ---------- tileable value noise ---------- */
 function hash(ix, iy) {
@@ -311,42 +677,63 @@ function normalise(field) {
    0.5 cut sits above the entire distribution. Nothing below assumes a range;
    every field is normalise()d from its own measured min/max first.
 
-   NOT run at parse time. It is ~150ms of straight-line arithmetic on the main
-   thread, and measured under the capture harness's software rasteriser the hero's
-   world bake finishes at about 3.8s against a screenshot at 4.3s — half a second of
-   margin that this had been spending before the WebGL context was even created. The
-   plates carry a correct fallback ramp until the tile lands, and they are below the
-   fold. Nothing this file adds is allowed to delay the planet.
+   THIS WAS THE PAGE'S WORST BUG, AND THE COMMENT THAT USED TO BE HERE IS WHY IT
+   SURVIVED: it said "~150ms of straight-line arithmetic", so nobody profiled it.
+   Measured with the CPU profiler under tools/ux-audit.js it is 14.3 SECONDS — 76% of
+   the whole page's first twenty seconds — in one unbroken main-thread task. The audit
+   reported it as a 6,353ms frame. Eight million hash() calls (262,144 texels x eight
+   tileable-noise lookups x four corners each) is simply not a 150ms job, and the
+   page was frozen solid for every one of them: no scrolling, no clicking, nothing.
+
+   It is a GENERATOR now, and it runs in a worker. Nothing about the material changed —
+   same seed, same fields, same pits, same tile — only where the arithmetic happens.
+   tileBakery() below hands it an OffscreenCanvas on a worker thread where it can take
+   as long as it likes, and falls back to driveSliced() on the main thread (yielding
+   every 16 rows, so ~18ms a slice) where a worker is unavailable.
    ============================================================ */
 const PLATE_TILE = 512;
-const bakePlateMetal = (function plateMetal() {
-    const S = PLATE_TILE;
-    const g = (() => {
-        const c = document.createElement('canvas');
-        c.width = c.height = S;
-        return c.getContext('2d');
-    })();
-    if (!g) return;
 
-    /* value noise that wraps on BOTH axes — vnoise() above only wraps x, which is
-       right for an equirectangular map and wrong for a tile that repeats in a grid */
-    const tn = (x, y, p) => {
-        const x0 = Math.floor(x), y0 = Math.floor(y);
-        const fx = x - x0, fy = y - y0;
-        const w = (i, m) => ((i % m) + m) % m;
-        const xa = w(x0, p), xb = w(x0 + 1, p), ya = w(y0, p), yb = w(y0 + 1, p);
-        const sx = smooth(fx), sy = smooth(fy);
-        const a = hash(xa, ya) + (hash(xb, ya) - hash(xa, ya)) * sx;
-        const b = hash(xa, yb) + (hash(xb, yb) - hash(xa, yb)) * sx;
-        return a + (b - a) * sy;
-    };
-    const tfbm = (x, y, per, oct) => {
-        let amp = 1, f = 1, sum = 0, norm = 0, p = per;
-        for (let i = 0; i < oct; i++) { sum += amp * tn(x * f, y * f, p); norm += amp; amp *= 0.5; f *= 2; p *= 2; }
-        return sum / norm;
-    };
+/* value noise that wraps on BOTH axes — vnoise() above only wraps x, which is
+   right for an equirectangular map and wrong for a tile that repeats in a grid.
+   Declared beside the generator rather than inside it because tileBakery serialises
+   BOTH into the worker, and a closure cannot be serialised. */
+function tileNoise(x, y, p) {
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const fx = x - x0, fy = y - y0;
+    const w = (i, m) => ((i % m) + m) % m;
+    const xa = w(x0, p), xb = w(x0 + 1, p), ya = w(y0, p), yb = w(y0 + 1, p);
+    const sx = smooth(fx), sy = smooth(fy);
+    const a = hash(xa, ya) + (hash(xb, ya) - hash(xa, ya)) * sx;
+    const b = hash(xa, yb) + (hash(xb, yb) - hash(xa, yb)) * sx;
+    return a + (b - a) * sy;
+}
+function tileFbm(x, y, per, oct) {
+    let amp = 1, f = 1, sum = 0, norm = 0, p = per;
+    for (let i = 0; i < oct; i++) { sum += amp * tileNoise(x * f, y * f, p); norm += amp; amp *= 0.5; f *= 2; p *= 2; }
+    return sum / norm;
+}
 
-    function build() {
+/* The same value noise with the two axes wrapping at DIFFERENT periods, which
+   tileNoise() cannot express: it takes one `p` and applies it to both.
+   That single shared period is why the brush layer used to repeat. The call was
+   `tileNoise(u * 4, v * 96, 4)` — x spanning 4 cells and y spanning 96, but both
+   wrapped modulo 4, so the y coordinate ran through the same four rows of hashes
+   twenty-four times down the tile. The streaks were not random brushing, they were
+   one 21px band stamped repeatedly, and at 512px that periodicity is visible as a
+   faint horizontal banding once you know to look for it.
+   Independent periods let a streak be 170px long and 5px tall and still tile. */
+function tileNoiseAniso(x, y, px, py) {
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const fx = x - x0, fy = y - y0;
+    const w = (i, m) => ((i % m) + m) % m;
+    const xa = w(x0, px), xb = w(x0 + 1, px), ya = w(y0, py), yb = w(y0 + 1, py);
+    const sx = smooth(fx), sy = smooth(fy);
+    const a = hash(xa, ya) + (hash(xb, ya) - hash(xa, ya)) * sx;
+    const b = hash(xa, yb) + (hash(xb, yb) - hash(xa, yb)) * sx;
+    return a + (b - a) * sy;
+}
+
+function* paintPlateTile(g, S) {
     const N = S * S;
     const broad = new Float32Array(N);     // rolled-sheet unevenness
     const rough = new Float32Array(N);     // mid-frequency tooth
@@ -355,14 +742,36 @@ const bakePlateMetal = (function plateMetal() {
         for (let x = 0; x < S; x++) {
             const i = y * S + x;
             const u = x / S, v = y / S;
-            broad[i] = tfbm(u * 3, v * 3, 3, 3);
-            rough[i] = tfbm(u * 22, v * 22, 22, 3);
-            // 4 cells across, 96 down: cells 24x wider than tall, which IS the streak
-            brush[i] = tn(u * 4, v * 96, 4) * 0.6 + tn(u * 8, v * 192, 8) * 0.4;
+            broad[i] = tileFbm(u * 3, v * 3, 3, 3);
+            rough[i] = tileFbm(u * 22, v * 22, 22, 3);
+            /* THREE OCTAVES OF DRAG, and this layer is now the loudest thing in the
+               material rather than the quietest.
+               Measured on the shipped tile, the mean |dLuma| moving DOWN the plate was
+               only 1.24x the mean moving ALONG it. A ratio of one is the definition of
+               an isotropic surface — stone, concrete, cast plastic — and that is
+               precisely what the plates were being described as: grey, but not metal.
+               Metal reads as metal because it is ANISOTROPIC: it was dragged in one
+               direction and it scatters light differently across the grain than along
+               it. Nothing else in the shading language can supply that.
+               170px x 5px, then 73px x 2.7px, then 39px x 1.8px, so the grain has a
+               coarse drag, a tooth and a fine tooth the way a real finish does. */
+            /* WEIGHTED TOWARDS THE FINE END, and the first attempt was not.
+               Leading with the 170x5px octave at 0.36 passed the anisotropy
+               measurement handsomely and looked wrong: broad light-and-dark bands
+               marching across every card face, closer to watered silk or wood grain
+               than to steel. Anisotropy was necessary and not sufficient — a brushed
+               finish is FINE, and its coarse component is the quietest one, not the
+               loudest. Inverting the ramp keeps the direction and loses the corduroy. */
+            brush[i] = tileNoiseAniso(u * 3, v * 96, 3, 96) * 0.20
+                     + tileNoiseAniso(u * 7, v * 192, 7, 192) * 0.26
+                     + tileNoiseAniso(u * 13, v * 288, 13, 288) * 0.28
+                     + tileNoiseAniso(u * 21, v * 384, 21, 384) * 0.26;
         }
+        if ((y & 3) === 3) yield;
     }
     // Measure, do not assume. See the note above.
     normalise(broad); normalise(rough); normalise(brush);
+    yield;
 
     const img = g.createImageData(S, S);
     const px = img.data;
@@ -372,18 +781,35 @@ const bakePlateMetal = (function plateMetal() {
     // the value the plate lands on AFTER that, not before it.
     const BASE = [0.141, 0.167, 0.228];
     for (let i = 0, o = 0; i < N; i++, o += 4) {
-        const d = (broad[i] - 0.5) * 0.115
-                + (rough[i] - 0.5) * 0.055
-                + (brush[i] - 0.5) * 0.042
-                + (hash(i & 8191, (i >> 13) + 7717) - 0.5) * 0.030;
+        /* REBALANCED TOWARDS THE GRAIN. The weights used to be 0.115 broad / 0.055
+           rough / 0.042 brush, i.e. the two ISOTROPIC fields together outweighed the
+           directional one four to one, and the tile measured 1.24x anisotropic as a
+           result. The mottle is still here — a rolled sheet is genuinely uneven and
+           removing it entirely gives you brushed aluminium foil — but it is now the
+           undertone it should always have been, and the drag is the surface.
+           Total variance is deliberately held near the old value so the plate lands on
+           the same tone underneath the CSS chamfer and sheen; what changed is where
+           the variance points, not how much of it there is. */
+        const d = (broad[i] - 0.5) * 0.052
+                + (rough[i] - 0.5) * 0.026
+                + (brush[i] - 0.5) * 0.104
+                /* The per-pixel term is the one that fights this hardest and it is the
+                   easiest to overspend on. Being uncorrelated in BOTH axes it adds the
+                   same energy to the across-grain gradient as to the along-grain one,
+                   so every code of it pushes the surface back towards isotropic — at
+                   the old 0.030 it was supplying most of what was left of gradX. Kept
+                   only as far as it stops the finish reading as vector-smooth. */
+                + (hash(i & 8191, (i >> 13) + 7717) - 0.5) * 0.015;
         // Warmer where it is lit, cooler where it is not: a one-channel offset is a
         // grey wash, and grey is exactly what "flat CSS" looked like.
         px[o]     = Math.max(0, Math.min(255, (BASE[0] + d * 1.06) * 255));
         px[o + 1] = Math.max(0, Math.min(255, (BASE[1] + d * 1.00) * 255));
         px[o + 2] = Math.max(0, Math.min(255, (BASE[2] + d * 0.90) * 255));
         px[o + 3] = 255;
+        if ((i & 8191) === 8191) yield;
     }
     g.putImageData(img, 0, 0);
+    yield;
 
     /* Pits and scratches are SHAPES, so they get lit by the page's lamp: highlight
        up-left, shadow down-right. Drawn nine times around the tile so a pit that
@@ -415,6 +841,7 @@ const bakePlateMetal = (function plateMetal() {
             g.lineWidth = Math.max(0.6, r * 0.22);
             g.beginPath(); g.arc(x, y, r * 0.72, -Math.PI * 0.22, Math.PI * 0.80); g.stroke();
         });
+        if ((i & 15) === 15) yield;
     }
     for (let i = 0; i < 22; i++) {
         const x = rnd() * S, y = rnd() * S;
@@ -429,25 +856,9 @@ const bakePlateMetal = (function plateMetal() {
             g.strokeStyle = `rgba(206,224,252,${a.toFixed(3)})`;
             g.beginPath(); g.moveTo(x, y); g.lineTo(x2, y2); g.stroke();
         });
+        if ((i & 3) === 3) yield;
     }
-
-    const install = url => document.documentElement.style.setProperty('--plate-metal', `url("${url}")`);
-    try {
-        if (g.canvas.toBlob && window.URL && URL.createObjectURL) {
-            g.canvas.toBlob(b => { if (b) install(URL.createObjectURL(b)); }, 'image/png');
-        } else {
-            install(g.canvas.toDataURL('image/png'));
-        }
-    } catch (err) { /* the CSS ramp underneath is the fallback and is already correct */ }
-    };
-
-    let done = false;
-    return () => { if (done) return; done = true; build(); };
-})();
-// Backstop for the no-WebGL path, where the hero returns before it can arm anything.
-// Deliberately later than the world's own bake so it never fires first on a machine
-// where the hero is working.
-setTimeout(() => bakePlateMetal(), 5000);
+}
 
 /**
  * Upload a packed RGBA buffer as a texture.
@@ -500,9 +911,22 @@ function dataTexture(src, w, h) {
    Every bake below is a generator that yields once per texture row. The driver
    pulls rows until its millisecond budget is spent, then hands the thread back.
    Total wall time is roughly the same; the longest single block is SLICE_MS.
+
+   SLICE_MS IS 5, AND IT USED TO BE 18. Eighteen was chosen as "one frame" and that
+   is the wrong unit: a slice does not run INSTEAD of a frame, it runs BESIDE one.
+   Eighteen milliseconds of arithmetic plus the frame the browser wanted to draw in
+   the same interval is a dropped frame every single slice, and a pointer event that
+   arrives mid-slice waits the whole of it. Five leaves room for the frame and puts
+   the worst-case input delay from this driver at about a vsync.
+
+   The budget is also checked EVERY YIELD, not every tile: the old loop tested the
+   clock in its `while`, which is correct, but the generators yield at coarse
+   intervals (one texture ROW of a 1280-wide surface, or 65,536 pixels of the plate)
+   and a single un-yieldable step can be far longer than the budget. Where that was
+   true the generators below now yield more often; the driver's job is only to stop
+   asking for more.
    ============================================================ */
-const SLICE_MS = 18;
-const now = () => (window.performance && performance.now ? performance.now() : Date.now());
+const SLICE_MS = 5;
 
 /**
  * Hand the thread back and come straight back.
@@ -512,8 +936,18 @@ const now = () => (window.performance && performance.now ? performance.now() : D
  * its wall time to the clamp — which is exactly the difference between the world
  * arriving in two seconds and arriving in five. A message task has no clamp and still
  * lets the browser paint between slices.
+ *
+ * scheduler.postTask at 'background' priority is used where it exists, and it is
+ * strictly better than the MessageChannel trick rather than merely equivalent: a
+ * MessageChannel task is an ordinary task, so it is served in arrival order against
+ * everything else in the queue, whereas a background-priority task yields to input
+ * and rendering by definition. That is the difference between a bake that shares the
+ * thread and a bake that merely subdivides its ownership of it — which is exactly the
+ * failure the CTA was exhibiting.
  */
 const nextTask = (() => {
+    const s = typeof scheduler === 'object' && scheduler && typeof scheduler.postTask === 'function' ? scheduler : null;
+    if (s) return fn => { s.postTask(fn, { priority: 'background' }).catch(() => {}); };
     if (typeof MessageChannel === 'function') {
         const ch = new MessageChannel();
         const queue = [];
@@ -521,6 +955,17 @@ const nextTask = (() => {
         return fn => { queue.push(fn); ch.port2.postMessage(0); };
     }
     return fn => setTimeout(fn, 0);
+})();
+
+/* Same idea for the URGENT half of the split: bring-up work that the visitor is
+   waiting to SEE should not be demoted to background, it should simply not hog the
+   thread. scheduler.yield() resumes ahead of newly-queued tasks, so a chain that
+   yields with it keeps its place instead of going to the back of a queue that the
+   bake is also filling. */
+const nextTaskSoon = (() => {
+    const s = typeof scheduler === 'object' && scheduler && typeof scheduler.yield === 'function' ? scheduler : null;
+    if (s) return fn => { s.yield().then(fn, () => {}); };
+    return fn => nextTask(fn);
 })();
 
 function driveSliced(gen, onDone) {
@@ -544,6 +989,208 @@ function driveSliced(gen, onDone) {
     }
     nextTask(tick);
 }
+
+/* ============================================================
+   Tile bakery — the two CSS tiles, baked off the main thread
+
+   The page's two furniture textures — the document's starfield and the milled-steel
+   plate face — are pure pixel arithmetic that ends in a PNG blob. Neither needs the
+   DOM, and between them they were the single largest main-thread cost on the page:
+   profiled, the plate alone was 14.3 seconds in ONE task, which the UX audit
+   reported as a 6,353ms frame and a visitor experiences as the page being dead.
+
+   A worker with an OffscreenCanvas is the correct home for both. The worker source
+   is assembled by stringifying the very functions this module already uses — there
+   is no second copy of the noise, the seed or the shading to drift out of step — so
+   the tile a worker produces is bit-identical to the one the fallback produces.
+
+   THREE WAYS THIS CAN FAIL, AND ALL THREE END SOMEWHERE SAFE:
+     · no Worker or no OffscreenCanvas (or a Content-Security-Policy that refuses a
+       blob: worker): fall back to driveSliced on the main thread, ~18ms a slice
+     · the worker throws: same fallback, once, per tile
+     · nothing works at all: the CSS keeps the hand-authored ramp it already has,
+       which is a plate in its own right rather than a placeholder
+   ============================================================ */
+const tileBakery = (() => {
+    const TILES = {
+        sky:   { size: 512, prop: '--page-sky',     paint: () => paintSkyTile },
+        plate: { size: PLATE_TILE, prop: '--plate-metal', paint: () => paintPlateTile }
+    };
+    const started = new Set();
+    let worker = null, workerBroken = false;
+
+    /* ============================================================
+       INSTALLING A TILE IS NOT FREE, and it was being treated as if it were
+
+       `documentElement.style.setProperty('--plate-metal', url(...))` looks like an
+       assignment. It is two expensive things wearing one line of code:
+
+         1. the PNG behind that URL has to be DECODED. These are 512px tiles of
+            per-pixel noise, which is the worst case for PNG — measured at 407 KB
+            and 299 KB — and a decode kicked off by style resolution happens when
+            the frame needs it, i.e. inside a frame, i.e. as a dropped frame. This
+            is the "worst frame 602.7ms four seconds after load, while the page
+            looks idle" the harness kept reporting.
+         2. a custom property on :root invalidates style for EVERY element in the
+            document. Two tiles arriving from a worker within a few ms of each
+            other meant two full-document invalidations back to back.
+
+       Both are fixed by doing the work before the assignment rather than inside it:
+       an <img> is pointed at the blob and `decode()` is awaited, which decodes on a
+       codec thread and puts the result in the image cache under the same URL the CSS
+       will use. By the time the custom property is set, style resolution finds a
+       decoded image and the frame is a repaint rather than a decode.
+
+       And the installs are SPACED — one per animation frame, never two in the same
+       one — so the two full-document invalidations cannot land in the same frame.
+       ============================================================ */
+    let installTurn = Promise.resolve();
+    function install(prop, url, after) {
+        const set = () => {
+            document.documentElement.style.setProperty(prop, `url("${url}")`);
+            if (after) after();
+        };
+        // decode() is the whole point; without it the assignment below owns the decode.
+        installTurn = installTurn.then(() => new Promise(resolve => {
+            let img;
+            try { img = new Image(); } catch (err) { set(); return resolve(); }
+            // decode() and onload BOTH fire on a healthy path; whichever is first wins,
+            // because setting the property twice is two full-document invalidations.
+            let done = false;
+            const go = () => {
+                if (done) return;
+                done = true;
+                // One per frame: two :root invalidations in one frame is one long frame.
+                requestAnimationFrame(() => { set(); resolve(); });
+            };
+            const bail = () => { if (done) return; done = true; set(); resolve(); };
+            img.onload = go;
+            img.onerror = bail;
+            img.decoding = 'async';
+            img.src = url;
+            if (img.decode) img.decode().then(go, () => { /* onload/onerror still runs */ });
+            // A decode that never settles must not strand the queue behind it.
+            setTimeout(bail, 4000);
+        })).catch(() => { set(); });
+    }
+
+    function workerSource() {
+        // Function declarations stringify as declarations; `smooth` is an arrow const.
+        return `'use strict';
+${hash}
+${mulberry32}
+${normalise}
+${clamp01}
+${tileNoise}
+${tileNoiseAniso}
+${tileFbm}
+${paintSkyTile}
+${paintPlateTile}
+const smooth = ${smooth};
+const PAINT = { sky: paintSkyTile, plate: paintPlateTile };
+self.onmessage = (e) => {
+    const { kind, size } = e.data;
+    try {
+        const cv = new OffscreenCanvas(size, size);
+        const g = cv.getContext('2d');
+        const gen = PAINT[kind](g, size);
+        // Nothing else wants this thread, so there is no reason to honour the yields.
+        while (!gen.next().done) { /* run to completion */ }
+        cv.convertToBlob({ type: 'image/png' })
+            .then(blob => self.postMessage({ kind, blob }))
+            .catch(err => self.postMessage({ kind, error: String(err) }));
+    } catch (err) {
+        self.postMessage({ kind, error: String(err) });
+    }
+};`;
+    }
+
+    function getWorker() {
+        if (worker || workerBroken) return worker;
+        try {
+            if (typeof Worker !== 'function' || typeof OffscreenCanvas !== 'function') throw new Error('no worker');
+            const url = URL.createObjectURL(new Blob([workerSource()], { type: 'text/javascript' }));
+            worker = new Worker(url);
+            URL.revokeObjectURL(url);
+            worker.onmessage = (e) => {
+                const { kind, blob, error } = e.data || {};
+                const tile = TILES[kind];
+                if (!tile) return;
+                if (blob) install(tile.prop, URL.createObjectURL(blob), tile.next);
+                else onMainThread(kind, error);
+            };
+            worker.onerror = () => {
+                // A blob: worker refused (CSP) or the source failed to parse. Everything
+                // still owed goes back to the main thread rather than never arriving.
+                workerBroken = true;
+                worker = null;
+                for (const kind of started) onMainThread(kind);
+            };
+        } catch (err) {
+            workerBroken = true;
+            worker = null;
+        }
+        return worker;
+    }
+
+    function onMainThread(kind) {
+        const tile = TILES[kind];
+        if (!tile || tile.fallbackRun) return;
+        tile.fallbackRun = true;
+        let g;
+        try {
+            const c = document.createElement('canvas');
+            c.width = c.height = tile.size;
+            // Never displayed and always read straight back out through toBlob, so it
+            // has no business on the GPU — see ctxBake() for what that costs.
+            g = c.getContext('2d', { willReadFrequently: true });
+        } catch (err) { if (tile.next) tile.next(); return; }
+        if (!g) { if (tile.next) tile.next(); return; }
+        driveSliced(tile.paint()(g, tile.size), () => {
+            try {
+                if (g.canvas.toBlob && window.URL && URL.createObjectURL) {
+                    // A blob URL, not a data URL: the same tile as base64 is a ~200KB
+                    // string living in a custom property that every style recalculation
+                    // has to carry around.
+                    g.canvas.toBlob(b => {
+                        if (b) install(tile.prop, URL.createObjectURL(b), tile.next);
+                        else install(tile.prop, g.canvas.toDataURL('image/png'), tile.next);
+                    }, 'image/png');
+                } else {
+                    install(tile.prop, g.canvas.toDataURL('image/png'), tile.next);
+                }
+            } catch (err) { /* the CSS ramp underneath is already a correct plate */
+                if (tile.next) tile.next();
+            }
+        });
+    }
+
+    return function bake(kind, next) {
+        if (!TILES[kind]) { if (next) next(); return; }
+        if (started.has(kind)) return;
+        started.add(kind);
+        // Chained, so the second tile does not compete with the first for the one
+        // thread either of them might land on. Fired once, whatever the outcome:
+        // a tile that fails to bake must not strand the tile behind it.
+        if (next) {
+            let fired = false;
+            TILES[kind].next = () => { if (fired) return; fired = true; nextTask(next); };
+            setTimeout(TILES[kind].next, 8000);
+        }
+        const w = getWorker();
+        if (w) w.postMessage({ kind, size: TILES[kind].size });
+        else onMainThread(kind);
+    };
+})();
+
+/* Both tiles are page furniture, not content. They are fired from the single bake
+   queue at the foot of this file — behind the CTA, and behind the logotype, which is
+   the one piece of hero art a visitor is actually waiting on. They used to start at
+   "after first paint", which was a guess at interactivity and was wrong by about a
+   second; and they used to start TOGETHER, which on the fallback path put two
+   cooperative slicers in one queue, each getting every other slice and both
+   finishing in twice the time. The plate goes first: it is what every panel above
+   the fold is made of. The sky is a gutter texture nobody looks at directly. */
 
 /* ============================================================
    Surface bake — RGB albedo, A elevation
@@ -696,7 +1343,7 @@ function* bakeWorld() {
             const det = ridged((px / w) * P * 9 + 63, dvy + 19, P * 9, 2) - 0.42;
             shore[row + px] = t + (u2 - t) * fy + det * COAST_DETAIL;
         }
-        if ((py & 63) === 63) yield;
+        if ((py & 7) === 7) yield;
     }
     const sea = percentileCut(shore, LAND_FRACTION);
     // half-width of the blend, in units of the normalised elevation range
@@ -832,7 +1479,9 @@ function* bakeWorld() {
        blurField at radius 2 is two box passes of width five, run twice, which takes
        out everything under about six texels. Continents lose nothing to it — they
        are hundreds of texels across — and it is the SHADING that reads the field. */
+    yield;
     blurField(relief, w, h, 2);
+    yield;
 
     /* --- RELIEF IN THE ALBEDO, not only in the normal ----------------------------
        The shader lights the height field, which gives the terrain modelling wherever
@@ -859,7 +1508,7 @@ function* bakeWorld() {
                 const s = Math.sqrt(gx * gx + gy * gy);
                 slope[i] = s; acc += s;
             }
-            if ((py & 63) === 63) yield;
+            if ((py & 7) === 7) yield;
         }
         const scale = 1 / Math.max((acc / slope.length) * 2.6, 1e-6);
         for (let i = 0; i < slope.length; i++) {
@@ -882,7 +1531,7 @@ function* bakeWorld() {
         for (let px = 0; px < w; px++) {
             d[(row + px) * 4 + 3] = relief[row + px] * 255 + (BAYER4[brow + (px & 3)] / 16 - 0.46875);
         }
-        if ((py & 63) === 63) yield;
+        if ((py & 7) === 7) yield;
     }
 
     // moist is deliberately NOT returned: at 2048x1024 it is an 8MB Float32Array that
@@ -1247,7 +1896,7 @@ function* bakeMoon() {
             const u = px / w;
             relief[row + px] = fbm(u * P, vy, P, 4) * 0.28;
         }
-        if ((py & 15) === 15) yield;
+        if ((py & 7) === 7) yield;
     }
 
     /* ---- pass 2: craters, SCATTERED ----
@@ -1380,7 +2029,9 @@ function* bakeMoon() {
        renders as hard-edged terraces with no surface between them. Two texels costs
        the ramparts nothing — they are five wide by construction — and puts the whole
        field inside the shader's tilt clamp. */
+    yield;
     blurField(relief, w, h, 2);
+    yield;
 
     /* ---- the 8-bit encode, DITHERED ------------------------------------------
        The last bake wrote `Math.round(tone)` straight into the buffer. Both the
@@ -1423,7 +2074,7 @@ function* bakeMoon() {
                terracing into the normal map. */
             d[o + 3] = clamp01(relief[i]) * 255 + dith;
         }
-        if ((py & 63) === 63) yield;
+        if ((py & 7) === 7) yield;
     }
     return d;
 }
@@ -1587,8 +2238,59 @@ function ctx2d(w, h) {
     return c.getContext('2d', { willReadFrequently: true });
 }
 
-/** Separable box blur over a Float32Array; two passes is close enough to a gaussian. */
-function blurField(f, w, h, r) {
+/* ============================================================
+   A BAKE TARGET THAT IS IN THE DOM NEEDS THE SAME HINT, AND WAS THE 2.7 SECOND STALL
+   ============================================================
+
+   The scratch buffers above were given willReadFrequently years ago, for readback.
+   The two canvases the bakes finally WRITE to — the wordmark under the h1 and the
+   doctrine thumbnails — were left on the default path, and being in the document
+   they are exactly the ones Chromium accelerates. That is a different and much worse
+   problem than a slow getImageData, and it is not visible in a JS profile at all.
+
+   TRACED, because guessing had already sent one reviewer to the wrong function. The
+   page's worst task on the audit harness was 2,773ms, of which JavaScript was 9ms:
+
+       RunTask 2773ms
+         └ CanvasRenderingContext2D::FinalizeFrame        2764ms
+             └ SharedContextRateLimiter::Tick
+                 └ GPU backpressure via GL_COMMANDS_COMPLETED_CHROMIUM
+                     └ CommandBufferProxyImpl::WaitForToken
+
+   An accelerated 2D canvas queues its drawing into the GPU command buffer, and at
+   the end of the task Blink's rate limiter BLOCKS THE MAIN THREAD until the GPU has
+   drained it, so the queue cannot grow without bound. On hardware that costs
+   microseconds. On SwiftShader — the whole population this file already goes to
+   great lengths to detect — the "GPU" is a thread on the same CPU, the bake has just
+   handed it forty megapixel composites, and the document stops answering the pointer
+   for nearly three seconds. It is a synchronous wait, so no amount of slicing the
+   JavaScript can help: the slices were already 5ms, and they were never the problem.
+
+   Unaccelerated, the same pixels never enter a command buffer, there is nothing to
+   rate limit, and the wait does not exist. Nothing else changes — same Skia, same
+   output, bit for bit — and these canvases are written once and then never touched
+   again, so the texture upload the hint costs is paid exactly once each.
+*/
+function ctxBake(canvas) {
+    return canvas.getContext('2d', { willReadFrequently: true });
+}
+
+/**
+ * Separable box blur over a Float32Array; two passes is close enough to a gaussian.
+ *
+ * ONE implementation, two front doors. The blur is the largest un-yieldable step in
+ * both shading passes — over the wordmark's 1276x466 field it is 2.4 million inner
+ * iterations, which the slicer could not interrupt because it was a plain function
+ * call sitting between two `yield`s. So the body is a generator that hands the thread
+ * back every BAND rows, and `blurField()` below is that generator drained on the spot
+ * for the callers that are not generators themselves.
+ *
+ * Rows in the horizontal pass and columns in the vertical one are independent, so a
+ * yield mid-pass cannot change the result — the two produce identical arrays, and the
+ * thumbnails and the logotype are the same pixels they were.
+ */
+const BLUR_BAND = 96;
+function* blurFieldSliced(f, w, h, r) {
     if (r < 1) return f;
     const tmp = new Float32Array(f.length);
     const win = r * 2 + 1;
@@ -1603,6 +2305,7 @@ function blurField(f, w, h, r) {
                 tmp[row + x] = sum / win;
                 sum += f[row + cx(x + r + 1)] - f[row + cx(x - r)];
             }
+            if (y % BLUR_BAND === BLUR_BAND - 1) yield;
         }
         for (let x = 0; x < w; x++) {
             let sum = 0;
@@ -1611,9 +2314,16 @@ function blurField(f, w, h, r) {
                 f[y * w + x] = sum / win;
                 sum += tmp[cy(y + r + 1) * w + x] - tmp[cy(y - r) * w + x];
             }
+            if (x % BLUR_BAND === BLUR_BAND - 1) yield;
         }
     }
     return f;
+}
+function blurField(f, w, h, r) {
+    const g = blurFieldSliced(f, w, h, r);
+    let s = g.next();
+    while (!s.done) s = g.next();
+    return s.value;
 }
 
 function channelField(ctx, w, h, offset, scale) {
@@ -1634,8 +2344,8 @@ function disc(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
  * quarter-second freeze while the visitor is scrolling reads as a broken page.
  */
 function* shadeThumb(dest, L, w, h, cfg) {
-    const hf = blurField(channelField(L.H, w, h, 0, 1 / 255), w, h, cfg.bevel || 3);
-    const occ = blurField(channelField(L.O, w, h, 0, 1 / 255), w, h, cfg.shadowSoft || 6);
+    const hf = yield* blurFieldSliced(channelField(L.H, w, h, 0, 1 / 255), w, h, cfg.bevel || 3);
+    const occ = yield* blurFieldSliced(channelField(L.O, w, h, 0, 1 / 255), w, h, cfg.shadowSoft || 6);
     const alb = L.A.getImageData(0, 0, w, h).data;
     const gls = L.G.getImageData(0, 0, w, h).data;
     const emiD = L.E.getImageData(0, 0, w, h).data;
@@ -1649,7 +2359,12 @@ function* shadeThumb(dest, L, w, h, cfg) {
         eR[i] = SRGB2LIN[emiD[o]] * a; eG[i] = SRGB2LIN[emiD[o + 1]] * a; eB[i] = SRGB2LIN[emiD[o + 2]] * a;
     }
     yield;
-    const gR = blurField(eR.slice(), w, h, 11), gG = blurField(eG.slice(), w, h, 11), gB = blurField(eB.slice(), w, h, 11);
+    // One channel per slice. All three on one line was measured at 118ms in a single
+    // task — a dropped frame and a half, landing while the visitor is scrolling the
+    // doctrine row into view, which is the worst possible moment for one.
+    const gR = yield* blurFieldSliced(eR.slice(), w, h, 11);
+    const gG = yield* blurFieldSliced(eG.slice(), w, h, 11);
+    const gB = yield* blurFieldSliced(eB.slice(), w, h, 11);
     yield;
 
     const bump = cfg.bump || 3.4;
@@ -1699,7 +2414,7 @@ function* shadeThumb(dest, L, w, h, cfg) {
 
             px[o] = encD(r, x, y); px[o + 1] = encD(g, x, y); px[o + 2] = encD(b, x, y); px[o + 3] = 255;
         }
-        if ((y & 31) === 31) yield;
+        if ((y & 7) === 7) yield;
     }
     dest.putImageData(out, 0, 0);
 }
@@ -1954,8 +2669,12 @@ function dilateMask(src, w, h, r) {
     return t.canvas;
 }
 
-/** A seeded RGBA tile used as a canvas pattern. `shape(x,y,j)` returns -1..1. */
-function noiseTile(size, seed, shape, gain) {
+/** A seeded RGBA tile used as a canvas pattern. `shape(x,y,j)` returns -1..1.
+    A generator, because `shape` is a closure called once per texel and the MOTTLE tile
+    runs eight hashes inside it — 36,864 texels of that is well past a 5ms slice, and it
+    was being evaluated as one un-interruptible call. Yielded per row band; `shape` is
+    pure and reads nothing that changes, so the tile is unaltered. */
+function* noiseTile(size, seed, shape, gain) {
     const c = ctx2d(size, size);
     const img = c.createImageData(size, size);
     const p = img.data;
@@ -1969,6 +2688,7 @@ function noiseTile(size, seed, shape, gain) {
             const lit = v > 0 ? 255 : 0;
             p[o] = lit; p[o + 1] = lit; p[o + 2] = lit; p[o + 3] = a * 255;
         }
+        if ((y & 31) === 31) yield;
     }
     c.putImageData(img, 0, 0);
     return c.canvas;
@@ -1976,7 +2696,8 @@ function noiseTile(size, seed, shape, gain) {
 
 /** One lighting pass over a glyph block. Same maths as shadeThumb, but it keeps alpha. */
 function* shadeWordmark(dest, L, w, h, cfg) {
-    const hf = blurField(channelField(L.H, w, h, 0, 1 / 255), w, h, cfg.bevel);
+    const hf = yield* blurFieldSliced(channelField(L.H, w, h, 0, 1 / 255), w, h, cfg.bevel);
+    yield;
     const alb = L.A.getImageData(0, 0, w, h).data;
     const gls = L.G.getImageData(0, 0, w, h).data;
     yield;
@@ -2040,7 +2761,7 @@ function* shadeWordmark(dest, L, w, h, cfg) {
 
             px[o] = encD(r, x, y); px[o + 1] = encD(g, x, y); px[o + 2] = encD(b, x, y); px[o + 3] = cov;
         }
-        if ((y & 31) === 31) yield;
+        if ((y & 7) === 7) yield;
     }
     dest.putImageData(out, 0, 0);
 }
@@ -2071,44 +2792,72 @@ const bakeWordmark = (function wordmark() {
         spec: 134, tight: 150
     };
 
+    /* ============================================================
+       THE THREE NOISE TILES ARE BUILT ON FIRST USE, NOT AT PARSE TIME
+
+       These were three `const` initialisers in the body of this IIFE, and an IIFE in
+       a module body runs during module EVALUATION — i.e. before the browser has
+       painted anything at all, because a `type="module"` script is deferred and
+       therefore executes ahead of first paint. Between them they are 256x256 +
+       128x128 + 192x192 = 118,784 pixels of hashed noise and three
+       createImageData/putImageData round trips, for a logotype that is not cast
+       until seconds later and might never be cast at all.
+
+       Ablation measured it: with landing.js blocked entirely, first contentful paint
+       on this page is 212ms; with it running, 652ms. Removing every gradient, mask
+       and overlay from the stylesheet changed FCP by nothing. The delay was never
+       the CSS — it was arithmetic like this, queued in front of the first frame.
+
+       They are built once, on the first cast, inside the sliced generator where they
+       can yield. Nothing else changes: same seeds, same tiles, same lockup.
+       ============================================================ */
+    let BRUSH = null, GRAIN = null, MOTTLE = null;
+
     /* Brushed streaks — PER ROW, not per pixel.
        The first pass modulated a sine in v, which at a 96-cycle period on a 256 tile
        laid a perfectly regular 1.3px stripe across the wordmark: a moiré, not a
        brush. What a wheel actually leaves is rows of slightly different value with no
        period at all, so the row value is a hash of y and the only thing that varies
        along x is how strongly the streak shows. */
-    const BRUSH = noiseTile(256, 0x51EE17, (x, y, j) => {
-        const row = (hash(3, y) - 0.5) * 1.55 + (hash(11, y >> 1) - 0.5) * 0.55;
-        const along = 0.42 + 0.58 * hash(x >> 5, 29);
-        return (row * along + (j - 0.5) * 0.30);
-    }, 0.36);
+    function* buildNoise() {
+        if (BRUSH) return;
+        BRUSH = yield* noiseTile(256, 0x51EE17, (x, y, j) => {
+            const row = (hash(3, y) - 0.5) * 1.55 + (hash(11, y >> 1) - 0.5) * 0.55;
+            const along = 0.42 + 0.58 * hash(x >> 5, 29);
+            return (row * along + (j - 0.5) * 0.30);
+        }, 0.36);
+        yield;
     /* Per-pixel tooth. Nothing structural — it exists so that an 8px window anywhere
        on the face has a standard deviation, which a gradient never does. */
-    const GRAIN = noiseTile(128, 0x6C0FFE, (x, y, j) => (j - 0.5) * 2, 0.5);
+        GRAIN = yield* noiseTile(128, 0x6C0FFE, (x, y, j) => (j - 0.5) * 2, 0.5);
+        yield;
     /* MOTTLE — the frequency between the brush and the sweep, and the one the last
        bake had none of. Two octaves of smoothed value noise at 20 and 60 pixels, so
        one letter is never the same value as the letter beside it and no band can run
        across the lockup at a constant height. */
-    const MOTTLE = noiseTile(192, 0x2B7C0D, (x, y) => {
-        const n = (a, b, p) => {
-            const x0 = Math.floor(a), y0 = Math.floor(b);
-            const fx = smooth(a - x0), fy = smooth(b - y0);
-            const wp = i => ((i % p) + p) % p;
-            const xa = wp(x0), xb = wp(x0 + 1), ya = wp(y0), yb = wp(y0 + 1);
-            const t = hash(xa, ya) + (hash(xb, ya) - hash(xa, ya)) * fx;
-            const u = hash(xa, yb) + (hash(xb, yb) - hash(xa, yb)) * fx;
-            return t + (u - t) * fy;
-        };
-        // the divisors are exact so both octaves close on the 192px tile boundary —
-        // an octave that does not wrap turns a mottle into a visible grid
-        return (n(x * (10 / 192), y * (10 / 192), 10) * 0.68
-              + n(x * (28 / 192), y * (28 / 192), 28) * 0.32 - 0.5) * 2;
-    }, 0.62);
+        MOTTLE = yield* noiseTile(192, 0x2B7C0D, (x, y) => {
+            const n = (a, b, p) => {
+                const x0 = Math.floor(a), y0 = Math.floor(b);
+                const fx = smooth(a - x0), fy = smooth(b - y0);
+                const wp = i => ((i % p) + p) % p;
+                const xa = wp(x0), xb = wp(x0 + 1), ya = wp(y0), yb = wp(y0 + 1);
+                const t = hash(xa, ya) + (hash(xb, ya) - hash(xa, ya)) * fx;
+                const u = hash(xa, yb) + (hash(xb, yb) - hash(xa, yb)) * fx;
+                return t + (u - t) * fy;
+            };
+            // the divisors are exact so both octaves close on the 192px tile boundary —
+            // an octave that does not wrap turns a mottle into a visible grid
+            return (n(x * (10 / 192), y * (10 / 192), 10) * 0.68
+                  + n(x * (28 / 192), y * (28 / 192), 28) * 0.32 - 0.5) * 2;
+        }, 0.62);
+        yield;
+    }
 
     let last = '';
     let running = false;
 
     function* bake() {
+        yield* buildNoise();
         const cs = getComputedStyle(h1);
         const span = h1.querySelector('span');
         const fs = parseFloat(cs.fontSize) || 48;
@@ -2178,15 +2927,20 @@ const bakeWordmark = (function wordmark() {
         });
         yield;
 
-        /* ---- masks ---- */
-        const glyphs = lines.map((l, i) => {
+        /* ---- masks ----
+           One line per slice. Each of these is a fresh 1276x466 canvas plus a shaped
+           fillText at 195px, and setting two of them up back to back was one of the
+           steps the 5ms budget could not interrupt. */
+        const glyphs = [];
+        for (let i = 0; i < lines.length; i++) {
             const m = ctx2d(w, h);
             setFace(m, fs * SS);
-            if (canTrack) m.letterSpacing = (l.track * SS).toFixed(3) + 'px';
+            if (canTrack) m.letterSpacing = (lines[i].track * SS).toFixed(3) + 'px';
             m.textBaseline = 'alphabetic'; m.fillStyle = '#fff';
-            m.fillText(l.text, place[i].x, place[i].y);
-            return m.canvas;
-        });
+            m.fillText(lines[i].text, place[i].x, place[i].y);
+            glyphs.push(m.canvas);
+            yield;
+        }
 
         /* ---- the cross-member -------------------------------------------------
            A logotype in this idiom is a nameplate, and a nameplate is bolted to
@@ -2269,7 +3023,9 @@ const bakeWordmark = (function wordmark() {
             const grad = L.A.createLinearGradient(0, top, 0, bot);
             for (const [t, c] of mat.stops) grad.addColorStop(t, c);
             L.A.drawImage(paint(glyphs[i], grad), 0, 0);
+            yield;
             L.G.drawImage(paint(glyphs[i], `rgb(${mat.spec},${mat.tight},0)`), 0, 0);
+            yield;
         }
         // the cross-member is gunmetal — one value below the steel line, so it reads
         // as the part the type is bolted TO rather than as a third word
@@ -2295,17 +3051,27 @@ const bakeWordmark = (function wordmark() {
            from the right), a mottle at glyph scale, and then real DAMAGE: scratches
            with a dark trailing edge and pits with a lit rim, both clipped to the
            casting. */
+        /* A YIELD AFTER EVERY FULL-CANVAS OPERATION FROM HERE DOWN. Each of these is a
+           source-atop fill of 595,000 pixels through a repeating pattern, and there are
+           five of them plus two gradients between what used to be a single pair of
+           yields — comfortably the longest step in the bake and one the 5ms budget had
+           no way to break into. Context state (globalAlpha, the composite mode) simply
+           persists across a yield, and nothing else in the file touches these two
+           contexts, so the composite is byte-for-byte the one that shipped. */
         L.A.globalCompositeOperation = 'source-atop';
         L.A.globalAlpha = 0.20;
         L.A.fillStyle = L.A.createPattern(BRUSH, 'repeat');
         L.A.fillRect(0, 0, w, h);
+        yield;
         L.A.globalAlpha = 0.15;
         L.A.fillStyle = L.A.createPattern(GRAIN, 'repeat');
         L.A.fillRect(0, 0, w, h);
+        yield;
         L.A.globalAlpha = 0.30;
         L.A.fillStyle = L.A.createPattern(MOTTLE, 'repeat');
         L.A.fillRect(0, 0, w, h);
         L.A.globalAlpha = 1;
+        yield;
 
         /* THE SWEEP. One broad specular roll from the page's lamp, up-left, across
            the entire lockup — this is the layer that stops eight letters reading as
@@ -2316,6 +3082,7 @@ const bakeWordmark = (function wordmark() {
         sweep.addColorStop(0.72, 'rgba(0,0,0,0.05)');
         sweep.addColorStop(1, 'rgba(0,0,0,0.16)');
         L.A.fillStyle = sweep; L.A.fillRect(0, 0, w, h);
+        yield;
 
         /* SCRATCHES and PITS, seeded so the mark is identical frame to frame. A
            scratch is a bright stroke with a dark one trailing it, because it is a
@@ -2336,6 +3103,7 @@ const bakeWordmark = (function wordmark() {
                 L.A.strokeStyle = `rgba(255,252,244,${a.toFixed(3)})`;
                 L.A.beginPath(); L.A.moveTo(x0, y0); L.A.lineTo(x1, y1); L.A.stroke();
             }
+            yield;
             // pits: a hollow is lit BACKWARDS from a bump — dark up-left, bright
             // down-right — which is what makes them read as damage rather than as
             // bubbles. Same rule the plate material follows.
@@ -2362,6 +3130,7 @@ const bakeWordmark = (function wordmark() {
         wear.addColorStop(1, 'rgba(0,0,0,0.13)');
         L.A.fillStyle = wear; L.A.fillRect(0, 0, w, h);
         L.A.globalCompositeOperation = 'source-over';
+        yield;
 
         // anisotropy: the brush goes into the SPECULAR too, and so does the mottle —
         // a specular that is constant across a surface is a varnish, not a metal
@@ -2369,6 +3138,7 @@ const bakeWordmark = (function wordmark() {
         L.G.globalAlpha = 0.42;
         L.G.fillStyle = L.G.createPattern(BRUSH, 'repeat');
         L.G.fillRect(0, 0, w, h);
+        yield;
         L.G.globalAlpha = 0.34;
         L.G.fillStyle = L.G.createPattern(MOTTLE, 'repeat');
         L.G.fillRect(0, 0, w, h);
@@ -2377,7 +3147,7 @@ const bakeWordmark = (function wordmark() {
         yield;
 
         /* ---- destination: shadow, then extrusion wall, then the lit face ---- */
-        const dest = canvas.getContext('2d');
+        const dest = ctxBake(canvas);
         dest.clearRect(0, 0, w, h);
 
         /* KEYLINE. The thing that separates a struck badge from bevelled text is a
@@ -2388,8 +3158,11 @@ const bakeWordmark = (function wordmark() {
            StarCraft I idiom exactly, and it is one dilation. */
         const KEY_W = Math.max(2, Math.round(fs * SS * 0.026));
         const shell = dilateMask(all.canvas, w, h, KEY_W);
+        yield;
 
-        // The lockup sits over a lit planet, so it needs its own ground.
+        // The lockup sits over a lit planet, so it needs its own ground. A 31px blur
+        // over the whole canvas is the single most expensive draw call in the bake, so
+        // it gets a slice to itself either side.
         const BLUR = Math.round(fs * SS * 0.16);
         dest.save();
         if (typeof dest.filter === 'string') {
@@ -2403,6 +3176,7 @@ const bakeWordmark = (function wordmark() {
             for (let k = 1; k <= 5; k++) dest.drawImage(flat, 0, k * BLUR * 0.4);
         }
         dest.restore();
+        yield;
 
         /* The extrusion wall, drawn bottom-up so the step nearest the face lands last.
            Off the DILATED shape, so the wall is flush with the keyline rather than
@@ -2435,8 +3209,12 @@ const bakeWordmark = (function wordmark() {
         h1.classList.add('is-baked');
     }
 
-    function run() {
-        if (running) return;
+    function run(done) {
+        // `done` chains the next bake behind this one; it must fire on EVERY exit
+        // path, including the two that do no work, or the queue behind it stalls.
+        let fired = false;
+        const finish = () => { if (fired) return; fired = true; running = false; if (done) done(); };
+        if (running) { if (done) done(); return; }
         running = true;
         const go = () => {
             const cs = getComputedStyle(h1);
@@ -2444,9 +3222,11 @@ const bakeWordmark = (function wordmark() {
             // widths, so a drag across a breakpoint re-casts once and a drag within
             // one costs nothing.
             const key = `${cs.fontSize}|${cs.fontFamily}|${Math.round(h1.clientWidth)}`;
-            if (key === last) { running = false; return; }
+            if (key === last) { finish(); return; }
             last = key;
-            driveSliced(bake(), () => { running = false; });
+            driveSliced(bake(), finish);
+            // driveSliced swallows a failed bake, so the chain needs its own way out.
+            setTimeout(finish, 9000);
         };
         // Casting Russo One before the face has arrived produces a struck Segoe UI.
         if (document.fonts && document.fonts.ready) document.fonts.ready.then(go).catch(go);
@@ -2485,8 +3265,12 @@ const GLSL_SPHERE_VERT = /* glsl */`
 
 /* ============================================================
    Hero scene
+
+   Called by armHero() at the foot of this file once the renderer has been fetched —
+   not at parse time, and not at all on a connection the visitor has flagged as
+   metered. Everything inside is unchanged.
    ============================================================ */
-(function hero() {
+function hero(probedTier) {
     const canvas = document.getElementById('hero-canvas');
     if (!canvas) return;
 
@@ -2495,25 +3279,35 @@ const GLSL_SPHERE_VERT = /* glsl */`
         renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: 'high-performance' });
         if (!renderer.getContext()) return;
     } catch (err) {
+        goStatic();
         return; // CSS fallback remains
     }
     renderer.setClearColor(0x03050b, 1);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.02;
 
-    /* How much larger than the CSS box the drawing buffer runs. See resize().
-       A software rasteriser pays the whole supersample in CPU time — measured, 1.5x
-       on SwiftShader takes a 1920x1080 frame from 10 to 28 seconds to read back —
-       so it gets the smallest factor that still visibly closes a coastline, and
-       real hardware, where the extra fill is free, gets the full 1.6. */
-    const SUPERSAMPLE = (() => {
-        try {
-            const gl = renderer.getContext();
-            const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-            const name = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
-            return /swiftshader|software|llvmpipe|basic render|microsoft basic/i.test(name) ? 1.25 : 1.6;
-        } catch (err) { return 1.25; }
-    })();
+    /* ---------- quality tier ----------
+       This used to be a DPR nudge and nothing else: a software rasteriser was
+       detected correctly and then handed 1.25x SUPERSAMPLING — still above 1:1, on
+       the slowest rasteriser that exists, with a five-pass bloom and an FXAA behind
+       it. Measured, that is 754 ms a frame at 1920x1080. 1.3 fps.
+
+       It is a TIER now, and the tier changes what is in the frame rather than how
+       many samples go into it:
+         full — 1.6x supersample, RenderPass + UnrealBloom + Output + FXAA
+         lite — 1:1, no composer at all, renderer.render() straight to the canvas
+       Bloom is five separate blur passes over the whole frame; on anything slow
+       those five are most of the cost of a picture that has nothing wrong with it.
+
+       Software rasterisers never get here — armHero() sends them to the finished
+       CSS hero before a single byte of three.js is fetched. What arrives here is
+       'gpu' (a hardware renderer string) or 'unknown' (the string is masked, or
+       there was no worker to ask from). Both start at `full` and are demoted by
+       MEASUREMENT, not by guessing — see the frame guard in bringUp(). */
+    let quality = 'full';
+    const SS_FULL = 1.6;
+    // belt and braces: if the string leaked through to here, believe it
+    if (probedTier === 'software') quality = 'lite';
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
@@ -3183,35 +3977,54 @@ const GLSL_SPHERE_VERT = /* glsl */`
        half-float samples at 1920x1080 tripled the cost of a frame on a software
        rasteriser and starved the world bake of the thread for five extra seconds.
 
-       What this frame gets instead is a modest supersample (see resize(): the
-       drawing buffer runs 1.5x the CSS box on a 1x display) plus FXAA. The two
+       What the FULL tier gets instead is a modest supersample (see resize(): the
+       drawing buffer runs 1.6x the CSS box on a 1x display) plus FXAA. The two
        cover different failures and both are needed: supersampling averages the
        high-frequency shading noise on the terrain, which no edge filter can touch,
-       and FXAA cleans the long near-horizontal coastline edges that survive a 1.5x
+       and FXAA cleans the long near-horizontal coastline edges that survive a 1.6x
        box filter. MSAA would have fixed neither — it only ever samples geometry
-       edges, and this frame's staircases are almost all inside the silhouette. */
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
-    // Threshold sits above the lit-land value on purpose: only the sun glint, the city
-    // lights, the star cores and the thin day limb are meant to bloom. A low threshold
-    // blooms the whole globe and the frame turns to milk.
-    /* 0.90, not 0.95. At 0.95 the only thing over the threshold was the sun glint
-       itself, so the day limb and all but the top handful of stars contributed
-       nothing and the frame's light came entirely from the albedo. 0.90 lets the
-       thin lit limb, the brightest cloud tops and the star cores in; the lit LAND
-       still sits below it, which is the line that must not be crossed — under it the
-       whole globe blooms and the frame turns to milk. */
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.60, 0.52, 0.90);
-    composer.addPass(bloom);
-    composer.addPass(new OutputPass());
-    // FXAA goes AFTER the output transform, not before it. Its edge detector is a
-    // luma threshold, and luma computed on LINEAR radiance is not the luma the
-    // algorithm was tuned for — on a frame whose subject sits at 0.02..0.3 linear
-    // almost nothing would clear the threshold and the pass would do nothing at all.
-    // Downstream of OutputPass the values are display-referred and it works.
-    // Its resolution uniform is the DRAWING BUFFER's, not the CSS box's — see resize().
-    const fxaa = new ShaderPass(FXAAShader);
-    composer.addPass(fxaa);
+       edges, and this frame's staircases are almost all inside the silhouette.
+
+       The LITE tier gets none of it. Antialiasing you cannot afford to draw is not
+       antialiasing, it is a slideshow — and a clean 1:1 frame at 60fps reads better
+       than a supersampled one at 1.3. Everything here is therefore built on demand
+       and can be torn back down at runtime; see dropComposer(). */
+    let composer = null, bloom = null, fxaa = null;
+
+    function buildComposer() {
+        if (composer || quality === 'lite') return;
+        composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        // Threshold sits above the lit-land value on purpose: only the sun glint, the city
+        // lights, the star cores and the thin day limb are meant to bloom. A low threshold
+        // blooms the whole globe and the frame turns to milk.
+        /* 0.90, not 0.95. At 0.95 the only thing over the threshold was the sun glint
+           itself, so the day limb and all but the top handful of stars contributed
+           nothing and the frame's light came entirely from the albedo. 0.90 lets the
+           thin lit limb, the brightest cloud tops and the star cores in; the lit LAND
+           still sits below it, which is the line that must not be crossed — under it the
+           whole globe blooms and the frame turns to milk. */
+        bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.60, 0.52, 0.90);
+        composer.addPass(bloom);
+        composer.addPass(new OutputPass());
+        // FXAA goes AFTER the output transform, not before it. Its edge detector is a
+        // luma threshold, and luma computed on LINEAR radiance is not the luma the
+        // algorithm was tuned for — on a frame whose subject sits at 0.02..0.3 linear
+        // almost nothing would clear the threshold and the pass would do nothing at all.
+        // Downstream of OutputPass the values are display-referred and it works.
+        // Its resolution uniform is the DRAWING BUFFER's, not the CSS box's — see resize().
+        fxaa = new ShaderPass(FXAAShader);
+        composer.addPass(fxaa);
+    }
+
+    function dropComposer() {
+        if (!composer) return;
+        try { composer.dispose(); } catch (err) { /* older three: nothing to release */ }
+        composer = null; bloom = null; fxaa = null;
+    }
+
+    // One place that knows whether there is a post chain in the frame.
+    const draw = () => { if (composer) composer.render(); else renderer.render(scene, camera); };
 
     /* True until the world has finished baking. Declared HERE rather than beside the
        render loop because resize() reads it: while the bake owns the thread the frame
@@ -3238,26 +4051,38 @@ const GLSL_SPHERE_VERT = /* glsl */`
     const LOOK_AT = new THREE.Vector3(0, 0, 0);
 
     function resize() {
+        // after a handover the renderer is disposed and its context deliberately lost;
+        // the window listener is still attached, and must not talk to either.
+        if (dead) return;
         const w = canvas.clientWidth || canvas.parentElement.clientWidth;
         const h = canvas.clientHeight || canvas.parentElement.clientHeight;
         if (!w || !h) return;
         /* SUPERSAMPLE. On a 1x display the globe spans ~950 CSS pixels and every edge
            in it — coastlines, the terminator, the limb — lands on the pixel grid with
            no filtering at all, which is exactly the staircase this frame was rejected
-           for. Rendering at 1.5x and letting the compositor box-filter it back down
-           puts 2.25 samples in every output pixel, and unlike MSAA that works on
+           for. Rendering at 1.6x and letting the compositor box-filter it back down
+           puts 2.56 samples in every output pixel, and unlike MSAA that works on
            shading noise as well as on geometry.
            The 1.9 ceiling is a cost limit, not a quality one: on a 2x display 1.9
-           already costs 3.6x the fragments of a naive 1x pass. */
-        const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1) * (baking ? 1 : SUPERSAMPLE), 1.9);
+           already costs 3.6x the fragments of a naive 1x pass.
+           LITE IS HARD-CAPPED AT 1.0, INCLUDING ON A RETINA PANEL. This tier only
+           exists because 30-odd measured frames said the machine cannot keep up, and
+           the first thing to give up is fill: a 2x display is 4x the fragments for a
+           picture the visitor is already seeing at 3fps. */
+        const ss = quality === 'lite' ? 1 : SS_FULL;
+        const dpr = quality === 'lite'
+            ? 1
+            : Math.min(Math.max(window.devicePixelRatio || 1, 1) * (baking ? 1 : ss), 1.9);
         renderer.setPixelRatio(dpr);
         renderer.setSize(w, h, false);
-        composer.setPixelRatio(dpr);
-        composer.setSize(w, h);
-        // FXAA works in drawing-buffer space, so it needs the SUPERSAMPLED size. Fed
-        // the CSS box it would blur over a 1.5px neighbourhood and soften the frame
-        // instead of sharpening its edges.
-        fxaa.material.uniforms.resolution.value.set(1 / (w * dpr), 1 / (h * dpr));
+        if (composer) {
+            composer.setPixelRatio(dpr);
+            composer.setSize(w, h);
+            // FXAA works in drawing-buffer space, so it needs the SUPERSAMPLED size. Fed
+            // the CSS box it would blur over a 1.5px neighbourhood and soften the frame
+            // instead of sharpening its edges.
+            fxaa.material.uniforms.resolution.value.set(1 / (w * dpr), 1 / (h * dpr));
+        }
         camera.aspect = w / h;
         const portrait = camera.aspect < 1;
         const narrow = camera.aspect < 1.5;
@@ -3267,31 +4092,173 @@ const GLSL_SPHERE_VERT = /* glsl */`
         if (moonGroup) moonGroup.visible = !portrait;
         starMat.uniforms.uScale.value = Math.max(0.72, Math.min(1.25, h / 820));
         camera.updateProjectionMatrix();
+        // a parked frame is now the wrong size; wake the loop for one more.
+        if (parked) { parked = false; start(); }
     }
-    window.addEventListener('resize', resize);
-    resize();
 
     /* ---------- loop ---------- */
     const clock = new THREE.Clock();
     let elapsed = 0;
     let running = true;
     let looping = false;
-    /* The bake and the render loop are competing for one thread, and the render loop
-       wins by default because rAF fires whether or not anything has changed. On a
-       software rasteriser a frame of this scene costs a few hundred milliseconds, so
-       a bake that yields every 18ms was getting a third of the CPU and the world was
-       landing five seconds late — visibly, as an empty starfield the visitor stares at.
-       While the world is being built the loop runs at roughly 1.5fps. Nothing is on
-       screen yet but a static starfield, so there is nothing to see at 60, and every
-       frame skipped here is a frame of arithmetic the world gets instead.
+    /* Set once, by shutDown(). The IntersectionObserver and the visibilitychange
+       handler both RESTART the loop when the hero comes back into view, and after a
+       handover to the static hero the renderer is disposed and its context
+       deliberately lost — so without this, scrolling back up would call draw() on a
+       dead context and the console would fill with GL errors behind a page that
+       looks fine. */
+    let dead = false;
+    // reduced-motion only: the loop has drawn the final, settled frame and stopped.
+    let parked = false;
+    /* The bake and the render loop compete for one thread, and the render loop wins by
+       default because rAF fires whether or not anything has changed. So while the world
+       is being built the loop is capped and the surplus goes to the bake.
+
+       THIRTY FRAMES A SECOND, AND IT USED TO BE ONE AND A HALF. 650ms was written for a
+       software rasteriser, where one frame of this scene costs a few hundred
+       milliseconds and the bake would otherwise have starved. That machine no longer
+       reaches this code at all: armHero() probes the rasteriser first and sends
+       SwiftShader to the static hero without fetching a byte of three.js, so every
+       visitor who gets here has a GPU turning frames around in single-digit
+       milliseconds. On that machine the constant was not starvation management, it was
+       a slideshow — the planet, the cloud shell, the starfield and the camera drift all
+       advancing once every two-thirds of a second, for the one to three seconds a
+       visitor spends forming their first impression of the product, on the only moving
+       thing above the fold.
+
+       33ms halves the hero's rate instead of quartering it eight times over: the bake
+       still gets the majority of the thread, and what the visitor watches while it
+       works is smooth motion rather than a stutter.
        (`baking` itself is declared up beside the composer, because resize() reads it.) */
     let lastBakeFrame = 0;
-    const BAKE_FRAME_MS = 650;
+    const BAKE_FRAME_MS = 33;
     const worldPos = new THREE.Vector3();
+
+    /* ---------- the frame guard ----------
+       THE THING THE RENDERER STRING CANNOT TELL YOU. A string identifies SwiftShader.
+       It does not identify a decade-old integrated part, a thermally throttled
+       laptop, a remote desktop pushing frames over a wire, or a driver that lies
+       about what it is. So the loop measures ITSELF once the world is up, and if the
+       frames it is actually delivering are worse than 22fps it steps down a rung
+       instead of continuing to serve a slideshow:
+
+           full  ->  lite    (no bloom, no FXAA, 1:1 — usually 3-4x cheaper)
+           lite  ->  static  (the CSS hero: finished art, and honest at 60fps)
+
+       Two rungs and then it stops measuring, so this can never oscillate.
+       RAW frame time, not `dt`: dt is clamped to 50ms for the animation's sake, so a
+       754ms frame and a 50ms frame are the same number to it and the guard would
+       never fire. */
+    let guardStage = quality === 'lite' ? 1 : 0;
+    const guardSamples = [];
+    let guardWarmup = 0, guardWindowStart = 0, guardStreak = 0;
+    /* THE GUARD MUST NOT MEASURE THIS PAGE'S OWN HOMEWORK. 700ms after the world
+       lands, the doctrine thumbnail starts baking on this thread in 18ms slices, and
+       a cooperative bake stretches rAF intervals whether or not the GPU is coping.
+       Measured in that window, a perfectly healthy machine can look like a 25fps one
+       — and the punishment for a false positive is a visitor with a good graphics
+       card losing the bloom for no reason. The thumbnail is one card and finishes
+       well inside this; the guard starts after it. */
+    let guardReady = false;
+    const armGuard = () => setTimeout(() => { guardReady = true; }, 1600);
+    function endBaking() { if (!baking) return; baking = false; armGuard(); }
+    const GUARD_WARMUP = 5;        // frames discarded after the world lands
+    const GUARD_MAX = 30;          // a full, robust sample when frames are fast
+    const GUARD_MIN = 5;           // the fewest that can convict a very slow machine
+    const GUARD_WINDOW_MS = 1500;  // ...and how long to wait for the rest
+    /* 45ms — 22fps — measured as a MEAN, and both halves of that sentence were
+       arrived at the hard way.
+       The mean, because the distribution here is bimodal and a median cannot see it:
+       measured on a software rasteriser, 21 consecutive rAF intervals came back as
+       {median 17ms, min 15ms, max 1,839ms} over a 3.1-second window. The driver
+       batches, so most callbacks return in a frame's worth of nothing and every
+       so often one flush stalls for two seconds. By the median that page is running
+       at 59fps. By the clock it managed 21 frames in 3.1 seconds — 6.7fps — which is
+       what the visitor's eyes report. windowMs / frames is the honest instrument.
+       45 rather than 33, because rAF is capped at the panel's refresh and a 30Hz
+       laptop panel sits at exactly 33.3ms while being perfectly fine. 22fps is
+       unambiguously broken; 30fps is merely modest. */
+    const GUARD_BUDGET_MS = 45;
+
+    function checkPacing(rawMs) {
+        if (guardStage > 1 || baking || !guardReady) return;
+        /* Warm-up by COUNT, not by duration, and the first version of this got that
+           wrong in a way worth keeping a note about: it skipped the first sample if it
+           was over 400ms, which on the exact machines the guard exists for is EVERY
+           frame — so the sample array never reached one element and the guard could
+           never fire at all. Measured: 22 seconds on SwiftShader with no demotion.
+           Five frames is enough to clear the one-off costs (shader compiles, the first
+           texture uploads) without depending on how long they take. */
+        if (guardWarmup < GUARD_WARMUP) { guardWarmup++; guardWindowStart = now(); return; }
+        // A tab restored from the background, or a machine that was asleep, produces
+        // one absurd interval that is not evidence about the renderer.
+        if (rawMs > 3000) { guardStreak = 0; return; }
+        /* THE FAST LANE. A rung takes five frames to convict, and five frames at three
+           seconds each is twenty-five seconds of the visitor watching a slideshow
+           while the instrument makes up its mind. Two frames in a row over 1.2s is
+           under one frame a second: there is nothing left to establish, and waiting
+           for a fuller sample only prolongs the thing being measured. Two, not one,
+           so a garbage collection or a dropped frame during a scroll cannot convict. */
+        guardStreak = rawMs > 1200 ? guardStreak + 1 : 0;
+        guardSamples.push(rawMs);
+        const windowMs = now() - guardWindowStart;
+        if (guardStreak >= 2) { guardSamples.length = 1; stepDown(rawMs); return; }
+        /* A fast machine reaches 30 samples in half a second and is judged on all of
+           them. A slow one never will, so after 1.5s five samples are accepted — at
+           750ms a frame that is already four seconds of the visitor's life. */
+        const enough = guardSamples.length >= GUARD_MAX
+            || (guardSamples.length >= GUARD_MIN && windowMs >= GUARD_WINDOW_MS);
+        if (!enough) return;
+        const mean = windowMs / guardSamples.length;
+        guardSamples.length = 0;
+        guardWindowStart = now();
+        if (mean <= GUARD_BUDGET_MS) { guardStage = 2; return; }   // fast enough; stop watching
+        stepDown(mean);
+    }
+
+    function stepDown(mean) {
+        guardStreak = 0;
+        guardWarmup = 0;                 // the new tier gets its own warm-up
+        guardSamples.length = 0;
+        guardWindowStart = now();
+        if (guardStage === 0) {
+            quality = 'lite';
+            guardStage = 1;
+            dropComposer();
+            resize();
+            console.info(`[landing] hero at ${Math.round(mean)}ms/frame — dropping the post chain and rendering 1:1`);
+        } else {
+            guardStage = 2;
+            console.info(`[landing] hero still at ${Math.round(mean)}ms/frame — handing over to the static hero`);
+            shutDown();
+        }
+    }
+
+    function shutDown() {
+        dead = true;
+        running = false;
+        looping = false;
+        dropComposer();
+        try { renderer.dispose(); } catch (err) { /* nothing to release */ }
+        try { renderer.forceContextLoss(); } catch (err) { /* not supported */ }
+        goStatic();
+    }
 
     function frame() {
         if (!running) { looping = false; return; }
-        const dt = Math.min(clock.getDelta(), 0.05);
+        const raw = clock.getDelta();
+        /* REDUCED MOTION STOPS THE CLOCK, and the note that used to stand here said
+           the opposite: "gentle ambient motion is kept even under reduced-motion".
+           That was the same decision the ticker was making — overriding the one
+           setting a vestibular-sensitive visitor owns, on the grounds that our motion
+           is the tasteful kind. Every drift in this scene is driven from dt and
+           `elapsed`, so holding both at zero freezes the planet, the cloud shell, the
+           star drift, the twinkle, the moon's station-keeping and the camera's
+           wander in one place, without touching the composition.
+           The fade is deliberately NOT frozen: it runs on wall time below, it is an
+           opacity ramp rather than movement, and a world that never arrives is worse
+           than one that arrives quietly. */
+        const dt = reduceMotion ? 0 : Math.min(raw, 0.05);
         elapsed += dt;
 
         if (baking) {
@@ -3300,10 +4267,6 @@ const GLSL_SPHERE_VERT = /* glsl */`
             lastBakeFrame = t;
         }
 
-        // Gentle ambient motion is kept even under reduced-motion; the cursor parallax
-        // is the gated part. A planet that spins visibly reads as a toy — 0.016 rad/s is
-        // a six-minute day, slow enough to feel like drift and fast enough that the
-        // terminator has visibly moved if you stay.
         if (planet) {
             planet.rotation.y += dt * 0.016;
             clouds.rotation.y += dt * 0.0225;
@@ -3348,29 +4311,99 @@ const GLSL_SPHERE_VERT = /* glsl */`
         limbUniforms.uRadius.value = world.scale.x;
 
         starMat.uniforms.uTime.value = elapsed;
-        composer.render();
-        requestAnimationFrame(frame);
+        draw();
+        checkPacing(raw * 1000);
+        /* PARK. Under reduced motion every frame after the fade completes is
+           byte-identical to the one before it, and rendering it sixty times a second
+           is a laptop fan spinning up to redraw a photograph. The loop stops once the
+           world has arrived; resize() and the visibility/intersection handlers wake
+           it for the one frame they need. */
+        if (reduceMotion && !baking && planetUniforms && planetUniforms.uReveal.value >= 1) {
+            parked = true;
+            looping = false;
+            return;
+        }
+        if (running) requestAnimationFrame(frame);
+        else looping = false;
     }
 
     // single, idempotent driver — never stacks rAF chains (stacking caused the speed-up + jerk)
     function start() {
-        if (looping || !running) return;
+        if (dead || looping || !running) return;
+        parked = false;
         looping = true;
         clock.getDelta();     // discard time accrued while paused so resume doesn't jump
         requestAnimationFrame(frame);
     }
-    if ('IntersectionObserver' in window) {
-        new IntersectionObserver((entries) => {
-            running = entries[0].isIntersecting;
-            if (running) start();
-        }, { threshold: 0 }).observe(canvas);
-    }
-    document.addEventListener('visibilitychange', () => {
-        running = !document.hidden;
-        if (running) start();
-    });
+    /* ============================================================
+       BRING-UP IS ITS OWN TASK, and that is the second half of the fix that starts
+       in armHero().
 
-    start();
+       Everything above this line is scene DESCRIPTION — geometry, uniforms, shader
+       source as strings. Everything below it is the part that talks to the driver:
+       EffectComposer allocates two full-frame render targets, UnrealBloomPass
+       allocates ten more and compiles six materials, and the first resize() sizes
+       every one of them. Charged to the same task as the renderer's constructor
+       that was one long unbroken block with a click sitting unanswered in front of
+       it. It is a separate scheduler turn now, so the browser gets the thread back
+       in between and a visitor who clicked DEPLOY FLEET goes to the login page
+       instead of watching a lit button do nothing.
+       ============================================================ */
+    nextTask(bringUp);
+
+    function bringUp() {
+        buildComposer();
+        /* ============================================================
+           THE RESIZE EVENT IS DEBOUNCED; THE FIRST SIZING IS NOT.
+
+           resize() is not a cheap function and it never was: it re-sizes the
+           renderer, then hands the same call to the composer, which reallocates
+           EffectComposer's two full-frame targets and UnrealBloomPass's ten-target
+           mip pyramid, and finally re-derives the FXAA resolution uniform. Measured
+           on this page with a long-animation-frame observer, one call lands as a
+           234ms frame with 195ms of it inside the render loop's own task — the
+           single worst hitch the landing page produces after first load.
+
+           The browser fires `resize` CONTINUOUSLY while a window is being dragged,
+           and on mobile every time the URL bar slides in or out. Bound directly, as
+           it was, that is a 195ms stall repeated dozens of times through one drag:
+           the page visibly locks up while being resized, which is exactly the kind
+           of thing that reads as "the animations glitch".
+
+           So the listener now coalesces: the canvas is CSS-stretched during the
+           drag — free, and what every WebGL site on the web does — and the targets
+           are reallocated once, when the size stops changing. 160ms is comfortably
+           longer than the ~16ms gap between resize events in a drag and short
+           enough that a release feels immediate.
+
+           The direct resize() below stays synchronous. It is the initial sizing and
+           the composer is not correctly sized until it has run; deferring it would
+           put an unsized frame on screen.
+           ============================================================ */
+        let resizeTimer = 0;
+        window.addEventListener('resize', () => {
+            if (dead) return;
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(resize, 160);
+        }, { passive: true });
+        resize();
+
+        if ('IntersectionObserver' in window) {
+            new IntersectionObserver((entries) => {
+                if (dead) return;
+                running = entries[0].isIntersecting;
+                if (running) start();
+            }, { threshold: 0 }).observe(canvas);
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (dead) return;
+            running = !document.hidden;
+            if (running) start();
+        });
+
+        start();
+        nextTask(bakeWorldSliced);
+    }
 
     // Stars come up on the first frame; the world arrives over the next second in 18ms
     // slices and fades in. A missing world is survivable — the starfield still reads —
@@ -3380,37 +4413,116 @@ const GLSL_SPHERE_VERT = /* glsl */`
        uReveal is a 620ms fade driven from the render loop, so the planet is not
        actually ON SCREEN when buildScene() returns — it needs a few more frames, and
        under a software rasteriser a frame of this scene costs a couple of hundred
-       milliseconds. Handing the thread straight to three more bakes at that moment
+       milliseconds. Handing the thread straight to another bake at that moment
        starved the fade and pushed the lit globe past the capture harness's shutter:
-       measured, the hero came back a black disc with a rim on it. Let the world
-       arrive, THEN the plate material, THEN the doctrine thumbnails — which is also
-       their order of importance to someone who has just landed on the page. The
-       WORDMARK is not in this queue: it is above the fold, it is the first thing read,
-       and it is cheap enough (about forty composites on a half-megapixel canvas) that
-       it can run on fonts.ready alongside the world without moving it.
+       measured, the hero came back a black disc with a rim on it.
 
-       DO NOT SHORTEN THE 700. It buys the plate tile at about 3.9s under the software
-       rasteriser, which is after the capture harness's shutter, so the plates above
-       the fold are photographed on the CSS fallback — and that is a real cost, paid
-       knowingly. Moving the plate bake alone to 260ms was tried and measured: the
-       globe came back a black disc with a rim on it, exactly as it did the first time
-       this was tuned. A 150ms block landing inside the 620ms reveal costs a frame,
-       and under this rasteriser the reveal only gets three. The fallback material is
-       therefore built to be a plate in its own right rather than a placeholder — see
-       the px-anchored ramp in landing.css — because for the first seconds of every
-       cold load it IS the hero's furniture. */
-    const queueBehindTheWorld = () => setTimeout(() => {
-        bakePlateMetal();
-        bakeThumbnails();
-    }, 700);
-    try {
-        driveSliced(buildScene(), () => { baking = false; resize(); queueBehindTheWorld(); });
-    } catch (err) { baking = false; queueBehindTheWorld(); /* keep the starfield */ }
-    // driveSliced swallows a failed bake so the starfield survives it, which means the
-    // completion callback may never fire. Without this the loop would stay throttled to
-    // 5fps forever and the twinkle would look broken on top of the missing world.
-    setTimeout(() => { baking = false; }, 12000);
-})();
+       THE PLATE MATERIAL IS NO LONGER IN THIS QUEUE. It used to be, and the note that
+       stood here explained at length why it therefore missed the shutter — "a real
+       cost, paid knowingly". It was only ever a cost because the bake was on this
+       thread; off in a worker it cannot starve a fade it never touches, so it starts
+       at first paint now and the plates above the fold are photographed with their
+       material on. See tileBakery.
+
+       What is still queued is the doctrine thumbnail, because that one genuinely does
+       run here: it is a 2D canvas in the document, sliced, and it competes for the
+       same thread the reveal fade is being driven from. The WORDMARK is not queued
+       either — above the fold, first thing read, and cheap enough (about forty
+       composites on a half-megapixel canvas) to run on fonts.ready. */
+    const queueBehindTheWorld = () => setTimeout(bakeThumbnails, 700);
+    function bakeWorldSliced() {
+        try {
+            driveSliced(buildScene(), () => { endBaking(); resize(); queueBehindTheWorld(); });
+        } catch (err) { endBaking(); queueBehindTheWorld(); /* keep the starfield */ }
+        // driveSliced swallows a failed bake so the starfield survives it, which means the
+        // completion callback may never fire. Without this the loop would stay throttled to
+        // 5fps forever and the twinkle would look broken on top of the missing world.
+        setTimeout(endBaking, 12000);
+    }
+}
+
+/* ============================================================
+   Arm the hero
+
+   780 KB of renderer for a canvas that draws no words. It is worth it — the globe IS
+   the page's key art — but it is worth it AFTER the headline, the lede and the two
+   CTAs are on screen and clickable, not before them. So:
+
+     · nothing is fetched until the browser has painted (afterFirstPaint)
+     · nothing is fetched at all when Save-Data is on. That is the visitor telling
+       their browser, in as many words, not to spend their allowance on decoration.
+       The hero keeps its baked sky and its CSS key-art wash, which is a finished
+       treatment rather than an empty box, and every word on the page is unaffected.
+
+   A failed import lands in the same place a failed WebGL context already did: the
+   CSS starfield, plus the two backstops below that arm the plate material and the
+   doctrine thumbnail whether or not the hero ever runs.
+   ============================================================ */
+function goStatic() {
+    document.documentElement.classList.add('hero-static');
+}
+
+function armHero() {
+    if (!document.getElementById('hero-canvas')) return;
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (conn && conn.saveData === true) {
+        goStatic();
+        return;
+    }
+    /* ---- and the same question the visitor did not have to answer ----
+       Save-Data is opt-in and almost nobody sets it, so on its own it protects a
+       rounding error's worth of people. The connection is measurable without asking:
+       three.module.min.js and three.core.min.js are 365 KB and 384 KB, the five
+       postprocessing addons take the renderer to roughly 750 KB, and this server sends
+       all of it uncompressed. On a 3G link that is several seconds of transfer, spent
+       entirely on a decorative planet behind copy the visitor is already reading, and
+       spent DURING the window where the page is otherwise cheapest to make responsive.
+       The static hero is not a placeholder — it is the finished CSS treatment the
+       Save-Data path has always shipped — so a slow connection gets a hero that is
+       merely different rather than one that is missing, seconds earlier.
+       Threshold, not taste: effectiveType already folds RTT and throughput into one
+       label, and downlink < 2 Mbps catches the throttled 4G that reports as '4g'. */
+    const slowType = /^[23]g$/.test(conn && conn.effectiveType || '');
+    const slowLink = !!conn && typeof conn.downlink === 'number' && conn.downlink > 0 && conn.downlink < 2;
+    if (slowType || slowLink) {
+        // Says which test tripped, because "4g" and "1.2 Mbps" are different diagnoses.
+        console.info(`[landing] ${slowType ? conn.effectiveType : conn.downlink + ' Mbps'} connection`
+            + ' — using the static hero, three.js not fetched');
+        goStatic();
+        return;
+    }
+    /* whenInteractive, NOT afterFirstPaint. The distinction is the whole of the CTA
+       defect: "the browser has painted" is compatible with "and is now three hundred
+       milliseconds into a task", and this chain — probe worker, 733 KB module fetch
+       and parse, WebGL context, composer, thirteen render targets — is the heaviest
+       thing the page ever does. It waits behind the button now. */
+    whenInteractive(() => {
+        /* THE PROBE COMES BEFORE THE FETCH, and that ordering is the fix.
+           Asking "is this a software rasteriser" costs one worker and no bytes.
+           Asking it the old way — fetch 733 KB, build a context, read the string —
+           costs the 1,376 ms context creation you were trying to find out about.
+           A software answer here means three.js is never requested. */
+        probeRasteriser().then(tier => {
+            if (tier === 'software' || tier === 'none') {
+                // Says so out loud: "the planet is missing" is a support question, and
+                // this is the one line that answers it without a profiler.
+                console.info(`[landing] ${tier === 'none' ? 'no WebGL' : 'software rasteriser'} — using the static hero, three.js not fetched`);
+                goStatic();
+                return;
+            }
+            // nextTask, not .then(hero): a resolved promise runs its continuation as a
+            // MICROtask, so evaluating 780 KB of renderer module and then constructing a
+            // WebGL context would be charged to one task. Two tasks is two chances for
+            // the browser to service a click in between. hero() then splits itself
+            // again at the composer — see bringUp() at its foot.
+            loadRenderer().then(() => nextTask(() => hero(tier))).catch(err => {
+                console.error('[landing] renderer unavailable', err);
+                goStatic();
+            });
+        });
+    });
+}
+armHero();
 
 /* ============================================================
    Bake the pillar thumbnail into the page
@@ -3455,7 +4567,7 @@ const bakeThumbnails = (function thumbs() {
         const L = thumbLayers(w, h, TONE[kind] || null);
         PAINTERS[kind](L, w, h);
         yield;
-        yield* shadeThumb(canvas.getContext('2d'), L, w, h, CFG[kind]);
+        yield* shadeThumb(ctxBake(canvas), L, w, h, CFG[kind]);
         canvas.classList.add('is-baked');
     }
     /* ONE card per idle callback, not all six as a single chained generator.
@@ -3480,13 +4592,49 @@ const bakeThumbnails = (function thumbs() {
         };
         idle(step);
     };
-    // The backstop: no WebGL, or a world bake that died, must not cost the cards
-    // their art. 5200, not 3600: measured under a software rasteriser the world's own
-    // bake lands at about 3.8s, so the old backstop fired while the planet was still
-    // fading in and six thumbnail bakes took the thread away from it. These plates are
-    // below the fold — nothing is lost by letting the hero finish first.
-    setTimeout(run, 5200);
-    return run;
+    /* Every entry point goes through here, so no caller can put this bake in front
+       of the CTA or in front of a frame the browser is struggling to turn around.
+       `request` is what the module exports; `run` is never called directly. */
+    let wanted = false;
+    const request = () => {
+        if (wanted || !targets.length) return;
+        wanted = true;
+        whenInteractive(() => whenThreadIsQuiet(() => idle(run), 2500));
+    };
+    /* ============================================================
+       BAKED WHEN IT IS ABOUT TO BE LOOKED AT, not on a stopwatch
+
+       This used to be a bare `setTimeout(run, 5200)`, and that timer is precisely
+       the "multi-hundred-millisecond lurch for no visible reason" a visitor got
+       four or five seconds into reading the page. Five seconds is not a property of
+       the visitor, it is a guess about them: a fast reader is halfway down the
+       faction grid by then and a slow one has not left the hero.
+
+       An IntersectionObserver asks the real question — is this card near enough to
+       the viewport to be worth pixels — and answers it for each visitor separately.
+       700px of rootMargin is roughly one flick of a scroll wheel, so the plate is
+       finished before it is legible.
+
+       The stopwatch survives only as a backstop for a browser without IO, and it
+       DECLINES TO RUN IF THE SECTION IS ALREADY BEHIND THE VISITOR. Spending a
+       bake on a card that has scrolled off the top buys nothing and costs a stall
+       in whatever the visitor is reading instead.
+       ============================================================ */
+    const stillWorthIt = () => targets.some(c => {
+        const r = c.getBoundingClientRect();
+        return r.bottom > -200;      // not yet well past the top of the viewport
+    });
+    if ('IntersectionObserver' in window && targets.length) {
+        const io = new IntersectionObserver((entries) => {
+            if (entries.some(e => e.isIntersecting)) { io.disconnect(); request(); }
+        }, { rootMargin: '700px 0px' });
+        for (const c of targets) io.observe(c);
+        // Last resort for a tab that is never scrolled AND never brought forward.
+        setTimeout(() => { if (stillWorthIt()) request(); }, 9000);
+    } else {
+        setTimeout(() => { if (stillWorthIt()) request(); }, 5200);
+    }
+    return request;
 })();
 
 /* ============================================================
@@ -3496,6 +4644,24 @@ const bakeThumbnails = (function thumbs() {
    the height it actually covers is the bar plus the tape. Publish that as a
    custom property and the section rhythm, the scroll-margin and the fade-under
    veil all key off one measured number instead of three guesses that drift.
+
+   NOTHING MEASURES SYNCHRONOUSLY AT MODULE EVALUATION ANY MORE, and this was the
+   single most expensive call on the page. Profiled: 342ms of main-thread self time
+   in this one function, and long-animation-frame attribution charged 179-355ms of
+   it to the module script as forcedStyleAndLayoutDuration. A `type="module"` script
+   runs before the document has ever been laid out, so `getBoundingClientRect()` here
+   was not reading a number — it was performing the first full style-and-layout pass
+   of the page, synchronously, in front of first contentful paint.
+
+   The observers below already do the job without forcing anything: a ResizeObserver
+   delivers the element's initial size on its first callback, which runs AFTER layout
+   rather than demanding one, and fonts.ready fires again when the faces land and the
+   bar's height actually changes. So the eager call is deleted rather than deferred,
+   and `painted` covers only the engine that has no ResizeObserver.
+
+   Costing exactly one frame of the 62px fallback is free here: --hud-h positions a
+   fixed decorative scrim and sets scroll-margin. Neither lays out a word of content,
+   so nothing shifts — this is not a CLS trade.
    ============================================================ */
 (function railHeight() {
     const bar = document.querySelector('.hud-bar');
@@ -3509,9 +4675,12 @@ const bakeThumbnails = (function thumbs() {
             document.documentElement.style.setProperty('--hud-h', px + 'px');
         }
     }
-    measure();
     window.addEventListener('resize', measure, { passive: true });
+    // The first ResizeObserver callback carries the initial size, so this both seeds
+    // the value and keeps it current — from a callback that runs after layout instead
+    // of one that forces it.
     if ('ResizeObserver' in window) new ResizeObserver(measure).observe(bar);
+    else afterFirstPaint(measure);
     // Webfonts land after first paint and change the bar's height by a pixel or two.
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure).catch(() => {});
 })();
@@ -3523,24 +4692,52 @@ const bakeThumbnails = (function thumbs() {
    has arrived casts the fallback grotesque, and the swap would then leave a struck
    Segoe UI logotype sitting over a Russo One heading.
 
-   It shares the cooperative scheduler with the world bake, so it does cost the planet
-   its own runtime — which is why that runtime was cut in half (eight-sample
-   morphology, four chamfer steps, four extrusion bands, a tighter pad) rather than
-   why it was moved behind the world. It was tried behind the world: the logotype then
-   landed a second after the planet, which on a slow machine is a second of the page's
-   headline sitting in fallback CSS. Above-the-fold work goes first.
+   IT USED TO FIRE ON fonts.ready AND THAT WAS IN FRONT OF FIRST PAINT.
 
-   The timer is the backstop for a browser that never resolves fonts.ready. The resize
-   hook re-casts when clamp() actually moves the size; run() no-ops when the measured
-   key has not changed, so a drag costs nothing.
+   Traced with long-animation-frame attribution, this was the block: the faces land
+   around 225ms, fonts.ready resolves, the cast starts — and first contentful paint
+   had not happened yet, because on a software rasteriser this page's first frame
+   takes most of a second to draw. So the browser's one thread spent that second
+   alternating between "draw the page" and "cast a logotype nobody has seen the page
+   containing yet", and FCP came out at 668ms instead of 220ms in the same harness on
+   the same machine.
+
+   Nothing is lost by waiting. The h1 is real text with a full CSS treatment on it;
+   the cast REPLACES a finished headline, it does not fill an empty box. So it goes
+   behind the same gate as everything else procedural, and it goes FIRST in that
+   queue because it is the biggest single thing in the hero.
+
+   The resize path still kicks directly: a visitor who is dragging a window has
+   demonstrably interactive input, and the logotype re-casting at the new size is the
+   thing they are watching for.
+
+   The timer is the backstop for a browser that never resolves fonts.ready. run()
+   no-ops when the measured key has not changed, so a drag costs nothing.
    ============================================================ */
-(function armWordmark() {
-    const kick = () => bakeWordmark();
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(kick).catch(kick);
-    setTimeout(kick, 2200);
+const armWordmark = (function wordmarkArm() {
     let t = 0;
     window.addEventListener('resize', () => {
         clearTimeout(t);
-        t = setTimeout(kick, 220);
+        t = setTimeout(() => bakeWordmark(), 220);
     }, { passive: true });
+    // Backstop only: if the gate below never fires, the headline still gets cast.
+    setTimeout(() => bakeWordmark(), 4000);
+    return (done) => bakeWordmark(done);
 })();
+
+/* ============================================================
+   THE BAKE QUEUE — one at a time, nearest the eye first
+
+   Four procedural bakes want this page's main thread: the cast logotype, the milled
+   steel every panel is made of, the starfield in the gutters, and a thumbnail below
+   the fold. Run concurrently they interleave slices, so each finishes in four times
+   its own runtime and the visitor watches four things arrive slowly instead of one
+   arriving quickly. Run in the wrong order the gutter texture beats the headline.
+
+   So: strictly serial, ordered by how close the result is to where the visitor is
+   looking, and the whole chain sits behind whenInteractive — nothing here starts
+   until DEPLOY FLEET has proven it answers a pointer.
+   ============================================================ */
+whenInteractive(() => {
+    armWordmark(() => tileBakery('plate', () => tileBakery('sky')));
+});

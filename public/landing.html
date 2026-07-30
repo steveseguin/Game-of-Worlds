@@ -21,7 +21,19 @@
          that must not arrive twice. -->
     <link rel="preload" href="images/ui/font-russo-one-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="images/ui/font-rajdhani-600-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="css/landing.css?v=20260728r40">
+    <!-- THE .min PAIR IS WHAT SHIPS, AND THE COMMENTED SOURCE IS WHAT WE EDIT.
+         css/landing.css and js/landing.js are 137 KB and 237 KB, and 55-60% of each
+         is comment — the record of what was measured, what was tried and what broke.
+         That documentation is why this surface is maintainable and it belongs in the
+         repository; it does not belong in a visitor's download, least of all on a
+         phone, and this server sends these files uncompressed. `node
+         tools/build-landing.js` strips comments and whitespace (and nothing else —
+         no renaming, no reordering) to produce the two files loaded here: 374 KB of
+         source becomes 148 KB on the wire, with every string literal in the output
+         proven byte-identical to the source.
+         EDIT THE SOURCE, THEN RUN THE BUILD. tests/landing-build.test.js fails if
+         these two files are stale, so a forgotten rebuild cannot ship silently. -->
+    <link rel="stylesheet" href="css/landing.min.css?v=1095175f">
 </head>
 <body>
     <!-- THE BLACK POINT THE CREST PNGs DO NOT HAVE.
@@ -49,6 +61,10 @@
             </feComponentTransfer>
         </filter>
     </svg>
+    <!-- First tab stop on the page. The command rail carries a wordmark, two nav
+         links and a CTA before the headline, and every keyboard visitor was walking
+         through all of them on every load. -->
+    <a class="skip-link" href="#main">Skip to main content</a>
     <div class="scanlines" aria-hidden="true"></div>
     <div class="vignette" aria-hidden="true"></div>
     <!-- hull rails: the side margins are structure, not void (desktop only).
@@ -116,6 +132,18 @@
     <!-- content dissolves under the rail rather than being guillotined by it -->
     <div class="hud-veil" aria-hidden="true"></div>
 
+    <!-- THE HERO IS CONTENT, AND USED TO SIT OUTSIDE EVERY LANDMARK.
+         `main` began below it, so the h1, the lede, the CTA, the mode chips, the
+         stats and the hazard brief — seven blocks, the entire above-the-fold pitch —
+         were in no landmark at all. A screen-reader user jumping by landmark, which
+         is the normal way to skim a page, landed on the doctrine module and never met
+         the headline. The hero is the first thing in `main` now, which is also what
+         the skip link above is for. -->
+    <!-- tabindex="-1" so the skip link MOVES FOCUS and not just the scroll position.
+         Without it a screen-reader user who takes the skip link is scrolled to the
+         hero while their reading cursor is still up in the command rail, which is
+         worse than no skip link at all. -->
+    <main id="main" tabindex="-1">
     <!-- ======================= HERO ======================= -->
     <section class="hero" id="top">
         <canvas class="hero__canvas" id="hero-canvas" aria-hidden="true"></canvas>
@@ -150,10 +178,10 @@
                      plates in a console is a RACK: same width, same pitch. -->
                 <div class="hero__stack">
                     <div class="mode-chips" role="list">
-                        <span class="chip" role="listitem"><b>QUICK</b><i>3-minute turns · an afternoon</i></span>
+                        <span class="chip" role="listitem"><b>QUICK</b><i>3-minute&nbsp;turns&nbsp;· an&nbsp;afternoon</i></span>
                         <!-- 120 turns at a turn a day is four months, not "weeks". Kept in step with the
                              body copy below, which now says the same thing. -->
-                        <span class="chip" role="listitem"><b>EPIC</b><i>one turn a day · for months</i></span>
+                        <span class="chip" role="listitem"><b>EPIC</b><i>one&nbsp;turn&nbsp;a&nbsp;day&nbsp;· for&nbsp;months</i></span>
                     </div>
 
                     <dl class="hero__stats" aria-label="Game facts">
@@ -174,27 +202,45 @@
             </div>
         </div>
 
-        <div class="ticker" aria-hidden="true">
-            <div class="ticker__track">
-                <span>◉ COMMAND NET SYNCHRONISED</span>
-                <span>▴ 12 FACTIONS STANDING BY</span>
-                <span>⚠ BLACK HOLE DETECTED — GRID 07</span>
-                <span>▸ WARP GATES NOMINAL</span>
-                <span>✕ PROBE LOST — SECTOR 19</span>
-                <span>◈ ASTEROID FIELD SECURED — GRID 12</span>
-                <span>▴ FLEET INBOUND — ETA 1 TURN</span>
-                <span>◉ COMMAND NET SYNCHRONISED</span>
-                <span>▴ 12 FACTIONS STANDING BY</span>
-                <span>⚠ BLACK HOLE DETECTED — GRID 07</span>
-                <span>▸ WARP GATES NOMINAL</span>
-                <span>✕ PROBE LOST — SECTOR 19</span>
-                <span>◈ ASTEROID FIELD SECURED — GRID 12</span>
-                <span>▴ FLEET INBOUND — ETA 1 TURN</span>
+        <!-- THE TAPE HAS A STOP BUTTON NOW.
+             It starts on its own, loops well past five seconds and runs beside the
+             headline and the CTA — SC 2.2.2, Level A, and there was no pause, stop or
+             hide anywhere on the page. Reduced-motion visitors get the marquee stopped
+             outright in the stylesheet and this cap removed with it; everyone else gets
+             a real control, and the choice is remembered.
+             `aria-hidden` moved OFF the housing and onto the tape itself: the seven
+             hull messages are flavour, but a focusable button inside an aria-hidden
+             container is a keyboard trap with no name, which is a worse bug than the
+             one being fixed. -->
+        <div class="ticker">
+            <span class="ticker__cap">
+                <button class="ticker__pause" id="tickerPause" type="button"
+                        aria-pressed="false" aria-label="Pause the status ticker">
+                    <span class="ticker__pause__glyph" aria-hidden="true"></span>
+                </button>
+            </span>
+            <div class="ticker__view">
+                <div class="ticker__track" aria-hidden="true">
+                    <span>◉ COMMAND NET SYNCHRONISED</span>
+                    <span>▴ 12 FACTIONS STANDING BY</span>
+                    <span>⚠ BLACK HOLE DETECTED — GRID 07</span>
+                    <span>▸ WARP GATES NOMINAL</span>
+                    <span>✕ PROBE LOST — SECTOR 19</span>
+                    <span>◈ ASTEROID FIELD SECURED — GRID 12</span>
+                    <span>▴ FLEET INBOUND — ETA 1 TURN</span>
+                    <span>◉ COMMAND NET SYNCHRONISED</span>
+                    <span>▴ 12 FACTIONS STANDING BY</span>
+                    <span>⚠ BLACK HOLE DETECTED — GRID 07</span>
+                    <span>▸ WARP GATES NOMINAL</span>
+                    <span>✕ PROBE LOST — SECTOR 19</span>
+                    <span>◈ ASTEROID FIELD SECURED — GRID 12</span>
+                    <span>▴ FLEET INBOUND — ETA 1 TURN</span>
+                </div>
             </div>
         </div>
     </section>
 
-    <main class="console">
+    <div class="console">
 
         <!-- ======================= 01 · DOCTRINE ======================= -->
         <section class="module reveal" id="doctrine" aria-labelledby="doctrine-h">
@@ -248,8 +294,9 @@
                 <article class="pillar pillar--danger">
                     <span class="pillar__code">DOC-02</span>
                     <div class="pillar__art">
-                        <img class="pillar__plate" src="images/ui/sectors-512-type-01-asteroid-shoal.png"
-                             alt="" aria-hidden="true" width="512" height="512"
+                        <img class="pillar__plate" src="images/ui/sectors-type-01-asteroid-shoal-384.webp"
+                             srcset="images/ui/sectors-type-01-asteroid-shoal-384.webp 1x, images/ui/sectors-type-01-asteroid-shoal-768.webp 2x"
+                             alt="" aria-hidden="true" width="384" height="384"
                              style="object-position: 50% 49%; --plate-lift: 1.34; --plate-sat: 0.46; --plate-warm: 0.26"
                              loading="lazy" decoding="async">
                         <span class="pillar__tag">CONTEST</span>
@@ -276,8 +323,9 @@
                          clipping to true black, all of them inside the well's own
                          vignette, where there was nothing to see. -->
                     <div class="pillar__art">
-                        <img class="pillar__plate" src="images/ui/homeworlds-06-works-960x540.png"
-                             alt="" aria-hidden="true" width="448" height="252"
+                        <img class="pillar__plate" src="images/ui/homeworlds-06-works-384.webp"
+                             srcset="images/ui/homeworlds-06-works-384.webp 1x, images/ui/homeworlds-06-works-768.webp 2x"
+                             alt="" aria-hidden="true" width="384" height="216"
                              style="object-position: 50% 72%; --plate-lift: 0.88; --plate-contrast: 1.22; --plate-sat: 0.92"
                              loading="lazy" decoding="async">
                         <span class="pillar__tag">ECONOMY</span>
@@ -289,8 +337,9 @@
                 <article class="pillar">
                     <span class="pillar__code">DOC-04</span>
                     <div class="pillar__art">
-                        <img class="pillar__plate" src="images/ui/campaign-01-sesses-two-seconds.png"
-                             alt="" aria-hidden="true" width="640" height="427"
+                        <img class="pillar__plate" src="images/ui/campaign-01-sesses-two-seconds-384.webp"
+                             srcset="images/ui/campaign-01-sesses-two-seconds-384.webp 1x, images/ui/campaign-01-sesses-two-seconds-768.webp 2x"
+                             alt="" aria-hidden="true" width="384" height="256"
                              style="object-position: 50% 40%; --plate-lift: 0.82; --plate-sat: 0.50; --plate-warm: 0.16"
                              loading="lazy" decoding="async">
                         <span class="pillar__tag">WARFARE</span>
@@ -306,8 +355,9 @@
                          painting of a convoy queued to leave on schedule, which is what
                          the card is actually about. Decorative — the copy carries it. -->
                     <div class="pillar__art">
-                        <img class="pillar__plate" src="images/ui/campaign-03-the-schedule.png"
-                             alt="" aria-hidden="true" width="1000" height="667"
+                        <img class="pillar__plate" src="images/ui/campaign-03-the-schedule-608.webp"
+                             srcset="images/ui/campaign-03-the-schedule-608.webp 1x, images/ui/campaign-03-the-schedule-1000.webp 2x"
+                             alt="" aria-hidden="true" width="608" height="405"
                              style="object-position: 50% 44%; --plate-zoom: 1.28; --plate-lift: 1.50; --plate-sat: 0.90"
                              loading="lazy" decoding="async">
                         <span class="pillar__tag">TEMPO</span>
@@ -332,8 +382,9 @@
                              out-shouting the black hole two cards up. Pulled hardest of the
                              six: the grade below is shared, this is the one card that also
                              gives up chroma. -->
-                        <img class="pillar__plate" src="images/ui/campaign-09-trace-market.png"
-                             alt="" aria-hidden="true" width="760" height="507"
+                        <img class="pillar__plate" src="images/ui/campaign-09-trace-market-384.webp"
+                             srcset="images/ui/campaign-09-trace-market-384.webp 1x, images/ui/campaign-09-trace-market-768.webp 2x"
+                             alt="" aria-hidden="true" width="384" height="256"
                              style="object-position: 50% 30%; --plate-lift: 0.78; --plate-sat: 0.46"
                              loading="lazy" decoding="async">
                         <span class="pillar__tag">OPPONENTS</span>
@@ -353,7 +404,7 @@
                  under way through a shoal — so the frame now contains the scene the copy
                  beside it describes. Decorative: the paragraph carries the meaning. -->
             <div class="theatre__frame">
-                <img class="theatre__art" src="images/ui/supporting-landing-hero-1600x900.png"
+                <img class="theatre__art" src="images/ui/supporting-landing-hero-1400.webp"
                      alt="" aria-hidden="true" width="1400" height="788" loading="lazy" decoding="async">
                 <span class="theatre__scrim" aria-hidden="true"></span>
                 <!-- bolted into the hull at four corners, in steel — see .gusset -->
@@ -399,8 +450,8 @@
             <div class="dossier">
                 <!-- 1 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-01-terran.png"
-                                                  width="256" height="193" alt="Terran Empire insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-01-terran.webp"
+                                                  width="192" height="144" alt="Terran Empire insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Terran Empire</h3>
                         <p class="race__role">Balanced human powers · steady on every front</p>
@@ -417,8 +468,8 @@
                 </article>
                 <!-- 2 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-02-silicon.png"
-                                                  width="256" height="193" alt="Silicon Collective insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-02-silicon.webp"
+                                                  width="192" height="144" alt="Silicon Collective insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Silicon Collective</h3>
                         <p class="race__role">A machine hive of pure computation</p>
@@ -433,8 +484,8 @@
                 </article>
                 <!-- 3 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-03-zephyr.png"
-                                                  width="256" height="193" alt="Zephyr Swarm insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-03-zephyr.webp"
+                                                  width="192" height="144" alt="Zephyr Swarm insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Zephyr Swarm</h3>
                         <p class="race__role">A hive mind that drowns the map in cheap hulls</p>
@@ -449,8 +500,8 @@
                 </article>
                 <!-- 4 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-04-crystalline.png"
-                                                  width="256" height="193" alt="Crystalline Entity insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-04-crystalline.webp"
+                                                  width="192" height="144" alt="Crystalline Entity insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Crystalline Entity</h3>
                         <p class="race__role">Energy beings sheathed in living crystal</p>
@@ -465,8 +516,8 @@
                 </article>
                 <!-- 5 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-05-void-walkers.png"
-                                                  width="256" height="193" alt="Void Walkers insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-05-void-walkers.webp"
+                                                  width="192" height="144" alt="Void Walkers insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Void Walkers</h3>
                         <p class="race__role">Ancients who fold space and strike from nowhere</p>
@@ -481,8 +532,8 @@
                 </article>
                 <!-- 6 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-06-mechanicus.png"
-                                                  width="256" height="193" alt="Mechanicus insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-06-mechanicus.webp"
+                                                  width="192" height="144" alt="Mechanicus insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Mechanicus</h3>
                         <p class="race__role">A machine civilisation that simply won’t stop</p>
@@ -497,8 +548,8 @@
                 </article>
                 <!-- 7 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-07-bioform.png"
-                                                  width="256" height="193" alt="Bioform Collective insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-07-bioform.webp"
+                                                  width="192" height="144" alt="Bioform Collective insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Bioform Collective</h3>
                         <p class="race__role">Living ships that evolve the longer they survive</p>
@@ -513,8 +564,8 @@
                 </article>
                 <!-- 8 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-08-star-nomads.png"
-                                                  width="256" height="193" alt="Star Nomads insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-08-star-nomads.webp"
+                                                  width="192" height="144" alt="Star Nomads insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Star Nomads</h3>
                         <p class="race__role">Rootless fleets that build anywhere and run fast</p>
@@ -529,8 +580,8 @@
                 </article>
                 <!-- 9 -->
                 <article class="race">
-                    <div class="race__emblem"><img src="images/ui/crests-512-09-ancients.png"
-                                                  width="256" height="193" alt="The Ancients insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-09-ancients.webp"
+                                                  width="192" height="144" alt="The Ancients insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">The Ancients</h3>
                         <p class="race__role">Precursors wielding every tech — at a steep price</p>
@@ -545,8 +596,8 @@
                 </article>
                 <!-- 10 -->
                 <article class="race race--premium">
-                    <div class="race__emblem"><img src="images/ui/crests-512-10-quantum.png"
-                                                  width="256" height="193" alt="Quantum Entities insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-10-quantum.webp"
+                                                  width="192" height="144" alt="Quantum Entities insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Quantum Entities</h3>
                         <p class="race__role">Pure energy that teleports across the board</p>
@@ -561,8 +612,8 @@
                 </article>
                 <!-- 11 -->
                 <article class="race race--premium">
-                    <div class="race__emblem"><img src="images/ui/crests-512-11-titan-lords.png"
-                                                  width="256" height="193" alt="Titan Lords insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-11-titan-lords.webp"
+                                                  width="192" height="144" alt="Titan Lords insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Titan Lords</h3>
                         <p class="race__role">Giants who field colossal, devastating ships</p>
@@ -577,8 +628,8 @@
                 </article>
                 <!-- 12 -->
                 <article class="race race--premium">
-                    <div class="race__emblem"><img src="images/ui/crests-512-12-shadow-realm.png"
-                                                  width="256" height="193" alt="Shadow Realm insignia" loading="lazy" decoding="async"></div>
+                    <div class="race__emblem"><img src="images/ui/crests-192-12-shadow-realm.webp"
+                                                  width="192" height="144" alt="Shadow Realm insignia" loading="lazy" decoding="async"></div>
                     <div class="race__body">
                         <h3 class="race__name">Shadow Realm</h3>
                         <p class="race__role">Cloaked raiders who strike from the dark</p>
@@ -664,8 +715,9 @@
                      lede carry it for a reader who never sees the image. -->
                 <figure class="enlist__poster">
                     <span class="enlist__window">
-                        <img src="images/ui/posters-01-the-lamps-are-out.png" alt=""
-                             width="360" height="720" loading="lazy" decoding="async">
+                        <img src="images/ui/posters-01-the-lamps-are-out-240.webp" alt=""
+                             srcset="images/ui/posters-01-the-lamps-are-out-240.webp 1x, images/ui/posters-01-the-lamps-are-out-480.webp 2x"
+                             width="240" height="480" loading="lazy" decoding="async">
                     </span>
                     <figcaption>PLATE 01 · “THE LAMPS ARE OUT”</figcaption>
                 </figure>
@@ -706,6 +758,7 @@
                 </div>
             </div>
         </section>
+    </div>
     </main>
 
     <!-- The base of the hull is a PLATE, like everything above it. It used to be a
@@ -733,6 +786,6 @@
     </footer>
     <div class="page-tape" aria-hidden="true"></div>
 
-    <script type="module" src="js/landing.js?v=20260728r40"></script>
+    <script type="module" src="js/landing.min.js?v=ee935c3d"></script>
 </body>
 </html>

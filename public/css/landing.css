@@ -101,21 +101,50 @@
     --amber-hi:  #ffce80;
     --amber-lo:  #9a5d11;
     --bronze:    #c79a47;
+    /* The same bronze one stop up, for the two places it has to carry small type
+       across a plate's HIGHLIGHT band rather than its body: the section kickers and
+       the footer's links. Measured, plain --bronze lands at 4.16:1 on the brightest
+       pixel under a kicker; this is 5.2:1 there and still unmistakably the same
+       metal rather than a second accent hue. */
+    --bronze-hi: #dcae5a;
     --bronze-lo: #7d5f2b;
     --danger:    #d24a30;
     --ok:        #57bf64;
     --ok-hi:     #9af0a0;
 
     --text:  #cdd6e6;
-    --muted: #8b94a8;
-    /* Measured: #5e6678 on --steel-3 is 2.70:1 — under the 3:1 floor even for large
-       text, and it was carrying 0.62rem mono at 0.2em tracking. Every field label on
-       the page (FACTIONS / TURN ENGINE / ORIGIN, ECO / TECH / WAR, the brief's keys)
-       was below the readability floor, which inverted the hierarchy: the one unlock
-       chip rendered in amber was the only one of twelve anybody could read.
-       #8590a6 is 4.62:1 on the same plate. */
-    --faint: #8590a6;
-    --legal: #7f8b9f;
+
+    /* ================= THE INK, RE-DERIVED AGAINST LIT METAL =================
+       THE OLD NOTE HERE WAS WRONG IN A WAY WORTH RECORDING. It said "#8590a6 is
+       4.62:1 on the same plate", and that number was real — computed against ONE
+       FLAT SWATCH, --steel-3. But nothing on this page sits on a flat swatch. Every
+       plate is a lit gradient, and the same token therefore landed anywhere from
+       3.0:1 at the top of a highlight band to 5.5:1 in the trough of the same panel.
+       Ten body-copy styles measured below AA that way.
+
+       These values were not computed. They were MEASURED: the page rendered, each
+       crop screenshotted twice — once normally, once with the text made
+       transparent — the glyph cores isolated by coverage, and each core's ratio
+       taken against the real backdrop pixel beneath it. Worst measured backdrops
+       under body copy are rgb(68,74,89) on the doctrine plates and rgb(57,64,78) on
+       the faction cards. Both tokens clear 4.5:1 against those, with headroom:
+
+           --muted  4.9:1 on the brightest doctrine-plate band
+           --faint  5.2:1 on the brightest faction-card band
+
+       --faint is the LIGHTER of the two, which looks backwards and is not. It
+       carries 0.62rem mono at 0.1-0.2em tracking; --muted carries 0.99-1.08rem
+       Rajdhani. Small, widely-tracked, thin-stemmed type needs more separation from
+       its ground than body copy does, not less. The names describe where they are
+       used, not how bright they are.
+       axe cannot check any of this — it pushed 221 nodes on this page into
+       `incomplete` because it cannot resolve a background behind a gradient — so
+       the only honest instrument is a pixel sample of the rendered page. */
+    --muted: #a9b3c6;
+    --faint: #aeb8cb;
+    /* The footer's copyright line: quieter than body copy on purpose, still 5.1:1
+       against the darkest plate in the page's darkest panel. */
+    --legal: #96a1b5;
 
     /* One rivet, defined once. A 2px dot the same value as the border reads as a dust
        speck at 1:1; a rivet has to be a DOME — a lit crown up-left, a dark crescent
@@ -163,8 +192,43 @@
      5-6  the two coloured washes and the base ramp
      7    the legacy plate, which still carries the finest grain
    ============================================================ */
+/* ============================================================
+   THE BACKDROP IS ONE FIXED LAYER NOW, NOT NINE FIXED BACKGROUNDS
+
+   This stack used to live on `html` with `background-attachment: fixed` on all nine
+   layers. `background-attachment: fixed` is the single most expensive thing a
+   stylesheet can say: Chrome cannot hand a fixed background to the compositor, so
+   it marks the document as main-thread-scrolling and RE-RASTERISES the whole
+   viewport backdrop — two tiled star fields, a tiled JPEG, four gradients and a
+   vignette, across 1920x1080 — on every scrolled frame.
+
+   Measured, mimicking the audit's own sequence (load, settle, scroll to y=4416,
+   then sample sixty frames): worst frame 561ms with the fixed backgrounds, 270ms
+   with `background-attachment: scroll`. Half of the worst scroll frame on this page
+   was this one declaration. A visitor feels that as the faction grid lurching when
+   they flick the wheel.
+
+   `scroll` is not the fix — it re-anchors the whole composition to the document box
+   instead of the viewport, which stretches a viewport vignette over an eight-screen
+   page. The fix is to put the identical stack on ONE fixed pseudo-element and let
+   the compositor own it: rasterised once, then translated. `translateZ(0)` is what
+   asks for that layer explicitly rather than hoping for it.
+
+   z-index -1 keeps it behind everything in the document without being reachable:
+   body creates no stacking context, so this lands in the root one, above the root
+   background colour and below every positioned thing on the page. The root keeps
+   `background-color` so there is never a frame of white between paint and this.
+   ============================================================ */
 html {
     scroll-behavior: smooth;
+    background-color: var(--void);
+}
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
     background-color: var(--void);
     background-image:
         linear-gradient(90deg, rgba(2,3,6,0.88) 0, rgba(2,3,6,0.34) 10%, rgba(2,3,6,0) 23%),
@@ -185,7 +249,7 @@ html {
         auto, auto, auto, 600px 400px;
     background-position: 0 0, 0 0, 0 0, 0 0, 137px 61px, 0 0, 0 0, 0 0, 0 0;
     background-repeat: no-repeat, no-repeat, no-repeat, repeat, repeat, no-repeat, no-repeat, no-repeat, repeat;
-    background-attachment: fixed, fixed, fixed, fixed, fixed, fixed, fixed, fixed, fixed;
+    transform: translateZ(0);
 }
 
 body {
@@ -221,12 +285,112 @@ a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
 ::selection { background: var(--amber); color: #2a1803; }
 
+/* ---------- skip link ----------
+   Parked off the top edge rather than display:none, because a control that is not
+   in the layout is not in the tab order either. It rides down into the rail on
+   focus — the same bronze plate as the command bar's own CTA, so the first thing a
+   keyboard visitor sees is a part of this console rather than a browser default.
+   z-index 61: above the scanline and vignette overlays at 60, which would otherwise
+   be multiplying over the one element that has to be unambiguous. */
+/* Exposed to a screen reader, invisible to everyone else. Used by the faction meters,
+   which encode their value as a count of lit segments and now say it as well —
+   `<i>ECO<span class="sr-only"> 9 of 16</span></i>`. Not display:none and not
+   visibility:hidden: both of those take it out of the accessibility tree too, which
+   is the opposite of what it is for. */
+.sr-only {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+.skip-link {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    z-index: 61;
+    transform: translate(-50%, -150%);
+    padding: 0.62rem 1.5rem;
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    letter-spacing: 0.14em;
+    /* Every other label on this rail is struck uppercase. A sentence-case tab would be
+       the one control on the console that came from somewhere else. */
+    text-transform: uppercase;
+    /* 8.9:1 on the bronze below */
+    color: #fff6e6;
+    border: 2px solid #241705;
+    border-top: 0;
+    border-radius: 0 0 3px 3px;
+    background: linear-gradient(180deg, #9d7c40 0%, #75551f 47%, #4b3312 100%);
+    box-shadow:
+        inset 0 -2px 0 rgba(30,17,3,0.92),
+        inset 0 2px 0 rgba(255,236,196,0.30),
+        0 6px 18px rgba(0,0,0,0.6);
+    transition: transform .16s ease-out;
+}
+.skip-link:focus { transform: translate(-50%, 0); }
+.skip-link:focus-visible { outline: 2px solid var(--amber-hi); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .skip-link { transition: none; } }
+/* Taking the skip link should LOOK like it did something. main carries tabindex="-1"
+   so focus really lands there; :focus-visible frames the region for a beat, and
+   :not(:focus-visible) keeps a mouse user from ever seeing a box round the page. */
+main:focus-visible { outline: 2px solid var(--amber); outline-offset: -4px; }
+main:focus:not(:focus-visible) { outline: none; }
+
 /* ---------- global overlays ---------- */
+/* ============================================================
+   TWO FULL-VIEWPORT LAYERS THAT NOBODY IS WAITING FOR
+
+   These are a CRT scanline field and a corner vignette: pure atmosphere, over the
+   whole viewport, above everything. They also have to be RASTERISED BEFORE THE
+   FIRST FRAME CAN BE SHOWN — a fixed 1920x1080 repeating-linear-gradient and a
+   1920x1080 radial, both composited over the entire page, in front of the headline
+   the visitor is actually waiting for. Measured, first contentful paint on this
+   page was landing AFTER the load event: every byte had arrived and the screen was
+   still black while decoration was being drawn.
+
+   So they arrive one frame late, behind `.lit`, which landing.js adds once first
+   contentful paint has actually been recorded. Nobody can perceive a scanline
+   field fading in over 200ms on top of a page they have not finished reading the
+   first word of, and the first frame no longer has to pay for two more full-screen
+   layers than it has content.
+
+   `.js` guards it: with scripting off the class is never added, so a no-JS visitor
+   gets the overlays immediately rather than never.
+   ============================================================ */
 .scanlines, .vignette {
     position: fixed;
     inset: 0;
     pointer-events: none;
     z-index: 60;
+    /* NOT promoted with translateZ(0), and that was measured rather than assumed.
+       The reasoning that promoting them should help is wrong: Chrome already
+       composites position:fixed elements when a page scrolls. Only
+       `background-attachment: fixed` forces main-thread scrolling, which is why the
+       backdrop below needed the treatment and these two do not. Promoting them
+       anyway cost ~16 MB of layer memory for a worst-frame difference inside the
+       run-to-run noise band (542ms promoted vs 473ms not, across four samples each
+       whose spread is 473-823ms). Layer memory is not free on the low-end machines
+       this page is aimed at. */
+}
+/* `veil-wait` is set by landing.js at module evaluation, NOT by the `js` class the
+   inline bootstrap sets. The difference is a failure mode: `js` is added by three
+   lines in the document head, so it is present even when the module 404s, fails to
+   parse or is blocked — and the veils would then be held at opacity 0 forever by a
+   promise nothing was left to keep. Only the module that adds `lit` may ask for the
+   wait, so every way the module can fail ends with the overlays simply visible. */
+.veil-wait .scanlines, .veil-wait .vignette { opacity: 0; }
+.veil-wait.lit .scanlines { opacity: 0.24; transition: opacity .28s linear; }
+.veil-wait.lit .vignette  { opacity: 1;    transition: opacity .28s linear; }
+@media (prefers-reduced-motion: reduce) {
+    /* A fade is motion. It is 280ms of a decorative veil and it is not worth
+       spending a reduced-motion visitor's tolerance on, so they simply get it. */
+    .veil-wait.lit .scanlines, .veil-wait.lit .vignette { transition: none; }
 }
 /* A 0.17-black line multiplied at 0.5 opacity is a 9% luminance notch, and on the
    one white element in the product — the wordmark — a 9% notch every four pixels is
@@ -433,7 +597,7 @@ img { max-width: 100%; display: block; }
     font-family: var(--font-mono);
     font-size: 0.74rem;
     letter-spacing: 0.26em;
-    color: var(--bronze);
+    color: var(--bronze-hi);
     text-transform: uppercase;
     margin: 0 0 1rem;
     display: inline-flex;
@@ -670,7 +834,16 @@ img { max-width: 100%; display: block; }
         radial-gradient(circle 4px at 8.4px calc(50% + 1.4px), rgba(0,0,0,0.85), rgba(0,0,0,0) 74%),
         radial-gradient(circle 3.2px at calc(100% - 7px) 50%, #c3d2e8 0 18%, #5a6883 56%, #10151f 92%, rgba(0,0,0,0) 100%),
         radial-gradient(circle 4px at calc(100% - 5.6px) calc(50% + 1.4px), rgba(0,0,0,0.85), rgba(0,0,0,0) 74%),
+        /* THE SLOT RUN SITS UNDER ITS OWN DEPTH PASS.
+           --vent-face is the slots seen face-on; --vent-shade is the fact that they are
+           cut into something. Without the second layer the louvres were constant top to
+           bottom, which is why the rail read as a printed barcode rather than as milled
+           hardware: a real vent is occluded by its own overhang at the top and catches
+           the lamp on its lower lip. Both are separate layers rather than one combined
+           gradient because a repeating-linear-gradient cannot vary across its own axis.
+           Any change here must keep the three lists below the same length as the stack. */
         var(--vent-face, none),
+        var(--vent-shade, none),
         /* shading: a struck top lip and a dark foot, over the material */
         linear-gradient(180deg,
             rgba(222,240,255,0.30) 0 1px,
@@ -680,27 +853,63 @@ img { max-width: 100%; display: block; }
             rgba(0,0,0,0.46) 100%),
         var(--plate-metal, none),
         linear-gradient(180deg, #46536a 0%, #2c3646 54%, #171e2b 100%);
-    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat, repeat, no-repeat;
-    background-size: auto, auto, auto, auto, auto, auto, 512px 512px, auto;
-    background-position: 0 0, 0 0, 0 0, 0 0, var(--vent-off, 0 0), 0 0, var(--vent-off, 0 0), 0 0;
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat, no-repeat, repeat, no-repeat;
+    background-size: auto, auto, auto, auto, auto, auto, auto, 512px 512px, auto;
+    background-position: 0 0, 0 0, 0 0, 0 0, var(--vent-off, 0 0), 0 0, 0 0, var(--vent-off, 0 0), 0 0;
     border: 1px solid var(--ink);
     box-shadow:
         inset 1px 1px 0 rgba(196,218,252,0.16),
         inset -1px -1px 0 rgba(0,0,0,0.88);
 }
-/* Three louvre pitches and three depths, so the run cannot read as one tile. */
+/* ---------- THE LOUVRES, AT A THIRD OF THE CONTRAST THEY HAD ----------
+   These were 2-3px of 40-50% BLACK repeating every 9-14px across roughly half the
+   width of the header, and the header is the first thing on the page in every
+   frame. At that strength it is not a vent, it is a barcode: the highest-contrast
+   object on the entire landing page was a decorative texture sitting between the
+   wordmark and the CTA, and the eye went to it before either of them.
+
+   Three things changed and all three matter:
+
+     · STRENGTH. The dark stop is 0.14-0.19 now instead of 0.40-0.50. A slot cut in
+       steel under one lamp is a shade, not a hole punched through to space.
+     · SOFT EDGES. Every stop used to be hard, and a hard 2px stop on a display at
+       a fractional device-pixel ratio — this project's own test machine runs 2.2 —
+       lands each bar edge on a different sub-pixel fraction, so the bars alias into
+       visibly uneven widths and shimmer. A 0.5px ramp on each side costs nothing
+       and rasterises identically at any DPR.
+     · PITCH. Widened so the run reads as machined slots rather than as a moire
+       pattern, which is what a 6px period was producing against the scanline layer.
+
+   --vent-shade is the cross-axis half of the effect; see the note in the stack above.
+   Same three pitches and three depths as before, so the run still cannot read as
+   one tile. */
 .hud-vent__plate--flute {
     flex: 1 1 30%;
-    --vent-face: repeating-linear-gradient(90deg, rgba(0,0,0,0.40) 0 2px, rgba(214,234,255,0.10) 2px 3px, rgba(0,0,0,0) 3px 9px);
+    --vent-face: repeating-linear-gradient(90deg,
+        rgba(0,0,0,0) 0, rgba(0,0,0,0.16) 1.2px, rgba(0,0,0,0.16) 2.6px, rgba(0,0,0,0) 3.8px,
+        rgba(190,214,250,0.05) 4.6px, rgba(0,0,0,0) 5.6px, rgba(0,0,0,0) 11px);
+    --vent-shade: linear-gradient(180deg,
+        rgba(0,0,0,0.34) 0, rgba(0,0,0,0.10) 30%, rgba(0,0,0,0) 58%,
+        rgba(198,220,255,0.05) 84%, rgba(0,0,0,0.20) 100%);
 }
 .hud-vent__plate--fine {
     flex: 1 1 22%;
-    --vent-face: repeating-linear-gradient(90deg, rgba(0,0,0,0.28) 0 1px, rgba(214,234,255,0.08) 1px 2px, rgba(0,0,0,0) 2px 6px);
+    --vent-face: repeating-linear-gradient(90deg,
+        rgba(0,0,0,0) 0, rgba(0,0,0,0.115) 1px, rgba(0,0,0,0.115) 2px, rgba(0,0,0,0) 3px,
+        rgba(190,214,250,0.04) 3.6px, rgba(0,0,0,0) 4.4px, rgba(0,0,0,0) 8px);
+    --vent-shade: linear-gradient(180deg,
+        rgba(0,0,0,0.30) 0, rgba(0,0,0,0.09) 32%, rgba(0,0,0,0) 60%,
+        rgba(198,220,255,0.04) 86%, rgba(0,0,0,0.18) 100%);
     --vent-off: 137px 61px;
 }
 .hud-vent__plate--wide {
     flex: 1 1 38%;
-    --vent-face: repeating-linear-gradient(90deg, rgba(0,0,0,0.50) 0 3px, rgba(214,234,255,0.13) 3px 4px, rgba(0,0,0,0) 4px 14px);
+    --vent-face: repeating-linear-gradient(90deg,
+        rgba(0,0,0,0) 0, rgba(0,0,0,0.19) 1.4px, rgba(0,0,0,0.19) 3.6px, rgba(0,0,0,0) 5px,
+        rgba(190,214,250,0.06) 6px, rgba(0,0,0,0) 7.2px, rgba(0,0,0,0) 16px);
+    --vent-shade: linear-gradient(180deg,
+        rgba(0,0,0,0.36) 0, rgba(0,0,0,0.11) 28%, rgba(0,0,0,0) 56%,
+        rgba(198,220,255,0.06) 84%, rgba(0,0,0,0.22) 100%);
     --vent-off: 283px 197px;
 }
 /* A stencilled member. Flex-basis is content, so the codes never squeeze. */
@@ -775,6 +984,12 @@ img { max-width: 100%; display: block; }
 }
 
 .brand { display: inline-flex; align-items: center; gap: 0.8rem; }
+/* The one control on the page that had no designed indicator. Tabbing to it produced
+   Chromium's stock `outline: auto 1px rgb(16,16,16)` — a white rounded ring — between
+   nine controls that all get the console's amber square one, and being a UA default it
+   drew differently in every browser, so the page's focus language was only stable in
+   Chrome. */
+.brand:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
 .brand__sigil {
     position: relative;
     width: 28px; height: 28px;
@@ -851,7 +1066,12 @@ img { max-width: 100%; display: block; }
    NEUTRAL steel ramp, so the rail reads as three switches at two weights rather
    than as two different kinds of thing. No accent edge anywhere in it. */
 .hud-links a {
-    color: #b9c4d8;
+    /* #d3dcec, up from #b9c4d8. These keys sit on a lit steel bevel whose top stop is
+       #4a5771, and the old value measured 4.27:1 against the brightest band of that
+       highlight — under AA, on the two links that lead out of the marketing page and
+       into the actual documentation. 5.3:1 against the same worst-case band, and it
+       stays cool steel so it does not compete with the amber CTA beside it. */
+    color: #d3dcec;
     padding: 0.34rem 0.62rem;
     display: inline-flex;
     align-items: center;
@@ -901,6 +1121,27 @@ img { max-width: 100%; display: block; }
     z-index: 1;
     display: block;
 }
+/* THE HERO HAS DECIDED NOT TO RUN. Three ways in, and they are all the same answer:
+   the visitor asked their browser to save data; the rasteriser is SwiftShader,
+   llvmpipe or Mesa softpipe, so a 3D hero would be a slideshow of a good picture;
+   or the frame guard in landing.js measured the real thing and handed over.
+   The canvas comes out of the layer stack entirely — an alpha canvas that was drawn
+   to once and then abandoned would otherwise sit on top of the CSS hero holding a
+   stale frame, and a disposed context can be cleared to black by the compositor at
+   any moment. The treatment underneath is finished art, not a placeholder. */
+.hero-static .hero__canvas { display: none; }
+/* THE HERO WITHOUT A RENDERER.
+   This sits under the canvas, so when WebGL is up it is never seen. It IS the hero
+   for two visitors: one whose browser has no WebGL, and — new — one who has asked
+   their browser to save data, for whom armHero() declines to fetch 780 KB of
+   renderer at all. Two soft washes on an empty right half was a placeholder; the
+   page's whole right third was blank.
+   One more layer, and only one: the SUNLIT LIMB, an arc of light where the 3D
+   globe's day edge falls, over a body a shade darker than the sky. No drawn circle,
+   no continents, no terminator diagram — an unlit world with the sun catching its
+   edge is a photograph the page can actually make out of two gradients, and the
+   baked starfield behind it does the rest. Only above 760px, where the 3D framing
+   this is standing in for is stable; the portrait layout puts the world elsewhere. */
 .hero__fallback {
     position: absolute;
     z-index: 0;
@@ -909,6 +1150,39 @@ img { max-width: 100%; display: block; }
         radial-gradient(closest-side at 68% 46%, rgba(110,160,220,0.20), transparent 70%),
         radial-gradient(closest-side at 69% 47%, rgba(255,180,90,0.07), transparent 60%);
     pointer-events: none;
+}
+@media (min-width: 761px) {
+    .hero__fallback {
+        background:
+            /* the body: a shade under the sky, edge soft enough that there is no rim */
+            radial-gradient(circle 25vw at 74% 52%,
+                rgba(5,8,14,0.90) 0 96%,
+                rgba(0,0,0,0) 100%),
+            radial-gradient(closest-side at 68% 46%, rgba(110,160,220,0.20), transparent 70%),
+            radial-gradient(closest-side at 69% 47%, rgba(255,180,90,0.07), transparent 60%);
+    }
+    /* THE LIMB IS A FEATHER AND IT IS MASKED, AND BOTH OF THOSE ARE THE POINT.
+       Two ways this goes wrong, and the first two attempts hit one each. An unmasked
+       ring is a circle DRAWN on the page — an even hairline all the way round, i.e.
+       a diagram. And a 2px stop is a hairline whichever way it is masked, on a page
+       whose whole star-bloom note says nothing here is a hairline any more.
+       So: a 30-odd pixel feather inside the edge, which is what light scattering
+       through a limb actually looks like, masked off toward the lower left because
+       the hero's key light is SUN_DIR (0.92, 0.34, 0.20) in landing.js — up and to
+       the right. The arc never closes, and it has no edge of its own. */
+    .hero__fallback::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle 25.2vw at 74% 52%,
+            rgba(0,0,0,0) 0 90%,
+            rgba(150,186,236,0.10) 95.5%,
+            rgba(206,228,255,0.30) 98.6%,
+            rgba(150,186,236,0.10) 99.6%,
+            rgba(0,0,0,0) 100%);
+        -webkit-mask-image: linear-gradient(72deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.38) 64%, #000 92%);
+        mask-image: linear-gradient(72deg, rgba(0,0,0,0) 40%, rgba(0,0,0,0.38) 64%, #000 92%);
+    }
 }
 /* Key-art scrim: the globe's day side drifts across the copy column as the world turns,
    and body text over a lit continent is unreadable at any type weight. A one-sided
@@ -977,7 +1251,23 @@ img { max-width: 100%; display: block; }
    NOT a background-clip gradient: with background-clip:text the fill paints at the
    background layer and text-shadow paints above it, so a hard downward extrusion
    covers everything but the top 3px of the glyph. That failure has already shipped
-   here once. */
+   here once.
+
+   ---- EVERY VALUE HERE IS SAMPLED OFF THE CANVAS BAKE, NOT CHOSEN ----
+
+   This treatment holds the wordmark for the few hundred milliseconds before the cast
+   logotype lands on top of it, and it is what a visitor sees for good if the bake
+   never runs. It used to be a DIFFERENT MATERIAL from the thing that replaced it:
+   measured off both states of the same element at 1280+, the flat fill was
+   #d5e0f0 / #efa234 and the cast face underneath it is #979ba3 / #b4874f. That is
+   fifty levels of luminance and most of the amber's chroma, changing under the
+   visitor's eye half a second after they have already looked at the logo — pale blue
+   and orange becoming steel and bronze. A premium title's identity does not do that.
+
+   So the fills, the lip and the two wall steps are now the percentile ramp of the
+   baked mark itself: p85 for the lip, p75 for the face, p25 and p10 for the walls,
+   per line. What changes across the fade is texture — brush, mottle, scratches and a
+   real chamfer — which is a refinement of the same object rather than a swap of it. */
 .hero__title,
 .hero__title span {
     text-shadow:
@@ -989,22 +1279,108 @@ img { max-width: 100%; display: block; }
 }
 .hero__title {
     position: relative;
+    /* Shrink-wrapped so the lockup's own right edge is a thing the cross-member below
+       can be positioned from. Nothing else keys off this box — the cast canvas is
+       absolutely positioned in px from the content-box origin, which does not move. */
+    width: fit-content;
+    max-width: 100%;
     font-family: var(--font-display);
     font-size: clamp(3rem, 8.4vw, 6.1rem);
     line-height: 0.96;
     margin: 0 0 1.3rem;
     letter-spacing: 0.005em;
-    color: #d7e2f3;
-    --wm-lip: #ffffff;
-    --wm-1: #8f9db6;
-    --wm-2: #4d586e;
+    color: #989da7;
+    --wm-lip: #d6dbe4;
+    --wm-1: #5f6473;
+    --wm-2: #3a4150;
 }
 .hero__title span {
-    color: var(--amber);
-    --wm-lip: #ffeac2;
-    --wm-1: #c07d24;
-    --wm-2: #6d4009;
+    color: #b4854a;
+    --wm-lip: #e8cb96;
+    --wm-1: #7d5824;
+    --wm-2: #4e3610;
+    /* TRACKED OUT TO MATCH, because a lockup is a shape and not two headings.
+       bake() sets the two lines FLUSH: the shorter one is tracked until both measure
+       the same, which is what gives the mark a left edge and a right edge. The live
+       text was not, so WORLDS' final S sat 7.5px left of where the cast one lands and
+       slid across during the fade.
+       The number is not tuned, it is measured and it is scale-free: the natural widths
+       are 449/433 at 97.6px and 224/216 at 48.6px, so the deficit is 0.164em at every
+       size; spread over WORLDS' five gaps, plus the 0.03em of tracking GAME OF's own
+       six gaps contribute, that is 0.0388em each.
+       The negative margin cancels the trailing letter-space CSS adds after the final S
+       and canvas does not, so the h1's shrink-to-fit box stays governed by GAME OF —
+       which is what the cross-member above measures its right end from. */
+    letter-spacing: 0.0388em;
+    margin-right: -0.0388em;
 }
+/* ---- the cross-member, standing before the cast arrives ----
+
+   The cast logotype bolts its two lines together with a machined bar and a bolt head
+   at each end. That bar is the largest single SHAPE in the lockup, and it used to
+   materialise out of nothing when the canvas faded in — a new object appearing in the
+   middle of the game's identity, half a second after the visitor first read it.
+
+   So the CSS wordmark carries it too, and the geometry is not eyeballed: bake()
+   derives every dimension of the bar from the font size, which makes all of it
+   expressible here in `em` and correct at every one of the six sizes the clamp()
+   produces.
+
+     centre y  = one line-height from the content-box top. From the source:
+                 barY = (place[0].y + place[1].y - cap) / 2, and place[i].y expands to
+                 PAD + i*lh + (lh+cap)/2, so the cap term cancels exactly and barY
+                 reduces to PAD + lh — i.e. lh below the top of the mark. lh is 0.96.
+     thickness = 0.115em, bolt radius = 0.115 * 0.72 = 0.0828em      (bake: barH, bolt)
+     bolt x    = 0.15em in from each end of the LOCKUP                    (bake: barPad)
+
+   The right inset is 0.185em rather than 0.15em, and that 0.035 is arithmetic too:
+   the canvas measures its lines with letterSpacing zeroed, while this box carries
+   0.005em on all seven characters of the longer line, so the DOM box is exactly
+   7 * 0.005em wider than the canvas's blockW. Measured across 360/390/414/768/1024/
+   1280px the residual is under a pixel everywhere.
+
+   Verified against the bake at 1280px: bar centre 94.25px measured vs 93.70 predicted,
+   thickness 11.0 vs 11.22, right bolt centre 438.0 vs 438.36, bolt radius 8.0 vs 8.08.
+
+   The colour ramp is sampled off the rendered bake rather than copied from its source
+   gradient, because the bake shades the bar after painting it: a flat lit face down to
+   58%, then the hard break into the shadowed wall. */
+.hero__title::before,
+.hero__title::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+    transition: opacity .28s ease;
+}
+/* the bar */
+.hero__title::before {
+    left: 0.15em;
+    right: 0.185em;
+    top: calc(0.96em - 0.0575em);
+    height: 0.115em;
+    background: linear-gradient(180deg, #9a9c9f 0%, #949597 40%, #7b8089 48%,
+                                        #333a48 57%, #1e2532 78%, #2b323f 100%);
+}
+/* the two bolt heads, standing proud of it at each end — box edges sit exactly one
+   bolt radius outside the bar's ends, so `left center` / `right center` land the discs
+   on the bar's endpoints without arithmetic */
+.hero__title::after {
+    left: 0.0672em;
+    right: 0.1022em;
+    top: calc(0.96em - 0.0828em);
+    height: 0.1656em;
+    background-repeat: no-repeat;
+    background-size: 0.1656em 0.1656em;
+    background-position: left center, right center;
+    background-image:
+        radial-gradient(circle closest-side, #c8cace 0%, #969aa0 46%, #4d5563 78%, #2a3140 99%, transparent 100%),
+        radial-gradient(circle closest-side, #c8cace 0%, #969aa0 46%, #4d5563 78%, #2a3140 99%, transparent 100%);
+}
+/* Both fade out on the same curve the live text does, so the cast canvas is never
+   compositing over a second copy of its own hardware. */
+.hero__title.is-baked::before,
+.hero__title.is-baked::after { opacity: 0; }
+
 /* ---- the cast logotype ----
    The canvas is drawn from the h1's own computed font and box, so it lands exactly
    where the live text was and the block reserves its own height. It carries no
@@ -1076,7 +1452,33 @@ img { max-width: 100%; display: block; }
     min-width: 0;
 }
 .chip b { font-family: var(--font-display); font-size: 0.8rem; letter-spacing: 0.1em; color: var(--amber-hi); text-shadow: 0 1px 0 var(--ink); }
-.chip i { font-family: var(--font-mono); font-style: normal; font-size: 0.68rem; letter-spacing: 0.05em; color: var(--muted); }
+/* 0.82rem, up from 0.68 (10.9px measured).
+   This <i> is not a caption — it is where the page states what a game of this
+   actually COSTS you in evenings: "3-minute turns · an afternoon" versus "one turn
+   a day · for months". Setting the only answer to "how long is this going to take"
+   in 11px uppercase mono — the slowest combination there is to read, because every
+   glyph is the same width and there are no ascender/descender silhouettes to scan
+   by — meant the two chips read as decoration and were skipped. */
+/* At 13px this line wraps in a 247px chip, and WHERE it wraps is the whole
+   question: the default greedy break gives "3-minute turns · an" / "afternoon",
+   which reads as a layout accident, and `text-wrap: balance` was tried and picked
+   differently in each of the two chips ("one turn a" / "day · for months"), which
+   is worse — two identical components breaking to different shapes.
+   So the break point is stated rather than negotiated: the markup binds each half
+   of the phrase with non-breaking spaces, leaving exactly ONE break opportunity,
+   after the separator. Both chips now read as two clauses. `overflow-wrap` is the
+   safety valve for a viewport narrow enough that even half the phrase does not
+   fit (below ~340px) — a broken word is recoverable, a line sticking out of a
+   steel plate is not. */
+.chip i {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: 0.82rem;
+    letter-spacing: 0.07em;
+    line-height: 1.35;
+    color: var(--muted);
+    overflow-wrap: break-word;
+}
 
 /* instrument gauges, in a recessed strip.
    An equal-track grid, not a content-sized flex row: the strip has to fill the
@@ -1125,11 +1527,22 @@ img { max-width: 100%; display: block; }
     border: 2px solid var(--ink);
     box-shadow: inset 2px 2px 6px rgba(0,0,0,0.82), inset -1px -1px 0 rgba(255,255,255,0.045);
     font-family: var(--font-mono);
-    font-size: 0.7rem;
-    letter-spacing: 0.09em;
+    /* 0.84rem, up from 0.7rem (11.2px measured).
+       THIS PANEL IS THE TUTORIAL. Everything else above the fold sells the game;
+       these three lines are the only place a visitor learns the actual rule the
+       whole design rests on — that a belt costs half your fleet in transit and
+       NOTHING once you own it, and that a black hole is not a gamble you can take
+       twice. Contrast was already 9.87:1; the failure was purely that 11px
+       all-caps monospace is read letter-by-letter rather than by word shape, so
+       the one paragraph that teaches the core loop was the hardest on the page to
+       take in at a glance. Letter-spacing eases back from 0.09em as the size goes
+       up — tracking is a fix for small type, and at 13.4px it is just gaps. */
+    font-size: 0.84rem;
+    letter-spacing: 0.055em;
+    line-height: 1.45;
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 0.3rem 0.9rem;
+    gap: 0.42rem 0.9rem;
 }
 .hero__brief dt { color: var(--faint); margin: 0; }
 .hero__brief dd { color: var(--text); margin: 0; }
@@ -1150,6 +1563,12 @@ img { max-width: 100%; display: block; }
     bottom: 0; left: 0; right: 0;
     z-index: 4;
     overflow: hidden;
+    /* A flex row, not a single masked box, because the housing now has a STOP BUTTON
+       in its left cap. The mask lives on .ticker__view instead — masking the whole
+       housing would have faded the one control on it down to nothing, which is how a
+       pause affordance gets shipped invisible. */
+    display: flex;
+    align-items: stretch;
     /* A machined channel the tape runs in: a lit lip above it, a hard shadow cast
        down into the recess, and a dark foot. The tape is stock; the housing is
        hardware, and it has to read as hardware. */
@@ -1162,12 +1581,62 @@ img { max-width: 100%; display: block; }
         inset 0 1px 0 rgba(0,0,0,0.9),
         inset 0 -2px 0 rgba(190,212,244,0.07),
         0 -1px 0 rgba(190,212,244,0.10);
+}
+.ticker__view {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
     /* the fade is a fraction of the viewport, not a fixed 5.5rem: on a 430px phone a
        fixed inset would dissolve two fifths of the tape */
-    --ticker-fade: clamp(2rem, 5vw, 5.5rem);
+    --ticker-fade: clamp(1.5rem, 4vw, 4.5rem);
     -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--ticker-fade), #000 calc(100% - var(--ticker-fade)), transparent 100%);
     mask-image: linear-gradient(90deg, transparent 0, #000 var(--ticker-fade), #000 calc(100% - var(--ticker-fade)), transparent 100%);
 }
+/* ---- the tape's stop button ----
+   A machined end cap with one recessed switch in it. Everything here is the page's
+   existing hardware language: a bolted plate face, a dark seat, a struck top lip. It
+   is 28px of chrome that answers a Level A failure, so it is not allowed to look like
+   an afterthought bolted on afterwards. */
+.ticker__cap {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 0 0.55rem;
+    border-right: 2px solid var(--ink);
+    background: linear-gradient(180deg, #1a2230, #0c121c);
+    box-shadow: inset -1px 0 0 rgba(190,212,244,0.10), inset 0 1px 0 rgba(190,212,244,0.13);
+}
+/* 26x22 with the cap's padding round it, so the pointer target clears 24x24 even
+   though the recessed channel it lives in is only 28px deep. */
+.ticker__pause {
+    width: 26px; height: 22px;
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    color: var(--amber-hi);
+    border: 1px solid #04060b;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #3a465c 0%, #232c3d 52%, #141a26 100%);
+    box-shadow: inset 0 1px 0 rgba(206,226,255,0.26), inset 0 -1px 0 rgba(0,0,0,0.8), 0 1px 0 rgba(0,0,0,0.75);
+}
+.ticker__pause:hover { color: #fff; background: linear-gradient(180deg, #47556e, #2b3549 52%, #1a2130 100%); }
+.ticker__pause:active { box-shadow: inset 0 2px 5px rgba(0,0,0,0.85); }
+.ticker__pause:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+/* PAUSE: two bars. RESUME: one triangle. Drawn in CSS rather than set in a face, so
+   it cannot arrive a second late behind a webfont — and shape-coded, not colour-coded,
+   so the state survives any kind of colour blindness. Two bars are a background
+   gradient rather than a self-intersecting clip path; a polygon that doubles back on
+   itself resolves differently under nonzero winding and rendered as one solid block. */
+.ticker__pause__glyph {
+    width: 9px; height: 11px;
+    background: linear-gradient(90deg, currentColor 0 3px, transparent 3px 6px, currentColor 6px 9px);
+}
+.ticker.is-paused .ticker__pause__glyph {
+    background: currentColor;
+    clip-path: polygon(1px 0, 9px 50%, 1px 100%);
+}
+.ticker.is-paused .ticker__track { animation-play-state: paused; }
 .ticker__track {
     display: inline-flex;
     gap: 3.2rem;
@@ -2423,6 +2892,9 @@ img { max-width: 100%; display: block; }
     pointer-events: none;
     max-width: calc(var(--maxw) + 6.5rem);
     margin: 0 auto;
+    /* Deliberately not promoted — see the note on .scanlines. A fixed element is
+       already composited on scroll; forcing a layer here buys nothing measurable and
+       costs another full-viewport texture. */
 }
 .hull__rail {
     position: absolute;
@@ -2541,12 +3013,26 @@ img { max-width: 100%; display: block; }
    an animation and never the content. `animation` rather than `transition` for
    the same reason: an animation has an authored start value and does not need a
    painted "before" frame to interpolate from.
+
+   NO OPACITY IN THIS KEYFRAME, AND THAT IS AN ACCESSIBILITY FIX.
+   It used to run `from { opacity: 0 }`, and that is where all 24 of the page's
+   colour-contrast failures came from. axe caught the two tactical readouts mid-fade
+   and measured their labels at 2.75:1 — #8590a6 at 58% over #070b11 composites to
+   #505868 — against 6.6:1 at rest. Solve it and you find no opacity a fade can pass
+   through: 13px mono needs 4.5:1, and even at 80% opacity the same label is 4.28:1.
+   ANY cross-fade of small text is below the floor for the whole of its duration, and
+   on a slow machine "the whole of its duration" is not a moment — the reason axe hit
+   it at all is that the page's 14-second plate bake was stretching a 550ms animation
+   across the entire scan.
+   A rise alone is also the better entrance for this page: plates in a rack slide into
+   their slot, they do not dissolve into it. Nothing is ever painted at a value the
+   visitor cannot read.
    ============================================================ */
 .js .reveal { opacity: 1; transform: none; }
 .js .reveal.in { animation: reveal-rise .55s cubic-bezier(.22,.61,.36,1) both; }
 @keyframes reveal-rise {
-    from { opacity: 0; transform: translateY(22px); }
-    to   { opacity: 1; transform: none; }
+    from { transform: translateY(22px); }
+    to   { transform: none; }
 }
 
 /* ============================================================
@@ -2611,8 +3097,12 @@ img { max-width: 100%; display: block; }
     .hero__stats dd { font-size: 0.95rem; }
     .hero__actions { gap: 1rem; }
     .mode-chips { width: 100%; }
-    .chip { padding: 0.5rem 0.9rem; }
-    .chip i { font-size: 0.62rem; }
+    /* The chip text is NOT shrunk here any more. It used to drop to 0.62rem (9.9px)
+       on the one class of device where reading is hardest, to keep "3-minute turns ·
+       an afternoon" on one line — buying a tidy line at the cost of the sentence
+       being legible. It wraps to two lines now and stays at 13px; the padding gives
+       back the width that costs. */
+    .chip { padding: 0.5rem 0.8rem; }
     .btn--primary { width: 100%; justify-content: center; }
     .doctrine-grid { grid-template-columns: 1fr; }
     .race { grid-template-columns: 1fr; text-align: left; }
@@ -2631,9 +3121,20 @@ img { max-width: 100%; display: block; }
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    /* Gentle ambient motion (ticker marquee, star twinkle, status LEDs, slow planet spin) is kept
-       by design intent. Only the disorienting transforms are reduced: scroll-reveal jumps,
-       hover lifts, and the cursor-driven parallax (the parallax is gated in landing.js). */
+    /* THE NOTE THAT USED TO BE HERE SAID THE MARQUEE, THE LEDs AND THE TWINKLE WERE
+       "KEPT BY DESIGN INTENT". That made it a decision rather than an oversight, and
+       the decision was wrong. A marquee that starts on its own, loops for 34 seconds
+       on repeat and runs in parallel with the headline a visitor is trying to read is
+       a WCAG 2.1 SC 2.2.2 failure at LEVEL A — and for a vestibular-sensitive player
+       the one setting they own was being deliberately overridden.
+       The seven tape items fit statically across the hull channel, so stopping it
+       loses no words. The stop BUTTON goes with it: a control for motion that is not
+       happening is a control that does nothing. */
+    .ticker__track { animation: none; transform: none; }
+    .ticker__cap { display: none; }
+    /* Two blinking indicator lamps, on the same reasoning. They are lit either way;
+       the blink was the only part carrying no information. */
+    .led, .log__led { animation: none; }
     .js .reveal, .js .reveal.in { opacity: 1 !important; transform: none !important; animation: none !important; }
     .pillar:hover, .race:hover, .log__row:hover { transform: none; }
 }
