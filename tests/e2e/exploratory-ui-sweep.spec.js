@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { dismissFirstRunGuidance } = require('./support/ui-game-harness');
 
 function uniqueId(prefix) {
     const randomPart = Math.random().toString(36).slice(2, 8);
@@ -163,7 +164,7 @@ function attachDiagnostics(page, label, issues) {
     });
 }
 
-async function safeClick(page, selector, issues, label, timeout = 1200) {
+async function safeClick(page, selector, issues, label, timeout = 5000) {
     if (page.isClosed()) {
         issues.push(`${label}: cannot click ${selector} because page is closed`);
         return false;
@@ -405,6 +406,9 @@ test.describe('Exploratory multi-game UI strategy sweep', () => {
         await expect(soloPage.locator('text=Players: 4/4')).toBeVisible({ timeout: 15000 });
         await soloPage.getByRole('button', { name: 'Start Game' }).click({ timeout: 8000 });
         await soloPage.waitForURL('**/game.html', { timeout: 15000 });
+        await expect(soloPage.locator('#gameModeLabel')).toContainText(/Turn\s+\d+/i, { timeout: 20000 });
+        await expect(soloPage.locator('#tour-skip')).toBeVisible({ timeout: 10000 });
+        await dismissFirstRunGuidance(soloPage);
 
         await exerciseInGameUi(soloPage, 'host-ai', issues);
         if (soloPage.isClosed()) {

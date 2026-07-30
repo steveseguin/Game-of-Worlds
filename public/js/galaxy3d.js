@@ -1,47 +1,4 @@
-/**
- * galaxy3d.js - Three.js main galaxy map view.
- *
- * Renders the full galaxy as an interactive hex plotting table suspended in a
- * nebula: explored sectors show their contents (worlds, stars, black holes,
- * asteroid belts), unexplored space stays under fog. Clicking a sector selects
- * it through the same flow as the minimap, so all existing UI panels keep
- * working.
- *
- * RENDER PIPELINE
- * ---------------
- * The scene is rendered through an EffectComposer, not straight to the canvas:
- *
- *   RenderPass -> UnrealBloomPass -> OutputPass -> FXAA
- *
- * That ordering is deliberate. Everything before OutputPass works in LINEAR
- * light inside a half-float buffer, which is the only place bloom means
- * anything: a star photosphere is authored at ~2.6x white and a hex tile at
- * ~0.3, so the threshold can sit at 0.9 and pick out light SOURCES rather than
- * smearing every bright pixel. OutputPass then applies ACES and the sRGB
- * transfer once, at the end. FXAA runs after it because it needs perceptual
- * (sRGB) input to weight its edge test — and it is doing the anti-aliasing that
- * `antialias: true` cannot, since with a composer the canvas only ever receives
- * a full-screen quad.
- *
- * Consequences worth knowing before editing:
- *   - Material colours are LINEAR and may exceed 1. That is how something is
- *     made to bloom; do not "brighten" a thing by pushing its opacity.
- *   - HUD-ish sprites (sector numbers, fleet badges) are authored just under
- *     the bloom threshold on purpose. Painting them at pure white makes them
- *     glow and costs legibility, which is the one thing this view may not lose.
- *
- * Exposes window.Galaxy3D with:
- *   initialize(width, height)
- *   updateSector(sectorId, statusNum, { fleetSize, indicator, type })
- *   setSectorDetail(sectorData)          // rich data from sector:: messages
- *   setSelected(sectorId) / focusSector(sectorId)
- *   highlightSector(sectorId)            // battle pulse
- *   clearBattleSector(sectorId)
- *   animateFleetMove(fromId, toId, { mine, count, warp })
- *   frameSectors(ids) / setSafeArea(inset) / resize() / isReady()
- *
- * ui.js queues calls in window.__g3dQueue until this module loads.
- */
+/** galaxy3d.js - Three.js main galaxy map view. Full rationale: docs/galaxy3d-design-notes.md#galaxy3d-js-three-js-main-galaxy-map-view */
 
 import * as THREE from './vendor/three.module.min.js';
 import { EffectComposer } from './vendor/addons/postprocessing/EffectComposer.js';
@@ -54,6 +11,7 @@ import { FXAAShader } from './vendor/addons/shaders/FXAAShader.js';
 // the same in both views. See planet-texture.js for why the shipped jpgs are unusable.
 import {
     PLANET_STYLES,
+    PLANET_RIG,
     createPlanetObject,
     createStarObject,
     createAsteroidGeometry,
@@ -62,17 +20,15 @@ import {
     seededRandom
 } from './planet-texture.js?v=20260728a';
 
+/**
+ * Where planet-texture.js lives, as an absolute URL, for the worker that bakes
+ * worlds off the main thread. A blob-URL module worker resolves its own
+ * relative imports against the blob, which is nowhere, so it has to be told.
+ */
+const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.meta.url).href;
+
 (function () {
-    // The landing page, login, race select and lobby all honour this; the game screen —
-    // by far the most animated page in the product — did not. Idle decoration (planets
-    // spinning, markers pulsing in and out of scale, the selection ring flashing, fog
-    // drifting) runs continuously for as long as the map is open, and scale oscillation
-    // and flashing are the two kinds of motion people set this preference to avoid.
-    //
-    // Informational motion is NOT suppressed: a fleet crossing the map, or the camera
-    // moving because you asked it to, tells you something. Only the idle loop is stilled,
-    // and everything it touches stays VISIBLE at a steady value — the selection ring in
-    // particular still marks the selected sector, it just stops pulsing.
+    // The landing page, login, race select and lobby all honour this; the game… Full rationale: docs/galaxy3d-design-notes.md#the-landing-page-login-race-select-and-lobby-all-honour-this
     const motionQuery = typeof window.matchMedia === 'function'
         ? window.matchMedia('(prefers-reduced-motion: reduce)')
         : null;
@@ -117,17 +73,7 @@ import {
         [STATUS.FLEET]: 0x3fc1c9
     };
 
-    /**
-     * A star sector and an asteroid belt both arrive as STATUS.HAZARD, and they
-     * are wildly different things: a belt is a 25-50% per-hull risk you can
-     * SECURE, a star is not something you fly into at all. One swatch for both
-     * is a gameplay lie. `entry.type` separates them, so the plate carries two
-     * cues that survive independently:
-     *   - a hue split inside the bronze family, and
-     *   - a STENCIL painted into the plate albedo (a broken ring for a belt, a
-     *     radial burst for a star), which still separates them in a monochrome
-     *     screenshot and after the dimming applied to non-live tiles.
-     */
+    /** A star sector and an asteroid belt both arrive as STATUS.HAZARD, and they. Full rationale: docs/galaxy3d-design-notes.md#a-star-sector-and-an-asteroid-belt-both-arrive-as-status-haz */
     const HAZARD_TONE = {
         belt: { color: 0x9c6a34, stencil: 'belt' },
         star: { color: 0xbfa070, stencil: 'star' }
@@ -143,30 +89,13 @@ import {
     const HORIZ = HEX_SIZE * 1.5;
     const VERT = HEX_SIZE * Math.sqrt(3);
 
-    /**
-     * The scene key, as a direction. ONE definition: the DirectionalLight is
-     * placed from it and every projected contact shadow is cast along it, so a
-     * shadow can never disagree with the light that is supposed to have thrown
-     * it. Normalisation is not needed — only the x/y and z/y ratios are used.
-     */
+    /** The scene key, as a direction. ONE definition: the DirectionalLight is. Full rationale: docs/galaxy3d-design-notes.md#the-scene-key-as-a-direction-one-definition-the-directionall */
     const KEY_LIGHT_DIR = { x: 6, y: 12, z: 4 };
 
-    /**
-     * The direction the rig looks, as a ratio. The camera never rotates — it
-     * sits at camTarget + (0, d*0.92, d*0.5) and looks back at the target — so
-     * this is a constant of the view, and anything that has to be staged where
-     * a LIFTED object appears on screen (a star's light pool, a contact
-     * shadow's screen-space check) derives its offset from it rather than from
-     * a hand-tuned nudge that only holds at one zoom.
-     */
+    /** The direction the rig looks, as a ratio. The camera never rotates — it. Full rationale: docs/galaxy3d-design-notes.md#the-direction-the-rig-looks-as-a-ratio-the-camera-never-rota */
     const VIEW_DIR = { x: 0, y: -0.92, z: -0.5 };
 
-    /**
-     * How high a star's photosphere floats above the plate it belongs to. This
-     * is a registration constant, not a taste one: the deck pool below the body
-     * is offset along VIEW_DIR by exactly this lift, so the two land on the same
-     * screen pixel. Change one and the star separates from its own light again.
-     */
+    /** How high a star's photosphere floats above the plate it belongs to. This. Full rationale: docs/galaxy3d-design-notes.md#how-high-a-star-s-photosphere-floats-above-the-plate-it-belo */
     const STAR_BODY_Y = 0.50;
 
     // ONE definition of the hexagon, used by the plate, the selection marker, the
@@ -184,26 +113,14 @@ import {
     const TILE_BOTTOM = -0.10;
     const BEVEL_INSET = 0.882;               // where the chamfer starts, as a fraction of R
     const BEVEL_DROP = 0.060;                // how far the chamfer falls
-    /**
-     * Unit hexagon corners, flat-top: vertices on +/-X, flat edges facing +/-Z.
-     * Wound CLOCKWISE in (x, z) — which is counter-clockwise seen from above —
-     * so every fan and strip built from this array comes out facing +Y and needs
-     * no side:DoubleSide rescue on a lit material.
-     */
+    /** Unit hexagon corners, flat-top: vertices on +/-X, flat edges facing +/-Z. Full rationale: docs/galaxy3d-design-notes.md#unit-hexagon-corners-flat-top-vertices-on-x-flat-edges-facin */
     const HEX_CORNERS = [];
     for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2;
         HEX_CORNERS.push([Math.cos(a), -Math.sin(a)]);
     }
 
-    // Bloom threshold, in linear light. Anything authored below this does not
-    // glow; anything above it is a light source. Sector numbers and fleet badges
-    // are painted at ~0.86 sRGB precisely so they land under it.
-    // 1.05, not 0.9. With the bloom raised to strength 0.7 so a star can blow
-    // out, a threshold of 0.9 also caught the gold homeworld plate — the
-    // brightest LIT surface on the board — and smeared a cream wash over the
-    // centre of it that took the grain and the rivets with it. A light source is
-    // authored ABOVE white; a lit plate never is. This is where that line sits.
+    // Bloom threshold, in linear light. Anything authored below this does not. Full rationale: docs/galaxy3d-design-notes.md#bloom-threshold-in-linear-light-anything-authored-below-this
     const BLOOM_THRESHOLD = 1.05;
     // Bloom runs at half the canvas resolution. At 0.3 the glare was rendered
     // over so few pixels that a star's veil arrived as a soft mush ring rather
@@ -218,14 +135,23 @@ import {
         height: 8,
         container: null,
         renderer: null,
+        // The composer is an UPGRADE, not a fixture: null until this machine has
+        // been measured affording it, and null again if it stops. `post` is the
+        // state machine that owns that decision — see governPost().
         composer: null,
+        post: undefined,
         bloomPass: null,
         fxaaPass: null,
+        software: false,
+        lastFrameAt: 0,
         scene: null,
         camera: null,
         raycaster: null,
         pointer: new THREE.Vector2(),
         sectors: new Map(),        // id -> { group, tile, content, badge, status, type, fleetSize }
+        // Sectors whose contents still have to be generated. Drained under a time
+        // budget by the frame loop — see drainContentQueue().
+        contentQueue: [],
         textures: new Map(),
         materials: new Map(),
         sharedGeo: {},
@@ -247,7 +173,71 @@ import {
         frameOffset: new THREE.Vector3(),
         drag: null,
         clock: new THREE.Clock(),
-        animHandle: null
+        animHandle: null,
+        // --- startup staging & pacing -----------------------------------
+        // Which shared bake the boot schedule has got to. See BOOT_STEPS.
+        bootStep: 0,
+        // Measured cost of one content item ON THIS MACHINE, in ms. Seeded low
+        // and corrected upward by the first item that overruns. Two estimates,
+        // not one: an assembly over forged maps and a local bake differ by three
+        // orders of magnitude, and averaging them together held the whole board
+        // to one tile a frame — see drainContentQueue().
+        contentCost: 4,
+        assembleCost: 2,
+        // Frames that have actually reached the canvas. The governor will not
+        // judge a machine on frames that were carrying startup work.
+        framesPresented: 0,
+        // Set by the window resize listener and by setSafeArea, consumed once per
+        // frame. Both end in a forced layout; neither is worth more than one.
+        resizeDirty: false,
+        frameOffsetDirty: false,
+        // Latest pointer position, picked once per frame rather than per event.
+        hoverPointer: null,
+        // When the player last touched the map, and when their last GESTURE
+        // (drag, wheel) ended. Content generation waits for a hand that is not
+        // in the middle of something — see drainContentQueue().
+        lastInputAt: 0,
+        lastGestureAt: 0,
+        // What the previous frame spent on startup work, so this frame's rAF
+        // interval can have it subtracted rather than being thrown away. See
+        // animate() and governDetail().
+        lastWorkMs: 0,
+        detail: 0,               // quality rung — see governDetail()
+        // Rung 3 walks every sector to drop the cloud shells. Batched over
+        // frames, because the rescue must not itself be a stall.
+        detailSweep: null,
+        boardAnnounced: false,
+        // --- the world forge: surface bakes on another thread ------------
+        forge: null,                 // { workers, queue, failed } — see ensureForge()
+        worldBundles: new Map(),     // forge key -> { textures, surface, ... } — see forgeKey()
+        bundlePending: new Map(),    // forge key -> requested-at timestamp
+        bundleStaging: new Map(),    // baked, still being pushed to the GPU a map a frame
+        bundleFailed: new Set(),     // keys the forge could not do; built on the main thread
+        bundleAsked: new Map(),      // forge key -> the message that asked for it
+        // Whether this driver can link a program in the background. Undefined
+        // until there is a GL context to ask — see parallelCompile().
+        parallelCompile: undefined,
+        lastWarmAt: 0,
+        // --- loading state ----------------------------------------------
+        bootPlate: null,
+        bootPlateMode: null,         // 'full' | 'strip'
+        // What the strip is currently saying and wearing, so a repaint that
+        // changes nothing costs nothing — see paintBootPlate().
+        stripText: '',
+        stripCss: '',
+        // The step the strip is naming while it happens ('compiling surface
+        // shaders'), painted BEFORE the work starts rather than after it.
+        surveyStep: '',
+        // Rolling record of the survey: how many were done at the last change,
+        // when that was, and how long the last few sectors took. Feeds both the
+        // estimate and the watchdog — see stepSurveyStrip().
+        surveyDone: -1,
+        surveyChangedAt: 0,
+        surveyRates: [],
+        statusRegion: null,
+        statusSaid: '',
+        chartedTotal: 0,
+        contextLost: false
         // Every map texture is generated at runtime; no image files to fetch.
     };
 
@@ -300,16 +290,7 @@ import {
         return `rgba(${Math.round(c[0])}, ${Math.round(c[1])}, ${Math.round(c[2])}, ${alpha})`;
     }
 
-    /**
-     * Separable box blur over RGBA bytes, wrapping in x and clamping in y.
-     * Returns a Float32Array in the same layout.
-     *
-     * This exists for ONE job: killing content finer than (2r+1) texels in an
-     * image that is about to be magnified. See the note at its call site in
-     * buildSkyTexture — canvas gradients arrive carrying the rasteriser's own
-     * ordered dither, and at 7.5 screen pixels per texel that dither is a
-     * visible lattice across the whole sky.
-     */
+    /** Separable box blur over RGBA bytes, wrapping in x and clamping in y. Full rationale: docs/galaxy3d-design-notes.md#separable-box-blur-over-rgba-bytes-wrapping-in-x-and-clampin */
     function boxBlurWrapX(src, W, H, r) {
         const n = 2 * r + 1;
         const tmp = new Float32Array(W * H * 4);
@@ -340,10 +321,16 @@ import {
         return out;
     }
 
+    /** A generation canvas — and it is opened `willReadFrequently`, which is worth. Full rationale: docs/galaxy3d-design-notes.md#a-generation-canvas-and-it-is-opened-willreadfrequently-whic */
     function canvas2d(w, h) {
         const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;
+        // Claimed here so that a later plain getContext('2d') — which is what
+        // every call site does — returns THIS context rather than an accelerated
+        // one. getContext caches by type, so the first call wins and the
+        // attributes on subsequent calls are ignored.
+        canvas.getContext('2d', { willReadFrequently: true });
         return canvas;
     }
 
@@ -351,17 +338,7 @@ import {
         const tex = new THREE.CanvasTexture(canvas);
         tex.colorSpace = colorSpace || THREE.SRGBColorSpace;
         if (wrap) { tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; }
-        // ANISOTROPY. The previous revision turned this off on the theory that a
-        // fixed 60-degree tilt is "already correct" for trilinear. It is not:
-        // 60 degrees is exactly a 2:1 compression along the view axis, so the
-        // trilinear mip selector picks the level that suits the SHORT axis and
-        // blurs the long one — which is why rivets in the far half of the board
-        // arrived as smears while the near ones were sharp. Every texture here
-        // is built once and cached, and the plates are the surface that spends
-        // its life at a grazing angle, so this is the cheapest sharpness in the
-        // renderer.
-        // Not on a CPU rasteriser, where every extra tap is a real loop in the
-        // main thread and the plates cover the whole viewport.
+        // ANISOTROPY. The previous revision turned this off on the theory that a. Full rationale: docs/galaxy3d-design-notes.md#anisotropy-the-previous-revision-turned-this-off-on-the-theo
         if (state.renderer && state.renderer.capabilities && !state.software) {
             tex.anisotropy = Math.min(4, state.renderer.capabilities.getMaxAnisotropy() || 1);
         }
@@ -376,29 +353,20 @@ import {
         return state.textures.get(key);
     }
 
-    // ------------------------------------------------------------------
-    // The plotting table: hex plate geometry and its material set.
-    //
-    // The old tile was a six-sided cylinder with a flat MeshStandardMaterial —
-    // no edge, no relief, nothing for the key light to catch, which is exactly
-    // why the board read as a debug wireframe fill. This one is a machined
-    // plate: recessed top face, chamfered lip, short side wall, flat-shaded so
-    // the chamfer reads as a separate facet at every camera angle.
-    // ------------------------------------------------------------------
+    /** THE TWO BIG BAKES, BEHIND ACCESSORS. Full rationale: docs/galaxy3d-design-notes.md#the-two-big-bakes-behind-accessors */
+    function plateMaps() {
+        if (!state.plateMaps) state.plateMaps = buildPlateMaps();
+        return state.plateMaps;
+    }
 
-    /**
-     * How much of the plate texture the TOP FACE is allowed to use.
-     *
-     * At 1.0 the hexagon's own corners reach u = 0 and u = 1, so every texel of
-     * the image belongs to the top face and the extruded side walls had nowhere
-     * to sample but the top face's own UVs — which is precisely the bug that
-     * smeared one stretched column of the embossed frame down each wall as a
-     * blown-out white band. Shrinking the top face's UV footprint to 0.88 frees
-     * a horizontal strip at each end of the image that no top-face fragment can
-     * ever reach, and the rim band is painted there. The painted frame, tray and
-     * rivets are all authored against the same constant, so nothing moves in
-     * world space.
-     */
+    function fogTexture() {
+        if (!state.fogTexture) state.fogTexture = buildFogCloudTexture();
+        return state.fogTexture;
+    }
+
+    // . Full rationale: docs/galaxy3d-design-notes.md#the-plotting-table-hex-plate-geometry-and-its-material-set
+
+    /** How much of the plate texture the TOP FACE is allowed to use. Full rationale: docs/galaxy3d-design-notes.md#how-much-of-the-plate-texture-the-top-face-is-allowed-to-use */
     const UV_K = 0.88;
     /** v range of the machined-rim strip, in the free band below the top face. */
     const RIM_V_LIP = 0.094;      // inner edge of the chamfer (highest point)
@@ -482,34 +450,11 @@ import {
         return geo;
     }
 
-    /**
-     * THE SELECTION MARKER: four chamfered clamps bolted onto the tile.
-     *
-     * The previous marker was a thin glowing translucent outline with an additive
-     * halo — the holographic look the art direction rejects — and its wash blew
-     * the centre of the selected plate out, taking the grain, the rivets and the
-     * legibility of the sector number with it. This is hardware: four short
-     * beveled steel brackets straddling the tile's four diagonal edges, each with
-     * a rivet at either end, built from the SAME unit corner array as the plate
-     * so it cannot drift, overshoot a neighbour or hang across the gutter. The
-     * two flat edges are deliberately left clear — that is where the register
-     * ticks and the sector number live.
-     *
-     * It is lit by the scene key like everything else on the table, so it reads
-     * as installed rather than projected.
-     */
+    /** THE SELECTION MARKER: four chamfered clamps bolted onto the tile. Full rationale: docs/galaxy3d-design-notes.md#the-selection-marker-four-chamfered-clamps-bolted-onto-the-t */
     function buildSelectionClampGeometry() {
         const parts = [];
 
-        /**
-         * One bracket: a mounting pad bedded onto the plate, a chamfered base
-         * slab, a narrower cap and a bolt at each end.
-         *
-         * The pad matters. Without it the bracket terminated in mid-air on the
-         * plate surface with nothing to say how it was attached, which is most of
-         * why it read as moulded plastic dropped on the board rather than as
-         * machined furniture bolted to it.
-         */
+        /** One bracket: a mounting pad bedded onto the plate, a chamfered base. Full rationale: docs/galaxy3d-design-notes.md#one-bracket-a-mounting-pad-bedded-onto-the-plate-a-chamfered */
         function clamp(cx, cz, ang) {
             const pad = new THREE.BoxGeometry(0.62, 0.016, 0.24);
             pad.translate(0, 0.008, 0);
@@ -543,22 +488,7 @@ import {
         const CLAMP_HALF_DEPTH = 0.12;      // half of the pad's 0.24 depth
         const seat = (HEX_INRADIUS * BEVEL_INSET - CLAMP_HALF_DEPTH) / HEX_INRADIUS;
 
-        /**
-         * THE TWO UPPER DIAGONAL EDGES ONLY.
-         *
-         * There used to be four, ringing the tile, and they were the brightest
-         * marks on it — brighter than the sector number, which is the one thing
-         * on a plate that carries information. Worse, the lower pair collided
-         * with the two other objects that live in that half of the tile: the
-         * lower-left bracket overlapped the ID plaque (which spans x -0.56..0.24
-         * at z 0.31..0.61) and the lower-right one sat under the fleet badge at
-         * bearing 30 degrees. Three UI objects stacked in one corner.
-         *
-         * Edges [0,1] and [2,3] are the two that face AWAY from the camera, so
-         * the marker sits in the empty upper half of the plate and the whole
-         * lower half is left to the plaque and the badge. Two brackets read as
-         * deliberate; four read as decoration.
-         */
+        /** THE TWO UPPER DIAGONAL EDGES ONLY. Full rationale: docs/galaxy3d-design-notes.md#the-two-upper-diagonal-edges-only */
         // The two upper DIAGONAL edges (0-1, 2-3). The flat edges are
         // left clear on purpose: the register ticks and the sector number live
         // there, and a bracket across either of them would cover gameplay text.
@@ -583,23 +513,7 @@ import {
         return geo;
     }
 
-    /**
-     * AN EMPTY SOCKET, NOT A PLATE.
-     *
-     * The board's biggest readability failure was that an unexplored cell was a
-     * fully-built instrument: identical rivets, identical frame emboss, identical
-     * tray recess and dashed scribe as a surveyed sector, differing only by a
-     * 1.3:1 tonal step. Sixty percent of the viewport was detailed hardware the
-     * player had to learn to ignore.
-     *
-     * So the HARDWARE ITSELF is now the signal. A charted sector has a machined
-     * plate installed in it; an unexplored one has the hexagonal hole the plate
-     * would go into — a chamfered funnel down to a bare floor, with the sensor
-     * haze glowing in the bottom of it and nothing else. Nothing is riveted,
-     * nothing is stencilled, nothing is framed. Combined with FOG_DROP below,
-     * the unknown region visibly falls away from the charted plane, which is the
-     * depth cue the flat board never had.
-     */
+    /** AN EMPTY SOCKET, NOT A PLATE. Full rationale: docs/galaxy3d-design-notes.md#an-empty-socket-not-a-plate */
     const FOG_DROP = 0.13;                   // how far an unexplored cell sits below the deck
     const FOG_RIM_SCALE = 0.995;             // outer lip of the socket
     // 0.925, not 0.80. A chamfer that eats a fifth of the tile is not a chamfer,
@@ -608,18 +522,7 @@ import {
     const FOG_FLOOR_SCALE = 0.925;           // where the funnel wall reaches the floor
     const FOG_FLOOR_Y = TILE_TOP - 0.115;
 
-    /**
-     * @param {number} variant  which slice of the haze texture this cell samples.
-     *
-     * The uv OFFSET AND ROTATION ARE BAKED PER CELL, which is the fix for the
-     * unexplored field reading as one printed wallpaper. The uv used to be a
-     * bare function of local tile-space x,z, so every cell in the galaxy sampled
-     * exactly the same texel range and the same swirl appeared, pixel for pixel,
-     * on every hex; the six material variants rotated the sample but 112 cells
-     * over 6 patterns still puts identical neighbours in the same screenful.
-     * Seven geometry variants against those six is 42 distinct cells, which is
-     * more than are ever on screen at once.
-     */
+    /** @param {number} variant which slice of the haze texture this cell samples. Full rationale: docs/galaxy3d-design-notes.md#param-number-variant-which-slice-of-the-haze-texture-this-ce */
     function buildFogCellGeometry(variant) {
         const positions = [];
         const uvs = [];
@@ -647,31 +550,7 @@ import {
         for (let i = 0; i < 6; i++) {
             const c0 = HEX_CORNERS[i];
             const c1 = HEX_CORNERS[(i + 1) % 6];
-            // Funnel wall: rim down to floor. Six flat facets, so the key light
-            // separates them and the socket has depth without a single painted
-            // pixel of hardware in it.
-            //
-            // WINDING. HEX_CORNERS is wound clockwise in (x, z), which is
-            // counter-clockwise seen from above, so a fan over it faces +Y with
-            // no help. A funnel WALL is not a fan: taking the corners in the same
-            // order from the outer ring to the inner one produces triangles whose
-            // normals point DOWN and outward, which front-face culling then
-            // removes entirely — the cell rendered as nothing but its floor, at
-            // 80% of the tile, and the missing 20% was also missing from the
-            // raycast, so clicking the edge of an unexplored sector did nothing.
-            // The wall triangles are therefore wound the other way round.
-            //
-            // THE WALL IS SHADED PER FACET, NOT BY ONE FLAT CONSTANT.
-            //
-            // It used to be RIM = 3.1 against FLOOR = 1.0 — a 3.1x vertex tint on
-            // every one of the six walls at once. The scene key only reaches one
-            // or two of them, so what shipped was a single pale parallelogram
-            // blown out of the upper-left edge of every unexplored hex while the
-            // other four vanished into the floor value: torn paper, not a socket.
-            // Each wall now takes its own orientation to the key, exactly as the
-            // plate's chamfer does through paintRimStrip, so all six carry a
-            // distinct value and the cell reads as a recess with a lit side and a
-            // shadow side.
+            // Funnel wall: rim down to floor. Six flat facets, so the key light. Full rationale: docs/galaxy3d-design-notes.md#funnel-wall-rim-down-to-floor-six-flat-facets-so-the-key-lig
             const RIM = 1 + edgeFacing(i) * 0.35, FLOOR = 1.0;
             push(c0[0] * ro, yRim, c0[1] * ro, RIM);
             push(c1[0] * ri, FOG_FLOOR_Y, c1[1] * ri, FLOOR);
@@ -712,24 +591,8 @@ import {
         return geo;
     }
 
-    /**
-     * The deck plate: brushed gunmetal with an embossed hexagonal frame, corner
-     * rivets and stencilled register ticks. Painted in GREYSCALE so the per-status
-     * tint can be applied with material.color without fighting a baked hue.
-     *
-     * Returns { map, normalMap }. The plates are Blinn-Phong, so roughness and
-     * metalness are scalars and there is no third map to pay for.
-     */
-    /**
-     * A low-frequency fbm evaluated on a coarse grid and bilinearly resampled.
-     *
-     * At 1024x1024 a per-texel three-octave fbm is a million calls and about a
-     * third of a second of startup; the layers it is wanted for here vary over
-     * hundreds of texels, so sampling them at 96x96 and interpolating is
-     * indistinguishable and roughly a hundred times cheaper. The HIGH frequency
-     * layers are still evaluated per texel — that is the detail the resolution
-     * was raised for.
-     */
+    /** The deck plate: brushed gunmetal with an embossed hexagonal frame, corner. Full rationale: docs/galaxy3d-design-notes.md#the-deck-plate-brushed-gunmetal-with-an-embossed-hexagonal-f */
+    /** A low-frequency fbm evaluated on a coarse grid and bilinearly resampled. Full rationale: docs/galaxy3d-design-notes.md#a-low-frequency-fbm-evaluated-on-a-coarse-grid-and-bilinearl */
     function coarseField(N, scale, seed, octaves) {
         const grid = new Float32Array(N * N);
         for (let y = 0; y < N; y++) {
@@ -759,18 +622,7 @@ import {
         const img = ctx.createImageData(S, S);
         const px = img.data;
 
-        /**
-         * THE MACHINING HEIGHT FIELD, and where it belongs.
-         *
-         * The old grain was `fbm2(x / 26, y / 3.2)` painted into the ALBEDO: an
-         * 8:1 stretch at a 26-texel period, which is the frequency and aspect of
-         * WOODGRAIN, and putting it in the albedo meant the scratches only ever
-         * darkened. Metal does the opposite — a machining pass is relief, so it
-         * catches the key and GLINTS. This is a much finer, much tighter grain
-         * (a ~3-texel period at 1024, i.e. genuine tool marks) and it is fed into
-         * the normal map only; the albedo keeps just the broad blotchiness of
-         * a plate that has been in service.
-         */
+        /** THE MACHINING HEIGHT FIELD, and where it belongs. Full rationale: docs/galaxy3d-design-notes.md#the-machining-height-field-and-where-it-belongs */
         const machining = new Float32Array(S * S);
         for (let y = 0; y < S; y++) {
             const yr = y / 0.68;
@@ -946,20 +798,7 @@ import {
                 nPx[i + 3] = 255;
             }
         }
-        /**
-         * THE RIM BAND GETS A FLAT NORMAL, deliberately.
-         *
-         * The rim strip is the highest-contrast painting in the image — six
-         * per-facet value steps, twelve bolt heads, ribs and wear — and a Sobel
-         * over that produces normals that swing most of a hemisphere within a few
-         * texels. Under a 220-exponent specular lobe, isolated texels hit
-         * N.H ~ 1 and flash to full white: on screen that was a band of blue-white
-         * glitter along every up-key chamfer, reading as frost rather than as
-         * milled steel. The chamfer and the wall are already SEPARATE GEOMETRIC
-         * FACETS with correct normals, so they need nothing from the map, and
-         * flattening the band removes the aliasing at its source rather than
-         * hiding it behind a softer lobe everywhere else.
-         */
+        /** THE RIM BAND GETS A FLAT NORMAL, deliberately. Full rationale: docs/galaxy3d-design-notes.md#the-rim-band-gets-a-flat-normal-deliberately */
         const rimRow = Math.floor((1 - 0.112) * S);
         for (let y = rimRow; y < S; y++) {
             for (let x = 0; x < S; x++) {
@@ -981,20 +820,8 @@ import {
         };
     }
 
-    /**
-     * The machined rim: the chamfer lip, the parting groove and the side wall,
-     * painted as ONE horizontal band in the strip of the image the top face's
-     * UVs can no longer reach. The wall quads walk this band along u, so each
-     * one samples a run of purpose-built rim rather than a stretched column of
-     * whatever happened to be under it on the top face.
-     */
-    /**
-     * How strongly hex edge `i`'s outward face turns toward the key light,
-     * -1..1. The rim strip's u axis is CUMULATIVE PERIMETER, so edge i owns
-     * exactly the u range [i/6, (i+1)/6] — which means the six chamfer facets
-     * can each be painted at their own value, and the bevel is then sold by a
-     * value step rather than by a hairline.
-     */
+    /** The machined rim: the chamfer lip, the parting groove and the side wall. Full rationale: docs/galaxy3d-design-notes.md#the-machined-rim-the-chamfer-lip-the-parting-groove-and-the- */
+    /** How strongly hex edge `i`'s outward face turns toward the key light. Full rationale: docs/galaxy3d-design-notes.md#how-strongly-hex-edge-i-s-outward-face-turns-toward-the-key- */
     function edgeFacing(i) {
         const c0 = HEX_CORNERS[i], c1 = HEX_CORNERS[(i + 1) % 6];
         let nx = (c0[0] + c1[0]) / 2, nz = (c0[1] + c1[1]) / 2;
@@ -1017,17 +844,7 @@ import {
         ctx.rect(0, yTop, S, S - yTop);
         ctx.clip();
 
-        /**
-         * THE CHAMFER IS PAINTED SIX TIMES, ONCE PER EDGE, AT ITS OWN VALUE.
-         *
-         * The measured failure was that the rim strip and the top face came back
-         * at the same luminance (0.23 vs 0.22), so the "chunky beveled" edge was
-         * carried by nothing but an aliased hairline. A chamfer is a facet: the
-         * one tilted toward the key is brighter than the face it borders and the
-         * one tilted away is darker, and that PAIR of value steps is what the eye
-         * reads as an edge at thumbnail size. +/-40% about the base, exactly as
-         * the direction called for.
-         */
+        /** THE CHAMFER IS PAINTED SIX TIMES, ONCE PER EDGE, AT ITS OWN VALUE. Full rationale: docs/galaxy3d-design-notes.md#the-chamfer-is-painted-six-times-once-per-edge-at-its-own-va */
         function band(from, to, lo, hi) {
             const g = ctx.createLinearGradient(0, from, 0, to);
             g.addColorStop(0, lo);
@@ -1039,17 +856,7 @@ import {
             return `rgb(${n},${n},${n})`;
         };
 
-        /**
-         * EXPOSURE FIRST, THEN CONTENT.
-         *
-         * The chamfer base was 132 with k running to 1.40 — 185 before the
-         * status tint, the 2.4-intensity key and ACES all multiply through it.
-         * Measured on the shipped frame, the skirts of sectors 10, 11 and 23
-         * came back at 199, 215 and 244 luma: on three tiles the untextured side
-         * wall was the brightest surface in the picture after the star, which is
-         * the grey-box read exactly. 96 with k capped at 1.25 puts the same
-         * facet under 200 with the tint still legible on it.
-         */
+        /** EXPOSURE FIRST, THEN CONTENT. Full rationale: docs/galaxy3d-design-notes.md#exposure-first-then-content */
         const K_CAP = 1.25;
         for (let i = 0; i < 6; i++) {
             const x0 = (i / 6) * S;
@@ -1096,17 +903,7 @@ import {
             ctx.restore();
         }
 
-        /**
-         * A STENCILLED PART CODE, on one facet only.
-         *
-         * The rim strip is 256 texels of u per edge at this resolution and it
-         * carried nothing but gradients, so at any real zoom the sides of every
-         * plate were feature-free bands. Three characters on ONE of the six
-         * edges is what a machined component actually carries, and putting it on
-         * a single facet keeps it from becoming a repeating pattern around the
-         * tile. Sprayed dark into the metal, not printed light onto it: this
-         * band already had an exposure problem and must not get another.
-         */
+        /** A STENCILLED PART CODE, on one facet only. Full rationale: docs/galaxy3d-design-notes.md#a-stencilled-part-code-on-one-facet-only */
         ctx.save();
         ctx.beginPath();
         ctx.rect((2 / 6) * S, yEdge + 4 * K, S / 6, yBase - yEdge - 4 * K);
@@ -1165,20 +962,7 @@ import {
         }
         ctx.restore();
 
-        /**
-         * A GRAIN AND WEAR MULTIPLY OVER THE WHOLE STRIP.
-         *
-         * Everything above is gradients, rules and discs — clean vector work,
-         * and clean vector work is exactly what reads as a primitive when it
-         * fills a band. This modulates the finished strip by a fine machining
-         * noise plus a broad soiling term, so no two texels along the skirt are
-         * at the same value and the band has a surface. It runs on the band rows
-         * only, which is about a tenth of the image.
-         *
-         * The rim band is given a FLAT normal further down (see buildPlateMaps),
-         * so this is pure albedo and cannot feed the specular sparkle that
-         * flattening was introduced to kill.
-         */
+        /** A GRAIN AND WEAR MULTIPLY OVER THE WHOLE STRIP. Full rationale: docs/galaxy3d-design-notes.md#a-grain-and-wear-multiply-over-the-whole-strip */
         const y0 = Math.max(0, Math.floor(yTop));
         const rows = S - y0;
         if (rows > 0) {
@@ -1201,15 +985,10 @@ import {
         }
     }
 
-    /**
-     * A plate albedo carrying a stencilled hazard code. Composited over the
-     * finished base plate so the (expensive) grain pass and Sobel derivation are
-     * paid once for the whole board; the stencil is PAINT, so it correctly has
-     * no relief and shares the base normal map.
-     */
+    /** A plate albedo carrying a stencilled hazard code. Composited over the. Full rationale: docs/galaxy3d-design-notes.md#a-plate-albedo-carrying-a-stencilled-hazard-code-composited- */
     function plateVariantMap(kind) {
         return cachedTexture(`plate:${kind}`, () => {
-            const plate = state.plateMaps;
+            const plate = plateMaps();
             const S = plate.size;
             const half = plate.half;
             const K = plate.scale || 1;
@@ -1218,24 +997,7 @@ import {
             ctx.drawImage(plate.base, 0, 0);
             const cx = S / 2;
 
-            /**
-             * A SECOND, NON-HUE CHANNEL FOR THE HAZARD READ.
-             *
-             * Measured, the belt plate and a plain steel plate came back at
-             * L=59.4 and L=61.1 — a 1.03:1 step, with hue as the only thing
-             * separating "this destroys fleets until you own it" from "this is
-             * empty space". That fails on an uncalibrated panel and it fails
-             * outright for a red-green deficient player, on the single most
-             * gameplay-critical distinction the board draws.
-             *
-             * So the hazard classes get a stencilled diagonal HATCH at +/-25%
-             * value — the same hatch the HUD map key already advertises for
-             * "asteroid/star hazard" — painted into the plate albedo. It reads
-             * in a greyscale screenshot, it reads at thumbnail size, and it is
-             * the pattern the key trained the player to look for. Paired with
-             * the ~20% overall darkening applied in tileMaterial, a hazard tile
-             * is now the darkest AND the only patterned charted class.
-             */
+            /** A SECOND, NON-HUE CHANNEL FOR THE HAZARD READ. Full rationale: docs/galaxy3d-design-notes.md#a-second-non-hue-channel-for-the-hazard-read */
             function hazardHatch(clipScale) {
                 ctx.save();
                 ctx.beginPath();
@@ -1324,14 +1086,7 @@ import {
         });
     }
 
-    /**
-     * Unexplored space. It has to be SEEN — an earlier revision multiplied a fog
-     * colour by a near-black tile and about a hundred of the hundred and twelve
-     * tiles rendered as literally nothing, so the main map showed the player no
-     * galaxy shape at all. This is a luminous sensor-haze, painted bright, and it
-     * is layered onto the plate as an EMISSIVE map so the plate relief survives
-     * underneath it and the haze can drift on its own uv transform.
-     */
+    /** Unexplored space. It has to be SEEN — an earlier revision multiplied a fog. Full rationale: docs/galaxy3d-design-notes.md#unexplored-space-it-has-to-be-seen-an-earlier-revision-multi */
     function buildFogCloudTexture() {
         const S = 192;
         const canvas = canvas2d(S, S);
@@ -1432,17 +1187,7 @@ import {
         skirt.addColorStop(1, rgba(colour, 0));
         ctx.fillStyle = skirt;
         ctx.fillRect(0, 0, W, H);
-        /**
-         * DASH PITCH 32, NOT 16 — AND SEE THE REPEAT AT THE CALL SITE.
-         *
-         * A 16px pitch on a 128px texture, repeated two or three times along a
-         * crossing that is only ~160 screen pixels long, put roughly 300 texels
-         * of dash into 160 pixels. That is a 1.9x MINIFICATION: the dashes fell
-         * below Nyquist and the mip chain resolved them into exactly what the
-         * review saw — one solid bar of constant width and constant opacity. A
-         * dashed line has to be authored for the size it is drawn at, not for
-         * the size of its own texture.
-         */
+        /** DASH PITCH 32, NOT 16 — AND SEE THE REPEAT AT THE CALL SITE. Full rationale: docs/galaxy3d-design-notes.md#dash-pitch-32-not-16-and-see-the-repeat-at-the-call-site */
         ctx.fillStyle = rgba(colour, 0.85);
         for (let x = 0; x < W; x += 32) ctx.fillRect(x, H / 2 - 1.5, 18, 3);
         // Registration ticks either side of the line.
@@ -1459,80 +1204,18 @@ import {
         return tex;
     }
 
-    // ------------------------------------------------------------------
-    // Deep space.
-    //
-    // Three layers, because one is what makes a starfield look like a debug
-    // scatter: an infinitely-distant dome carrying the galactic plane and the
-    // nebula masses, a fixed star sphere inside it, and a near dust field in
-    // world space that parallaxes against both when the player pans.
-    // ------------------------------------------------------------------
+    // . Full rationale: docs/galaxy3d-design-notes.md#deep-space
 
-    /**
-     * The dome carries LOW FREQUENCY ONLY. NOTHING PER-TEXEL. EVER.
-     *
-     * A 1024-wide equirect map wrapped on a sphere and viewed through a 50-degree
-     * lens is magnified about eight times, so anything with an edge in it turns
-     * into a blurred blob the size of a hex — which is exactly what the first
-     * version of this looked like. Everything that needs to be crisp (the stars)
-     * lives in the point layers instead, and the dome does what a distant nebula
-     * actually does: a large, soft, dim variation in colour and brightness.
-     *
-     * WHY THE FINE LAYERS ARE GONE, AND WHY NOTHING MAY PUT THEM BACK.
-     *
-     * A previous pass added three per-texel terms here — a "starlight grain" at a
-     * 3.4-texel period, a filament noise at 7, and a +/-1.5 level triangular
-     * dither at 1 — all in the name of texture and anti-banding. Measured on the
-     * shipped frame, the visible window is about a sixth of the map's u range
-     * across 1920px: ONE TEXEL IS FIFTEEN SCREEN PIXELS. Every one of those terms
-     * therefore came back as a 15px bilinear diamond lattice over the entire sky,
-     * measurable at residual autocorrelation +0.73 at lag 15 and -0.82 at lag 7.
-     * A screen door, in other words, and the most-noticed defect in the frame.
-     *
-     * The rule this leaves behind: the sky texture may contain nothing whose
-     * period is under about six texels (~90px on screen). Anything finer than
-     * that is not detail, it is a grid. Screen-space grain and dithering belong
-     * in the composer (see buildComposer), where they are 1:1 with pixels.
-     */
-    function buildSkyTexture() {
+    /** The dome carries LOW FREQUENCY ONLY. NOTHING PER-TEXEL. EVER. Full rationale: docs/galaxy3d-design-notes.md#the-dome-carries-low-frequency-only-nothing-per-texel-ever */
+    /** PAINTED IN SLICES, BECAUSE IT IS HALF A MILLION TEXELS OF ARITHMETIC. Full rationale: docs/galaxy3d-design-notes.md#painted-in-slices-because-it-is-half-a-million-texels-of-ari */
+    const SKY_ROWS_PER_STEP = 72;
+
+    function beginSkyTexture() {
         const W = 1024, H = 512;
         const canvas = canvas2d(W, H);
         const ctx = canvas.getContext('2d');
 
-        // WHERE THE CAMERA ACTUALLY LOOKS.
-        //
-        // NOTE ON THE REWRITE: the previous version painted the base at 256x128
-        // and let the canvas bilinearly upscale it to 1024x512, which put a
-        // regular grid modulation across the whole void — the base texel lattice
-        // resolving on screen, measurable at std 1.4 levels on a mean of 38 and
-        // plainly visible at 2x zoom. There is no filter setting that removes
-        // that; the fix is to evaluate every texel. The expensive multi-octave
-        // layers are sampled off coarse grids (coarseField) and only the layers
-        // that need to be crisp are evaluated per texel, so this costs about the
-        // same as the version with the artefact in it.
-        //
-        // THE DOME IS TILTED TO PUT ITS POLE OUT OF FRAME (see buildBackdrop).
-        //
-        // The rig never rotates: the view direction is fixed at ~61 degrees below
-        // the horizon, which on an un-tilted equirect dome aims the camera almost
-        // straight at the -Y POLE — where every line of constant latitude
-        // collapses into a ring around the centre of the screen. That is why a
-        // perfectly reasonable horizontal "galactic plane" band came back as a
-        // pale funnel radiating out from behind the board. Tilting the dome by
-        // the camera's own pitch puts the view centre on the dome's EQUATOR,
-        // where equirect is well behaved and a band painted across the image
-        // reads as a band across the frame.
-        //
-        // Consequence for authoring: the visible window is now v in ~0.36..0.64
-        // and a ~0.17-wide run of u centred on 0.75. The ramp and the plane are
-        // placed for that window; the noise layers are statistically uniform in
-        // u so it does not matter where exactly the window lands.
-        //
-        // ---- Pass 1: the nebula masses, drawn as canvas gradients into a
-        // scratch buffer. They are read back and folded into the per-texel pass
-        // below rather than composited on top, so the dither applies to them
-        // too — a 400px radial gradient at these alphas is otherwise the single
-        // worst source of 8-bit contour banding in the frame.
+        // WHERE THE CAMERA ACTUALLY LOOKS. Full rationale: docs/galaxy3d-design-notes.md#where-the-camera-actually-looks
         const scratch = canvas2d(W, H);
         const sctx = scratch.getContext('2d');
 
@@ -1568,6 +1251,7 @@ import {
             [0.66, 0.72, 260, [58, 50, 104], 0.11],
             [0.78, 0.30, 300, [44, 72, 110], 0.10]
         ];
+        function drawMasses() {
         masses.forEach(([u, v, r, colour, a], i) => {
             const rot = hash2(i, 61, 3) * Math.PI;
             blob(sctx, u * W, v * H, r, colour, a, 0.55 + hash2(i, 67, 4) * 0.5, rot);
@@ -1582,50 +1266,30 @@ import {
                     0.5 + hash2(i * 7 + k, 83, 15) * 0.7, ang);
             }
         });
-        /**
-         * THE GRADIENTS ARE BAND-LIMITED BEFORE THEY ARE MAGNIFIED.
-         *
-         * This is the actual source of the screen-door lattice that made the
-         * frame unshippable, and it took bisecting the scene to find: with the
-         * dome removed the sky's residual autocorrelation collapsed from +0.74
-         * at lag 15 to nothing, and with the dome's own per-texel noise already
-         * deleted the only thing left in it was these canvas gradients.
-         *
-         * Skia DITHERS gradient fills. It has to — a 300px radial ramp at alpha
-         * 0.15 would band otherwise — and it does it with a small ordered matrix
-         * at the canvas's own pixel pitch. That is invisible at 1:1 and it is a
-         * regular 15px checkerboard once the canvas is wrapped on a dome and
-         * magnified seven and a half times, which is what a 1024x512 equirect
-         * through a 50-degree lens is. No filter setting removes it: LINEAR
-         * magnification of a 2-texel pattern IS the diamond lattice.
-         *
-         * A five-tap separable box blur takes everything with a period under
-         * about five texels — the dither included — to zero, and leaves the
-         * masses themselves (radii of 260 to 340 texels) untouched. It wraps in
-         * u because the dome does.
-         *
-         * THE RULE: any canvas gradient that ends up magnified more than ~2x
-         * has to be band-limited on the way out. Authoring "no noise" is not
-         * enough; the rasteriser adds its own.
-         */
-        const neb = boxBlurWrapX(sctx.getImageData(0, 0, W, H).data, W, H, 2);
+        }
+        /** THE GRADIENTS ARE BAND-LIMITED BEFORE THEY ARE MAGNIFIED. Full rationale: docs/galaxy3d-design-notes.md#the-gradients-are-band-limited-before-they-are-magnified */
+        let neb, img, px, warpF, clumpF, laneF, warmF, absorbF;
+        function prepare() {
+        neb = boxBlurWrapX(sctx.getImageData(0, 0, W, H).data, W, H, 2);
 
         // ---- Pass 2: everything else, evaluated per texel.
-        const img = ctx.createImageData(W, H);
-        const px = img.data;
+        img = ctx.createImageData(W, H);
+        px = img.data;
         // Multi-octave layers off coarse grids: these vary over a tenth of the
         // sky, so a 1:8 grid with bilinear resampling is exact enough and about
         // sixty times cheaper than a per-texel fbm.
-        const warpF = coarseField(64, 0.14, 3, 2);
-        const clumpF = coarseField(128, 0.10, 9, 3);
-        const laneF = coarseField(128, 0.13, 131, 3);
-        const warmF = coarseField(64, 0.09, 21, 2);
+        warpF = coarseField(64, 0.14, 3, 2);
+        clumpF = coarseField(128, 0.10, 9, 3);
+        laneF = coarseField(128, 0.13, 131, 3);
+        warmF = coarseField(64, 0.09, 21, 2);
         // Dark absorption is what the previous sky had none of, and it is the
         // difference between a nebula and an airbrush stripe: cold dust in FRONT
         // of the glow, in filaments rather than blobs.
-        const absorbF = coarseField(192, 0.20, 907, 3);
+        absorbF = coarseField(192, 0.20, 907, 3);
+        }
 
-        for (let y = 0; y < H; y++) {
+        function paintRows(y0, y1) {
+        for (let y = y0; y < y1; y++) {
             const t = y / H;
             // A value gradient from deep sky at the top to the lit floor of the
             // galaxy below. The frame needs a RAMP behind the board; a flat fill
@@ -1652,18 +1316,7 @@ import {
 
                 const warmth = warmF(u, t);
                 const i = (y * W + x) * 4;
-                // These coefficients are CALIBRATED, not chosen: a texel here is
-                // decoded to linear, run through ACES and re-encoded, which maps
-                // a value of ~56 to a displayed ~40. The dome has to land in the
-                // 25-60 band — dark enough that the board is unambiguously the
-                // brightest thing on screen, light enough that the negative space
-                // carries an image.
-                // getImageData returns UN-premultiplied colour, so a texel a blob
-                // barely touched still carries the blob's full RGB with an alpha
-                // of two. Adding the raw channels put a bright pale wash over the
-                // entire sky that measured L*45-58 — brighter than the plates,
-                // which is the one thing the negative space may never be. The
-                // alpha weight is not optional.
+                // These coefficients are CALIBRATED, not chosen: a texel here is. Full rationale: docs/galaxy3d-design-notes.md#these-coefficients-are-calibrated-not-chosen-a-texel-here-is
                 const na = neb[i + 3] / 255;
                 const r = (base * 0.72 + lit * 38 * (0.62 + warmth * 0.6)) * cut + neb[i] * na;
                 const g = (base * 0.84 + lit * 36 * (0.66 + warmth * 0.34)) * cut + neb[i + 1] * na;
@@ -1679,23 +1332,53 @@ import {
                 px[i + 3] = 255;
             }
         }
-        ctx.putImageData(img, 0, 0);
+        }
 
-        const tex = toTex(canvas, THREE.SRGBColorSpace);
-        tex.wrapS = THREE.RepeatWrapping;
-        return tex;
+        let phase = 0;
+        let row = 0;
+        return {
+            /** One slice. True while there is more to do. */
+            step() {
+                if (phase === 0) { drawMasses(); phase = 1; return true; }
+                if (phase === 1) { prepare(); phase = 2; return true; }
+                const end = Math.min(H, row + SKY_ROWS_PER_STEP);
+                paintRows(row, end);
+                row = end;
+                return row < H;
+            },
+            finish() {
+                ctx.putImageData(img, 0, 0);
+                const tex = toTex(canvas, THREE.SRGBColorSpace);
+                tex.wrapS = THREE.RepeatWrapping;
+                return tex;
+            }
+        };
+    }
+
+    /** The whole sky in one call, for any caller that is not being paced. */
+    function buildSkyTexture() {
+        const job = beginSkyTexture();
+        while (job.step()) { /* everything, now */ }
+        return job.finish();
     }
 
     /**
-     * A tiny studio probe for the metal.
-     *
-     * The plates are a metal-dominant MeshStandardMaterial, and metal with no
-     * environment to reflect renders BLACK — which is most of why the first pass
-     * had a board of flat dark polygons. This is a 256x128 equirect with a warm
-     * key lobe where the directional key is, a cool fill opposite it, and a
-     * horizon gradient; run through PMREM it gives the chamfers something to
-     * catch, which is the whole "beveled riveted metal" read.
+     * The paced version, driven by the boot schedule: one slice a frame until the
+     * dome exists. Returns 'again' while there is more, which is what tells
+     * runBootStep() to come back to this step rather than move past it.
      */
+    let skyJob = null;
+
+    function skyTextureStep() {
+        if (state.textures.has('sky')) return undefined;
+        if (!skyJob) skyJob = beginSkyTexture();
+        if (skyJob.step()) return 'again';
+        state.textures.set('sky', skyJob.finish());
+        skyJob = null;
+        return undefined;
+    }
+
+    /** A tiny studio probe for the metal. Full rationale: docs/galaxy3d-design-notes.md#a-tiny-studio-probe-for-the-metal */
     function buildStudioEnvTexture() {
         const W = 256, H = 128;
         const canvas = canvas2d(W, H);
@@ -1741,18 +1424,7 @@ import {
         return cachedTexture('studioEnv', buildStudioEnvTexture);
     }
 
-    /**
-     * The near dust the board floats in: a world-space sheet under the tiles that
-     * parallaxes when the board is panned, and — because it covers the whole
-     * frame rather than only the sky above the horizon — it is what actually
-     * carries mid-tone into the negative space around the cluster.
-     *
-     * It contributed nothing before because of an arithmetic bug rather than a
-     * choice: the RGB was multiplied by the density AND the alpha was set from
-     * the same density, so an additive draw landed at density-SQUARED and a
-     * typical texel arrived at about two levels out of 255. Colour is colour;
-     * density belongs in alpha, once.
-     */
+    /** The near dust the board floats in: a world-space sheet under the tiles that. Full rationale: docs/galaxy3d-design-notes.md#the-near-dust-the-board-floats-in-a-world-space-sheet-under- */
     function buildNearNebulaTexture() {
         const S = 384;
         const canvas = canvas2d(S, S);
@@ -1796,15 +1468,7 @@ import {
         ], 64);
     }
 
-    /**
-     * The brightest few dozen stars, with a DIFFRACTION CROSS.
-     *
-     * Every star being the same size and the same white is the loudest
-     * "procedural" tell a starfield has. A real field is heavily heavy-tailed:
-     * a handful of stars are bright enough that the instrument itself shows —
-     * four spikes from the spider vanes — and those anchor points are what make
-     * the rest read as a distribution rather than a scatter.
-     */
+    /** The brightest few dozen stars, with a DIFFRACTION CROSS. Full rationale: docs/galaxy3d-design-notes.md#the-brightest-few-dozen-stars-with-a-diffraction-cross */
     function buildBrightStarTexture() {
         return cachedTexture('brightstar', () => {
             const S = 128, c = S / 2;
@@ -1839,12 +1503,7 @@ import {
         });
     }
 
-    /**
-     * Stars as points, with a real colour-temperature spread and a heavy-tailed
-     * brightness distribution: many faint, a handful bright enough to clip into
-     * the bloom pass. `radiusScale` places them on a shell around the camera
-     * (fixed sky) or `spread` scatters them through the board volume (parallax).
-     */
+    /** Stars as points, with a real colour-temperature spread and a heavy-tailed. Full rationale: docs/galaxy3d-design-notes.md#stars-as-points-with-a-real-colour-temperature-spread-and-a- */
     function buildStarPoints(count, opts) {
         const positions = new Float32Array(count * 3);
         const colors = new Float32Array(count * 3);
@@ -1967,7 +1626,9 @@ import {
                 side: THREE.BackSide,
                 depthWrite: false,
                 depthTest: false,
-                fog: false
+                fog: false,
+                /** THE SKY MUST CARRY ITS OWN DITHER. Full rationale: docs/galaxy3d-design-notes.md#the-sky-must-carry-its-own-dither */
+                dithering: true
             })
         );
         sky.scale.setScalar(400);
@@ -2000,15 +1661,7 @@ import {
         state.backdrop = { group: backdrop, sky, deepStars, brightStars };
         state.scene.add(backdrop);
 
-        // Near layers live in world space so they parallax when the board is
-        // panned — that motion is the only thing that sells distance on a view
-        // with no perspective cues of its own.
-        //
-        // The sheets must be WIDER than the widest framing or their own straight
-        // edge shows up as a hard vertical seam across deep space, which is what
-        // happened at 3.2x: at the closeup framing the +X edge of the plane cut
-        // the sky in half. At 9x the boundary is outside the frustum at every
-        // zoom the wheel allows.
+        // Near layers live in world space so they parallax when the board is. Full rationale: docs/galaxy3d-design-notes.md#near-layers-live-in-world-space-so-they-parallax-when-the-bo
         const spreadX = state.width * HORIZ * 9;
         const spreadZ = state.height * VERT * 9;
 
@@ -2017,16 +1670,7 @@ import {
             new THREE.MeshBasicMaterial({
                 map: cachedTexture('nearNebula', buildNearNebulaTexture),
                 transparent: true,
-                // This is the layer that puts a value under the whole frame, not
-                // only above the horizon. Bounded HARD by the tile brightness
-                // above it: at 0.46 it lifted the whole frame into a flat pale
-                // wash that measured brighter than the board itself, which is the
-                // same failure as the black one with the sign flipped.
-                // 0.085. This sheet is also what shows through the gaps BETWEEN
-                // plates, and measured at 0.12 the deck gap came back level with
-                // a charted plate — so the empty space between two instruments
-                // was as loud as the instruments. It still has to carry a value
-                // under the whole frame, so this is as far down as it goes.
+                // This is the layer that puts a value under the whole frame, not. Full rationale: docs/galaxy3d-design-notes.md#this-is-the-layer-that-puts-a-value-under-the-whole-frame-no
                 opacity: 0.085,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
@@ -2125,84 +1769,28 @@ import {
         const group = new THREE.Group();
         const type = Math.max(5, Math.min(10, Number(entry.type) || 8));
         const style = PLANET_STYLES[type] || PLANET_STYLES[7];
-        // Richer worlds are visibly bigger, so value reads before you click.
-        // The ramp starts at 0.34, not 0.28. A class-6 world at 0.28 is forty
-        // pixels across at the map framing, and there is no surface generator
-        // that can make forty pixels legible — it read as orange mush. The step
-        // between classes is what carries the "richer" signal and it is intact;
-        // the floor is what was wrong.
-        const radius = type === 10 ? 0.50 : 0.34 + (type - 5) * 0.038;
+        // ONE DEFINITION OF WHAT A WORLD OF THIS CLASS IS — worldOptions(). It
+        // moved out of this call because the forge thread has to generate with
+        // exactly the options the main thread would have used, and two copies of
+        // a tuning table is precisely how a forged world and a locally built one
+        // end up looking like different planets. Every number in it is annotated
+        // there.
+        const opts = worldOptions(type, entry.id);
+        const radius = opts.radius;
         // The shared generator carries its own key light, terminator, ocean
         // specular, night lights and atmosphere shell — a self-lit body rather
         // than a textured ball under whatever the scene's lights happen to be.
-        const world = createPlanetObject(type, entry.id, {
-            radius,
-            spin: 0.06 + ((Number(entry.id) || 0) % 7) * 0.012,
-            // The shared generator's atmosphere is a BACK-SIDE shell whose alpha
-            // comes from the view ray's impact parameter against the planet and
-            // is weighted by dot(rim, light) — a crescent on the lit limb, which
-            // is what an atmosphere is. The sprite halo that used to sit on top
-            // of it was a camera-facing ring of constant brightness: equally
-            // bright on the night side, and with a rectangle to leak at the quad
-            // corner. It is gone; this is turned up to carry the read alone.
-            // 0.30/4.6, not 0.38/3.8. At the wider exponent the shell's falloff
-            // reached far enough inboard that it lifted the whole limb evenly and
-            // came back reading as a hard halo RINGING the silhouette — the exact
-            // sprite-halo look it exists to replace. A higher power pins it to
-            // the limb, where it belongs, and lets it die on the terminator.
-            strength: 0.30,
-            power: 4.6,
-            // Clear of the surface's own limb term, which was drawing a hard gold
-            // arc where the two shells met inside the silhouette.
-            cloudRatio: 1.038,
-            // A hair above the generator's calibrated 0.032. At map zoom a world
-            // is seventy pixels across and the night hemisphere falling to pure
-            // black flattens it into a lit crescent pasted on the plate; this is
-            // the smallest lift that keeps the sphere reading as a SPHERE while
-            // the terminator is still the dominant read.
-            ambient: 0.052
-        });
-        /**
-         * 0.44, NOT 0.66 — AND THE SPAR BELOW.
-         *
-         * At 0.66 with a radius up to 0.50 the sphere projected clear of its own
-         * tile at this camera: sector 9's world hung over the unexplored hex
-         * above it and sector 25's crossed onto the tile beyond while its own
-         * plaque sat at the bottom of the plate, so body and label were not
-         * staged as one object. A world overlapping a neutral tile is also an
-         * ownership lie — the eye reads the sphere as belonging to whatever it
-         * overlaps. The lift is now small enough that the widest body (0.50) at
-         * this pitch stays inside the hex's own silhouette.
-         */
+        // Forged on the second thread when its class has been baked there, built
+        // here when it has not. Same generator either way.
+        const world = makeWorld(type, entry.id, opts);
+        /** 0.44, NOT 0.66 — AND THE SPAR BELOW. Full rationale: docs/galaxy3d-design-notes.md#0-44-not-0-66-and-the-spar-below */
         world.position.y = 0.44;
         group.add(world);
         group.userData.world = world;
 
-        /**
-         * NO MOUNTING SPAR, DELIBERATELY.
-         *
-         * One was tried here — a short tapered post from the deck to the
-         * underside of the sphere, to say the body BELONGS to the plate rather
-         * than merely hovering near it. At this lift it is geometry that cannot
-         * be seen: a class-5 world's underside sits at y = 0.10 against a deck
-         * at 0.07, so the post is three hundredths of a unit tall and entirely
-         * swallowed by the body above it; the homeworld's underside is below the
-         * deck outright. What actually grounds the worlds is the pair of things
-         * around this line — the lift itself, which now puts every body's lower
-         * limb into the plate, and the contact shadow below, tightened and
-         * darkened to match. Invisible geometry is not a fix, it is weight.
-         */
+        /** NO MOUNTING SPAR, DELIBERATELY. Full rationale: docs/galaxy3d-design-notes.md#no-mounting-spar-deliberately */
 
-        /**
-         * A CONTACT SHADOW, PROJECTED ALONG THE KEY.
-         *
-         * The worlds had none: what sat under them was a symmetrical additive
-         * glow pool, so a body on a strongly key-lit deck threw no directional
-         * shadow at all and read as a sticker layered on the tile. This is the
-         * body's own shadow, offset along the projected direction of the
-         * DirectionalLight and squashed by its elevation — an ellipse trailing
-         * away from the light, exactly as the belt's anchor rocks now cast.
-         */
+        /** A CONTACT SHADOW, PROJECTED ALONG THE KEY. Full rationale: docs/galaxy3d-design-notes.md#a-contact-shadow-projected-along-the-key */
         const drop = Math.max(0, world.position.y - TILE_TOP);
         const shadow = new THREE.Mesh(
             state.sharedGeo.shadowQuad,
@@ -2223,16 +1811,7 @@ import {
             TILE_TOP + 0.004,
             -(KEY_LIGHT_DIR.z / KEY_LIGHT_DIR.y) * drop * 0.75
         );
-        // Major axis along the light's ground bearing; a rotation of phi about
-        // +Y sends the quad's local +X to (cos phi, 0, -sin phi), so phi is
-        // atan2(-L.z, L.x). The minor axis is the elevation squash.
-        // Tight. At 4.2 x 2.6 the decal was wider than the tile it sat on, so
-        // its falloff dimmed the whole plate evenly instead of drawing an
-        // ellipse — a shadow you cannot find the edge of is not a shadow.
-        // 2.35 x 1.5, not 2.8 x 1.75: the body sits lower now, and a shadow's
-        // size is a function of how far the caster is from the surface. A tight,
-        // dark ellipse under a low body is what grounds it; a wide faint one is
-        // the "cannot find the edge of it" failure with the sign flipped.
+        // Major axis along the light's ground bearing; a rotation of phi about. Full rationale: docs/galaxy3d-design-notes.md#major-axis-along-the-light-s-ground-bearing-a-rotation-of-ph
         shadow.scale.set(radius * 2.35, radius * 1.5, 1);
         shadow.rotation.y = Math.atan2(-KEY_LIGHT_DIR.z, KEY_LIGHT_DIR.x);
         shadow.renderOrder = 2;
@@ -2271,12 +1850,7 @@ import {
         return group;
     }
 
-    /**
-     * A black hole is instant fleet death, so it has to be the most unmistakable
-     * object on the board: an event horizon that eats the starfield behind it, a
-     * Doppler-brightened accretion disc, and a photon ring that survives being
-     * looked at from any angle because it is billboarded.
-     */
+    /** A black hole is instant fleet death, so it has to be the most unmistakable. Full rationale: docs/galaxy3d-design-notes.md#a-black-hole-is-instant-fleet-death-so-it-has-to-be-the-most */
     function buildBlackHole(entry) {
         const group = new THREE.Group();
         const y = 0.66;
@@ -2370,12 +1944,7 @@ import {
         return group;
     }
 
-    /**
-     * Accretion disc. Painted per-pixel because the three things that make it
-     * read — a temperature ramp from the ISCO outward, angular shear streaks,
-     * and relativistic beaming that brightens the approaching limb — are all
-     * functions of (r, theta) and none of them are expressible as a gradient.
-     */
+    /** Accretion disc. Painted per-pixel because the three things that make it. Full rationale: docs/galaxy3d-design-notes.md#accretion-disc-painted-per-pixel-because-the-three-things-th */
     function buildAccretionTexture() {
         const S = 384;
         const canvas = canvas2d(S, S);
@@ -2421,21 +1990,19 @@ import {
     }
 
     /**
-     * An asteroid belt, not a decorative ring of grey lumps.
-     *
-     * Three things were wrong with the old one and all three are fixed here:
-     * the rocks were dodecahedra (six flat facets, hexagonal silhouette), they
-     * were untextured, and they were spaced at exactly 2*pi/11 which reads as a
-     * clock face. These are subdivided, noise-displaced hulls with cratered
-     * albedo and derived normals, scattered by a clustered belt model, drawn as
-     * three InstancedMeshes so a field of eighteen rocks costs three draw calls.
+     * An asteroid belt draws three groups, from these three variants of the
+     * sector id. forgeKeysOf() asks the forge for exactly this set, so the two
+     * cannot disagree about which maps a belt is waiting on.
      */
+    const ROCK_GROUPS = [0, 2, 4];
+
+    /** An asteroid belt, not a decorative ring of grey lumps. Full rationale: docs/galaxy3d-design-notes.md#an-asteroid-belt-not-a-decorative-ring-of-grey-lumps */
     /** One rock material per variant, kept for the life of the page. */
     function rockMaterial(variant) {
         const key = `rock:${variant}`;
         if (!state.materials.has(key)) {
             const v = Math.abs(Number(variant) || 0) % 6;
-            const mat = createAsteroidMaterial(variant, {
+            const opts = {
                 // 1.75, not 1.15. The generator's normal map carries real crater
                 // relief and at just over unity it was being applied gently
                 // enough that a 30px rock came back as a flat dark lump — the
@@ -2449,7 +2016,26 @@ import {
                 // is not six copies of one mineral: two dark carbonaceous, two
                 // mid, two pale silicate.
                 color: [0x9a9186, 0xd2cabb, 0xb0a898, 0x8e867c, 0xc8bfae, 0xa39a8d][v]
-            });
+            };
+            /**
+             * The three maps come from the forge when the forge has them.
+             *
+             * This is the whole of a belt's cost: paintAsteroid() measured 29-81
+             * ms PER VARIANT and a belt draws three of them, so every first belt
+             * was a 130-160 ms freeze in a 12 ms budget. The maps are the same
+             * maps either way; all that changes is which thread painted them.
+             */
+            const forged = state.worldBundles.get(rockKey(variant));
+            const mat = forged && forged.textures && forged.textures.map
+                ? new THREE.MeshStandardMaterial({
+                    map: forged.textures.map,
+                    normalMap: forged.textures.normal,
+                    roughnessMap: forged.textures.orm,
+                    color: opts.color
+                })
+                : createAsteroidMaterial(variant, opts);
+            mat.normalScale.set(opts.normalScale, opts.normalScale);
+            mat.__shared = true;
             // Roughness VARIANCE. The generator ships a roughness map, but with
             // material.roughness pinned at 1 the map's whole range is compressed
             // into the top of the scale and every rock answers the key light the
@@ -2467,16 +2053,7 @@ import {
         return state.materials.get(key);
     }
 
-    /**
-     * How far the plate's own surface extends along a bearing.
-     *
-     * A belt was clamped to a CIRCLE of 0.76 while the plate is a HEXAGON whose
-     * inradius is 0.814 and whose tray stops short of that — so along the six
-     * flat edges the rocks were outside the tile, hanging over black space, and
-     * "which cell is the hazard" stopped being answerable. For a flat-top hex the
-     * boundary along theta is the inradius over the cosine of the angle to the
-     * nearest edge normal (normals sit every 60 degrees starting at 30).
-     */
+    /** How far the plate's own surface extends along a bearing. Full rationale: docs/galaxy3d-design-notes.md#how-far-the-plate-s-own-surface-extends-along-a-bearing */
     const HEX_INRADIUS = TILE_R * Math.cos(Math.PI / 6);
     function hexReachAt(theta) {
         const sixth = Math.PI / 3;
@@ -2503,10 +2080,11 @@ import {
             clumps.push(clumpBase + (i / 4) * Math.PI * 2 + (rand() - 0.5) * 0.8);
         }
 
-        const GROUPS = 3;
+        const GROUPS = ROCK_GROUPS.length;
         const PER_GROUP = 9;
         for (let g = 0; g < GROUPS; g++) {
-            const variant = (Number(entry.id) + g * 2) % ASTEROID_VARIANTS;
+            // The variants forgeKeysOf() asked the forge for, in the same order.
+            const variant = (Number(entry.id) + ROCK_GROUPS[g]) % ASTEROID_VARIANTS;
             const mesh = new THREE.InstancedMesh(
                 createAsteroidGeometry(variant),
                 rockMaterial(variant),
@@ -2650,12 +2228,7 @@ import {
         return group;
     }
 
-    /**
-     * A real star: granulated limb-darkened photosphere, corona with streamers,
-     * and a wide glare veil, all from the shared generator. The photosphere is
-     * authored well above white so the bloom pass has something to find — that
-     * is the difference between a light source and an orange circle.
-     */
+    /** A real star: granulated limb-darkened photosphere, corona with streamers. Full rationale: docs/galaxy3d-design-notes.md#a-real-star-granulated-limb-darkened-photosphere-corona-with */
     /** The hot inner core: a tight falloff that is zero well inside the disc. */
     function starCoreTexture() {
         return buildRadialTexture('starcore', [
@@ -2668,16 +2241,7 @@ import {
         ], 128);
     }
 
-    /**
-     * The inner corona, as a limb-hugging RING rather than a disc.
-     *
-     * This is the thing that stops a star having the hardest edge in the frame.
-     * A photosphere sphere ends at its silhouette in one pixel no matter how it
-     * is shaded; the only way the transition becomes gradual is if there is
-     * light OUTSIDE the disc, brightest exactly at the limb and falling away
-     * over a couple of radii. Peaks at 1/3 of the sprite's half-width, which is
-     * where the disc's edge is placed.
-     */
+    /** The inner corona, as a limb-hugging RING rather than a disc. Full rationale: docs/galaxy3d-design-notes.md#the-inner-corona-as-a-limb-hugging-ring-rather-than-a-disc */
     function starLimbTexture() {
         return buildRadialTexture('starlimb', [
             [0, [255, 236, 200], 0.10],
@@ -2698,19 +2262,7 @@ import {
             const canvas = canvas2d(S, S);
             const ctx = canvas.getContext('2d');
             ctx.globalCompositeOperation = 'lighter';
-            /**
-             * A FILAMENT HAS A ROOT AND A TIP. IT IS NOT A STROKED ARC.
-             *
-             * These were three ctx.arc strokes at constant lineWidth, which is
-             * geometrically a circle of uniform thickness — and that is exactly
-             * what they read as in the shipped frame: thin concentric rings
-             * around the disc at four and eight o'clock, indistinguishable from
-             * a debug overlay or a lens artefact. A prominence is thick and
-             * bright where it leaves the photosphere and dissipates over the
-             * apex, and it wanders. Each loop is therefore built as a FILLED
-             * ribbon sampled along the arc, with a width that is fat at both
-             * feet and pinched over the top, and a radius that wobbles.
-             */
+            /** A FILAMENT HAS A ROOT AND A TIP. IT IS NOT A STROKED ARC. Full rationale: docs/galaxy3d-design-notes.md#a-filament-has-a-root-and-a-tip-it-is-not-a-stroked-arc */
             function filament(scale, alpha, rootW, seed) {
                 const cx = S / 2, cy = S * 0.985, base = S * 0.44 * scale;
                 const a0 = Math.PI * 1.04, a1 = Math.PI * 1.96, N = 48;
@@ -2744,58 +2296,98 @@ import {
         });
     }
 
-    function buildStar(rgbColour, radius, entry) {
-        const group = new THREE.Group();
-        /**
-         * THE EXPOSURE IS SPLIT, which is the whole rework.
-         *
-         * At intensity 2.2 the photosphere clipped to near-white across ~80% of
-         * the disc: the granulation the material computes was still being
-         * computed and was simply invisible, so the brightest, highest-attention
-         * pixel cluster in the frame carried the LEAST information — a flat
-         * white circle with a crisp, stair-stepped edge. A star must have the
-         * softest edge in the frame and this one had the hardest.
-         *
-         * So the shell is authored at 1.3, where ACES still resolves the
-         * granulation and the limb-darkening law, and the blow-out is moved to a
-         * separate core sprite covering only the inner third of the disc. The
-         * bloom pass then blooms a SHAPE — a bright nucleus inside a structured
-         * disc — instead of smearing a flat clipped plate. The silhouette is
-         * dissolved by the limb halo below, so there is no geometric edge left
-         * for the rasteriser to alias.
-         */
-        const star = createStarObject({
-            radius,
-            rgb: rgbColour,
-            seed: 1337 + (Number(entry.id) || 0),
-            // 0.72. This is the number the whole split-exposure idea turns on:
-            // ACES maps it to roughly sRGB 0.83 at disc centre and 0.63 at the
-            // limb, which is the only window in which the material's granulation
-            // and its limb-darkening law are both VISIBLE. Anything above about
-            // 1.1 and the disc clips flat again, which is the defect.
-            intensity: 0.72,
-            opacity: 0.9,
-            bloomOpacity: 0.26,
-            spin: 0.05
+    /** An additive billboard over one forged star map. */
+    function starSprite(map, opacity) {
+        const mat = new THREE.SpriteMaterial({
+            map,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            opacity
         });
-        /**
-         * THE BODY AND ITS LIGHT HAVE TO LAND IN THE SAME PLACE.
-         *
-         * It was 0.94, which at the rig's 61-degree pitch threw the photosphere
-         * nearly half a tile UP-SCREEN of the deck it is supposed to be sitting
-         * on: the star hung over the corner of sector 23 and spilled onto its
-         * neighbour, while the sunburst decal painted into the plate and the
-         * additive pool both converged on the plate CENTRE. Two unrelated
-         * objects, a full star-radius apart.
-         *
-         * The height that produced it is vestigial. The comment justifying it
-         * cited glare sprites being sliced by neighbouring plate rims — and the
-         * fix for that was depthTest:false on the glare layers, which is right
-         * here and does the job on its own. 0.50 keeps the sphere entirely clear
-         * of the deck (bottom of the disc at 0.17 against a plate top of 0.07)
-         * while cutting the screen-space displacement by more than half, and
-         * what is left is cancelled by offsetting the pool below.
-         */
+        mat.toneMapped = false;
+        return new THREE.Sprite(mat);
+    }
+
+    /**
+     * The same assembly createStarObject() does — photosphere, glare veil,
+     * corona — over maps painted on the forge instead of on this thread.
+     *
+     * A star was the most expensive single item on the board by a factor of
+     * four: 575 ms, effectively all of it inside getStarMaps(). The photosphere
+     * IS a ShaderMaterial, so it travels through describe()/forgeMaterial() the
+     * way a world's surface already does; the two veils are billboards over one
+     * texture each and are rebuilt here.
+     */
+    function assembleStar(bundle, radius, opts) {
+        const group = new THREE.Group();
+        const ex = bundle.extra || {};
+        const mat = forgeMaterial(bundle.surface, bundle.textures);
+        // NOT captured by describe(), and the fragment shader tone-maps itself:
+        // without this the star is tone-mapped twice and comes back grey.
+        mat.toneMapped = false;
+        const core = new THREE.Mesh(state.sharedGeo.worldSphere, mat);
+        core.scale.setScalar(radius);
+        group.add(core);
+
+        const bloom = starSprite(bundle.textures.bloom,
+            opts.bloomOpacity === undefined ? 0.62 : opts.bloomOpacity);
+        const bs = radius * (ex.bloomScale || 1);
+        bloom.scale.set(bs, bs, 1);
+        bloom.renderOrder = 1;
+        group.add(bloom);
+
+        const corona = starSprite(bundle.textures.corona,
+            opts.opacity === undefined ? 1 : opts.opacity);
+        const cs = radius * (ex.coronaScale || 1);
+        corona.scale.set(cs, cs, 1);
+        corona.renderOrder = 2;
+        group.add(corona);
+
+        const spin = opts.spin === undefined ? 0.03 : opts.spin;
+        group.userData.core = core;
+        group.userData.corona = corona;
+        group.userData.bloom = bloom;
+        group.userData.palette = ex.palette;
+        group.userData.lightColor = ex.palette ? ex.palette.core : opts.rgb;
+        group.userData.setTime = function (t) { if (mat.uniforms.uTime) mat.uniforms.uTime.value = t; };
+        group.userData.update = function (dt) { core.rotation.y += spin * (dt || 0); };
+        return group;
+    }
+
+    /** A star body, from the forge if its class has been baked, from here if not. */
+    function makeStar(radius, entry) {
+        const type = entry.type === 4 ? 4 : 3;
+        /** THE EXPOSURE IS SPLIT, which is the whole rework. Full rationale: docs/galaxy3d-design-notes.md#the-exposure-is-split-which-is-the-whole-rework */
+        // 0.72 (in starOptions) is the number the whole split-exposure idea
+        // turns on: ACES maps it to roughly sRGB 0.83 at disc centre and 0.63 at
+        // the limb, which is the only window in which the material's granulation
+        // and its limb-darkening law are both VISIBLE. Anything above about 1.1
+        // and the disc clips flat again, which is the defect.
+        const opts = starOptions(type, entry.id);
+        const bundle = state.worldBundles.get(starKey(type, entry.id));
+        if (bundle && bundle.kind === 'star' && bundle.surface) {
+            try {
+                return assembleStar(bundle, radius, opts);
+            } catch (err) {
+                console.warn('Galaxy3D: forged star would not assemble, generating locally.', err);
+                state.worldBundles.delete(starKey(type, entry.id));
+                state.bundleFailed.add(starKey(type, entry.id));
+            }
+        }
+        return createStarObject(Object.assign({ radius }, opts));
+    }
+
+    function buildStar(entry) {
+        // Colour and size come from STAR_CLASS, which is also what the forge is
+        // asked for: two definitions of "how big is a class-4 star" is one too
+        // many, and the forged photosphere is baked against this palette.
+        const cls = STAR_CLASS[entry.type] || STAR_CLASS[3];
+        const rgbColour = cls.rgb;
+        const radius = cls.radius;
+        const group = new THREE.Group();
+        const star = makeStar(radius, entry);
+        /** THE BODY AND ITS LIGHT HAVE TO LAND IN THE SAME PLACE. Full rationale: docs/galaxy3d-design-notes.md#the-body-and-its-light-have-to-land-in-the-same-place */
         star.position.y = STAR_BODY_Y;
         group.add(star);
         group.userData.star = star;
@@ -2876,15 +2468,7 @@ import {
                 toneMapped: false
             }));
             prom.scale.set(s, s, 1);
-            // Rooted ON the limb. The loop is painted along the texture's bottom
-            // edge, so the sprite's centre sits half its own height outboard of
-            // the disc and the material rotation turns that edge to face inward:
-            // rotating by (a - PI/2) sends the sprite's local down to -(cos a,
-            // sin a), which is the direction of the star's centre.
-            // Standing OFF the limb, not lying across the disc. At 0.94 the
-            // loop's inner half sat inside the photosphere's silhouette, where a
-            // nested pair of arcs over a bright disc reads as concentric debug
-            // circles rather than as plasma leaving the surface.
+            // Rooted ON the limb. The loop is painted along the texture's bottom. Full rationale: docs/galaxy3d-design-notes.md#rooted-on-the-limb-the-loop-is-painted-along-the-texture-s-b
             const reach = radius * 1.04 + s * 0.46;
             prom.position.set(Math.cos(a) * reach, star.position.y + Math.sin(a) * reach, 0.02);
             prom.material.rotation = a - Math.PI / 2;
@@ -2894,22 +2478,7 @@ import {
         }
         group.userData.nearOnly = proms;
 
-        /**
-         * The star lights its own plate — the one place a tile gets a colour it
-         * did not choose, and it is diegetic: it is the sun. Wide and weak, so
-         * the plate gets a FALLOFF away from the body rather than a flat lift.
-         *
-         * IT IS OFFSET, AND IT IS CLIPPED TO THE TILE.
-         *
-         * The pool sat at the tile's own centre while the body sat 0.87 units
-         * above it, and at this camera those are not the same place on screen —
-         * so the light pooled where the star was NOT. It is now pushed along the
-         * view ray by exactly the amount the body is displaced, which lands it
-         * directly under the photosphere. And it was scaled to 1.3 of the tile,
-         * i.e. spilling onto sector 9; at 0.68, plus the offset, the whole decal
-         * is inside its own hexagon by construction (0.55 + 0.23 < the 0.81
-         * inradius), so a star can no longer light a sector it is not in.
-         */
+        /** The star lights its own plate — the one place a tile gets a colour it. Full rationale: docs/galaxy3d-design-notes.md#the-star-lights-its-own-plate-the-one-place-a-tile-gets-a-co */
         const pool = new THREE.Mesh(
             state.sharedGeo.decal,
             new THREE.MeshBasicMaterial({
@@ -2928,26 +2497,9 @@ import {
         return group;
     }
 
-    // ------------------------------------------------------------------
-    // Detail level
-    //
-    // A world framed for the whole galaxy is about seventy pixels across. At
-    // that size its cloud shell and its atmosphere shell are two extra passes
-    // of a heavy shader over a sphere whose weather nobody can resolve, and
-    // measured on a software rasteriser they were most of the frame. So the
-    // shells switch off below a screen size where they contribute anything, and
-    // the belts thin out to their anchor rocks. Nothing that carries gameplay
-    // signal — class hue, ownership tint, the halo, the badge, the number — is
-    // ever a casualty of this; it only ever removes detail the pixel grid
-    // cannot show.
-    // ------------------------------------------------------------------
+    // . Full rationale: docs/galaxy3d-design-notes.md#detail-level
 
-    /**
-     * Screen pixels per world unit at the camera's current distance. The canvas
-     * height comes from the cached value resize() records rather than from
-     * getBoundingClientRect: this is called every frame, and a layout read in
-     * the frame loop stalls the main thread on every style change the HUD makes.
-     */
+    /** Screen pixels per world unit at the camera's current distance. The canvas. Full rationale: docs/galaxy3d-design-notes.md#screen-pixels-per-world-unit-at-the-camera-s-current-distanc */
     function pixelsPerUnit() {
         if (!state.camera) return 100;
         const h = Math.max(1, state.viewH || 1080);
@@ -2961,27 +2513,9 @@ import {
     function applyDetail(entry, ppu) {
         const content = entry.content;
         if (!content) return;
-        /**
-         * THE CLOUD SHELL IS NOT AN LOD CASUALTY. IT IS THE READ.
-         *
-         * It used to switch off below SHELL_DETAIL_PX on the reasoning that
-         * "clouds are weather nobody can resolve at map zoom" — and what that
-         * left was a bare surface at seventy pixels with no broad light/dark
-         * structure at all: sectors 24 and 25 came back as out-of-focus orange
-         * mush and sector 9 as a green-teal blur. The cloud band is the single
-         * highest-contrast BROAD-SCALE feature a world has, and broad-scale
-         * value contrast is exactly what makes a small sphere read as a sphere.
-         * Removing it did not save detail, it removed the subject.
-         *
-         * It stays on at every zoom, on every renderer. The measurement that
-         * originally justified dropping it was taken when a dozen worlds were
-         * spinning their atmosphere shells as well; a handful of explored tiles
-         * carrying one extra 70px sphere each is not where this frame's budget
-         * goes, and the quality governor already has coarser levers (the bloom
-         * pass, the backing-store ratio) for the machines that need them.
-         */
+        /** THE CLOUD SHELL IS NOT AN LOD CASUALTY. IT IS THE READ. Full rationale: docs/galaxy3d-design-notes.md#the-cloud-shell-is-not-an-lod-casualty-it-is-the-read */
         const world = content.userData.world;
-        if (world && world.userData.clouds) world.userData.clouds.visible = true;
+        if (world && world.userData.clouds) world.userData.clouds.visible = state.detail < 3;
         if (content.userData.belt) {
             const near = ppu >= SHELL_DETAIL_PX;
             content.userData.belt.forEach(mesh => {
@@ -3009,8 +2543,1090 @@ import {
         state.sectors.forEach(entry => { if (entry.content) applyDetail(entry, ppu); });
     }
 
+    /** The rung-3 sweep, a slice at a time. Sixteen tiles a frame finishes a full. Full rationale: docs/galaxy3d-design-notes.md#the-rung-3-sweep-a-slice-at-a-time-sixteen-tiles-a-frame-fin */
+    const DETAIL_SWEEP_PER_FRAME = 16;
+
+    function stepFogConform() {
+        if (!state.fogConform || !state.fogConform.length) return;
+        conformFogMaterial(state.fogConform.shift());
+    }
+
+    function stepDetailSweep() {
+        stepFogConform();
+        if (state.detailSweep === null || state.detailSweep === undefined) return;
+        const ppu = pixelsPerUnit();
+        const entries = [];
+        state.sectors.forEach(entry => entries.push(entry));
+        let i = state.detailSweep;
+        const end = Math.min(entries.length, i + DETAIL_SWEEP_PER_FRAME);
+        for (; i < end; i++) {
+            if (entries[i] && entries[i].content) applyDetail(entries[i], ppu);
+        }
+        state.detailSweep = i >= entries.length ? null : i;
+    }
+
+    // . Full rationale: docs/galaxy3d-design-notes.md#startup-is-staged-and-every-stage-hands-the-page-back
+
+    /**
+     * Shared work that is expensive, needed eventually, and needed by nobody in
+     * the first frame. Ordered by when the board actually wants it.
+     */
+    const BOOT_STEPS = [
+        // The world forge goes first because it is the only step whose cost is
+        // paid by somebody else: it starts two threads and returns. Everything
+        // queued behind it is generated while these run.
+        () => { startForge(); },
+        // The charted plate atlas: needed the moment any sector is charted, which
+        // is usually the very next server message, so it goes first among the
+        // things this thread has to do itself.
+        () => { plateMaps(); },
+        /** The sky dome, nebula sheets and dust, in FOUR steps rather than one. Full rationale: docs/galaxy3d-design-notes.md#the-sky-dome-nebula-sheets-and-dust-in-four-steps-rather-tha */
+        skyTextureStep,
+        () => { cachedTexture('nearNebula', buildNearNebulaTexture); },
+        () => { buildStarPointTexture(); buildBrightStarTexture(); },
+        () => {
+            if (state.starsBuilt || !state.scene) return;
+            buildBackdrop();
+            state.starsBuilt = true;
+        },
+        /** Reflection probe for the plates, the belt rocks and the fleet hulls. Full rationale: docs/galaxy3d-design-notes.md#reflection-probe-for-the-plates-the-belt-rocks-and-the-fleet */
+        () => {
+            if (!state.renderer || state.envProbe) return;
+            // Construction builds the LOD planes; a separate step from the
+            // shader compile because on an ANGLE backend the pair measured
+            // 841 ms together and neither half is worth a frame on its own.
+            state.envProbe = new THREE.PMREMGenerator(state.renderer);
+        },
+        () => { if (state.envProbe) state.envProbe.compileEquirectangularShader(); },
+        () => {
+            if (!state.scene) return;
+            if (!state.envProbe) { state.scene.environment = studioEnvTexture(); return; }
+            try {
+                const target = state.envProbe.fromEquirectangular(studioEnvTexture());
+                state.scene.environment = target.texture;
+            } catch (err) {
+                state.scene.environment = studioEnvTexture();
+            }
+            state.envProbe.dispose();
+            state.envProbe = null;
+        },
+        () => { ensureSelectionRing(); }
+    ];
+
+    /** Anything on the main thread that took longer than a frame, with a name. Full rationale: docs/galaxy3d-design-notes.md#anything-on-the-main-thread-that-took-longer-than-a-frame-wi */
+    const COST_LOG_MS = 60;
+
+    function noteCost(what, ms) {
+        if (ms < COST_LOG_MS) return;
+        if (!state.costLog) state.costLog = [];
+        if (state.costLog.length < 40) {
+            state.costLog.push({ what, ms: Math.round(ms), at: Math.round(performance.now()) });
+        }
+    }
+
+    /** Run at most one boot step. True if there is still work left after it. Full rationale: docs/galaxy3d-design-notes.md#run-at-most-one-boot-step-true-if-there-is-still-work-left-a */
+    function runBootStep() {
+        const i = state.bootStep || 0;
+        if (i >= BOOT_STEPS.length) return false;
+        const t0 = performance.now();
+        let again = false;
+        try {
+            again = BOOT_STEPS[i]() === 'again';
+        } catch (err) {
+            console.warn('Galaxy3D: boot step %d failed', i, err);
+        }
+        if (!again) state.bootStep = i + 1;
+        noteCost(`boot${i}`, performance.now() - t0);
+        return state.bootStep < BOOT_STEPS.length;
+    }
+
+    // . Full rationale: docs/galaxy3d-design-notes.md#the-world-forge-the-second-thread-that-makes-the-budget-real
+
+    /**
+     * The worker, as source. Written as an array of lines rather than a template
+     * literal so that nothing in it has to be escaped against this file.
+     */
+    const FORGE_SOURCE = [
+        // planet-texture.js touches exactly one DOM API, and this is it.
+        'self.window = self;',
+        'self.document = { createElement: function (tag) {',
+        '    if (tag === "canvas") return new OffscreenCanvas(1, 1);',
+        '    throw new Error("galaxy3d forge: no document." + tag);',
+        '} };',
+        'let PT = null;',
+        '',
+        // A material is transportable as its shader source, its defines and its
+        // uniform VALUES. Textures are replaced by the name of the bitmap they
+        // travel with; everything else is a number, a vector or a colour.
+        'function describe(mat, texIndex) {',
+        '    if (!mat) return null;',
+        '    const u = {};',
+        '    for (const name in mat.uniforms) {',
+        '        const v = mat.uniforms[name].value;',
+        '        if (v && v.isTexture) { const k = texIndex.get(v); if (k) u[name] = { t: "tex", k: k }; }',
+        '        else if (v && v.isVector3) u[name] = { t: "v3", v: [v.x, v.y, v.z] };',
+        '        else if (v && v.isColor) u[name] = { t: "c", v: [v.r, v.g, v.b] };',
+        '        else if (v && v.isVector2) u[name] = { t: "v2", v: [v.x, v.y] };',
+        '        else if (typeof v === "number") u[name] = { t: "n", v: v };',
+        '    }',
+        '    return {',
+        '        vertexShader: mat.vertexShader,',
+        '        fragmentShader: mat.fragmentShader,',
+        '        defines: Object.assign({}, mat.defines),',
+        '        transparent: !!mat.transparent,',
+        '        depthWrite: !!mat.depthWrite,',
+        '        depthTest: !!mat.depthTest,',
+        '        blending: mat.blending,',
+        '        side: mat.side,',
+        '        uniforms: u',
+        '    };',
+        '}',
+        '',
+        'self.onmessage = async function (ev) {',
+        '    const msg = ev.data || {};',
+        '    try {',
+        '        if (!PT) PT = await import(msg.src);',
+        // "The module is up and I am starting." The main thread restarts this
+        // key's deadline here, so a cold import is never mistaken for a wedged
+        // worker and never costs the player a duplicate bake on their own thread.
+        '        self.postMessage({ id: msg.id, key: msg.key, ack: true });',
+        '        const opts = msg.opts || {};',
+        // A BELT AND A STAR ARE TEXTURE BAKES TOO.
+        //
+        // Every one of these used to be painted on the main thread — measured at
+        // 154 ms for a belt and 575 ms for a star, essentially all of it inside
+        // paintAsteroid()/paintStarSurface(). They are the same kind of work the
+        // worlds already come here for, so they take the same road. Rocks need
+        // no material description at all (the main thread builds one standard
+        // material from three maps); a star's photosphere IS a ShaderMaterial
+        // and describe() already transports those.
+        '        let named = null;',
+        '        let extra = null;',
+        '        let surface = null;',
+        '        if (msg.kind === "rock") {',
+        '            const m = PT.getAsteroidMaps(msg.variant);',
+        '            named = [["map", m.map], ["normal", m.normalMap], ["orm", m.roughnessMap]];',
+        '        } else if (msg.kind === "star") {',
+        '            const s = PT.getStarMaps(opts.rgb, opts.seed);',
+        '            named = [["map", s.map], ["corona", s.coronaMap], ["bloom", s.bloomMap]];',
+        '            extra = { palette: s.palette, coronaScale: s.coronaScale, bloomScale: s.bloomScale };',
+        '        }',
+        '        if (named) {',
+        '            const ti = new Map();',
+        '            for (const pair of named) { if (pair[1] && !ti.has(pair[1])) ti.set(pair[1], pair[0]); }',
+        '            const tex = {}; const move = [];',
+        '            for (const pair of named) {',
+        '                if (!pair[1] || tex[pair[0]] || ti.get(pair[1]) !== pair[0]) continue;',
+        '                const b = await createImageBitmap(pair[1].image, { premultiplyAlpha: "none" });',
+        '                tex[pair[0]] = { bitmap: b, colorSpace: pair[1].colorSpace, wrapS: pair[1].wrapS,',
+        '                                 wrapT: pair[1].wrapT, anisotropy: pair[1].anisotropy };',
+        '                move.push(b);',
+        '            }',
+        '            if (msg.kind === "star") surface = describe(PT.createStarSurfaceMaterial(opts), ti);',
+        '            self.postMessage({ id: msg.id, key: msg.key, ok: true, kind: msg.kind,',
+        '                               textures: tex, surface: surface, extra: extra }, move);',
+        '            return;',
+        '        }',
+        '        const maps = PT.getPlanetMaps(msg.type, msg.sectorId);',
+        '        named = [["map", maps.map], ["normal", maps.normalMap], ["orm", maps.roughnessMap],',
+        '                       ["emissive", maps.emissiveMap], ["cloud", maps.cloudMap]];',
+        '        const texIndex = new Map();',
+        '        for (const pair of named) { if (pair[1] && !texIndex.has(pair[1])) texIndex.set(pair[1], pair[0]); }',
+        '        const textures = {};',
+        '        const transfer = [];',
+        '        for (const pair of named) {',
+        '            const key = pair[0]; const tex = pair[1];',
+        '            if (!tex || textures[key] || texIndex.get(tex) !== key) continue;',
+        // premultiplyAlpha:"none" so the cloud deck's alpha arrives the way
+        // three.js expects a canvas texture's to.
+        '            const bmp = await createImageBitmap(tex.image, { premultiplyAlpha: "none" });',
+        '            textures[key] = { bitmap: bmp, colorSpace: tex.colorSpace, wrapS: tex.wrapS,',
+        '                              wrapT: tex.wrapT, anisotropy: tex.anisotropy };',
+        '            transfer.push(bmp);',
+        '        }',
+        '        const ratio = opts.atmosphereRatio || PT.PLANET_RIG.atmosphereRatio;',
+        '        const atmoOpts = Object.assign({}, opts, { ratio: ratio });',
+        '        self.postMessage({',
+        '            id: msg.id, key: msg.key, ok: true, textures: textures,',
+        '            surface: describe(PT.createPlanetSurfaceMaterial(msg.type, msg.sectorId, opts), texIndex),',
+        '            clouds: describe(PT.createPlanetCloudMaterial(msg.type, msg.sectorId, opts), texIndex),',
+        '            atmosphere: describe(PT.createAtmosphereMaterial(msg.type, msg.sectorId, atmoOpts), texIndex)',
+        '        }, transfer);',
+        '    } catch (err) {',
+        '        self.postMessage({ id: msg.id, key: msg.key, ok: false, err: String((err && err.message) || err) });',
+        '    }',
+        '};'
+    ].join('\n');
+
+    /** A bake that never answers must not strand its sector as a stand-in for. Full rationale: docs/galaxy3d-design-notes.md#a-bake-that-never-answers-must-not-strand-its-sector-as-a-st */
+    const FORGE_TIMEOUT_MS = 20000;
+
+    function forgeSupported() {
+        return typeof Worker === 'function' && typeof OffscreenCanvas === 'function'
+            && typeof createImageBitmap === 'function' && typeof Blob === 'function';
+    }
+
+    function ensureForge() {
+        if (state.forge) return state.forge;
+        if (!forgeSupported()) {
+            state.forge = { failed: true, workers: [] };
+            return state.forge;
+        }
+        // Declared alive but not STARTED. Requests that arrive before the first
+        // frame queue up here rather than spawning threads — see startForge().
+        state.forge = { failed: false, workers: [], waiting: [], started: false };
+        return state.forge;
+    }
+
+    /** Spin the threads up, AFTER the first frame. Full rationale: docs/galaxy3d-design-notes.md#spin-the-threads-up-after-the-first-frame */
+    function startForge() {
+        const forge = ensureForge();
+        if (forge.failed || forge.started) return;
+        forge.started = true;
+        try {
+            const url = URL.createObjectURL(new Blob([FORGE_SOURCE], { type: 'text/javascript' }));
+            // Two at most, and only where there are cores to spare. Each one
+            // carries its own copy of three.js and of the generator, and on a
+            // machine with few cores a second thread does not add throughput —
+            // it takes it off the frame the player is holding.
+            const cores = Number(navigator.hardwareConcurrency) || 2;
+            const count = cores >= 8 ? 2 : 1;
+            for (let i = 0; i < count; i++) {
+                const w = new Worker(url, { type: 'module' });
+                w.onmessage = ev => onForgeResult(w, ev.data);
+                w.onerror = ev => {
+                    console.warn('Galaxy3D: world forge unavailable, generating on the main thread.',
+                        ev && ev.message);
+                    failForge();
+                };
+                w.__busy = null;
+                forge.workers.push(w);
+            }
+            URL.revokeObjectURL(url);
+            // Anything charted before the threads existed is waiting in the queue.
+            forge.workers.forEach(w => pumpForge(w));
+        } catch (err) {
+            console.warn('Galaxy3D: world forge could not start, generating on the main thread.', err);
+            failForge();
+        }
+        return state.forge;
+    }
+
+    /** True while our own threads are competing with the frame for the CPU. */
+    function forgeBusy() {
+        return state.bundlePending.size > 0
+            || Boolean(state.forge && !state.forge.failed && state.forge.waiting
+                && state.forge.waiting.length);
+    }
+
+    /** Give up on the second thread entirely; every class goes back to the main one. */
+    function failForge() {
+        const forge = state.forge;
+        if (!forge || forge.failed) return;
+        forge.failed = true;
+        (forge.workers || []).forEach(w => { try { w.terminate(); } catch (err) { /* gone */ } });
+        forge.workers = [];
+        // Anything that was waiting on a bake is now buildable the old way.
+        state.bundlePending.forEach((_at, key) => state.bundleFailed.add(key));
+        state.bundlePending.clear();
+    }
+
+    /** Three variants of everything, per class. One definition of "which one". */
+    function variantOf(sectorId) {
+        return Math.abs(Number(sectorId) || 0) % 3;
+    }
+
+    /** Cache key for a world's generated maps: the generator caches per class and variant. */
+    function bundleKey(type, sectorId) {
+        return `${type}:${variantOf(sectorId)}`;
+    }
+
+    /** ...and for the two hazard classes, which are bakes of exactly the same kind. */
+    function rockKey(variant) {
+        return `r:${((Math.abs(Number(variant) || 0) % ASTEROID_VARIANTS) + ASTEROID_VARIANTS)
+            % ASTEROID_VARIANTS}`;
+    }
+
+    function starKey(type, sectorId) {
+        return `s:${type}:${variantOf(sectorId)}`;
+    }
+
+    /** The photosphere colour and size for a star sector's class. ONE definition. */
+    const STAR_CLASS = {
+        3: { rgb: [255, 148, 72], radius: 0.33 },
+        4: { rgb: [255, 108, 44], radius: 0.27 }
+    };
+
+    /**
+     * Options a star of this class and variant is generated with.
+     *
+     * THE SEED IS THE VARIANT, NOT THE SECTOR. getStarMaps() caches on
+     * `palette:seed`, so a per-sector seed meant every star sector on the board
+     * paid for its own three-texture bake and none of them was ever shared. Three
+     * variants per class is the same bargain worldOptions() already strikes, and
+     * what actually distinguishes two neighbouring stars at map zoom is the
+     * corona stretch, its rotation and the prominence bearings — all of which
+     * buildStar() still derives from the sector id.
+     */
+    function starOptions(type, sectorId) {
+        const cls = STAR_CLASS[type] || STAR_CLASS[3];
+        return {
+            rgb: cls.rgb,
+            seed: 1337 + variantOf(sectorId),
+            // Matched to buildStar()'s own call: the described material carries
+            // these baked in, so the two must not drift.
+            intensity: 0.72,
+            opacity: 0.9,
+            bloomOpacity: 0.26,
+            spin: 0.05
+        };
+    }
+
+    /** The class buildPlanet() would give this sector, or null when the sector is. Full rationale: docs/galaxy3d-design-notes.md#the-class-buildplanet-would-give-this-sector-or-null-when-th */
+    function worldClassOf(entry) {
+        const known = entry.status !== STATUS.UNKNOWN || entry.explored;
+        if (!known) return null;
+        if (entry.status === STATUS.BLACKHOLE || entry.type === 2) return null;
+        if (entry.type === 1 || entry.status === STATUS.HAZARD) return null;
+        if (entry.type === 3 || entry.type === 4) return null;
+        const isWorld = (entry.type >= 5 && entry.type <= 10)
+            || entry.status === STATUS.HOMEWORLD || entry.status === STATUS.OWNED
+            || entry.status === STATUS.ENEMY || entry.status === STATUS.COLONIZED;
+        if (!isWorld) return null;
+        return Math.max(5, Math.min(10, Number(entry.type) || 8));
+    }
+
+    /** The options a world of this class is generated with. One definition, two threads. */
+    function worldOptions(type, sectorId) {
+        return {
+            // Richer worlds are visibly bigger, so value reads before you click.
+            // The ramp starts at 0.34, not 0.28: a class-6 world at 0.28 is forty
+            // pixels across at the map framing and there is no surface generator
+            // that can make forty pixels legible — it read as orange mush. The
+            // STEP between classes carries the "richer" signal and is intact; the
+            // floor is what was wrong.
+            radius: type === 10 ? 0.50 : 0.34 + (type - 5) * 0.038,
+            spin: 0.06 + ((Number(sectorId) || 0) % 7) * 0.012,
+            // The generator's atmosphere is a BACK-SIDE shell whose alpha comes. Full rationale: docs/galaxy3d-design-notes.md#the-generator-s-atmosphere-is-a-back-side-shell-whose-alpha-
+            strength: 0.30,
+            power: 4.6,
+            // Clear of the surface's own limb term, which was drawing a hard gold
+            // arc where the two shells met inside the silhouette.
+            cloudRatio: 1.038,
+            // A hair above the generator's calibrated 0.032. At map zoom a world
+            // is seventy pixels across and a night hemisphere falling to pure
+            // black flattens it into a lit crescent pasted on the plate; this is
+            // the smallest lift that keeps the sphere reading as a SPHERE while
+            // the terminator is still the dominant read.
+            ambient: 0.052
+        };
+    }
+
+    /** Hand one baked thing to whichever worker is free, or queue it for one. */
+    function requestBundle(key, build) {
+        if (!key || state.worldBundles.has(key) || state.bundlePending.has(key)
+            || state.bundleStaging.has(key) || state.bundleFailed.has(key)) return;
+        // Remembered so a request that has to wait for a worker can be replayed
+        // verbatim. Reconstructing it from the key was only ever possible because
+        // the world bake happens to ignore everything but the variant.
+        if (!state.bundleAsked.has(key)) state.bundleAsked.set(key, build());
+        const forge = ensureForge();
+        if (forge.failed) { state.bundleFailed.add(key); return; }
+        const worker = (forge.workers || []).find(w => !w.__busy);
+        if (!worker) { if (!forge.waiting.includes(key)) forge.waiting.push(key); return; }
+        worker.__busy = key;
+        state.bundlePending.set(key, performance.now());
+        worker.postMessage(Object.assign(
+            { id: key, key, src: PLANET_TEXTURE_URL }, state.bundleAsked.get(key)));
+    }
+
+    function requestWorld(type, sectorId) {
+        requestBundle(bundleKey(type, sectorId), () => ({
+            kind: 'world', type, sectorId: Number(sectorId) || 0, opts: worldOptions(type, sectorId)
+        }));
+    }
+
+    function requestRock(variant) {
+        requestBundle(rockKey(variant), () => ({ kind: 'rock', variant: Number(variant) || 0 }));
+    }
+
+    function requestStar(type, sectorId) {
+        requestBundle(starKey(type, sectorId), () => ({
+            kind: 'star', type, opts: starOptions(type, sectorId)
+        }));
+    }
+
+    /** Whichever pending key this worker was carrying is done; give it the next one. */
+    function pumpForge(worker) {
+        const forge = state.forge;
+        worker.__busy = null;
+        if (!forge || forge.failed) return;
+        while (forge.waiting.length) {
+            const key = forge.waiting.shift();
+            requestBundle(key, () => state.bundleAsked.get(key));
+            if (worker.__busy) return;
+        }
+    }
+
+    function onForgeResult(worker, msg) {
+        if (!msg || !msg.key) return;
+        // "Starting now" — restart the clock so the deadline measures the bake
+        // rather than the module import that preceded it.
+        if (msg.ack) {
+            if (state.bundlePending.has(msg.key)) state.bundlePending.set(msg.key, performance.now());
+            return;
+        }
+        state.bundlePending.delete(msg.key);
+        if (!msg.ok) {
+            console.warn('Galaxy3D: forge could not bake %s (%s) — falling back.', msg.key, msg.err);
+            state.bundleFailed.add(msg.key);
+        } else {
+            try {
+                const textures = {};
+                const upload = [];
+                for (const name in msg.textures) {
+                    textures[name] = forgeTexture(msg.textures[name]);
+                    upload.push(textures[name]);
+                }
+                /** NOT AVAILABLE YET — IT STILL HAS TO REACH THE GPU. Full rationale: docs/galaxy3d-design-notes.md#not-available-yet-it-still-has-to-reach-the-gpu */
+                state.bundleStaging.set(msg.key, {
+                    kind: msg.kind || 'world',
+                    bundle: {
+                        kind: msg.kind || 'world',
+                        textures,
+                        surface: msg.surface,
+                        clouds: msg.clouds,
+                        atmosphere: msg.atmosphere,
+                        // Star scales and palette; absent for the other kinds.
+                        extra: msg.extra || null
+                    },
+                    upload
+                });
+                // Held in `pending` so entryReadiness() keeps answering 'waiting'
+                // rather than re-requesting a bake that has already been done.
+                state.bundlePending.set(msg.key, performance.now());
+            } catch (err) {
+                console.warn('Galaxy3D: forged maps could not be uploaded, falling back.', err);
+                state.bundleFailed.add(msg.key);
+            }
+        }
+        pumpForge(worker);
+        updateLoadingState();
+    }
+
+    /**
+     * One map to the GPU per frame. renderer.initTexture() does exactly the
+     * upload the first draw would have done, at a moment of our choosing. When a
+     * bundle's last map has landed the bundle is handed to the board.
+     */
+    function stepTextureUploads() {
+        if (!state.bundleStaging.size || !state.renderer) return 0;
+        const t0 = performance.now();
+        for (const [key, job] of state.bundleStaging) {
+            // A bundle whose program is genuinely being linked in the background
+            // is in nobody's way; step over it so the next one keeps moving.
+            if (job.warming) continue;
+            const tex = job.upload.shift();
+            if (tex) {
+                try {
+                    if (typeof state.renderer.initTexture === 'function') state.renderer.initTexture(tex);
+                } catch (err) { /* the first draw will do it */ }
+            } else {
+                releaseBundle(key, job);
+            }
+            break;   // one a frame, and the nearest class is whichever finished first
+        }
+        const ms = performance.now() - t0;
+        noteCost('upload', ms);
+        return ms;
+    }
+
+    /**
+     * COMPILEASYNC IS ONLY ASYNCHRONOUS WHERE THE DRIVER SAYS IT IS.
+     *
+     * three's compileAsync() is, verbatim, `const i = this.compile(e,t,n);
+     * return new Promise(...)`. compile() is synchronous and unconditional; the
+     * only thing the promise defers is the READINESS POLL, and it only defers
+     * that when KHR_parallel_shader_compile is present. Without the extension
+     * the call written to keep shader linking off the frame IS the frame — this
+     * measured as a 2-4 second dead board, five to seven times per startup, and
+     * it was the single worst thing about this map.
+     *
+     * So ask the driver, once, and where the answer is no do not pre-warm at
+     * all: the first draw pays for the program inside render(), which is already
+     * inside the frame budget and already attributed by noteCost('render').
+     */
+    function parallelCompile() {
+        if (state.parallelCompile !== undefined) return state.parallelCompile;
+        // No context yet — do not memoise "no" for the life of the page.
+        if (!state.renderer) return false;
+        try {
+            state.parallelCompile = Boolean(
+                state.renderer.getContext().getExtension('KHR_parallel_shader_compile'));
+        } catch (err) {
+            state.parallelCompile = false;
+        }
+        return state.parallelCompile;
+    }
+
+    /** How long a genuine background link is given before the class ships anyway. */
+    const WARM_DEADLINE_MS = 1500;
+    /** ...and at most one link is STARTED per window, so warms cannot stack up. */
+    const WARM_GAP_MS = 120;
+    /** What the strip calls it while it happens. */
+    const WARM_STEP = 'compiling surface shaders';
+
+    /**
+     * Hand a staged bundle to the board, linking its program first if that is
+     * genuinely free. The bundle is released either way: a class that never
+     * leaves staging is a sector that stays a stand-in for the session.
+     */
+    function releaseBundle(key, job) {
+        const t0 = performance.now();
+        const finish = () => {
+            if (!state.bundleStaging.has(key)) return;
+            state.bundleStaging.delete(key);
+            state.bundlePending.delete(key);
+            state.worldBundles.set(key, job.bundle);
+            updateLoadingState();
+        };
+        const r = state.renderer;
+        const free = parallelCompile()
+            && !handIsBusy(t0)
+            && t0 - (state.lastWarmAt || 0) >= WARM_GAP_MS
+            && job.kind === 'world'
+            && r && typeof r.compileAsync === 'function' && state.scene && state.camera;
+        if (!free) {
+            finish();
+            noteCost('warmBundle', performance.now() - t0);
+            return;
+        }
+        state.lastWarmAt = t0;
+        // Named BEFORE the work, not after it: whatever the last painted frame
+        // says has to explain the pause that follows it. Cleared on every exit
+        // from here, or the strip sticks on a step that already finished.
+        noteSurveyStep(WARM_STEP);
+        try {
+            const type = Number(key.split(':')[0]) || 8;
+            const probe = assembleWorld(job.bundle, type, 0, worldOptions(type, 0));
+            const scratch = new THREE.Scene();
+            scratch.add(probe);
+            // Held so nothing can collect it out from under the program it owns.
+            job.bundle.probe = probe;
+            const p = r.compileAsync(scratch, state.camera, state.scene);
+            if (!p || typeof p.then !== 'function') { clearSurveyStep(WARM_STEP); finish(); return; }
+            job.warming = true;
+            let settled = false;
+            const settle = () => {
+                if (settled) return;
+                settled = true;
+                scratch.remove(probe);
+                job.warming = false;
+                clearSurveyStep(WARM_STEP);
+                finish();
+            };
+            p.then(settle, settle);
+            setTimeout(settle, WARM_DEADLINE_MS);
+        } catch (err) {
+            clearSurveyStep(WARM_STEP);
+            finish();
+        }
+        noteCost('warmBundle', performance.now() - t0);
+    }
+
+    /** An ImageBitmap is an upload; the generation already happened elsewhere. */
+    function forgeTexture(spec) {
+        const tex = new THREE.Texture(spec.bitmap);
+        if (spec.colorSpace) tex.colorSpace = spec.colorSpace;
+        if (spec.wrapS) tex.wrapS = spec.wrapS;
+        if (spec.wrapT) tex.wrapT = spec.wrapT;
+        tex.anisotropy = spec.anisotropy || 8;
+        tex.needsUpdate = true;
+        // Shared by every world of this class and variant, exactly as the
+        // generator's own cache would have shared it. disposeContent() honours
+        // the flag, so one sector rebuild cannot free another sector's surface.
+        tex.__shared = true;
+        return tex;
+    }
+
+    /** Re-inflate one transported material. The shader is the generator's, unmodified. */
+    function forgeMaterial(desc, textures) {
+        if (!desc) return null;
+        const uniforms = {};
+        for (const name in desc.uniforms) {
+            const d = desc.uniforms[name];
+            if (d.t === 'tex') uniforms[name] = { value: textures[d.k] || null };
+            else if (d.t === 'v3') uniforms[name] = { value: new THREE.Vector3(d.v[0], d.v[1], d.v[2]) };
+            else if (d.t === 'v2') uniforms[name] = { value: new THREE.Vector2(d.v[0], d.v[1]) };
+            else if (d.t === 'c') uniforms[name] = { value: new THREE.Color(d.v[0], d.v[1], d.v[2]) };
+            else uniforms[name] = { value: d.v };
+        }
+        const mat = new THREE.ShaderMaterial({
+            uniforms,
+            defines: Object.assign({}, desc.defines),
+            vertexShader: desc.vertexShader,
+            fragmentShader: desc.fragmentShader,
+            transparent: desc.transparent,
+            depthWrite: desc.depthWrite,
+            depthTest: desc.depthTest,
+            blending: desc.blending,
+            side: desc.side
+        });
+        // The two hooks the map drives a world with. They are closures over the
+        // uniform objects in the original, so they cannot travel; they are two
+        // lines of plumbing, not part of the look.
+        mat.userData.uniforms = uniforms;
+        mat.userData.setLightDirection = function (x, y, z) {
+            if (uniforms.uLightDir) uniforms.uLightDir.value.set(x, y, z).normalize();
+        };
+        mat.userData.setCloudOffset = function (u) {
+            if (uniforms.uCloudOffset) uniforms.uCloudOffset.value = u;
+        };
+        return mat;
+    }
+
+    /** The same assembly createPlanetObject() does — surface, cloud shell. Full rationale: docs/galaxy3d-design-notes.md#the-same-assembly-createplanetobject-does-surface-cloud-shel */
+    function assembleWorld(bundle, type, sectorId, opts) {
+        const geo = state.sharedGeo.worldSphere;
+        const group = new THREE.Group();
+        const radius = opts.radius === undefined ? 1 : opts.radius;
+
+        const surfaceMat = forgeMaterial(bundle.surface, bundle.textures);
+        const surface = new THREE.Mesh(geo, surfaceMat);
+        surface.scale.setScalar(radius);
+        group.add(surface);
+
+        let clouds = null;
+        const cloudMat = forgeMaterial(bundle.clouds, bundle.textures);
+        if (cloudMat) {
+            clouds = new THREE.Mesh(geo, cloudMat);
+            clouds.scale.setScalar(radius * (opts.cloudRatio || PLANET_RIG.cloudRatio));
+            clouds.renderOrder = 1;
+            group.add(clouds);
+        }
+
+        let atmosphere = null;
+        const atmoMat = forgeMaterial(bundle.atmosphere, bundle.textures);
+        if (atmoMat) {
+            const ratio = opts.atmosphereRatio || PLANET_RIG.atmosphereRatio;
+            atmosphere = new THREE.Mesh(geo, atmoMat);
+            atmosphere.scale.setScalar(radius * ratio);
+            atmosphere.renderOrder = 2;
+            group.add(atmosphere);
+        }
+
+        const spin = opts.spin === undefined ? 0.12 : opts.spin;
+        const cloudDrift = opts.cloudDrift === undefined ? spin * 0.32 : opts.cloudDrift;
+        const light = new THREE.Vector3(0.55, 0.5, 0.67).normalize();
+        const worldPos = new THREE.Vector3();
+        const tmpVec = new THREE.Vector3();
+
+        function pushLight() {
+            surfaceMat.userData.setLightDirection(light.x, light.y, light.z);
+            if (clouds) clouds.material.userData.setLightDirection(light.x, light.y, light.z);
+            if (atmosphere) atmosphere.material.userData.setLightDirection(light.x, light.y, light.z);
+        }
+        pushLight();
+
+        group.userData.surface = surface;
+        group.userData.clouds = clouds;
+        group.userData.atmosphere = atmosphere;
+        group.userData.radius = radius;
+        group.userData.setLightDirection = function (x, y, z) {
+            light.set(x, y, z);
+            if (light.lengthSq() < 1e-8) light.set(0, 1, 0);
+            light.normalize();
+            pushLight();
+        };
+        group.userData.setLightTarget = function (target) {
+            group.getWorldPosition(worldPos);
+            tmpVec.set(
+                (target.x !== undefined ? target.x : target[0]) - worldPos.x,
+                (target.y !== undefined ? target.y : target[1]) - worldPos.y,
+                (target.z !== undefined ? target.z : target[2]) - worldPos.z
+            );
+            if (tmpVec.lengthSq() < 1e-8) return;
+            group.userData.setLightDirection(tmpVec.x, tmpVec.y, tmpVec.z);
+        };
+        group.userData.spin = spin;
+        group.userData.update = function (dt) {
+            if (!clouds) return;
+            clouds.rotation.y += cloudDrift * (dt || 0);
+            surfaceMat.userData.setCloudOffset(-clouds.rotation.y / (Math.PI * 2));
+        };
+        return group;
+    }
+
+    /**
+     * A world, from the forge if its class has been baked, from the main thread
+     * if it has not. The caller only ever gets a finished object.
+     */
+    function makeWorld(type, sectorId, opts) {
+        const bundle = state.worldBundles.get(bundleKey(type, sectorId));
+        if (bundle) {
+            try {
+                // The first world of a class is the one whose shaders the driver
+                // has never seen. Ask for them to be compiled out of band.
+                if (!bundle.warmed) { bundle.warmed = true; state.warmPending = true; }
+                return assembleWorld(bundle, type, sectorId, opts);
+            } catch (err) {
+                console.warn('Galaxy3D: forged world would not assemble, generating locally.', err);
+                state.worldBundles.delete(bundleKey(type, sectorId));
+                state.bundleFailed.add(bundleKey(type, sectorId));
+            }
+        }
+        return createPlanetObject(type, sectorId, opts);
+    }
+
+    /** THE BUDGET IS NOW ENFORCEABLE, WHICH IT PREVIOUSLY WAS NOT. Full rationale: docs/galaxy3d-design-notes.md#the-budget-is-now-enforceable-which-it-previously-was-not */
+    const CONTENT_BUDGET_MS = 12;
+    /** ...AND ANYTHING THAT STILL CANNOT FIT WAITS FOR THE HAND TO FINISH. Full rationale: docs/galaxy3d-design-notes.md#and-anything-that-still-cannot-fit-waits-for-the-hand-to-fin */
+    const CONTENT_SETTLE_MS = 180;   // after a wheel or a released drag
+    const CONTENT_HOVER_MS = 90;     // a natural pause between pointer moves
+
+    /** True while the player is in the middle of something a stall would spoil. */
+    function handIsBusy(now) {
+        if (state.drag) return true;
+        if (now - (state.lastGestureAt || 0) < CONTENT_SETTLE_MS) return true;
+        if (now - (state.lastInputAt || 0) < CONTENT_HOVER_MS) return true;
+        return false;
+    }
+
+    /**
+     * WHICH KIND OF BAKE THIS TILE'S CONTENT COMES FROM — worlds AND hazards.
+     *
+     * Kept separate from worldClassOf(), which answers a different question
+     * ("is this tile a world?") that installSurveyProxy() and buildPlanet() need
+     * answered its own way. One definition, because the two things below —
+     * "which keys am I waiting on" and "which bakes do I ask for" — have to
+     * agree exactly or a tile waits forever on a key nobody requested.
+     *
+     * A black hole and empty space are not here: neither costs anything worth
+     * moving off this thread.
+     */
+    function forgeKindOf(entry) {
+        if (entry.status === STATUS.UNKNOWN && !entry.explored) return null;
+        if (worldClassOf(entry) !== null) return 'world';
+        if (entry.type === 3 || entry.type === 4) return 'star';
+        if (entry.type === 1 || (entry.status === STATUS.HAZARD && entry.type !== 2)) return 'rock';
+        return null;
+    }
+
+    function forgeKeysOf(entry) {
+        switch (forgeKindOf(entry)) {
+            case 'world': return [bundleKey(worldClassOf(entry), entry.id)];
+            case 'star': return [starKey(entry.type, entry.id)];
+            case 'rock': return ROCK_GROUPS.map(g => rockKey(Number(entry.id) + g));
+            default: return null;
+        }
+    }
+
+    /** Ask for every bake this tile is waiting on. Duplicates are dropped inside. */
+    function requestForgeFor(entry) {
+        switch (forgeKindOf(entry)) {
+            case 'world': requestWorld(worldClassOf(entry), entry.id); break;
+            case 'star': requestStar(entry.type, entry.id); break;
+            case 'rock': ROCK_GROUPS.forEach(g => requestRock(Number(entry.id) + g)); break;
+            default: break;
+        }
+    }
+
+    function queueContent(entry) {
+        // The proxy goes on NOW, queued or not: the point is that the tile is
+        // never a bare plate, and a re-queued sector (an owner change, a class
+        // reveal) keeps whatever it already has until the real rebuild lands.
+        if (!entry.content) installSurveyProxy(entry);
+        // Ask the second thread for this tile's maps the instant the sector is
+        // charted, which is the earliest moment the answer can be known and the
+        // longest possible lead time before the tile is drained.
+        requestForgeFor(entry);
+        if (entry.contentQueued) return;
+        entry.contentQueued = true;
+        if (!entry.everQueued) {
+            entry.everQueued = true;
+            // The denominator the progress strip counts against: how many sectors
+            // this session has ever had to survey.
+            state.chartedTotal = (state.chartedTotal || 0) + 1;
+        }
+        state.contentQueue.push(entry);
+        updateLoadingState();
+    }
+
+    /** What it would cost to finish this tile right now. Full rationale: docs/galaxy3d-design-notes.md#what-it-would-cost-to-finish-this-tile-right-now */
+    function entryReadiness(entry) {
+        const keys = forgeKeysOf(entry);
+        if (!keys || !keys.length) return 'local';
+        let waiting = false;
+        let failed = false;
+        for (const key of keys) {
+            if (state.worldBundles.has(key)) continue;
+            if (state.bundleFailed.has(key)) { failed = true; continue; }
+            const since = state.bundlePending.get(key);
+            if (since !== undefined) {
+                if (performance.now() - since < FORGE_TIMEOUT_MS) { waiting = true; continue; }
+                // Never answered. Take it back rather than leave the sector a
+                // stand-in for the rest of the session.
+                state.bundlePending.delete(key);
+                state.bundleFailed.add(key);
+                console.warn('Galaxy3D: forge did not answer for %s in time; generating locally.', key);
+                failed = true;
+                continue;
+            }
+            // Not requested yet and the forge is alive — ask, and let it wait one
+            // more frame rather than paying for it here.
+            if (state.forge && !state.forge.failed) { requestForgeFor(entry); waiting = true; continue; }
+            failed = true;
+        }
+        // A tile only counts as cheap when EVERY map it draws with is already
+        // resident: a belt half-forged still pays for the other two variants on
+        // this thread, and calling that cheap is what poisons the pacing estimate.
+        if (failed) return 'local';
+        return waiting ? 'waiting' : 'cheap';
+    }
+
+    /** What an over-budget tile is, in words a player already knows. */
+    function localStepLabel(entry) {
+        if (entry.status === STATUS.BLACKHOLE || entry.type === 2) return 'mapping a black hole';
+        if (entry.type === 3 || entry.type === 4) return 'lighting a star';
+        if (entry.type === 1 || entry.status === STATUS.HAZARD) return 'plotting an asteroid field';
+        return 'painting a world';
+    }
+
+    function drainContentQueue() {
+        if (!state.contentQueue.length) return 0;
+        const start = performance.now();
+        const busy = handIsBusy(start);
+        let built = 0;
+        while (state.contentQueue.length) {
+            if (built > 0) {
+                // Would starting another one overrun? Then stop — the frame is
+                // already carrying work and the player is owed a paint.
+                const spent = performance.now() - start;
+                if (spent + state.assembleCost > CONTENT_BUDGET_MS) break;
+            }
+            // Cheap items go through whatever the hand is doing: that is how the
+            // board keeps filling in while the player pans across it. Expensive
+            // ones wait for the gesture to finish.
+            const entry = takeNearestQueued(!busy);
+            if (!entry) break;
+            entry.contentQueued = false;
+            // initialize() can replace the whole grid while items are in flight.
+            // Those entries have already been disposed and are not in the scene.
+            if (state.sectors.get(entry.id) !== entry) continue;
+            const cheap = entryReadiness(entry) === 'cheap';
+            /**
+             * AN OVER-BUDGET BAKE IS NAMED ON THE FRAME BEFORE IT RUNS.
+             *
+             * Setting the strip's text and then immediately blocking does not
+             * put the text on screen — the paint happens after the block, which
+             * is exactly when it stops being useful. So the item goes back in the
+             * queue for one frame, the strip is repainted saying what is coming,
+             * that frame is presented, and the bake happens on the next one. It
+             * costs one 16 ms frame per hazard class and it is the difference
+             * between a board that says what it is doing and one that looks hung.
+             */
+            const label = cheap ? '' : localStepLabel(entry);
+            if (label && built === 0 && state.surveyStep !== label
+                && state.contentCost >= CONTENT_BUDGET_MS) {
+                noteSurveyStep(label);
+                entry.contentQueued = true;
+                state.contentQueue.push(entry);
+                break;
+            }
+            const t0 = performance.now();
+            rebuildContent(entry);
+            const cost = performance.now() - t0;
+            if (label) clearSurveyStep(label);
+            noteCost(`sector${entry.id}:t${entry.type}${cheap ? ':forged' : ':local'}`, cost);
+            if (cheap) {
+                // Rises immediately, falls slowly. Underestimating costs the
+                // player a frame; overestimating costs a world one extra frame as
+                // a proxy. Tracked SEPARATELY from the fallback bakes, because
+                // one 1.8-second belt used to poison the estimate for the eleven
+                // one-millisecond assemblies behind it and hold the whole board
+                // to one tile a frame.
+                state.assembleCost = cost > state.assembleCost
+                    ? cost : state.assembleCost * 0.75 + cost * 0.25;
+            } else {
+                state.contentCost = cost > state.contentCost
+                    ? cost : state.contentCost * 0.75 + cost * 0.25;
+                /**
+                 * NO PROGRAM PRE-WARM HERE, AND THAT IS MEASURED.
+                 *
+                 * A belt or a star brings materials the driver has never seen, so
+                 * the frame that first DRAWS one pays to compile them. Asking for
+                 * those programs on this line — the same compileAsync the forged
+                 * classes get in warmBundle() — looked obviously right and did
+                 * not pay for itself when it was tried: compileAsync walks the
+                 * whole scene, there are a dozen local items on a full board, and
+                 * the audit's game median moved the wrong way. The forged classes
+                 * are warmed because there are at most six of them and each one is
+                 * warmed exactly once, before anything is drawn with it.
+                 */
+            }
+            built++;
+            // One over-budget item per frame, full stop.
+            if (!cheap && cost >= CONTENT_BUDGET_MS) break;
+        }
+        if (built) updateLoadingState();
+        if (state.warmPending) warmPrograms();
+        return performance.now() - start;
+    }
+
+    /** COMPILE THE NEW SHADERS BEFORE THE FRAME THAT NEEDS THEM. Full rationale: docs/galaxy3d-design-notes.md#compile-the-new-shaders-before-the-frame-that-needs-them */
+    function warmPrograms() {
+        state.warmPending = false;
+        const r = state.renderer;
+        if (!r || !state.scene || !state.camera || typeof r.compileAsync !== 'function') return;
+        // Same trap as releaseBundle(): without KHR_parallel_shader_compile this
+        // is a SYNCHRONOUS compile of every material in the scene, so the call
+        // that exists to move the cost off the frame is the cost. See
+        // parallelCompile().
+        if (!parallelCompile()) return;
+        const t0 = performance.now();
+        try {
+            const p = r.compileAsync(state.scene, state.camera);
+            if (p && typeof p.catch === 'function') p.catch(() => { /* first use will do it */ });
+        } catch (err) { /* first use will do it */ }
+        noteCost('warm', performance.now() - t0);
+    }
+
+    /** NEAREST TO WHAT THE PLAYER IS LOOKING AT, NOT FIRST IN. Full rationale: docs/galaxy3d-design-notes.md#nearest-to-what-the-player-is-looking-at-not-first-in */
+    function takeNearestQueued(allowLocal) {
+        const queue = state.contentQueue;
+        if (!queue.length) return null;
+        const target = state.camTarget;
+        let best = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < queue.length; i++) {
+            // A world still waiting on its class's bake is not skipped in
+            // disgrace — it is a survey proxy, which is a legible state, and it
+            // is passed over so the tiles that CAN be finished are finished now.
+            const how = entryReadiness(queue[i]);
+            if (how === 'waiting') continue;
+            if (how === 'local' && !allowLocal) continue;
+            const p = queue[i].group.position;
+            const d = (p.x - target.x) * (p.x - target.x) + (p.z - target.z) * (p.z - target.z);
+            if (d < bestDist) { bestDist = d; best = i; }
+        }
+        if (best < 0) return null;
+        return queue.splice(best, 1)[0];
+    }
+
+    /** THE TILE IS NEVER A HOLE. Full rationale: docs/galaxy3d-design-notes.md#the-tile-is-never-a-hole */
+    function surveyProxyMaterial(kind) {
+        const key = `proxy:${kind}`;
+        if (state.materials.has(key)) return state.materials.get(key);
+        const mat = new THREE.MeshPhongMaterial({
+            color: new THREE.Color(kind),
+            // Deliberately duller than a generated world: the stand-in must not
+            // be mistaken for the finished article in a screenshot.
+            specular: 0x1a1e26,
+            shininess: 8,
+            transparent: true,
+            opacity: 0.9
+        });
+        mat.__shared = true;
+        state.materials.set(key, mat);
+        return mat;
+    }
+
+    /** Amber survey ring: this tile is being worked on. Shared geometry and material. */
+    function surveyRingMaterial() {
+        const key = 'proxy:ring';
+        if (state.materials.has(key)) return state.materials.get(key);
+        const mat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(0.62, 0.45, 0.20),
+            transparent: true,
+            opacity: 0.5,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+        mat.__shared = true;
+        state.materials.set(key, mat);
+        return mat;
+    }
+
+    /** Rough class hue for a stand-in, taken from the same table the real thing uses. */
+    function proxyTone(entry) {
+        if (entry.status === STATUS.BLACKHOLE || entry.type === 2) return 0x0a0a12;
+        if (entry.type === 1 || entry.status === STATUS.HAZARD) return 0x6b6259;
+        if (entry.type === 3) return 0xff944a;
+        if (entry.type === 4) return 0xff6c2c;
+        const style = PLANET_STYLES[Math.max(5, Math.min(10, Number(entry.type) || 8))];
+        const base = style && style.atmo ? style.atmo : [120, 150, 190];
+        return (Math.round(base[0] * 0.62) << 16) | (Math.round(base[1] * 0.62) << 8)
+            | Math.round(base[2] * 0.62);
+    }
+
+    /**
+     * Will this sector end up carrying a body at all?
+     *
+     * A stand-in that invents content is worse than no stand-in. proxyTone()
+     * falls through to `Number(entry.type) || 8`, so an EMPTY-SPACE sector —
+     * type 0 — was drawn as a type-8 blue planet for as long as it sat in the
+     * queue, then vanished. In a game whose whole loop is deciding where to send
+     * a fleet from what a sector contains, the opening seconds of the map were
+     * showing worlds that are not there.
+     *
+     * A sector whose class is still unknown (type null) is a different case: it
+     * is charted and important, rebuildContent() will give it a generic planet,
+     * and a sphere is the honest guess. Only a KNOWN non-body gets the ring
+     * alone.
+     */
+    function proxyIsBody(entry) {
+        if (entry.type === null || entry.type === undefined) return true;
+        if (entry.status === STATUS.BLACKHOLE || entry.status === STATUS.HAZARD) return true;
+        return entry.type >= 1 && entry.type <= 10;
+    }
+
+    function installSurveyProxy(entry) {
+        if (entry.proxy) return;
+        const known = entry.status !== STATUS.UNKNOWN || entry.explored;
+        if (!known || !state.sharedGeo.sphere) return;
+
+        const group = new THREE.Group();
+        if (proxyIsBody(entry)) {
+            const type = Math.max(5, Math.min(10, Number(entry.type) || 8));
+            const radius = type === 10 ? 0.50 : 0.34 + (type - 5) * 0.038;
+            const body = new THREE.Mesh(state.sharedGeo.sphere, surveyProxyMaterial(proxyTone(entry)));
+            body.scale.setScalar(radius);
+            body.position.y = 0.44;
+            group.add(body);
+        }
+
+        // The honest mark on its own: this tile is charted and still being
+        // worked on. It is all an empty sector ever gets.
+        const ring = new THREE.Mesh(state.sharedGeo.hover, surveyRingMaterial());
+        ring.position.y = TILE_TOP + 0.005;
+        ring.renderOrder = 1;
+        group.add(ring);
+
+        entry.group.add(group);
+        entry.proxy = group;
+    }
+
+    function clearSurveyProxy(entry) {
+        if (!entry.proxy) return;
+        entry.group.remove(entry.proxy);
+        // Every part of it is shared geometry and a shared material, so there is
+        // nothing here to dispose — which is the point of using them.
+        entry.proxy = null;
+    }
+
     function rebuildContent(entry) {
+        clearSurveyProxy(entry);
         disposeContent(entry);
+        /**
+         * "THE QUEUE HAS FINISHED WITH THIS TILE", which is not the same as
+         * "this tile has content".
+         *
+         * updateSector() used to re-queue on `!entry.content`, and empty space
+         * never gets content — so every server update put every empty sector
+         * back in the queue, and with it its survey proxy. The phantom planet
+         * was not only a startup artefact; it could flash again all session.
+         */
+        entry.surveyed = true;
         const known = entry.status !== STATUS.UNKNOWN || entry.explored;
         if (!known) return;
 
@@ -3019,10 +3635,8 @@ import {
             content = buildBlackHole(entry);
         } else if (entry.type === 1) {
             content = buildAsteroids(entry);
-        } else if (entry.type === 3) {
-            content = buildStar([255, 148, 72], 0.33, entry);
-        } else if (entry.type === 4) {
-            content = buildStar([255, 108, 44], 0.27, entry);
+        } else if (entry.type === 3 || entry.type === 4) {
+            content = buildStar(entry);
         } else if (entry.type >= 5 && entry.type <= 10) {
             content = buildPlanet(entry);
         } else if (entry.status === STATUS.HOMEWORLD || entry.status === STATUS.OWNED ||
@@ -3058,21 +3672,7 @@ import {
     // Tile materials
     // ------------------------------------------------------------------
 
-    /**
-     * Shared per (status, live, hover). 112 tiles used to mean 112 unique
-     * materials; there are at most about thirty distinct looks on the board and
-     * sharing them keeps uniform churn down.
-     *
-     * PHONG, NOT STANDARD, and that is a measured decision rather than a
-     * stylistic one. The plates cover essentially the whole viewport at every
-     * zoom, so they are the largest fill cost in the scene by a wide margin, and
-     * a metal-dominant MeshStandardMaterial pays a full GGX evaluation plus a
-     * prefiltered-environment lookup on every one of those fragments. Blinn-Phong
-     * with a normal map, a tight specular and one flat environment sample gives
-     * the same chamfer highlight — the whole point of the bevel — for a fraction
-     * of the per-pixel cost. It is also, not coincidentally, the exact lighting
-     * model the era this board is styled after actually used.
-     */
+    /** Shared per (status, live, hover). 112 tiles used to mean 112 unique. Full rationale: docs/galaxy3d-design-notes.md#shared-per-status-live-hover-112-tiles-used-to-mean-112-uniq */
     function tileMaterial(status, live, hovered, tone) {
         const key = `tile:${status}:${live ? 1 : 0}:${hovered ? 1 : 0}:${tone || '-'}`;
         if (state.materials.has(key)) return state.materials.get(key);
@@ -3094,7 +3694,7 @@ import {
         // separator — on the read that decides whether a fleet survives. Pairing
         // this with the stencilled hazard hatch gives two non-hue channels.
         const hazardDim = toned ? 0.80 : 1;
-        const plate = state.plateMaps;
+        const plate = plateMaps();
         const mat = new THREE.MeshPhongMaterial({
             map: toned ? plateVariantMap(toned.stencil) : plate.map,
             normalMap: plate.normalMap,
@@ -3106,14 +3706,7 @@ import {
             // has to move as a whole, not one rung of it.
             color: base.clone().multiplyScalar((live ? 0.95 : 0.82) * hazardDim)
                 .lerp(new THREE.Color(0x4d5870), 0.10),
-            // EMISSIVE THROUGH THE ALBEDO, not over it. An untextured constant
-            // emissive is a flat flood across the whole face, and on a
-            // high-chroma swatch it dominated the map and washed the brushed
-            // grain, the stencilled ticks, the tray inset and the rivets out —
-            // the two most saturated plates on the board were the two that read
-            // as flat coloured polygons, which is exactly backwards. Modulated by
-            // the same relief the albedo uses, it lifts the metal instead of
-            // painting over it, and it can then be a quarter as strong.
+            // EMISSIVE THROUGH THE ALBEDO, not over it. An untextured constant. Full rationale: docs/galaxy3d-design-notes.md#emissive-through-the-albedo-not-over-it-an-untextured-consta
             emissiveMap: toned ? plateVariantMap(toned.stencil) : plate.map,
             emissive: empty ? new THREE.Color(0x3c4762) : colour,
             // 0.30 rather than the old 0.34 looks like a small change and is not:
@@ -3122,25 +3715,7 @@ import {
             // to about a seventh of it — and what is left of it follows the frame
             // lip, the rivets and the grain instead of flooding over them.
             emissiveIntensity: 0.30 * (live ? 1 : 0.72) * (toned ? 0.82 : 1) + (hovered ? 0.35 : 0),
-            /**
-             * THE SPECULAR MODEL IS WHAT MAKES THIS METAL OR WOOD.
-             *
-             * A Blinn-Phong exponent of 34 is a BROAD lobe: the highlight spreads
-             * over most of a facet as a soft diffuse wash. That is the response of
-             * varnish, and paired with a stretched low-frequency albedo grain it is
-             * exactly why the board was read as stained pine and sanded birch.
-             * Steel has a TIGHT lobe — 220 collapses the highlight onto the chamfer
-             * and the rivet crowns, which is precisely where a bevel needs to be
-             * sold, and leaves the flat of the plate to the albedo.
-             *
-             * And a reflected term, which the previous revision removed on the
-             * grounds that it desaturated the status tint. It does — at MIX weight.
-             * ADD weight does not: an additive reflection only lifts where the
-             * probe is bright, so the chamfer facing the key picks up the warm
-             * lobe and the tint elsewhere is untouched. Metal without a reflected
-             * term cannot read as metal, and this is a small enough share of the
-             * plate's value that the swatch is still the swatch.
-             */
+            /** THE SPECULAR MODEL IS WHAT MAKES THIS METAL OR WOOD. Full rationale: docs/galaxy3d-design-notes.md#the-specular-model-is-what-makes-this-metal-or-wood */
             specular: 0x8a94a8,
             // 190. The direction called for 220 and the reasoning behind it is
             // right — the point is a lobe narrow enough to collapse the highlight
@@ -3181,18 +3756,7 @@ import {
         return mat;
     }
 
-    /**
-     * Fog plates, in SIX variants.
-     *
-     * One shared material meant one shared uv transform, so all hundred-odd
-     * unexplored tiles showed the identical haze pattern and neighbours matched
-     * edge to edge — the unknown region read as one blotchy blanket instead of a
-     * hundred separate unknown cells. Each variant clones the haze texture (the
-     * image is uploaded once; only the transform differs) and gets its own
-     * offset and rotation. The variant index is chosen so that both the
-     * horizontal neighbour (id +/- 1) and the vertical one (id +/- width) always
-     * land on a different pattern.
-     */
+    /** Fog plates, in SIX variants. Full rationale: docs/galaxy3d-design-notes.md#fog-plates-in-six-variants */
     const FOG_VARIANTS = 6;
     // Coprime with FOG_VARIANTS on purpose: 7 uv bakes against 6 material
     // transforms is a 42-cell cycle, so the pattern cannot recur inside a screen.
@@ -3212,7 +3776,7 @@ import {
         const row = Math.floor(((Number(id) || 1) - 1) / Math.max(1, state.width));
         const index = ((((Number(id) || 1) + row * 3) % FOG_VARIANTS) + FOG_VARIANTS) % FOG_VARIANTS;
         if (state.fogMaterials[index]) return state.fogMaterials[index];
-        const haze = state.fogTexture.clone();
+        const haze = fogTexture().clone();
         haze.needsUpdate = true;
         haze.center.set(0.5, 0.5);
         haze.rotation = (index / FOG_VARIANTS) * Math.PI * 2 + 0.4;
@@ -3220,21 +3784,7 @@ import {
         haze.__shared = true;
         haze.__baseOffset = { x: hash2(index, 5, 91), y: hash2(index, 9, 137) };
         const mat = new THREE.MeshPhongMaterial({
-            // NO PLATE MAP. Not a tuning choice — the whole point of the fog cell
-            // is that no instrument has been installed in it, so it carries no
-            // rivets, no frame, no tray and no scribe. The socket's six facets and
-            // the haze in the bottom of it are the entire image.
-            //
-            // Measured, the previous fog plate sat at L*42-48 against a charted
-            // plate's L*61-74: a 1.3:1 step, less separation than the gap between
-            // two tiles. This lands near L*22, so the step is close to 3:1 and
-            // "we have surveyed this" is the loudest thing the board says.
-            // Measured, not guessed: with the plate map gone the colour IS the
-            // albedo, where before it was multiplied by a map averaging 0.32 —
-            // so the same hex would have come out three stops BRIGHTER. Sampled
-            // off the previous build, a fog plate read L*21 against a charted
-            // steel plate at L*39; this lands fog near L*14, which is the ~3:1
-            // step the read needs while staying clear of black.
+            // NO PLATE MAP. Not a tuning choice — the whole point of the fog cell. Full rationale: docs/galaxy3d-design-notes.md#no-plate-map-not-a-tuning-choice-the-whole-point-of-the-fog-
             color: 0x0d1120,
             // The haze rides in as EMISSIVE so the socket's own shading survives
             // beneath it and the two can scroll on independent uv transforms. It
@@ -3258,22 +3808,7 @@ import {
         });
         mat.__shared = true;
         mat.__haze = haze;
-        /**
-         * THE UNEXPLORED FIELD HAS TO RECEDE.
-         *
-         * It is the single largest surface in the frame and it was lit flat: a
-         * cell at the top of the picture measured the same value as one at the
-         * bottom, so half the viewport was wallpaper and the charted cluster had
-         * nothing to be the subject OF. The scene's FogExp2 cannot do this job
-         * here — its colour (0x0c1424) is within a couple of levels of the fog
-         * cell's own albedo, so mixing toward it is very nearly a no-op.
-         *
-         * This is a straight view-depth falloff on the fog cell and NOTHING
-         * else: the plates keep the atmospheric perspective they already have,
-         * and no other material in the scene is touched. The range is driven off
-         * the camera's own distance every frame so it survives the zoom wheel
-         * instead of switching off at the closeup framing.
-         */
+        /** THE UNEXPLORED FIELD HAS TO RECEDE. Full rationale: docs/galaxy3d-design-notes.md#the-unexplored-field-has-to-recede */
         mat.__depth = { value: new THREE.Vector2(12, 18) };
         mat.onBeforeCompile = shader => {
             shader.uniforms.uFogCellDepth = mat.__depth;
@@ -3288,6 +3823,9 @@ import {
                     'outgoingLight *= mix( 1.0, 0.52, smoothstep( uFogCellDepth.x, uFogCellDepth.y, vCellDepth ) );\n#include <opaque_fragment>');
         };
         state.fogMaterials[index] = mat;
+        // A grid laid out after the governor has already shed detail must match
+        // the one it replaced, not silently start again at full price.
+        conformFogMaterial(mat);
         return mat;
     }
 
@@ -3310,12 +3848,7 @@ import {
             entry.status, entry.live, state.hovered === entry.id, hazardToneFor(entry));
     }
 
-    /**
-     * Roughly how light the finished plate is, 0..1. Used to decide whether the
-     * sector number should be painted light-on-dark or dark-on-light: on the gold
-     * homeworld plate the white glyphs were the lowest-contrast text on the
-     * board, which is the one tile you can least afford not to be able to name.
-     */
+    /** Roughly how light the finished plate is, 0..1. Used to decide whether the. Full rationale: docs/galaxy3d-design-notes.md#roughly-how-light-the-finished-plate-is-0-1-used-to-decide-w */
     function plateLuminance(entry) {
         const explored = entry.explored || entry.status !== STATUS.UNKNOWN;
         if (!explored) return 0.3;
@@ -3337,14 +3870,7 @@ import {
     // under the bloom threshold and neither is tone-mapped away.
     // ------------------------------------------------------------------
 
-    /**
-     * A STAMPED STEEL TAB, not a hologram pill.
-     *
-     * The old badge was a translucent roundRect with a 4px accent stroke — the
-     * banned look — and it sat on top of the planet's northern hemisphere. This
-     * is a bolted plate in the same palette as the tiles: a dark groove under a
-     * bright top lip, a rivet at each end, and mono glyphs stencilled into it.
-     */
+    /** A STAMPED STEEL TAB, not a hologram pill. Full rationale: docs/galaxy3d-design-notes.md#a-stamped-steel-tab-not-a-hologram-pill */
     function makeBadgeTexture(count, hostile) {
         // 3x the old resolution. At 128x56 magnified onto the plate the emboss
         // rules were a single soft pixel each and the whole thing degenerated
@@ -3508,56 +4034,12 @@ import {
                 map: makeBadgeTexture(entry.fleetSize, enemyFleet),
                 transparent: true,
                 depthWrite: false,
-                /**
-                 * IT MAY NOT BE EATEN BY THE THING IT ANNOTATES.
-                 *
-                 * A Sprite depth-tests at its CENTRE, so a tab that overlaps the
-                 * world's screen disc is either wholly in front of it or wholly
-                 * behind it — and with the worlds now seated lower and wider on
-                 * their plates, the near-right corner where this sits is inside
-                 * that disc for every colonised tile. It came back half a tab
-                 * with the count hidden behind a planet.
-                 *
-                 * "Is there a fleet in this sector" is a first-class strategy
-                 * read and this is an annotation on a tile, not an object in the
-                 * scene, so it composites over. The ID plaque keeps depth
-                 * testing because it is a decal lying ON the deck and a rock
-                 * standing in front of it genuinely should occlude it; a bolted
-                 * tab standing above the deck is a different thing.
-                 */
+                /** IT MAY NOT BE EATEN BY THE THING IT ANNOTATES. Full rationale: docs/galaxy3d-design-notes.md#it-may-not-be-eaten-by-the-thing-it-annotates */
                 depthTest: false,
                 toneMapped: false
             }));
-            // ON THE PLATE'S NEAR-RIGHT FRAME, clear of the globe's silhouette
-            // and — the part that was wrong — INSIDE the tile's own hexagon. The
-            // old placement put the tab's right edge at x=0.63 with a half-width
-            // of 0.21, which at this camera angle hung the corner off the rim
-            // over the gutter toward the next sector. The anchor is now derived
-            // from the hexagon's reach along its own bearing, so the whole
-            // footprint is on the plate by construction.
-            // 30 degrees: the bearing of a hex EDGE NORMAL, so the tab sits
-            // square on the near-right flat rather than crowding a vertex, and
-            // clear of the sector nameplate now lying on the tile's lower edge.
-            /**
-             * BIG ENOUGH TO BE A READ, NOT A DECORATION.
-             *
-             * It shipped at 0.40 x 0.165, which is about 40 x 16 screen pixels
-             * at the map framing — small enough that all the emboss, bolt and
-             * stencil work painted into the texture above degenerated into one
-             * flat grey chip, and small enough that "is there a fleet in this
-             * sector" could not be answered without zooming. This is the same
-             * artwork at 1.6x, landing near 26px tall, which is where the tab's
-             * own bevel starts to resolve. The aspect matches the 256x112 canvas
-             * so nothing is stretched.
-             *
-             * The anchor keeps the OUTER edge where it was — on the plate's
-             * near-right flat, inside the tile's own hexagon by construction —
-             * so the tab grows inboard. It has to stay clear of the world's
-             * silhouette as well as the rim: a Sprite depth-tests at its centre,
-             * so the centre is placed outside the largest body's sphere (0.50)
-             * and on the camera side of it, and the whole tab then composites in
-             * front of the globe instead of being sliced by it.
-             */
+            // ON THE PLATE'S NEAR-RIGHT FRAME, clear of the globe's silhouette. Full rationale: docs/galaxy3d-design-notes.md#on-the-plate-s-near-right-frame-clear-of-the-globe-s-silhoue
+            /** BIG ENOUGH TO BE A READ, NOT A DECORATION. Full rationale: docs/galaxy3d-design-notes.md#big-enough-to-be-a-read-not-a-decoration */
             const bw = 0.68, bh = 0.298;
             const bearing = Math.PI / 6;
             // 0.88, and sitting at 0.16 rather than 0.20: the tab is 50% wider
@@ -3573,26 +4055,7 @@ import {
         }
     }
 
-    /**
-     * THE SECTOR CODE, AS AN INSTALLED NAMEPLATE.
-     *
-     * It used to be a camera-facing Sprite with depthTest OFF and a 6px outline:
-     * guaranteed legible, by the cheapest possible means, and with two visible
-     * costs. It floated above a tilted board instead of lying on it, which is
-     * the opposite of "stencilled codes, framed instruments"; and with depth
-     * testing disabled the '11' punched straight through an asteroid that was
-     * plainly in front of it — a depth-sorting error the player can see.
-     *
-     * This is a perspective-correct decal lying on the plate: a recessed
-     * nameplate with an emboss lip at the tile's lower edge, with the code
-     * stencilled into it. The camera looks down at ~61 degrees, so a horizontal
-     * plane is foreshortened by only 12% — the glyphs stay as readable as they
-     * were, but they now belong to the tile.
-     *
-     * The tray is deliberately SEMI-TRANSPARENT so the plate's status tint still
-     * reads through it, which is why the polarity flip below is still needed and
-     * still measured off the finished plate.
-     */
+    /** THE SECTOR CODE, AS AN INSTALLED NAMEPLATE. Full rationale: docs/galaxy3d-design-notes.md#the-sector-code-as-an-installed-nameplate */
     const ID_PLATE_W = 0.80, ID_PLATE_D = 0.30, ID_PLATE_X = -0.16, ID_PLATE_Z = 0.46;
 
     function updateIdLabel(entry) {
@@ -3735,7 +4198,16 @@ import {
             state.scene.remove(entry.group);
         });
         state.sectors.clear();
+        state.contentQueue.length = 0;
         state.starSectors = [];
+        // A new board is a new thing to be ready for, and a new survey to
+        // announce, time and estimate from scratch.
+        state.boardAnnounced = false;
+        state.saidSurveyHalf = false;
+        state.surveyStep = '';
+        state.surveyDone = -1;
+        state.surveyChangedAt = 0;
+        state.surveyRates = [];
 
         const total = w * h;
         state.center.set(((w - 1) * HORIZ) / 2, 0, ((h - 1) * VERT + VERT / 2) / 2);
@@ -3760,6 +4232,10 @@ import {
                 explored: false,
                 live: false,
                 isStar: false,
+                // Whether the content queue has ever finished with this tile.
+                // NOT "has content": empty space legitimately has none — see
+                // rebuildContent().
+                surveyed: false,
                 type: null,
                 flags: 0,
                 indicator: '',
@@ -3767,11 +4243,10 @@ import {
             });
         }
 
-        if (!state.starsBuilt) {
-            buildBackdrop();
-            state.starsBuilt = true;
-        }
-
+        // The sky dome, the two nebula sheets and 900 dust points cost 378 ms on
+        // the audit harness and NONE of it is gameplay: it is what the board
+        // floats in. The boot schedule builds it a frame or two after the grid is
+        // already on screen, by which time the player has a board to look at.
         const requestedFocus = state.pendingFocusSector === null
             ? null
             : state.sectors.get(Number(state.pendingFocusSector));
@@ -3837,20 +4312,12 @@ import {
         }
 
         applyStatusVisual(entry);
-        if (changedStatus || changedType || !entry.content) {
-            rebuildContent(entry);
+        if (changedStatus || changedType || !entry.surveyed) {
+            queueContent(entry);
         }
     }
 
-    // ------------------------------------------------------------------
-    // Fleet movement
-    //
-    // The old tracer was a coloured ball with a glow sprite sliding between two
-    // tiles. This is a formation of darts under way: they point where they are
-    // going, they bank into the turn, their engines run hot enough to bloom,
-    // and they drag a tapered ribbon behind them so the eye can read the path
-    // after the ships have passed.
-    // ------------------------------------------------------------------
+    // . Full rationale: docs/galaxy3d-design-notes.md#fleet-movement
 
     const TRAIL_SEGMENTS = 26;
     /** Cruising height, in hex units above the plate. Clears the largest world. */
@@ -3862,23 +4329,8 @@ import {
     const PLUME_WIDTH = 0.34;
     const PLUME_LENGTH = 0.62;
 
-    /**
-     * A slender six-sided dart, nose along +Z.
-     *
-     * Four sides and a wide base gave a hull that, seen nose-on — which is what
-     * happens every time a fleet flies down the screen toward the camera —
-     * silhouetted as a big flat triangle rather than a ship. Six sides and a
-     * much longer taper keep a readable silhouette from any bearing.
-     */
-    /**
-     * Concatenate non-indexed geometries into one buffer: one draw, one object.
-     *
-     * Built from three.js primitives rather than hand-wound triangles, and
-     * deliberately so — a hand-built beveled slab whose top face came out wound
-     * clockwise was silently back-face culled and the selection marker rendered
-     * as four bent wires with a bead on each end. Primitives arrive with correct
-     * outward normals and consistent winding; merging preserves both.
-     */
+    /** A slender six-sided dart, nose along +Z. Full rationale: docs/galaxy3d-design-notes.md#a-slender-six-sided-dart-nose-along-z */
+    /** Concatenate non-indexed geometries into one buffer: one draw, one object. Full rationale: docs/galaxy3d-design-notes.md#concatenate-non-indexed-geometries-into-one-buffer-one-draw- */
     function mergeGeometries(parts, withUv) {
         let count = 0;
         parts.forEach(g => { count += g.attributes.position.count; });
@@ -3901,30 +4353,8 @@ import {
         return geo;
     }
 
-    /**
-     * A HULL WITH A SILHOUETTE: a long fuselage flanked by two offset nacelles,
-     * nose along +Z.
-     *
-     * One squashed six-sided cone has no outline to read at map zoom — at eight
-     * or ten pixels it is a smear, and with an engine plume authored at twice its
-     * size it disappeared into its own glare entirely. Three separated masses
-     * give the eye a shape to resolve at exactly that size: a spine with two
-     * things sticking out behind it is a SHIP, in a way that a triangle is not.
-     */
-    /**
-     * UV LAYOUT FOR THE HULL.
-     *
-     * The cylinders get their natural wrap (u around the hull, v along it) so a
-     * longitudinal panel seam is a vertical line in the image and a frame band
-     * is a horizontal one. After `rotateX(PI/2)` a cylinder's cross-section sits
-     * in world XY with theta=0 pointing at -Y, so u=0 (and u=1) is the VENTRAL
-     * keel and u=0.5 is the DORSAL spine. That is what lets a single 1-D ramp
-     * along u carry "dark belly, bright back" and "matte flanks, polished spine".
-     *
-     * The boxes (wings, fin, greebles) would otherwise stretch the whole image —
-     * including the hull code — across each 8-pixel face, so their UVs are
-     * remapped into PLAIN_UV: a small patch of anonymous panelling.
-     */
+    /** A HULL WITH A SILHOUETTE: a long fuselage flanked by two offset nacelles. Full rationale: docs/galaxy3d-design-notes.md#a-hull-with-a-silhouette-a-long-fuselage-flanked-by-two-offs */
+    /** UV LAYOUT FOR THE HULL. Full rationale: docs/galaxy3d-design-notes.md#uv-layout-for-the-hull */
     const PLAIN_UV = { u0: 0.62, v0: 0.06, du: 0.16, dv: 0.16 };
 
     function remapUv(geo, rect) {
@@ -4005,28 +4435,7 @@ import {
         return geo;
     }
 
-    /**
-     * THE PLUME IS AN IMAGE, NOT A SOLID.
-     *
-     * It used to be a CylinderGeometry drawn additively at a fixed opacity, and
-     * a solid rendered at a fixed opacity has one unavoidable property: THE
-     * GEOMETRY EDGE IS THE VISUAL EDGE. What crossed the board was a hard-edged,
-     * uniformly-filled triangle with a dead-straight silhouette, a hard cut at
-     * the tail, wider than the hull it was bolted to and half again its length —
-     * a vector arrowhead sliding over a diagram. No amount of tuning the opacity
-     * fixes that, because the failure is the shape of the primitive.
-     *
-     * This is three quads through the plume's own axis at 60-degree intervals,
-     * carrying a painted plume in their alpha. The falloff — radial to nothing
-     * at the edge, axial to nothing at the tail, and a hot throat that cools
-     * along its length — is in the texture, so the plume HAS NO SILHOUETTE OF
-     * ITS OWN: it ends where the alpha ends. The crossed planes are what give it
-     * a body from any bearing, and their overlap in the middle is what makes the
-     * core hotter than the skirt for free.
-     *
-     * Local frame: throat at the origin, tail at -Z, so it bolts straight onto
-     * the nozzle the hull geometry already has.
-     */
+    /** THE PLUME IS AN IMAGE, NOT A SOLID. Full rationale: docs/galaxy3d-design-notes.md#the-plume-is-an-image-not-a-solid */
     function buildPlumeGeometry() {
         const positions = [];
         const uvs = [];
@@ -4051,16 +4460,7 @@ import {
         return geo;
     }
 
-    /**
-     * The painted plume: a hot near-white throat cooling through the fleet's own
-     * colour to nothing at the tail, with a soft radial falloff across it.
-     *
-     * The HUE RAMP IS IN THE TEXTURE, not in the material colour, because a
-     * greyscale map multiplied by one tint can only ever be that tint at every
-     * value — which is how the old plume ended up as a flat sheet of one colour
-     * with no thermal structure in it. The material then applies a neutral gain
-     * to lift the throat over the bloom threshold without touching the ramp.
-     */
+    /** The painted plume: a hot near-white throat cooling through the fleet's own. Full rationale: docs/galaxy3d-design-notes.md#the-painted-plume-a-hot-near-white-throat-cooling-through-th */
     function plumeTexture(mine) {
         return cachedTexture(`plume:${mine ? 1 : 0}`, () => {
             const W = 64, H = 128;
@@ -4100,17 +4500,7 @@ import {
         });
     }
 
-    /**
-     * THE HULL MAPS: albedo, normal, roughness and emissive, painted once.
-     *
-     * The previous ship was a bare MeshStandardMaterial in salmon
-     * (0xa8807e, metalness 0.25, roughness 0.62) with no maps at all, so the
-     * merged primitives rendered as raw shaded polygons — three flat wedges. No
-     * amount of geometry fixes that; a hull reads as a hull because light
-     * travels differently along its length than across it, and that requires a
-     * roughness map. All four are greyscale/derived from one painted plate, in
-     * the same canvas pipeline as the deck plates.
-     */
+    /** THE HULL MAPS: albedo, normal, roughness and emissive, painted once. Full rationale: docs/galaxy3d-design-notes.md#the-hull-maps-albedo-normal-roughness-and-emissive-painted-o */
     function buildHullMaps() {
         const W = 512, H = 512;
         const canvas = canvas2d(W, H);
@@ -4248,21 +4638,7 @@ import {
         }
         nCtx.putImageData(nImg, 0, 0);
 
-        /**
-         * EMISSIVE: RUNNING LIGHTS ONLY, and that restraint is load-bearing.
-         *
-         * The fuselage and the nacelles sample the FULL 0..1 UV range, so every
-         * bright region anywhere in this image lands somewhere on the main hull.
-         * A first pass painted a canopy strip and a nozzle-throat block into the
-         * patches those small parts were remapped into — and the fuselage picked
-         * both up as large glowing rectangles, which with a faction emissive of
-         * (1.9, 0.34, 0.26) turned the whole ship salmon-pink again: exactly the
-         * defect the steel albedo was introduced to kill.
-         *
-         * So the only thing in here is a run of small formation lights down each
-         * flank. They are dots at hull scale, they carry the faction colour, and
-         * nothing on the map can mistake them for the hull's own value.
-         */
+        /** EMISSIVE: RUNNING LIGHTS ONLY, and that restraint is load-bearing. Full rationale: docs/galaxy3d-design-notes.md#emissive-running-lights-only-and-that-restraint-is-load-bear */
         const eCanvas = canvas2d(W, H);
         const eCtx = eCanvas.getContext('2d');
         eCtx.fillStyle = '#000000';
@@ -4301,33 +4677,9 @@ import {
         const key = `ship:${mine ? 1 : 0}`;
         if (state.materials.has(key)) return state.materials.get(key);
         const maps = hullMaps();
-        /**
-         * ONE STEEL FOR BOTH FLEETS.
-         *
-         * The old hull was 0xa8807e — a salmon that appears nowhere in the
-         * briefed steel-and-bronze palette and read as a debug proxy colour. Who
-         * a fleet belongs to is now carried entirely by the RUNNING LIGHTS and
-         * the plume, which is both how warships are actually identified and the
-         * only channel that still works when the hull is eight pixels across and
-         * silhouetted against a bright plate.
-         *
-         * Metalness stays low. At 0.7 with a probe and a key at 2.4 the hull
-         * clipped to white and the ship became flat spikes; a painted warship is
-         * not a mirror. The form now comes from the roughness map, which is
-         * where it should have come from all along.
-         */
+        /** ONE STEEL FOR BOTH FLEETS. Full rationale: docs/galaxy3d-design-notes.md#one-steel-for-both-fleets */
         const mat = new THREE.MeshStandardMaterial({
-            // The briefed steel, lifted a little: at 0x6a7078 against deep space,
-            // with the albedo map's own mid-grey multiplying through it, the hull
-            // silhouetted almost black and the panel work was invisible. Same
-            // hue, one stop up.
-            //
-            // OWNERSHIP IS A VALUE STEP NOW, not a hue. Your hulls are bright
-            // steel and read as the friendly, well-kept fleet; theirs are the
-            // same steel two stops down and read as a dark shape coming at you.
-            // Paired with the warm-vs-red plume that is two independent channels
-            // for the same fact, which is what a colour-blind player needs and
-            // what the old cyan-vs-salmon pair never gave.
+            // The briefed steel, lifted a little: at 0x6a7078 against deep space. Full rationale: docs/galaxy3d-design-notes.md#the-briefed-steel-lifted-a-little-at-0x6a7078-against-deep-s
             color: mine ? 0x99a2ad : 0x585e68,
             map: maps.map,
             normalMap: maps.normalMap,
@@ -4346,13 +4698,7 @@ import {
         return mat;
     }
 
-    /**
-     * The ribbon has THREE vertices per rib — left edge, spine, right edge —
-     * not two. With two, the strip has a hard boundary across its width and a
-     * fleet flying toward the camera renders as a solid translucent wedge; with
-     * a dark left and right and a hot spine the cross-section falls off and it
-     * reads as a streak of light at every angle.
-     */
+    /** The ribbon has THREE vertices per rib — left edge, spine, right edge —. Full rationale: docs/galaxy3d-design-notes.md#the-ribbon-has-three-vertices-per-rib-left-edge-spine-right- */
     function buildTrail(colour) {
         const geo = new THREE.BufferGeometry();
         const positions = new Float32Array(TRAIL_SEGMENTS * 3 * 3);
@@ -4420,14 +4766,7 @@ import {
             // Head is fat and hot, tail tapers to nothing: that gradient IS the
             // direction cue, and it works even in a single still frame.
             const t = i / (TRAIL_SEGMENTS - 1);
-            // TO ZERO, not to 35%. A double-sided additive strip held at a third
-            // of its width while its tangent points at the camera does not
-            // dissolve — it renders as hard-edged pale slivers, and in the
-            // captured frame three of them lay across a sector plate with one
-            // cutting straight through the '1' of its number. A smoothstep takes
-            // the ribbon to nothing as it turns edge-on, and the material opacity
-            // (below) rides the same factor, so a fleet flying at the viewer
-            // fades out instead of shattering.
+            // TO ZERO, not to 35%. A double-sided additive strip held at a third. Full rationale: docs/galaxy3d-design-notes.md#to-zero-not-to-35-a-double-sided-additive-strip-held-at-a-th
             const s = Math.min(1, Math.max(0, (stability - 0.02) / 0.23));
             const edgeOn = s * s * (3 - 2 * s);
             if (edgeOn < minStability) minStability = edgeOn;
@@ -4463,13 +4802,7 @@ import {
         return (dx * dx + dz * dz) > 1e-6;
     }
 
-    /**
-     * The minimum angle, in radians, between a fleet's ground track and the
-     * camera's own ground axis. Below this the hull is presented END-ON and a
-     * dart seen down its own axis is a featureless truncated cone with two
-     * collars — which is exactly what parked over sector 10's ID plaque and
-     * erased the number.
-     */
+    /** The minimum angle, in radians, between a fleet's ground track and the. Full rationale: docs/galaxy3d-design-notes.md#the-minimum-angle-in-radians-between-a-fleet-s-ground-track- */
     const MIN_TRACK_YAW = 0.58;   // ~33 degrees
 
     const _headTmp = new THREE.Vector3();
@@ -4477,24 +4810,7 @@ import {
     const _covB = new THREE.Vector3();
     const _covC = new THREE.Vector3();
 
-    /**
-     * How much of a guarded sector's ID plaque this fleet is currently sitting
-     * on, 0..1, in SCREEN space.
-     *
-     * THE SECTOR NUMBER IS UNINTERRUPTIBLE. Crabbing the hulls (see
-     * readableHeading) stops them presenting end-on, but it cannot help with the
-     * geometry of a move that runs toward the viewer: the plaque lies on the
-     * tile's NEAR edge, so a fleet leaving that tile toward the camera passes
-     * directly over its own sector code about a third of the way through the
-     * crossing. Measured on the shipped frame, the '10' was gone entirely and
-     * the plaque well was empty — the game's own animation deleting a
-     * first-class strategy read.
-     *
-     * Only the two sectors the crossing touches are ever tested, so this is two
-     * projections a frame. The alternative — depthTest:false on the plaque —
-     * would put the number back through any asteroid standing in front of it,
-     * which is a defect this file has already fixed once.
-     */
+    /** How much of a guarded sector's ID plaque this fleet is currently sitting. Full rationale: docs/galaxy3d-design-notes.md#how-much-of-a-guarded-sector-s-id-plaque-this-fleet-is-curre */
     function plaqueCover(move) {
         if (!move.guard) return 0;
         _covA.copy(move.group.position).project(state.camera);
@@ -4515,19 +4831,7 @@ import {
         return worst;
     }
 
-    /**
-     * A heading vector for the darts to face: the true ground track, CRABBED
-     * away from the camera axis when the track runs straight at or away from
-     * the viewer.
-     *
-     * The rig never rotates and its ground axis is +/-Z (VIEW_DIR.x is zero), so
-     * "straight at the camera" is a fixed test, not a per-frame projection. Any
-     * move between vertically-adjacent sectors is exactly that case, which is
-     * most moves — so without this the common case is the unreadable one. The
-     * ships still FLY the true path; they simply hold a banked attitude across
-     * it, the way anything with a lifting surface approaches. What it buys is a
-     * silhouette that stays a ship at every moment of the crossing.
-     */
+    /** A heading vector for the darts to face: the true ground track, CRABBED. Full rationale: docs/galaxy3d-design-notes.md#a-heading-vector-for-the-darts-to-face-the-true-ground-track */
     function readableHeading(dx, dy, dz) {
         const gl = Math.hypot(dx, dz);
         if (gl < 1e-5) return _headTmp.set(0, 0, 1);
@@ -4549,27 +4853,7 @@ import {
         if (!from || !to || !state.ready) return;
 
         const mine = Boolean(opts.mine);
-        /**
-         * NEITHER FLEET IS CYAN.
-         *
-         * Friendly was [0.16, 1.05, 1.35] and its route ribbon [126, 226, 244];
-         * measured on the shipped frame the pad plume peaked at RGB(179,224,228)
-         * — the most saturated, coolest pixel anywhere in the view, dominating
-         * the homeworld tile. The brief is steel and amber/bronze, WarCraft II /
-         * StarCraft I industrial, explicitly NOT the sleek cool holographic
-         * default; the comment that used to sit here rejected pink on exactly
-         * that ground while shipping saturated cyan two lines further down.
-         *
-         * So ownership is carried by VALUE AND SHAPE, which is both how warships
-         * are actually told apart and the only channel that still works for a
-         * colour-blind player: friendly hulls are bright steel throwing a warm
-         * amber plume, hostile hulls are dark steel throwing a deep red one. The
-         * cool accent is reserved for the selection ring, where it is functional.
-         *
-         * These are the LINEAR gains applied to the painted plume ramp and the
-         * nozzle glare; they sit just over white so the bloom pass finds the
-         * throat, and no higher — a plume authored at 3x swallows the hull.
-         */
+        /** NEITHER FLEET IS CYAN. Full rationale: docs/galaxy3d-design-notes.md#neither-fleet-is-cyan */
         const hot = mine ? [1.35, 0.72, 0.22] : [1.55, 0.24, 0.12];
         const count = Math.max(1, Number(opts.count) || 1);
         const ships = count >= 9 ? 3 : (count >= 3 ? 2 : 1);
@@ -4593,18 +4877,7 @@ import {
             const hull = new THREE.Mesh(state.sharedGeo.dart, hullMat);
             hull.scale.setScalar(scale);
             dart.add(hull);
-            /**
-             * THE PLUME IS A CONE OUT OF THE NOZZLE, NOT A BALL BEHIND THE SHIP.
-             *
-             * The old engine was a camera-facing glow sprite 1.1 hull-widths
-             * across, parked a full hull-length aft of the dart's origin — so
-             * what crossed the board was a bright orb with two dark slivers
-             * trailing below-left of it, reading as two unrelated sprites rather
-             * than one mass under way. This is a tapered cone rooted at the
-             * nozzle the hull geometry actually has (z = -0.492 in hull units,
-             * see buildDartGeometry), hot at the throat and transparent at the
-             * tail, so the thrust is attached to the thing producing it.
-             */
+            /** THE PLUME IS A CONE OUT OF THE NOZZLE, NOT A BALL BEHIND THE SHIP. Full rationale: docs/galaxy3d-design-notes.md#the-plume-is-a-cone-out-of-the-nozzle-not-a-ball-behind-the- */
             const NOZZLE_Z = -0.492 * scale;
             const plume = new THREE.Mesh(
                 state.sharedGeo.plume,
@@ -4677,18 +4950,7 @@ import {
         const history = [];
         for (let i = 0; i < TRAIL_SEGMENTS; i++) history.push(start.clone());
 
-        /**
-         * DEPARTURE GLARE, ON THE DECK.
-         *
-         * This was a camera-facing sprite positioned at `start` — and `start`
-         * has already been lifted to FLEET_ALTITUDE, so the flash the comment
-         * called "on the origin plate" actually rendered at cruising height with
-         * no hull attached to it: a bright orb floating on the trail while the
-         * ship sat well below-left of it, reading as two unrelated sprites
-         * rather than one mass under way. It is now a DECAL lying flat on the
-         * origin plate, like the `wash`, so it reads as engine light washing the
-         * deck at launch.
-         */
+        /** DEPARTURE GLARE, ON THE DECK. Full rationale: docs/galaxy3d-design-notes.md#departure-glare-on-the-deck */
         const flash = new THREE.Mesh(
             state.sharedGeo.decal,
             new THREE.MeshBasicMaterial({
@@ -4799,7 +5061,7 @@ import {
         const t = Number(sectorData.type);
         if (Number.isFinite(t) && entry.type !== t) {
             entry.type = t;
-            rebuildContent(entry);
+            queueContent(entry);
         }
         setSelected(sectorData.id);
     }
@@ -4807,7 +5069,11 @@ import {
     function setSelected(sectorId) {
         state.selectedSector = Number(sectorId);
         const entry = state.sectors.get(state.selectedSector);
-        if (!entry || !state.selectionRing) return;
+        if (!entry) return;
+        // Built here rather than at boot, because it needs the plate atlas. By
+        // the time anyone can select a sector the boot schedule has almost always
+        // warmed it already; if not, the first selection pays for it once.
+        if (!ensureSelectionRing()) return;
         // The marker is a CHILD of the sector group, so it inherits the tile's
         // own transform and cannot drift, overshoot into a neighbour, or hang
         // across the gutter. It is drawn after the plate and before the world.
@@ -4898,12 +5164,7 @@ import {
         };
     }
 
-    /**
-     * Work out how far to slide the rendered world so the camera target appears in the
-     * middle of the un-occluded band rather than the middle of the canvas. The camera
-     * looks along -Z with a fixed downward tilt, so screen-right is world +X and
-     * screen-down is world +Z, stretched by the tilt.
-     */
+    /** Work out how far to slide the rendered world so the camera target appears… Full rationale: docs/galaxy3d-design-notes.md#work-out-how-far-to-slide-the-rendered-world-so-the-camera-t */
     function updateFrameOffset() {
         state.frameOffset.set(0, 0, 0);
         if (!state.camera || !state.container) return;
@@ -4987,63 +5248,329 @@ import {
             return;
         }
         state.safeInset = next;
-        updateFrameOffset();
+        // COALESCED, like the window resize: updateFrameOffset() ends in a
+        // getBoundingClientRect, and the HUD reports its insets on every panel
+        // collapse, breakpoint change and layout settle — several in a row while
+        // a player drags the window edge. One measurement per frame is enough,
+        // and the camera cannot move faster than a frame anyway.
+        state.frameOffsetDirty = true;
     }
 
     // ------------------------------------------------------------------
     // Scene bootstrap & interaction
     // ------------------------------------------------------------------
 
-    /**
-     * True when WebGL is being serviced by a CPU rasteriser (SwiftShader,
-     * llvmpipe, Mesa's software path). Those have no fill rate to speak of, and
-     * asking one for a HiDPI backing store on a view that is always on screen is
-     * how a map ends up at four frames a second — at which point the quality
-     * governor starts amputating passes and the frame loses its anti-aliasing,
-     * which is the one thing a software rasteriser was never the bottleneck for.
-     */
-    function isSoftwareRenderer(renderer) {
+    /** True when WebGL is being serviced by a CPU rasteriser (SwiftShader. Full rationale: docs/galaxy3d-design-notes.md#true-when-webgl-is-being-serviced-by-a-cpu-rasteriser-swifts */
+    const SOFTWARE_GL = /swiftshader|llvmpipe|software|basic render|microsoft basic/i;
+
+    function contextIsSoftware(gl) {
         try {
-            const gl = renderer.getContext();
             const info = gl.getExtension('WEBGL_debug_renderer_info');
-            const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
-            return /swiftshader|llvmpipe|software|basic render|microsoft basic/i.test(name);
+            return info ? SOFTWARE_GL.test(String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL))) : false;
         } catch (err) {
             return false;
         }
     }
 
+    // . Full rationale: docs/galaxy3d-design-notes.md#the-map-s-own-loading-state-and-three-honest-signals
+
+    /** Steel, amber, Share Tech Mono. Shared by the plate and the strip. */
+    const PLATE_SKIN = [
+        // Beveled steel: a light top lip over a dark bottom groove, which is what
+        // the rest of the console is made of. Plain neutral border, no accent edge.
+        'background:linear-gradient(180deg,#252c38 0%,#1b212b 100%)',
+        'border:1px solid #39414f',
+        'box-shadow:inset 0 1px 0 rgba(255,255,255,0.10),'
+            + 'inset 0 -1px 0 rgba(0,0,0,0.55),0 6px 18px rgba(0,0,0,0.45)',
+        "font-family:'Share Tech Mono',monospace",
+        'text-transform:uppercase', 'text-align:center',
+        // #d9a441 on #1e242e measures 7.4:1 — comfortably past AA for body text,
+        // which is what a status line has to be.
+        'color:#d9a441'
+    ].join(';');
+
+    /** The middle of the band the HUD is NOT covering, as CSS. Full rationale: docs/galaxy3d-design-notes.md#the-middle-of-the-band-the-hud-is-not-covering-as-css */
+    function safeCentre() {
+        const inset = state.safeInset || { left: 0, right: 0, top: 0, bottom: 0 };
+        const dx = Math.round(((inset.left || 0) - (inset.right || 0)) / 2);
+        const dy = Math.round(((inset.top || 0) - (inset.bottom || 0)) / 2);
+        return [`left:calc(50% + ${dx}px)`, `top:calc(50% + ${dy}px)`];
+    }
+
+    function ensureBootPlate() {
+        if (state.bootPlate || !state.container) return null;
+        const plate = document.createElement('div');
+        plate.setAttribute('data-g3d-plate', '');
+        // The live region beside it carries this text for assistive tech, and two
+        // sources saying the same thing is worse than one. This is not silencing
+        // a control — nothing here is operable and nothing here is unique.
+        plate.setAttribute('aria-hidden', 'true');
+        const line = document.createElement('div');
+        line.setAttribute('data-g3d-plate-line', '');
+        const sub = document.createElement('div');
+        sub.setAttribute('data-g3d-plate-sub', '');
+        plate.appendChild(line);
+        plate.appendChild(sub);
+        state.container.appendChild(plate);
+        state.bootPlate = plate;
+        return plate;
+    }
+
+    /** How many charted sectors are still stand-ins, and how many there are in all. */
+    function surveyProgress() {
+        const left = state.contentQueue.length;
+        const total = Math.max(left, state.chartedTotal || 0);
+        return { left, total, done: Math.max(0, total - left) };
+    }
+
+    /** A survey that has not advanced for this long owes the player an explanation. */
+    const SURVEY_STALL_MS = 3000;
+
+    /**
+     * Name the step that is ABOUT to run.
+     *
+     * The strip's whole job is to prove the map is not stuck, and during a stall
+     * it freezes with everything else — so the useful moment is the frame
+     * BEFORE. drainContentQueue() names an over-budget bake and hands the frame
+     * back; the bake happens on the next one, by which time the player is
+     * looking at a line that says what the pause is for.
+     */
+    function noteSurveyStep(what) {
+        if (state.surveyStep === what) return;
+        state.surveyStep = what;
+        if (state.bootPlateMode === 'strip') paintBootPlate('strip');
+    }
+
+    function clearSurveyStep(what) {
+        if (!state.surveyStep || (what !== undefined && state.surveyStep !== what)) return;
+        state.surveyStep = '';
+        if (state.bootPlateMode === 'strip') paintBootPlate('strip');
+    }
+
+    /**
+     * Seconds left, from the rate the last few sectors actually took.
+     *
+     * A count that is not moving is only reassuring if the player knows what
+     * moving looks like. Three completions is the smallest sample that is not
+     * just the first sector's cold caches, and the mean is deliberately over the
+     * last three rather than all of them so the estimate tracks a board that
+     * speeds up once the forge has cached its classes.
+     */
+    function surveyRate() {
+        const rates = state.surveyRates;
+        if (rates.length < 3) return 0;
+        return rates.reduce((a, b) => a + b, 0) / rates.length;
+    }
+
+    function surveyEta(p) {
+        const mean = surveyRate();
+        if (!p.left || !mean) return 0;
+        return Math.max(1, Math.round((mean * p.left) / 1000));
+    }
+
+    /** The one line the strip shows, and the only place its wording is decided. */
+    function surveyLine() {
+        const p = surveyProgress();
+        if (!p.total) return 'Surveying sectors';
+        const count = `Surveying ${p.done} / ${p.total} sectors`;
+        if (state.surveyStep) return `${count} — ${state.surveyStep}`;
+        const eta = surveyEta(p);
+        /**
+         * The watchdog fires when the wait has beaten the board's OWN recent
+         * pace, not on a flat three seconds. A survey that is taking four
+         * seconds a sector and says "about 12s left" is informative and moving;
+         * replacing that with an apology every time it crosses three seconds
+         * would be the loader crying wolf at its own normal speed. What is worth
+         * saying is "this is longer than it has been taking" — and, before there
+         * is any pace to compare against, a plain three seconds is that.
+         */
+        const patience = Math.max(SURVEY_STALL_MS, surveyRate() * 2);
+        if (state.surveyChangedAt && performance.now() - state.surveyChangedAt > patience) {
+            return `${count} — still working, this machine is slow at it`;
+        }
+        return eta ? `${count} — about ${eta}s left` : count;
+    }
+
+    /**
+     * Keep the strip honest once a frame: notice progress, learn the rate, and
+     * repaint only when the words change.
+     */
+    function stepSurveyStrip() {
+        if (state.bootPlateMode !== 'strip') return;
+        const done = surveyProgress().done;
+        if (done !== state.surveyDone) {
+            const now = performance.now();
+            if (state.surveyDone >= 0 && done > state.surveyDone) {
+                const per = (now - state.surveyChangedAt) / (done - state.surveyDone);
+                state.surveyRates.push(per);
+                if (state.surveyRates.length > 3) state.surveyRates.shift();
+            }
+            state.surveyDone = done;
+            state.surveyChangedAt = now;
+        }
+        paintBootPlate('strip');
+    }
+
+    function paintBootPlate(mode) {
+        const plate = state.bootPlate || ensureBootPlate();
+        if (!plate) return;
+        const line = plate.querySelector('[data-g3d-plate-line]');
+        const sub = plate.querySelector('[data-g3d-plate-sub]');
+        if (mode === 'full') {
+            plate.style.cssText = PLATE_SKIN + ';' + [
+                'position:absolute', ...safeCentre(),
+                'transform:translate(-50%,-50%)', 'pointer-events:none',
+                'z-index:2', 'padding:18px 26px', 'font-size:13px', 'letter-spacing:0.16em'
+            ].join(';');
+            line.textContent = 'Plotting table warming up';
+            sub.style.cssText = 'margin-top:7px;font-size:11px;letter-spacing:0.1em;color:#9fb0c8';
+            sub.textContent = 'Charted sectors will appear as they are surveyed';
+            sub.hidden = false;
+        } else {
+            /**
+             * ALONG THE TOP OF THE CLEAR BAND, not the bottom of it.
+             *
+             * The bottom was tried first and photographed badly: the build pad
+             * makes the bottom inset several hundred pixels tall, so "just above
+             * the inset" put the strip halfway up the canvas — straight through
+             * the map key at 1600x900. The strip is inside #galaxy3d and the HUD
+             * panels are its siblings, so no z-index inside this element can lift
+             * it over them; the only reliable answer is to sit somewhere they
+             * are not. The band under the status bars is clear at every viewport
+             * the responsive suite exercises, and it is also where the eye
+             * already goes for status.
+             */
+            const top = Math.round((state.safeInset.top || 0) + 14);
+            const dx = Math.round(((state.safeInset.left || 0) - (state.safeInset.right || 0)) / 2);
+            const css = PLATE_SKIN + ';' + [
+                'position:absolute', `left:calc(50% + ${dx}px)`, `top:${top}px`,
+                'transform:translateX(-50%)', 'pointer-events:none',
+                'z-index:2', 'padding:7px 16px', 'font-size:11px', 'letter-spacing:0.16em',
+                'white-space:nowrap'
+            ].join(';');
+            // Repainted every frame now — see stepSurveyStrip() — so a repaint
+            // that changes nothing must cost nothing. Assigning cssText is a full
+            // style reparse and assigning textContent invalidates layout; both
+            // are skipped when the string is the one already there.
+            if (state.stripCss !== css) {
+                state.stripCss = css;
+                plate.style.cssText = css;
+            }
+            // A count, not a spinner: it says how much is left and it visibly
+            // moves, which is the difference between "loading" and "stuck". What
+            // follows the count says why, when there is a why — see surveyLine().
+            const text = surveyLine();
+            if (state.stripText !== text) {
+                state.stripText = text;
+                line.textContent = text;
+            }
+            sub.hidden = true;
+            sub.textContent = '';
+        }
+        state.bootPlateMode = mode;
+    }
+
+    function showBootPlate() {
+        // NO TIMER. A loader that races the thing it is loading loses the race on
+        // exactly the machines that need it.
+        paintBootPlate('full');
+    }
+
+    function hideBootPlate() {
+        if (state.bootPlate) {
+            state.bootPlate.remove();
+            state.bootPlate = null;
+        }
+        state.bootPlateMode = null;
+        // The next plate is a new element: nothing is on it yet, so the
+        // repaint-only-on-change guards must not think it already says this.
+        state.stripCss = '';
+        state.stripText = '';
+    }
+
+    /** ONE PERMANENT LIVE REGION, IN THE DOM FROM THE START. Full rationale: docs/galaxy3d-design-notes.md#one-permanent-live-region-in-the-dom-from-the-start */
+    function ensureStatusRegion() {
+        if (state.statusRegion || !state.container) return state.statusRegion;
+        const el = document.createElement('div');
+        el.setAttribute('data-g3d-status', '');
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        el.style.cssText = [
+            'position:absolute', 'width:1px', 'height:1px', 'margin:-1px',
+            'padding:0', 'overflow:hidden', 'clip:rect(0 0 0 0)',
+            'clip-path:inset(50%)', 'white-space:nowrap', 'border:0'
+        ].join(';');
+        state.container.appendChild(el);
+        state.statusRegion = el;
+        return el;
+    }
+
+    function say(text) {
+        const el = ensureStatusRegion();
+        if (!el || text === state.statusSaid) return;
+        state.statusSaid = text;
+        el.textContent = text;
+    }
+
+    /**
+     * Keep the visible plate and the spoken status in step with the queue.
+     * Called whenever the queue changes length — a sector charted, a tile
+     * finished, a class arriving from the forge.
+     */
+    function updateLoadingState() {
+        if (state.boardAnnounced || state.contextLost) return;
+        const p = surveyProgress();
+        if (state.bootPlateMode === 'strip') paintBootPlate('strip');
+        if (!p.left) return;
+        /**
+         * COARSE ON PURPOSE, AND NOW ACTUALLY COARSE.
+         *
+         * say() dedupes only against the immediately previous string, so a
+         * sentence carrying a running count is a fresh polite interruption per
+         * sector: 'surveying 8 of 9 sectors', 'surveying 7 of 9 sectors', and so
+         * on for the whole survey. The count belongs on the visible strip, where
+         * a sighted player reads it at a glance and nobody is interrupted by it.
+         *
+         * What is worth interrupting for is that the survey started, that it is
+         * half done on a board big enough for the middle to be a long way from
+         * either end, and that it finished. The start is already announced by
+         * initialize() and the end by announceBoardReady(), so all that belongs
+         * here is the middle — and it carries no count of its own beyond the
+         * total, because both the numerator AND the denominator move as fog
+         * lifts. Three announcements at most, at any board size; the latch is
+         * what guarantees it.
+         */
+        if (!state.saidSurveyHalf && p.total >= 12 && p.done * 2 >= p.total) {
+            state.saidSurveyHalf = true;
+            say(`Galaxy map loading, about half of ${p.total} sectors surveyed`);
+        }
+    }
+
+    function announceFirstFrame() {
+        // DEMOTED, NOT REMOVED. The board exists now, which is worth saying, but
+        // it is not finished, which is worth saying too.
+        if (state.contentQueue.length) paintBootPlate('strip');
+        else hideBootPlate();
+        document.dispatchEvent(new CustomEvent('galaxy3d-first-frame'));
+    }
+
+    function announceBoardReady() {
+        if (state.boardAnnounced || state.contentQueue.length || !state.gridBuilt) return;
+        state.boardAnnounced = true;
+        hideBootPlate();
+        say(`Galaxy map ready, ${state.chartedTotal || 0} sectors charted`);
+        document.dispatchEvent(new CustomEvent('galaxy3d-board-ready'));
+    }
+
+    /** Build the post chain. ONLY EVER CALLED ON A MACHINE THAT HAS BEEN MEASURED. Full rationale: docs/galaxy3d-design-notes.md#build-the-post-chain-only-ever-called-on-a-machine-that-has- */
     function buildComposer(renderer, w, h) {
         try {
-            /**
-             * MSAA ON THE SCENE TARGET.
-             *
-             * With a composer the canvas only ever receives a fullscreen quad, so
-             * `antialias: true` on the renderer does nothing — every silhouette in
-             * the scene was rasterised with no coverage sampling at all, and FXAA
-             * at the end of the chain is a post-hoc edge blur that cannot
-             * reconstruct a stair-stepped one-pixel circle. That is why the star's
-             * disc, the plate chamfers and the planet limbs all came back visibly
-             * jagged. Allocating the composer's own target with samples: 4 puts
-             * real coverage sampling back where the geometry is drawn; FXAA stays
-             * on afterwards for the shader-aliasing FXAA is actually good at.
-             *
-             * EffectComposer clones whatever target it is given for its second
-             * ping-pong buffer, and RenderPass/UnrealBloomPass both declare
-             * needsSwap = false, so the buffer the scene lands in is covered.
-             */
+            /** MSAA ON THE SCENE TARGET. Full rationale: docs/galaxy3d-design-notes.md#msaa-on-the-scene-target */
             const pr = renderer.getPixelRatio();
             const target = new THREE.WebGLRenderTarget(
                 Math.max(2, Math.round(w * pr)), Math.max(2, Math.round(h * pr)), {
                     type: THREE.HalfFloatType,
-                    // Never on a CPU rasteriser: a 4x multisampled half-float
-                    // colour buffer at this size is ~60MB with a full resolve
-                    // every frame, and measured on SwiftShader it took the map
-                    // from interactive to unable to complete a screenshot. Those
-                    // machines keep the supersampled backing store and FXAA
-                    // instead, which is the same job done where they can afford
-                    // it.
-                    samples: (renderer.capabilities.isWebGL2 && !state.software) ? 4 : 0
+                    samples: renderer.capabilities.isWebGL2 ? 4 : 0
                 });
             target.texture.name = 'Galaxy3D.scene';
             const composer = new EffectComposer(renderer, target);
@@ -5065,16 +5592,8 @@ import {
                             Math.max(2, Math.round(height * BLOOM_SCALE)));
             };
             bloom.setSize(w, h);
-            // UnrealBloomPass is five mip levels of separable blur — on the order of
-            // a dozen fullscreen passes. A GPU absorbs that; a CPU rasteriser does
-            // not, and it was the single largest term in the 302 ms frame measured
-            // on SwiftShader. Software machines keep the scene, the tone map and
-            // FXAA and lose only the glow, which is the right thing to lose when the
-            // alternative is an unplayable board.
-            if (!state.software) {
-                composer.addPass(bloom);
-                state.bloomPass = bloom;
-            }
+            composer.addPass(bloom);
+            state.bloomPass = bloom;
 
             composer.addPass(new OutputPass());
 
@@ -5084,23 +5603,7 @@ import {
             // (specular sparkle on the chamfers, the star's granulation).
             const fxaa = new ShaderPass(FXAAShader);
             fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
-            /**
-             * THE OUTPUT DITHER, IN SCREEN SPACE.
-             *
-             * This is the last pass in the chain, so it is where the half-float
-             * frame is quantised to the canvas's 8 bits — and the sky is a very
-             * smooth gradient over a very small value range that ACES then
-             * stretches, which is textbook contouring. A +/-1.5 level triangular
-             * PDF (the sum of two uniforms) decorrelates the quantiser where a
-             * uniform one leaves residual structure.
-             *
-             * It is spliced into FXAA rather than added as a pass of its own
-             * because the correction is two lines of arithmetic and a whole
-             * extra full-screen blit to carry them is not a trade worth making.
-             * It also has to live HERE and nowhere else: the same dither
-             * authored into the sky texture became the 15px lattice that made
-             * the frame unshippable (see buildSkyTexture).
-             */
+            /** THE OUTPUT DITHER, IN SCREEN SPACE. Full rationale: docs/galaxy3d-design-notes.md#the-output-dither-in-screen-space */
             const FXAA_OUT = 'gl_FragColor = ApplyFXAA( tDiffuse, resolution.xy, vUv );';
             if (fxaa.material.fragmentShader.indexOf(FXAA_OUT) !== -1) {
                 fxaa.material.fragmentShader = fxaa.material.fragmentShader.replace(FXAA_OUT, [
@@ -5128,28 +5631,30 @@ import {
 
         let renderer;
         try {
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer = new THREE.WebGLRenderer({
+                // MSAA on the DEFAULT framebuffer. With a composer this does. Full rationale: docs/galaxy3d-design-notes.md#msaa-on-the-default-framebuffer-with-a-composer-this-does
+                antialias: true,
+                alpha: true,
+                // Say out loud which part we want. A laptop with switchable
+                // graphics otherwise gets to guess, and it guesses the integrated
+                // one for a canvas it has not seen do any work yet. Asked
+                // unconditionally now: there is no probe left to tell us in
+                // advance that there is no discrete part to ask for, and on a
+                // machine with only a software rasteriser the hint is a no-op.
+                powerPreference: 'high-performance'
+            });
         } catch (err) {
             console.warn('Galaxy3D: WebGL unavailable, keeping classic view.', err);
             return false;
         }
 
+        // Asked of the context that is actually going to draw, and asked here
+        // because everything it feeds is settable after construction.
+        state.software = contextIsSoftware(renderer.getContext());
+
         state.container = container;
         state.renderer = renderer;
-        // Capped at 1.5, not 2. The map fills the window and is drawn through
-        // four full-screen post passes, so on a HiDPI laptop a ratio of 2 costs
-        // 78% more fill than 1.5 for a difference the bloom pass softens away
-        // anyway. Every pixel of that is spent on a view that is never off
-        // screen, which is exactly where a frame budget goes to die.
-        // A CPU rasteriser gets the SMALLEST backing store, not the largest.
-        // Supersampling at 1.5 was chosen here as "the only anti-aliasing those
-        // machines get once MSAA is refused" — but 1.5 is 2.25x the pixels, and
-        // every one of them is shaded on the CPU, through a bloom chain that is
-        // itself a dozen fullscreen passes. Measured on SwiftShader that combination
-        // ran the map at 302 ms/frame (3 fps) against 17.9 ms (56 fps) before any of
-        // this existed. Nothing is anti-aliased at 3 fps because nothing is playable
-        // at 3 fps, so these machines take 1.0 and keep FXAA.
-        state.software = isSoftwareRenderer(renderer);
+        // Capped at 1.5, not 2. The map fills the window and is drawn through. Full rationale: docs/galaxy3d-design-notes.md#capped-at-1-5-not-2-the-map-fills-the-window-and-is-drawn-th
         renderer.setPixelRatio(state.software ? 1 : Math.min(window.devicePixelRatio || 1, 1.5));
         // ACES plus a proper sRGB output transform, matching the battle theater.
         // Without these the whole scene is authored in a space nothing agrees on
@@ -5169,35 +5674,18 @@ import {
         renderer.domElement.style.width = '100%';
         renderer.domElement.style.height = '100%';
         renderer.domElement.style.display = 'block';
+        bindContextLoss(renderer.domElement);
 
         state.scene = new THREE.Scene();
         // Only ever seen if the sky dome fails to build; even then it should not
         // be a hole.
         state.scene.background = new THREE.Color(0x0a1020);
-        /**
-         * ATMOSPHERIC PERSPECTIVE.
-         *
-         * The board read as a Catan tray photographed from above because nothing
-         * receded: far hex rows were the same size, the same value and the same
-         * sharpness as near ones, so the frame had no depth cue of any kind.
-         * Exponential fog tinted to the sky is the classical fix and the cheapest
-         * one — it costs a per-fragment lerp on the plates, which are already the
-         * largest fill in the scene, and nothing else. Density is set so the far
-         * edge of a fourteen-wide grid loses about a fifth of its contrast: enough
-         * to build depth, not enough to grey out gameplay signal.
-         */
+        /** ATMOSPHERIC PERSPECTIVE. Full rationale: docs/galaxy3d-design-notes.md#atmospheric-perspective */
         state.scene.fog = new THREE.FogExp2(0x0c1424, 0.018);
         state.camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 900);
         state.raycaster = new THREE.Raycaster();
 
-        // The rig lights the PLATES and the ROCKS. Worlds and stars carry their
-        // own light in-material, so this can be tuned for machined steel without
-        // flattening a planet's terminator.
-        // 0.5, not 0.34: every plate has facets turned away from both directional
-        // lights, and at the old level those were crushed into the bottom fifth
-        // of the value scale — the un-keyed side of the board had no image in it
-        // at all. Ambient is the cheapest possible fill (no extra light loop) and
-        // it is the term that sets the floor of the whole frame.
+        // The rig lights the PLATES and the ROCKS. Worlds and stars carry their. Full rationale: docs/galaxy3d-design-notes.md#the-rig-lights-the-plates-and-the-rocks-worlds-and-stars-car
         state.scene.add(new THREE.AmbientLight(0x8494c8, 0.62));
         // 2.2, not 1.45. THE BOARD MUST BE THE BRIGHTEST THING IN THE FRAME —
         // with deep space lifted out of black, the plates measured DIMMER than
@@ -5217,20 +5705,16 @@ import {
         rim.position.set(-8, 5, -7);
         state.scene.add(rim);
 
-        // Reflection probe for the few remaining physically-shaded surfaces:
-        // the belt rocks and the fleet hulls. Handing three.js the raw equirect
-        // lets it build the prefiltered probe itself, and because the plates are
-        // Phong the expensive image-based path is now paid over a few hundred
-        // pixels of rock rather than the whole board.
-        state.scene.environment = studioEnvTexture();
-
-        state.plateMaps = buildPlateMaps();
-        state.fogTexture = buildFogCloudTexture();
-
+        // THE HEAVY BAKES ARE NOT HERE ANY MORE. Full rationale: docs/galaxy3d-design-notes.md#the-heavy-bakes-are-not-here-any-more
         state.sharedGeo.hex = buildHexPlateGeometry();
         state.sharedGeo.fogCells = [];
         for (let i = 0; i < FOG_CELL_VARIANTS; i++) state.sharedGeo.fogCells.push(buildFogCellGeometry(i));
         state.sharedGeo.sphere = new THREE.SphereGeometry(1, 24, 16);
+        // Worlds get their own, at the generator's own tessellation (48x32), so a
+        // forged world and one built by createPlanetObject() have the identical
+        // silhouette. Listed in sharedGeo, which is what disposeContent() checks
+        // before freeing a geometry.
+        state.sharedGeo.worldSphere = new THREE.SphereGeometry(1, 48, 32);
         state.sharedGeo.disc = new THREE.PlaneGeometry(2, 2);
         state.sharedGeo.photonRing = new THREE.RingGeometry(0.92, 1.06, 48);
         state.sharedGeo.decal = buildHexDiscGeometry(1);
@@ -5244,28 +5728,69 @@ import {
         state.sharedGeo.selection = buildSelectionClampGeometry();
         state.sharedGeo.hover = buildHexRingGeometry(0.985, 0.945);
 
+        state.hoverRing = new THREE.Mesh(
+            state.sharedGeo.hover,
+            new THREE.MeshBasicMaterial({
+                color: new THREE.Color(0.95, 0.74, 0.36),
+                transparent: true,
+                opacity: 0.62,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            })
+        );
+        state.hoverRing.renderOrder = 1;
+        state.hoverRing.visible = false;
+        state.scene.add(state.hoverRing);
+
+        // NO COMPOSER YET, ON PURPOSE. The first frame is the one the player is
+        // waiting for; it goes straight to the canvas. governPost() measures what
+        // this machine does with that and adds the chain only if there is room.
+        state.composer = null;
+        // EVERY machine probes now, including the CPU rasteriser. It will not earn
+        // the composer and is not expected to — but a machine that is never
+        // measured is a machine the frame governor cannot rescue, and that was the
+        // one class demonstrably unable to render this scene. See governDetail().
+        state.post = POST_PROBING;
+
+        bindPointerEvents(renderer.domElement);
+        // COALESCED. Dragging a window edge fires this at pointer rate, and each
+        // one used to force a layout, a renderer resize and — on a machine that
+        // earned the post chain — a full composer reallocation: two half-float
+        // ping-pong targets and five bloom mip pairs, per event. The flag is
+        // cleared by animate(), so the work happens at most once a frame.
+        window.addEventListener('resize', () => { state.resizeDirty = true; });
+        document.body.classList.add('g3d-active');
+
+        state.ready = true;
+        resize();
+        // In the DOM before there is anything to announce — that is what makes a
+        // live region announce at all.
+        ensureStatusRegion();
+        showBootPlate();
+        say('Galaxy map loading');
+        // NOT animate(). Calling it inline runs the whole first frame — shader
+        // compilation, texture uploads, the first draw — inside initialize(), so
+        // the caller that handed us the board is billed for it and the browser
+        // never gets a chance to paint in between. Scheduled, the first render is
+        // its own task and the page is answering the player before it starts.
+        state.animHandle = requestAnimationFrame(animate);
+        return true;
+    }
+
+    /** The selection marker, built on first use. Full rationale: docs/galaxy3d-design-notes.md#the-selection-marker-built-on-first-use */
+    function ensureSelectionRing() {
+        if (state.selectionRing || !state.scene) return state.selectionRing;
+        const plate = plateMaps();
         // Selection marker. Same corner array, same centre — there is no second
         // definition of the hexagon for it to disagree with — and the SAME plate
         // maps and the same key light as the tile it is bolted to.
         state.selectionRing = new THREE.Mesh(
             state.sharedGeo.selection,
             new THREE.MeshPhongMaterial({
-                map: state.plateMaps.map,
-                normalMap: state.plateMaps.normalMap,
-                // MACHINED STEEL, NOT ABS. The old 0xa9b4c6 with a broad
-                // 70-exponent lobe sat outside the steel palette entirely and
-                // read as chalky moulded plastic; a mid grey under the same
-                // tight specular the plates now use makes it obviously the same
-                // material as the table, just a newer piece of it. The warm
-                // emissive stays — that is the "this one is selected" signal and
-                // it has to survive landing on a gold plate as well as a blue one.
-                //
-                // 0x6d7482, not 0x8f98a8, and the reflection halved. THE SECTOR
-                // NUMBER MUST BE THE BRIGHTEST MARK ON ITS OWN TILE. Measured,
-                // the brackets peaked at 204 luma against the numeral's 226 on
-                // the map framing and beat it outright at the closeup — a piece
-                // of furniture out-shouting the one label that carries gameplay.
-                // The marker keeps its amber; what it loses is the white.
+                map: plate.map,
+                normalMap: plate.normalMap,
+                // MACHINED STEEL, NOT ABS. The old 0xa9b4c6 with a broad. Full rationale: docs/galaxy3d-design-notes.md#machined-steel-not-abs-the-old-0xa9b4c6-with-a-broad
                 color: 0x6d7482,
                 emissive: new THREE.Color(0x7a5520),
                 emissiveIntensity: 0.3,
@@ -5286,39 +5811,113 @@ import {
         state.selectionRing.renderOrder = 1;   // after the plate, before the world
         state.selectionRing.visible = false;
         state.scene.add(state.selectionRing);
+        return state.selectionRing;
+    }
 
-        state.hoverRing = new THREE.Mesh(
-            state.sharedGeo.hover,
-            new THREE.MeshBasicMaterial({
-                color: new THREE.Color(0.95, 0.74, 0.36),
-                transparent: true,
-                opacity: 0.62,
-                side: THREE.DoubleSide,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending
-            })
-        );
-        state.hoverRing.renderOrder = 1;
-        state.hoverRing.visible = false;
-        state.scene.add(state.hoverRing);
+    /** WHEN THE DISPLAY LINK GOES AWAY. Full rationale: docs/galaxy3d-design-notes.md#when-the-display-link-goes-away */
+    function bindContextLoss(dom) {
+        dom.addEventListener('webglcontextlost', event => {
+            event.preventDefault();
+            state.contextLost = true;
+            if (state.animHandle) cancelAnimationFrame(state.animHandle);
+            state.animHandle = null;
+            showLostPlate();
+            say('Galaxy map display link lost. A control to restore the plotting table is available.');
+            console.warn('Galaxy3D: WebGL context lost — holding the board until it is restored.');
+        }, false);
 
-        const rect = container.getBoundingClientRect();
-        state.composer = buildComposer(renderer, Math.max(1, rect.width), Math.max(1, rect.height));
+        dom.addEventListener('webglcontextrestored', () => {
+            state.contextLost = false;
+            hideBootPlate();
+            // three.js re-initialises its own GL state on this event and re-uploads
+            // lazily; what it cannot know is that our composer's render targets are
+            // gone. Dropping it lets governPost() build a fresh one if the machine
+            // still deserves one.
+            if (state.composer) {
+                try { state.composer.dispose(); } catch (err) { /* already gone */ }
+                state.composer = null;
+                state.bloomPass = null;
+                state.fxaaPass = null;
+                state.post = POST_PROBING;
+            }
+            state.lastFrameAt = 0;
+            state.resizeDirty = true;
+            // Every charted sector is re-queued so anything the context took with
+            // it is generated again. The proxies go straight back on, so the board
+            // reads as "resurveying" rather than as empty.
+            state.sectors.forEach(entry => {
+                if (entry.content) { disposeContent(entry); }
+                queueContent(entry);
+            });
+            say('Galaxy map restored.');
+            if (!state.animHandle) state.animHandle = requestAnimationFrame(animate);
+            console.info('Galaxy3D: WebGL context restored — resurveying the board.');
+        }, false);
+    }
 
-        bindPointerEvents(renderer.domElement);
-        window.addEventListener('resize', resize);
-        document.body.classList.add('g3d-active');
-
-        state.ready = true;
-        resize();
-        animate();
-        return true;
+    /** The one plate that is operable: it carries the way out. */
+    function showLostPlate() {
+        hideBootPlate();
+        if (!state.container) return;
+        const plate = document.createElement('div');
+        plate.setAttribute('data-g3d-plate', '');
+        plate.style.cssText = PLATE_SKIN + ';' + [
+            'position:absolute', ...safeCentre(),
+            'transform:translate(-50%,-50%)', 'z-index:3',
+            'padding:18px 26px', 'font-size:13px', 'letter-spacing:0.16em',
+            'max-width:min(420px,86%)'
+        ].join(';');
+        const line = document.createElement('div');
+        line.setAttribute('data-g3d-plate-line', '');
+        line.textContent = 'Plotting table lost the display link';
+        const sub = document.createElement('div');
+        sub.setAttribute('data-g3d-plate-sub', '');
+        sub.style.cssText = 'margin-top:7px;font-size:11px;letter-spacing:0.1em;color:#9fb0c8';
+        sub.textContent = 'The board is waiting for the graphics driver to come back';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = 'Restore the board';
+        retry.style.cssText = [
+            'margin-top:12px', 'padding:8px 18px', 'cursor:pointer',
+            'background:linear-gradient(180deg,#39424f 0%,#252c37 100%)',
+            'border:1px solid #566173', 'color:#e6ecf6',
+            "font-family:'Share Tech Mono',monospace", 'font-size:11px',
+            'letter-spacing:0.14em', 'text-transform:uppercase',
+            'box-shadow:inset 0 1px 0 rgba(255,255,255,0.14),inset 0 -1px 0 rgba(0,0,0,0.5)'
+        ].join(';');
+        // The focus ring is the point: this control has to be reachable and
+        // visibly reachable without a pointer.
+        retry.addEventListener('focus', () => {
+            retry.style.outline = '2px solid #d9a441';
+            retry.style.outlineOffset = '2px';
+        });
+        retry.addEventListener('blur', () => { retry.style.outline = 'none'; });
+        retry.addEventListener('click', () => { window.location.reload(); });
+        plate.appendChild(line);
+        plate.appendChild(sub);
+        plate.appendChild(retry);
+        state.container.appendChild(plate);
+        state.bootPlate = plate;
+        state.bootPlateMode = 'lost';
+        retry.focus();
     }
 
     function bindPointerEvents(dom) {
         dom.style.touchAction = 'none';
 
+        // Two stamps, because "the pointer moved" and "the player is doing
+        // something" are different facts and the pacer needs both. `lastInputAt`
+        // is any contact at all, including a hover; `lastGestureAt` is the end of
+        // a drag or a wheel, i.e. the moment it becomes safe to spend time. See
+        // handIsBusy().
+        const touched = () => { state.lastInputAt = performance.now(); };
+        const gestured = () => {
+            state.lastInputAt = performance.now();
+            state.lastGestureAt = state.lastInputAt;
+        };
+
         dom.addEventListener('pointerdown', event => {
+            gestured();
             state.drag = {
                 startX: event.clientX,
                 startY: event.clientY,
@@ -5330,6 +5929,7 @@ import {
         });
 
         dom.addEventListener('pointermove', event => {
+            touched();
             if (state.drag) {
                 const dx = event.clientX - state.drag.lastX;
                 const dy = event.clientY - state.drag.lastY;
@@ -5344,19 +5944,28 @@ import {
                 state.drag.lastX = event.clientX;
                 state.drag.lastY = event.clientY;
             } else {
-                handleHover(event);
+                // COALESCED TO ONE PICK PER FRAME. Full rationale: docs/galaxy3d-design-notes.md#coalesced-to-one-pick-per-frame
+                state.hoverPointer = { clientX: event.clientX, clientY: event.clientY };
             }
         });
 
         dom.addEventListener('pointerup', event => {
+            gestured();
             const wasClick = state.drag && !state.drag.moved;
             state.drag = null;
+            // A CLICK IS PICKED IMMEDIATELY, not deferred to the frame. One
+            // raycast is a fraction of a millisecond and a selection that waits
+            // for a frame is a selection the player feels waiting.
             if (wasClick) handleClick(event);
         });
 
-        dom.addEventListener('pointerleave', () => { state.drag = null; });
+        dom.addEventListener('pointerleave', () => {
+            state.drag = null;
+            state.hoverPointer = null;
+        });
 
         dom.addEventListener('wheel', event => {
+            gestured();
             event.preventDefault();
             const factor = event.deltaY > 0 ? 1.12 : 0.89;
             state.zoom = Math.min(3.2, Math.max(0.35, (state.zoom || 1) * factor));
@@ -5388,6 +5997,14 @@ import {
         }
     }
 
+    /** One pick for however many pointermoves arrived since the last frame. */
+    function drainHover() {
+        const p = state.hoverPointer;
+        if (!p) return;
+        state.hoverPointer = null;
+        handleHover(p);
+    }
+
     function handleHover(event) {
         const sectorId = pickSector(event);
         if (state.hovered === sectorId) return;
@@ -5413,10 +6030,58 @@ import {
         // Frozen while the battle theater is on screen (the map is hidden behind it).
         if (state.paused) {
             state.clock.getDelta(); // keep the clock from accumulating a huge delta
+            state.lastFrameAt = 0;  // and don't bill the pause to the frame budget
             return;
         }
+        // WALL CLOCK, NOT THE SIMULATION DELTA. `dt` below is clamped to 50 ms so
+        // that a hitch cannot teleport a fleet across the board — which meant the
+        // old governor, fed that same number, recorded a 280 ms frame as 50 ms and
+        // could never reach its own "this machine cannot render this at all"
+        // threshold of 80 ms. The frame budget has to be measured with a clock
+        // that is not allowed to lie about how bad it got.
+        const frameStart = performance.now();
+        /** BILLED, NOT DISCARDED. Full rationale: docs/galaxy3d-design-notes.md#billed-not-discarded */
+        const rawFrameMs = state.lastFrameAt ? frameStart - state.lastFrameAt : 0;
+        const frameMs = rawFrameMs
+            ? Math.max(0, rawFrameMs - (state.lastWorkMs || 0))
+            : 0;
+        state.lastWorkMs = 0;
+        state.lastFrameAt = frameStart;
+        // Frames the loop has RUN, drawn or not. Startup staging is gated on this
+        // rather than on frames PAINTED, because a map that opens behind a modal
+        // is deliberately not drawn and must still finish booting.
+        state.framesRun = (state.framesRun || 0) + 1;
         const dt = Math.min(state.clock.getDelta(), 0.05);
         const t = state.clock.elapsedTime;
+
+        // One layout read and one renderer resize per FRAME, however many resize
+        // events the window manager delivered while the player dragged the edge.
+        // A detail rung's backing-store change, taken at a moment the player is
+        // not in the middle of anything — see applyDetailRung().
+        if (state.pendingPixelRatio && !handIsBusy(frameStart) && state.renderer) {
+            const pr = state.pendingPixelRatio;
+            state.pendingPixelRatio = 0;
+            if (state.renderer.getPixelRatio() > pr) {
+                const t0 = performance.now();
+                state.renderer.setPixelRatio(pr);
+                state.resizeDirty = true;   // composer targets and FXAA follow
+                noteCost('backingstore', performance.now() - t0);
+            }
+        }
+        if (state.resizeDirty) {
+            state.resizeDirty = false;
+            state.frameOffsetDirty = false;
+            const t0 = performance.now();
+            resize();          // ends in updateFrameOffset(), so it covers both
+            noteCost('resize', performance.now() - t0);
+        } else if (state.frameOffsetDirty) {
+            state.frameOffsetDirty = false;
+            updateFrameOffset();
+        }
+
+        // The player's pointer, before anything else in the frame: whatever they
+        // did while the last frame was being drawn is answered on this one.
+        drainHover();
 
         // Smooth camera. viewCentre is what lands in the middle of the canvas; the frame
         // offset pushes it aside so camTarget itself shows up in the un-occluded band.
@@ -5432,7 +6097,27 @@ import {
             state.backdrop.group.position.copy(state.camera.position);
         }
 
+        /** STAGED WORK, AND ONLY AFTER THE BOARD HAS BEEN SEEN. Full rationale: docs/galaxy3d-design-notes.md#staged-work-and-only-after-the-board-has-been-seen */
+        let workMs = 0;
+        if (state.framesRun > 1) {
+            if (state.bootStep < BOOT_STEPS.length) {
+                const bootStart = performance.now();
+                runBootStep();
+                workMs += performance.now() - bootStart;
+            } else {
+                // Maps to the GPU before anything asks to draw with them.
+                workMs += stepTextureUploads();
+                workMs += drainContentQueue();
+                announceBoardReady();
+            }
+        }
+
         refreshDetail(false);
+        stepDetailSweep();
+        // Outside the staged-work block on purpose: the strip has to keep
+        // answering while the queue is BLOCKED on the forge, which is exactly
+        // the window where it used to freeze on a number for seconds.
+        stepSurveyStrip();
 
         // Spin worlds / discs / asteroid rings. Under reduced motion these hold still at
         // their normal size rather than spinning and breathing.
@@ -5459,21 +6144,7 @@ import {
         }
 
         if (state.fogMaterials) {
-            /**
-             * Where the unexplored field starts to recede, in view depth.
-             *
-             * MEASURED, NOT ASSUMED. The first attempt anchored this at
-             * 0.94..1.34 of the camera's distance to its focus, on the reasoning
-             * that "beyond the focus" is far — and the board does not work that
-             * way. The rig looks DOWN at 61 degrees from behind, so the whole
-             * grid lies between about 0.65 and 1.05 of that distance and every
-             * single cell landed under the near clamp: the shader ran and did
-             * exactly nothing, and the field measured flat to within 2%. The
-             * band has to straddle the range the board actually occupies.
-             *
-             * Normalising by the rig's own distance is still what makes the
-             * falloff hold its shape through the zoom wheel.
-             */
+            /** Where the unexplored field starts to recede, in view depth. Full rationale: docs/galaxy3d-design-notes.md#where-the-unexplored-field-starts-to-recede-in-view-depth */
             const camDist = (state.camOffset.length() || 17) * (state.zoom || 1);
             for (let i = 0; i < state.fogMaterials.length; i++) {
                 const mat = state.fogMaterials[i];
@@ -5499,27 +6170,7 @@ import {
                 move.group.position.lerpVectors(move.from, move.to, eased);
                 move.group.position.y = FLEET_ALTITUDE + Math.sin(progress * Math.PI) * 0.5;
 
-                /**
-                 * HEADING COMES FROM THE GROUND TRACK, NOT FROM THE ARC.
-                 *
-                 * The crossing lifts the formation by sin(progress * PI) * 0.5,
-                 * so at both ends of the run the frame-to-frame delta is almost
-                 * entirely VERTICAL — and pointing the hull along that put the
-                 * darts nose-down, presented end-on to the camera. A dart seen
-                 * down its own axis is a featureless truncated cone with two
-                 * collars, which is what parked on top of sector 10's ID plaque
-                 * and erased the number: the sector code is a first-class
-                 * strategy read and the game's own move animation was destroying
-                 * it. It also swung the nozzle upward, so the exhaust appeared to
-                 * leave the NOSE and painted a false "fleet here" streak across
-                 * the neighbouring tile.
-                 *
-                 * Damping the vertical component keeps the silhouette broadside
-                 * for the whole crossing — the climb still reads, because the
-                 * formation visibly rises, but it is never read down its axis.
-                 * readableHeading() then handles the other half of the same
-                 * problem: a track that runs straight at the camera.
-                 */
+                /** HEADING COMES FROM THE GROUND TRACK, NOT FROM THE ARC. Full rationale: docs/galaxy3d-design-notes.md#heading-comes-from-the-ground-track-not-from-the-arc */
                 const delta = move.group.position.clone().sub(move.prev);
                 if (delta.lengthSq() > 1e-7) {
                     const head = readableHeading(delta.x, delta.y * 0.18, delta.z);
@@ -5556,16 +6207,7 @@ import {
                     }
                 });
 
-                /**
-                 * Trail history: newest at the head, oldest shifted off the tail.
-                 *
-                 * THE HEAD IS THE LEAD DART'S NOZZLE, not the formation's origin.
-                 * Those are not the same point — the lead dart sits forward and
-                 * above the group centre and the plume runs aft of that again —
-                 * and the difference showed as a visible GAP between the streak
-                 * and the ships, so the two read as unrelated objects sliding
-                 * past each other rather than as one mass under way.
-                 */
+                /** Trail history: newest at the head, oldest shifted off the tail. Full rationale: docs/galaxy3d-design-notes.md#trail-history-newest-at-the-head-oldest-shifted-off-the-tail */
                 for (let i = 0; i < TRAIL_SEGMENTS - 1; i++) move.history[i].copy(move.history[i + 1]);
                 const lead = move.darts[0];
                 if (lead) {
@@ -5661,54 +6303,357 @@ import {
             }
         });
 
+        if (mapCovered() && (state.coverSkips || 0) < COVER_MAX_SKIPS) {
+            state.coverSkips = (state.coverSkips || 0) + 1;
+            // Nothing to say about a map nobody can see. Without this the plate
+            // would outlive its own reason for existing on a page that opened
+            // with a modal already over the board.
+            hideBootPlate();
+            // An undrawn frame says nothing about what this machine can render, so
+            // it must not be allowed to vote on the render path either way.
+            state.lastFrameAt = 0;
+            return;
+        }
+        state.coverSkips = 0;
+        // ...and back again when the modal closes, if the board is still filling
+        // in. Suppressing the report while nobody can see it is right; leaving it
+        // suppressed afterwards would be the bug the plate was written to fix.
+        if (!state.bootPlate && !state.boardAnnounced && !state.contextLost
+            && state.contentQueue.length && state.framesPresented > 0) {
+            paintBootPlate('strip');
+        }
+
+        const renderStart = performance.now();
         if (state.composer) {
             state.composer.render(dt);
         } else {
             state.renderer.render(state.scene, state.camera);
         }
-        governQuality(dt);
+        const renderMs = performance.now() - renderStart;
+        // A render that takes longer than a frame is almost always a shader
+        // being compiled or a texture being uploaded for the first time, and
+        // both are attributable — see noteCost().
+        noteCost('render', renderMs);
+        if (state.framesPresented === 0) announceFirstFrame();
+        state.framesPresented++;
+        // Carried forward so the NEXT frame's interval can have this frame's
+        // staging subtracted from it — see the frameMs calculation above. Every
+        // frame votes; none of them votes on work that was not rendering.
+        state.lastWorkMs = workMs;
+        governDetail(frameMs);
+        governPost(frameMs, renderMs);
     }
 
-    // ------------------------------------------------------------------
-    // Quality floor.
-    //
-    // Bloom and FXAA are two full-screen passes. On any GPU of the last decade
-    // they are free and this never fires. On a machine with no GPU at all —
-    // a software rasteriser, a locked-down VM, an ancient integrated part — they
-    // are most of the frame, and a map that is always on screen at four frames
-    // a second is not a map. The thresholds are deliberately catastrophic
-    // rather than merely slow: this is a last resort, not a quality dial, and
-    // it never re-enables, because a chain that flickers on and off with the
-    // camera is worse than either state.
-    // ------------------------------------------------------------------
-    const QUALITY_WINDOW = 45;
-    // These were 180 ms / 450 ms — i.e. the composer was only ever abandoned below
-    // 2.2 fps. A machine sitting at 3 fps therefore dropped FXAA and then kept the
-    // full bloom chain forever, which is exactly what a SwiftShader run measured:
-    // 302 ms a frame, sustained, with the governor "working". Unplayable is the
-    // threshold that matters, not catastrophic. Degrade below ~22 fps and bail out
-    // of post-processing entirely below ~12 fps; both are still far worse than any
-    // hardware GPU produces, so nobody loses the glow who could afford it.
-    const DROP_AA_MS = 45;       // under ~22fps sustained
-    const DROP_BLOOM_MS = 80;    // under ~12fps sustained
+    // . Full rationale: docs/galaxy3d-design-notes.md#the-render-path-and-how-it-is-chosen
+    const POST_OFF = 'off';           // decided, permanently plain
+    const POST_PROBING = 'probing';   // plain, still measuring
+    const POST_PENDING = 'pending';   // measured good, chain being built
+    const POST_ON = 'on';             // composer live
+    const POST_DROPPED = 'dropped';   // was on, gave up, never coming back
 
-    function governQuality(dt) {
-        if (!state.composer || state.qualityStep >= 2) return;
-        state.qualitySamples = (state.qualitySamples || 0) + 1;
-        state.qualityTotal = (state.qualityTotal || 0) + dt * 1000;
-        if (state.qualitySamples < QUALITY_WINDOW) return;
-        const avg = state.qualityTotal / state.qualitySamples;
-        state.qualitySamples = 0;
-        state.qualityTotal = 0;
-        const step = state.qualityStep || 0;
-        if (step === 0 && avg > DROP_AA_MS && state.fxaaPass) {
+    // Ignore the opening burst. The first frames of the map carry shader
+    // compiles, texture uploads and the tail of page load, and judging the
+    // machine on those refuses the glow to hardware that deserves it.
+    const POST_WARMUP_MS = 350;
+    const POST_PROBE_MS = 400;         // length of one probe window
+    const POST_PROBE_MIN_FRAMES = 6;   // ...and it is not a mean under six samples
+    const POST_FRAME_BUDGET_MS = 24;   // ~42fps plain, before anything is added
+    /** ...and the CPU is not the one rasterising, expressed as a SHARE of the frame. Full rationale: docs/galaxy3d-design-notes.md#and-the-cpu-is-not-the-one-rasterising-expressed-as-a-share- */
+    const POST_CPU_SHARE = 0.6;
+    const POST_CPU_FLOOR_MS = 3;
+    // Total measured frame time to spend looking for a good window before
+    // concluding the answer is no. Generous, because a machine can be briefly
+    // busy at startup for reasons that have nothing to do with its GPU, and the
+    // probe costs two timestamps a frame whether it succeeds or not.
+    const POST_PROBE_BUDGET_MS = 6000;
+
+    const GOVERN_WINDOW_MS = 700;
+    const DROP_AA_MS = 45;       // under ~22fps sustained
+    const DROP_BLOOM_MS = 80;    // under ~12fps sustained — bail out of post entirely
+
+    // . Full rationale: docs/galaxy3d-design-notes.md#don-t-draw-what-nobody-can-see
+    /** A 7x5 GRID, NOT FIVE POINTS. Full rationale: docs/galaxy3d-design-notes.md#a-7x5-grid-not-five-points */
+    const COVER_SAMPLES = [];
+    for (let j = 0; j < 5; j++) {
+        for (let i = 0; i < 7; i++) COVER_SAMPLES.push([0.02 + i * 0.16, 0.02 + j * 0.24]);
+    }
+    const COVER_RECHECK_MS = 200;
+    // Insurance, not optimisation. If some element this file has never heard of
+    // hit-tests over the whole map, the failure mode must be "the map updates
+    // slowly" and not "the map is frozen for the rest of the session". One frame
+    // in thirty is ~3% of the work and half a second of staleness at worst.
+    const COVER_MAX_SKIPS = 30;
+
+    function mapCovered() {
+        if (document.hidden) return true;
+        const dom = state.renderer && state.renderer.domElement;
+        if (!dom) return false;
+        const now = performance.now();
+        if (state.coverCheckedAt && now - state.coverCheckedAt < COVER_RECHECK_MS) {
+            return Boolean(state.covered);
+        }
+        state.coverCheckedAt = now;
+        const rect = dom.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) {
+            state.covered = true;
+            return true;
+        }
+        // A null hit means the point reached nothing at all, which is not evidence
+        // of a modal; every ambiguous answer resolves to "draw it".
+        const view = state.container || dom;
+        let covered = true;
+        for (let i = 0; i < COVER_SAMPLES.length; i++) {
+            const hit = document.elementFromPoint(
+                rect.left + rect.width * COVER_SAMPLES[i][0],
+                rect.top + rect.height * COVER_SAMPLES[i][1]);
+            if (!hit || hit === view || view.contains(hit)) { covered = false; break; }
+        }
+        state.covered = covered;
+        return covered;
+    }
+
+    // . Full rationale: docs/galaxy3d-design-notes.md#the-detail-ladder-the-governor-that-runs-on-every-machine
+    const DETAIL_RUNGS = 3;
+    const DETAIL_BUDGET_MS = 45;      // ~22 fps sustained: below this, shed nothing
+    const DETAIL_WINDOW_MS = 400;     // WALL CLOCK, not a frame count
+    const DETAIL_MIN_FRAMES = 3;
+    // The first rung wants two windows of agreement, because a single bad window
+    // can be somebody else's long task and degradation here is one-way. After
+    // that the machine has told us what it is and one window is enough.
+    const DETAIL_FIRST_RUNG_WINDOWS = 2;
+    const DETAIL_PIXEL_RATIO = [null, 0.8, null, 0.62];
+
+    function applyDetailRung(rung) {
+        const renderer = state.renderer;
+        if (!renderer) return;
+        const pr = DETAIL_PIXEL_RATIO[rung];
+        // Never UP: a machine that has been taken down a rung is not asked to
+        // climb back, and the ratio is a floor rather than a set point.
+        /** THE BACKING STORE IS RESIZED WHEN THE PLAYER'S HAND IS OFF THE MAP. Full rationale: docs/galaxy3d-design-notes.md#the-backing-store-is-resized-when-the-player-s-hand-is-off-t */
+        if (pr && renderer.getPixelRatio() > pr) state.pendingPixelRatio = pr;
+        // ONE FOG MATERIAL A FRAME, not all of them at once. Dropping the blend
+        // sets needsUpdate, and the next draw recompiles that material's program
+        // — which on a CPU rasteriser is a JIT of the largest fill in the scene.
+        // Seven of them in one frame measured as a 3.1-second render: the rung
+        // that exists to make the board responsive, arriving as the worst single
+        // frame of the session.
+        if (rung >= 2) state.fogConform = (state.fogMaterials || []).slice();
+        // The cloud shell is a second shaded sphere per world; applyDetail()
+        // reads state.detail, so a walk over every sector is what makes it stick.
+        //
+        // SPREAD OVER FRAMES, because the rescue must not be the thing that needs
+        // rescuing. Done in one pass this measured 728 ms — a governor that
+        // arrives as a three-quarter-second stall has handed the player one more
+        // stutter in exchange for the stutters it removed.
+        if (rung >= 3) state.detailSweep = 0;
+        console.info('Galaxy3D: detail rung %d — rendering the board lighter to keep it responsive', rung);
+    }
+
+    /** Bring one fog-cell material into line with the current rung. Full rationale: docs/galaxy3d-design-notes.md#bring-one-fog-cell-material-into-line-with-the-current-rung */
+    function conformFogMaterial(mat) {
+        if (!mat || state.detail < 2 || !mat.transparent) return;
+        mat.transparent = false;
+        mat.color.multiplyScalar(1.16);
+        mat.needsUpdate = true;
+    }
+
+    /** THE WINDOW'S WORST FRAME DOES NOT GET A VOTE. Full rationale: docs/galaxy3d-design-notes.md#the-window-s-worst-frame-does-not-get-a-vote */
+    function trimmedMean(totalMs, worstMs, frames) {
+        if (frames >= 3) return (totalMs - worstMs) / (frames - 1);
+        return totalMs / Math.max(1, frames);
+    }
+
+    function governDetail(frameMs) {
+        /**
+         * A FRAME THAT WAS UPLOADING AND LINKING A WORLD IS NOT A VOTE.
+         *
+         * While bundles are staging, the frame clock is measuring texture
+         * uploads and shader links — a startup transient — rather than this
+         * machine's ability to draw the board. Judging it here took rung 1 at
+         * ~6.5 s in every measured run and left the whole session at rung 3 with
+         * pixelRatio 0.62: a permanently soft board bought with a startup
+         * artefact, and it bought nothing, because the frames were still 100-180
+         * ms afterwards. The ladder already has this precedent for forgeBusy();
+         * staging is the same window one stage later.
+         */
+        if (state.bundleStaging.size > 0) {
+            state.detailWinStart = 0;
+            return;
+        }
+        if (state.detail >= DETAIL_RUNGS || frameMs <= 0 || document.hidden) {
+            state.detailWinStart = 0;
+            return;
+        }
+        const now = performance.now();
+        if (!state.detailWinStart) {
+            state.detailWinStart = now;
+            state.detailFrames = 0;
+            state.detailMs = 0;
+            return;
+        }
+        state.detailFrames++;
+        state.detailMs += frameMs;
+        state.detailWorst = Math.max(state.detailWorst || 0, frameMs);
+        if (now - state.detailWinStart < DETAIL_WINDOW_MS || state.detailFrames < DETAIL_MIN_FRAMES) return;
+
+        const mean = trimmedMean(state.detailMs, state.detailWorst, state.detailFrames);
+        state.detailWinStart = now;
+        state.detailFrames = 0;
+        state.detailMs = 0;
+        state.detailWorst = 0;
+        if (mean <= DETAIL_BUDGET_MS) {
+            state.detailStrikes = 0;
+            /** ONE RUNG BACK, ONCE, AND ONLY IF IT WAS TAKEN UNDER PROTEST. Full rationale: docs/galaxy3d-design-notes.md#one-rung-back-once-and-only-if-it-was-taken-under-protest */
+            if (state.detailProvisional && !forgeBusy() && mean <= DETAIL_BUDGET_MS * 0.5) {
+                state.detailProvisional = false;
+                state.detail = Math.max(0, state.detail - 1);
+                const pr = state.software ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
+                if (state.renderer && state.renderer.getPixelRatio() < pr) {
+                    state.renderer.setPixelRatio(pr);
+                    resize();
+                }
+                console.info('Galaxy3D: back up to detail rung %d — that was the startup, not the machine',
+                    state.detail);
+            }
+            return;
+        }
+        /** MEASURED ON THE FRAME INTERVAL, NOT ON WHAT render() RETURNED IN. Full rationale: docs/galaxy3d-design-notes.md#measured-on-the-frame-interval-not-on-what-render-returned-i */
+        if (state.covered) return;
+        /** ...AND THE LADDER IS CAPPED WHILE OUR OWN THREADS ARE RUNNING. Full rationale: docs/galaxy3d-design-notes.md#and-the-ladder-is-capped-while-our-own-threads-are-running */
+        const transient = forgeBusy();
+        if (transient && state.detail >= 1) return;
+        state.detailStrikes = (state.detailStrikes || 0) + 1;
+        if (state.detail === 0 && state.detailStrikes < DETAIL_FIRST_RUNG_WINDOWS) return;
+        state.detailStrikes = 0;
+        state.detail++;
+        // Marked so the machine can win it back once, if the evidence was our own
+        // background threads rather than its hardware.
+        //
+        // OFFERED TO THE SOFTWARE PATH TOO. It used to be withheld from a
+        // renderer that had named itself a CPU rasteriser, on the assumption
+        // that one would need the ladder anyway — but the measurements do not
+        // support that assumption, and the machines most likely to be judged on
+        // a startup artefact were exactly the ones that could never win the rung
+        // back. The rung is still only handed back once, and only against a mean
+        // at half the budget, so a machine that really cannot hold it simply
+        // takes it again.
+        if (transient && state.detail === 1) state.detailProvisional = true;
+        const t0 = performance.now();
+        applyDetailRung(state.detail);
+        // A rescue that is itself a stall has not rescued anything — attributed
+        // so it cannot hide inside a frame the way it used to.
+        noteCost(`rung${state.detail}`, performance.now() - t0);
+    }
+
+    function resetPostWindow(now) {
+        state.winStart = now;
+        state.winFrames = 0;
+        state.winFrameMs = 0;
+        state.winRenderMs = 0;
+        state.winWorstFrame = 0;
+        state.winWorstRender = 0;
+    }
+
+    /** Build the post chain out of band. Full rationale: docs/galaxy3d-design-notes.md#build-the-post-chain-out-of-band */
+    function upgradePost() {
+        state.post = POST_PENDING;
+        const build = () => {
+            if (state.post !== POST_PENDING || !state.renderer || !state.container) return;
+            const rect = state.container.getBoundingClientRect();
+            const composer = buildComposer(state.renderer,
+                Math.max(1, rect.width), Math.max(1, rect.height));
+            if (!composer) {
+                state.post = POST_OFF;   // buildComposer already warned
+                return;
+            }
+            state.composer = composer;
+            state.post = POST_ON;
+            resize();                    // exact sizes, FXAA resolution, camera aspect
+            resetPostWindow(performance.now());
+        };
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(build, { timeout: 600 });
+        } else {
+            setTimeout(build, 0);
+        }
+    }
+
+    function dropPost(reason, meanFrame) {
+        const composer = state.composer;
+        state.composer = null;
+        state.bloomPass = null;
+        state.fxaaPass = null;
+        state.post = POST_DROPPED;
+        // Two half-float ping-pong targets at canvas resolution, plus bloom's five
+        // mip pairs. Dropping the reference without disposing them leaves that
+        // resident on the one machine in the product that demonstrably has nothing
+        // to spare — the old code did exactly that.
+        try { if (composer && composer.dispose) composer.dispose(); } catch (err) { /* best effort */ }
+        console.info('Galaxy3D: dropping post-processing (%s) — %dms a frame', reason, Math.round(meanFrame));
+    }
+
+    function governPost(frameMs, renderMs) {
+        const probing = state.post === POST_PROBING;
+        if (!probing && state.post !== POST_ON) return;
+        const now = performance.now();
+        if (state.winStart === undefined) {
+            state.animStart = now;
+            resetPostWindow(now);
+            return;
+        }
+        // A hidden tab is throttled to about one frame a second by the browser. Full rationale: docs/galaxy3d-design-notes.md#a-hidden-tab-is-throttled-to-about-one-frame-a-second-by-the
+        if (document.hidden || frameMs <= 0 || forgeBusy()
+            || now - state.animStart < POST_WARMUP_MS) {
+            resetPostWindow(now);
+            return;
+        }
+
+        state.winFrames++;
+        state.winFrameMs += frameMs;
+        state.winRenderMs += renderMs;
+        state.winWorstFrame = Math.max(state.winWorstFrame || 0, frameMs);
+        state.winWorstRender = Math.max(state.winWorstRender || 0, renderMs);
+        const span = now - state.winStart;
+        const windowMs = probing ? POST_PROBE_MS : GOVERN_WINDOW_MS;
+        const minFrames = probing ? POST_PROBE_MIN_FRAMES : 4;
+        if (span < windowMs || state.winFrames < minFrames) return;
+
+        // The worst frame in the window does not get a vote — see trimmedMean().
+        const meanFrame = trimmedMean(state.winFrameMs, state.winWorstFrame, state.winFrames);
+        const meanRender = trimmedMean(state.winRenderMs, state.winWorstRender, state.winFrames);
+        const measured = state.winFrameMs;
+        resetPostWindow(now);
+
+        if (probing) {
+            // A context that has NAMED itself a CPU rasteriser never earns the
+            // chain, however well a window happens to measure. It probes only so
+            // that governDetail() above gets fed the same frames.
+            if (state.software) {
+                state.post = POST_OFF;
+                return;
+            }
+            const cpuOk = meanRender <= POST_CPU_FLOOR_MS || meanRender <= meanFrame * POST_CPU_SHARE;
+            if (meanFrame <= POST_FRAME_BUDGET_MS && cpuOk) {
+                upgradePost();
+                return;
+            }
+            state.probeSpent = (state.probeSpent || 0) + measured;
+            if (state.probeSpent >= POST_PROBE_BUDGET_MS) {
+                state.post = POST_OFF;
+                console.info('Galaxy3D: staying on the plain render path — %dms a frame without it',
+                    Math.round(meanFrame));
+            }
+            return;
+        }
+
+        // Catastrophic first: a machine at 80 ms is not going to be rescued by
+        // shedding an edge blur, and making it spend another window finding that
+        // out is another window of an unplayable board.
+        if (meanFrame > DROP_BLOOM_MS) {
+            dropPost('frame budget', meanFrame);
+        } else if (meanFrame > DROP_AA_MS && state.fxaaPass && state.fxaaPass.enabled) {
             state.fxaaPass.enabled = false;
-            state.qualityStep = 1;
-            console.info('Galaxy3D: dropping FXAA — sustained frame time %dms', Math.round(avg));
-        } else if (step >= 1 && avg > DROP_BLOOM_MS) {
-            state.composer = null;
-            state.qualityStep = 2;
-            console.info('Galaxy3D: dropping post-processing — sustained frame time %dms', Math.round(avg));
+            console.info('Galaxy3D: dropping FXAA — sustained frame time %dms', Math.round(meanFrame));
         }
     }
 
@@ -5724,12 +6669,64 @@ import {
         // to hand its space back to the camera, and the only way to tell that from merely
         // hiding a box is to read what the camera still believes is occluded.
         debugSafeInset: () => ({ ...state.safeInset }),
+        /** Which render path this machine ended up on, and why. Full rationale: docs/galaxy3d-design-notes.md#which-render-path-this-machine-ended-up-on-and-why */
+        debugRenderPath: () => ({
+            post: state.post,
+            software: state.software,
+            composer: Boolean(state.composer),
+            bloom: Boolean(state.bloomPass),
+            fxaa: Boolean(state.fxaaPass && state.fxaaPass.enabled),
+            pixelRatio: state.renderer ? state.renderer.getPixelRatio() : null,
+            // True when a modal is over the whole map and the draw is being
+            // skipped. A harness measuring frame times on the shop or the codex
+            // needs to know it is measuring a map that is deliberately not being
+            // drawn, rather than one that mysteriously got fast.
+            covered: Boolean(state.covered),
+            queued: state.contentQueue.length,
+            // Which sector the pointer is over. Hover, click and drag are the
+            // map's entire interaction vocabulary and all three are paced by the
+            // frame; a harness that wants to measure how late the feedback lands
+            // needs something observable to watch, and this is it.
+            hovered: state.hovered === undefined ? null : state.hovered,
+            // How far down the detail ladder this machine has been taken, and
+            // what it has actually cost. A harness that photographs the board
+            // needs to know which rung it photographed.
+            detail: state.detail,
+            // Whether the world surfaces are being generated on the second
+            // thread, and how far that has got. A harness measuring startup needs
+            // to know which path it measured — the forged one and the fallback
+            // have completely different frame shapes.
+            forge: state.forge ? (state.forge.failed ? 'failed' : `${state.forge.workers.length}w`) : 'off',
+            forged: state.worldBundles.size,
+            forgePending: state.bundlePending.size,
+            forgeFallback: state.bundleFailed.size,
+            plate: state.bootPlateMode,
+            cores: Number(navigator.hardwareConcurrency) || null,
+            // The same answer the pre-warm acts on, not a second opinion — see
+            // parallelCompile(). false here means shader linking is on the frame
+            // by design, and any pre-warm would BE the stall it was avoiding.
+            parallelCompile: parallelCompile(),
+            // Every main-thread item that cost more than a frame, named. See
+            // noteCost(): a hitch you cannot attribute is a hitch you cannot fix.
+            costLog: (state.costLog || []).slice(),
+            frames: state.framesPresented,
+            boot: `${state.bootStep}/${BOOT_STEPS.length}`,
+            // Measured cost of generating one sector's contents here. This is the
+            // number the content pacing is built on; if it is large, the machine
+            // is slow at CANVAS work, which is a different complaint from being
+            // slow at rendering.
+            contentCostMs: Math.round(state.contentCost * 10) / 10
+        }),
         highlightSector,
         clearBattleSector,
         animateFleetMove,
         resize,
-        /** True once the renderer exists AND a grid has been laid out. */
+        /** THREE DIFFERENT QUESTIONS, BECAUSE THEY HAVE THREE DIFFERENT ANSWERS. Full rationale: docs/galaxy3d-design-notes.md#three-different-questions-because-they-have-three-different- */
         isReady: () => Boolean(state.ready && state.gridBuilt),
+        /** A frame has reached the canvas. There is a board on screen. */
+        hasPainted: () => state.framesPresented > 0,
+        /** Every charted sector's contents are generated; nothing is a stand-in. */
+        isBoardReady: () => Boolean(state.boardAnnounced),
         // Battle theater freezes the map render loop while it owns the screen.
         setPaused(paused) { state.paused = !!paused; },
         STATUS
@@ -5749,5 +6746,12 @@ import {
         });
     }
 
+    // 'THE SCRIPT IS LOADED', NOT 'THE MAP IS READY'. It fires here, at module
+    // evaluation, which is roughly a quarter of a second into the page and about
+    // four seconds before the first frame. Two files already listen to it and
+    // both want exactly this meaning (drain the queued calls, read the safe
+    // area), so it keeps it. Anything that wants to take a loader down should
+    // listen for 'galaxy3d-first-frame', and anything that wants to say the board
+    // is complete should listen for 'galaxy3d-board-ready'.
     document.dispatchEvent(new CustomEvent('galaxy3d-ready'));
 })();

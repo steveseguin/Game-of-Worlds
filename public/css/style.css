@@ -714,22 +714,82 @@ td {
     color: #ff9a80 !important;
 }
 
-/* Multi-move dialog */
+/* Multi-move dialog.
+ *
+ * #multiMove is the SCRIM, not the panel — the panel is .multi-move-plate
+ * floated on it. It used to be a 480px card pinned to the bottom-left, which
+ * meant it never covered the Sector Survey it replaces: a strip of the panel
+ * underneath survived down its right-hand edge and went on showing stale
+ * readings beside a dialog that had superseded them. Nothing behind a modal may
+ * stay legible, so this is now the same shape #helpOverlay is.
+ *
+ * `display` stays none here because GUI.js raises it by writing `block` inline;
+ * the plate is centred with absolute positioning rather than flex so that inline
+ * `display: block` cannot break the layout. z-index sits under the codex (2999),
+ * the name prompt (2998), the reconnect window (3200) and the game-over modal
+ * (6200) — all four of which must be able to cover a fleet order. */
 #multiMove {
-    z-index: 200;
+    z-index: 2990;
     position: fixed;
     display: none;
-    left: 10px;
-    bottom: 50px;
-    width: 480px;
-    max-width: calc(100% - 20px);
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 46%, rgba(4, 7, 12, 0.82), rgba(2, 4, 7, 0.93) 68%);
+}
+
+#multiMove .multi-move-plate {
+    box-sizing: border-box;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(560px, calc(100vw - 40px));
+    max-height: min(86vh, 720px);
+    display: flex;
+    flex-direction: column;
     background: linear-gradient(145deg, rgba(30, 35, 55, 0.98), rgba(20, 25, 40, 0.98));
     border: 2px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    outline: none;
 }
 
+/* The six inline style attributes this markup used to carry, stated once. */
+#multiMove .multi-move-header { flex: none; padding: 15px 15px 10px; }
+#multiMove .multi-move-header h2 { margin: 0 0 4px; font-size: 17px; }
+#multiMove .multi-move-label { display: block; font-size: 13px; }
+#multiMove .multi-move-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 15px 15px;
+}
+/* An action bar across the foot, not a column down one side. The keys were
+   stacked vertically beside a list that takes the whole width (the preflight
+   below it is `flex: 1 0 100%`, so nothing ever sat next to them), which left a
+   ~380x200 hole of empty plate to their right — on a centred dialog that reads
+   as a panel that failed to finish drawing. This is also exactly what the ≤768px
+   rule already asked for, so that override is gone: one layout, one place. */
+#multiMove .multi-move-buttons {
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+/* No min-width: the four labels are 503px of content in a 530px row, and any
+   floor above their natural widths pushed CLOSE onto a line of its own where it
+   stretched full-bleed and became the largest key in a dialog it should be the
+   quietest thing in. `min-width: auto` on a flex item is min-content, which is
+   already the right floor. */
+#multiMove .multi-move-buttons button { flex: 1 1 auto; padding: 12px 12px; white-space: nowrap; }
+
 #multiMove select {
+    font-size: 110%;
+    min-height: 200px;
+    flex: 1;
+    min-width: 250px;
     background: rgba(15, 20, 35, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 8px;
@@ -750,12 +810,11 @@ td {
     transform: translateY(-1px);
 }
 
-#multiMove button:disabled {
-    cursor: not-allowed;
-    filter: grayscale(.7);
-    opacity: .45;
-    transform: none;
-}
+/* No legacy dead-key rule here. It was `filter: grayscale(.7); opacity: .45`,
+   and the console's own recessed dead-key face (search "A dead key is a dead
+   key") now claims these buttons by id, so the two would have composited: a
+   45%-opacity key on top of a sunken socket reads as a rendering fault rather
+   than as an unavailable control. */
 
 .multi-move-empty {
     flex: 1;
@@ -791,20 +850,14 @@ td {
 .intel-ledger-row { display: grid; grid-template-columns: 62px 1fr auto; gap: 8px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
 .intel-ledger-row span:last-child { color: #8096a9; }
 
-/* Reconnection Window */
+/* Reconnection Window — geometry only. The material is in the console block
+   below (`.game-page #lobbyWindow`). connect.js writes `style.display` on this
+   element directly, so nothing here may set `display`: an inline style outranks
+   the sheet and the last word has to stay with the script that owns the state. */
 #lobbyWindow {
-    display: none;
-    position: absolute;
-    left: 10%;
-    top: 10%;
-    width: 80%;
-    height: 80%;
-    background-color: #333;
-    border: 5px solid #444;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
+    position: fixed;
+    left: 0; top: 0; right: 0; bottom: 0;
+    z-index: 3200;
 }
 
 /* Mobile responsive styles */
@@ -937,13 +990,10 @@ td {
         height: 96%;
     }
 
-    #multiMove {
-        left: 5px;
-        right: 5px;
-        bottom: 50px;
-        width: auto;
-        max-height: 60vh;
-        overflow-y: auto;
+    /* The scrim still fills the viewport; it is the plate that narrows. */
+    #multiMove .multi-move-plate {
+        width: calc(100vw - 10px);
+        max-height: 86vh;
     }
 
     #multiMove .multi-move-content {
@@ -955,14 +1005,9 @@ td {
         width: 100%;
     }
 
-    #multiMove .multi-move-buttons {
-        flex-direction: row;
-        flex-wrap: wrap;
-        width: 100%;
-    }
-
+    /* The action bar is a row at every width now (see the base rule); the only
+       phone-specific part is that two keys per line beats four. */
     #multiMove .multi-move-buttons button {
-        flex: 1;
         min-width: calc(50% - 5px);
     }
 
@@ -986,10 +1031,9 @@ td {
         font-size: 12px !important;
     }
 
-    #helpOverlay > div {
-        max-height: 90vh;
-        overflow-y: auto;
-    }
+    /* The codex plate clamps its own height and scrolls its READER, not the
+       whole panel — a second scroller on the wrapper would carry the title bar
+       and the tab strip off the top of the screen. See `.codex-dialog`. */
 
     /* Connection info bar */
     #connectionInfo {
@@ -1184,7 +1228,36 @@ td {
     --text:  #cdd6e6;
     --bright:#eef3fb;
     --muted: #8b94a8;
+    /* DEAD KEYS ONLY. --faint measures 3.38:1 on --well and 3.03:1 on --steel-4,
+       so it is below the 4.5:1 AA floor on every ground in this console. WCAG
+       1.4.3 exempts inactive controls, and that exemption is the ONLY licence
+       this token has: `:disabled` faces, where the whole point is that the key
+       has stopped carrying light. Grep before you reuse it — it has escaped four
+       times already (the chart's scale legend, the comms meter's figure, the
+       chat placeholder and, worst, the treasury rate when income is zero), and
+       every escape put a live readout under the floor at 9-13px. If the text is
+       readable by a player who is allowed to act on it, it is not --faint.
+       Enabled small text goes to --muted or --stencil; see below. */
     --faint: #5e6678;
+    /* READING FLOOR for small mono labels. --stencil clears 4.5:1 on BOTH
+       grounds a HUD label can land on: 8.6:1 on the instrument well (--well)
+       and 5.5:1 on the plate face (--steel-2, which is what shows through
+       under 900px where the wells are dropped). --muted (6.39:1 on --well,
+       5.72:1 on --steel-4, 5.10:1 on --steel-3) is the reading colour for
+       secondary text that sits in a WELL; it drops to 4.09:1 on --steel-2, so
+       anything that can land on a plate face takes --stencil instead. That
+       one distinction is what the treasury's METAL / CRYSTAL / RESEARCH
+       labels are for: the desktop layout passes on --muted and the squeezed
+       one does not, which is how a contrast bug ships.
+
+       SIGNAGE IS ONE FAMILY AND ONE COLOUR. Every stencilled code on this HUD
+       — REF-00 on the codex plate, SCN-02, KEY-07, CON-01, MSG-09, ADV-06 on
+       the instrument panels, and the chart's cell scale — is --stencil. They
+       used to be split across two colours 2.5x apart (--stencil vs --faint),
+       which read as two unrelated signage systems on one console rather than
+       as one. Quiet is a SIZE and TRACKING decision here (9px, 0.16em), not a
+       luminance one. */
+    --stencil: #a3adc0;
 
     /* Treasury identity. The NUMERALS are all --bright; only these small marks
        carry the difference, and they differ by warm/cool inside the one family
@@ -1432,7 +1505,7 @@ body.game-page::after {
     font-family: var(--font-mono);
     font-size: 9px;
     letter-spacing: 0.16em;
-    color: var(--faint);
+    color: var(--stencil);
     pointer-events: none;
 }
 /* Panels that scroll would carry their code away with the content — an absolute
@@ -1449,7 +1522,7 @@ body.game-page::after {
     font-family: var(--font-mono);
     font-size: 9px;
     letter-spacing: 0.16em;
-    color: var(--faint);
+    color: var(--stencil);
     pointer-events: none;
 }
 
@@ -1603,9 +1676,17 @@ body.game-page::after {
 
 /* A dead key is a dead key: it sinks into its socket and stops carrying light.
    Nothing here relies on opacity alone, because a 55%-opacity raised button
-   still reads as pressable. */
+   still reads as pressable.
+
+   The move dialog's keys are named with their own id rather than folded into
+   the `:where()` above ON PURPOSE. `:where()` contributes nothing to
+   specificity, and `.game-page #multiMove button` (the live steel face) is
+   (1,1,1) — an id in the selector — so a zero-specificity arm would lose to it
+   and the dead keys would go on rendering lit. Stated this way the arm is
+   (1,2,1) and wins. */
 .game-page .gp-key:disabled,
 .game-page :where(#controlPadGUI, #sectordisplay, #chatContainer) button:disabled,
+.game-page #multiMove button:disabled,
 .game-page button.disabled {
     cursor: not-allowed;
     transform: none;
@@ -1619,13 +1700,23 @@ body.game-page::after {
 }
 
 /* Focus rings: functional, sanctioned, and amber so they read as the console's
-   own selection light rather than a browser default. */
+   own selection light rather than a browser default.
+
+   THE LIST HAS TO INCLUDE ANYTHING GIVEN A TAB STOP, not just the six element
+   types that come with one. The codex's two reader panels carry tabindex="0"
+   precisely so a keyboard player can scroll a 58vh well — and because they are
+   divs, they matched none of these selectors and drew Chrome's default
+   black-and-white auto ring instead of the console's. One control out of a
+   whole page in a different focus language is the one a keyboard player
+   notices. `:where()` keeps the new arm at zero specificity so the panel's own
+   `outline-offset` (which seats the ring INSIDE the well) still wins. */
 .game-page button:focus-visible,
 .game-page a:focus-visible,
 .game-page [role="button"]:focus-visible,
 .game-page input:focus-visible,
 .game-page select:focus-visible,
-.game-page summary:focus-visible {
+.game-page summary:focus-visible,
+.game-page :where([tabindex]:not([tabindex="-1"])):focus-visible {
     outline: 2px solid var(--amber);
     outline-offset: 2px;
     border-radius: 0;
@@ -1683,12 +1774,18 @@ body.game-page::after {
     letter-spacing: 0.04em;
     opacity: 0.92;
 }
+/* METAL / CRYSTAL / RESEARCH — the three most-read words in the product, and
+   they were the least legible text on the page. `--faint` (#5e6678) over the
+   instrument well (#090d15) measures 3.37:1 at 8.4px: below the 4.5:1 floor for
+   body text, and 8.4px mono at 0.18em tracking is the worst case for it. It is
+   not a decorative caption — it is what tells a new player which number is
+   which, so it gets a real reading colour (--stencil, in the palette block). */
 .game-page #resourceBar .res-name {
     font-family: var(--font-mono);
     font-size: 0.6em;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--faint);
+    color: var(--stencil);
 }
 /* ONE numeral colour. The stocks used to be tan / sky blue / mint, so a
    three-item row carried four hues before the amber deltas were counted. The
@@ -1700,8 +1797,23 @@ body.game-page::after {
 .game-page #resourceBar #res-metal   .res-rate { color: var(--metal-ink); }
 .game-page #resourceBar #res-crystal .res-rate { color: var(--crystal-ink); }
 .game-page #resourceBar #res-research .res-rate { color: var(--science-ink); }
-/* A stalled economy is worth noticing, so a zero rate stops looking like income. */
-.game-page #resourceBar .res-rate.is-zero { color: var(--faint) !important; }
+/* A STALLED ECONOMY IS WORTH NOTICING — SO IT CANNOT BE THE DIMMEST THING ON
+   THE BAR. This rule used to paint the zero rate --faint, 3.4:1 on the well at
+   9px: the reading a commander most needs to catch was, by construction, the
+   hardest figure in the treasury to see, and "went dim" was its ONLY signal.
+   Two channels now, neither of them dependent on the other:
+     - the WORD. game.html rewrites "+0/turn" to "Stalled" (a MutationObserver,
+       same shim pattern as the Spaceport key), so the state is legible in
+       greyscale, in a screen reader, and to a player who cannot tell red from
+       amber. That is the non-colour carrier;
+     - the COLOUR, --red-hi at 7.8:1 on the well — this console's alert role,
+       used here because a dead income line is exactly what that role is for.
+   It also gets a hair more tracking so it does not read as a number. */
+.game-page #resourceBar .res-rate.is-zero {
+    color: var(--red-hi) !important;
+    letter-spacing: 0.08em;
+    opacity: 1;
+}
 /* One optical size and one light source for the whole set. The three icons were
    drawn in three unrelated illustration languages — an airbrushed lump with no
    contour, a flat vector gem, and thin green line art — so the drop shadow is
@@ -1769,6 +1881,106 @@ body.game-page::after {
     color: var(--text);
 }
 .game-page #victoryProgress { color: var(--muted); }
+
+/* ==== HUD TERMS: THE TWO STATUS BARS, MADE ASKABLE. ==================
+   Both bars carried a long, carefully written `title` from connect.js — 285
+   characters describing all five victory conditions, 134 explaining what
+   "worlds" versus "sectors" versus "ships" actually count — and both bars are
+   `pointer-events: none` in game.html, so neither tooltip could ever be
+   summoned. By mouse OR keyboard OR touch: a `title` is mouse-only anyway.
+   Quick Help meanwhile told the player to "hover it for the exact target of
+   each", which made the one surface that teaches this product's controls
+   teach a dead one.
+
+   The bars STAY pointer-transparent — they are pinned over the galaxy view and
+   the map is dragged with the same button — and the terms inside them take the
+   pointer instead. Each term is a real <button>, so it is reachable by Tab and
+   tappable on a phone, and carries the description through aria-describedby so
+   a screen reader gets it on focus without a tooltip existing at all.
+
+   Styled as a term, not as a key: this is a definition affordance inside a line
+   of running text, and five console keys in a 32px instrument bar would read as
+   five things to press. The dotted underline is text decoration, not a border. */
+.game-page .hud-term {
+    pointer-events: auto;
+    display: inline;
+    position: relative;
+    margin: 0;
+    padding: 0;
+    font: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    text-transform: none;
+    vertical-align: baseline;
+    color: var(--text);
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    text-decoration: underline dotted rgba(190,206,230,0.5);
+    text-underline-offset: 2px;
+    cursor: help;
+    transition: none;
+}
+/* THE TOUCH TARGET, AT NO LAYOUT COST. A term is one word in a 17px instrument
+   bar, so its glyph box is about 16px tall — fine for a mouse, mean on a phone.
+   Padding was tried and rejected: Chrome lays a <button> out as an atomic inline
+   whatever `display` says, so vertical padding entered the line box, grew both
+   status bars by 12px and pushed the whole measured left column down. An
+   absolutely positioned overlay takes no layout space at all, and a
+   pseudo-element hit-tests as its own element — so the tappable area is ~28px
+   (clear of WCAG 2.5.8's 24px floor) and not one pixel of the HUD moves.
+   3px of side reach only, so adjacent terms never overlap across the ' · '. */
+.game-page .hud-term::after {
+    content: "";
+    position: absolute;
+    inset: -6px -3px;
+}
+.game-page .hud-term:hover:not(:disabled),
+.game-page .hud-term[data-open="1"] {
+    background: none;
+    color: var(--bright);
+    text-decoration-color: var(--amber);
+}
+/* ON :focus, NOT :focus-visible, for the same reason the codex's reader panels
+   are: this control's whole job is to attach a floating plate to one word in a
+   run of five, and the ring is what says WHICH word the plate belongs to. That
+   is worth having after a mouse click and after a tap, not only after a Tab.
+   It also makes the indicator something a sweep can verify — these terms carry
+   no bevel and no box-shadow to fall back on, unlike every console key. */
+.game-page .hud-term:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
+
+/* The readout the term opens. One shared plate, moved to whichever term asked
+   for it, in the console's own material — and a child of <header> rather than
+   of <body> so it stays inside a landmark. aria-hidden because everything in it
+   is already on the term itself as an accessible description; announcing it
+   twice is worse than not announcing it once. */
+.game-page #hudTermTip {
+    position: fixed;
+    z-index: 300;
+    max-width: min(360px, calc(100vw - 20px));
+    padding: 8px 10px 9px;
+    background: var(--grain), var(--face);
+    background-repeat: repeat, no-repeat;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    box-shadow: var(--plate-shadow);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--text);
+}
+.game-page #hudTermTip[hidden] { display: none; }
+.game-page .hud-tip-title {
+    display: block;
+    margin-bottom: 3px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--bronze);
+}
 
 /* ==== THE PLAYER'S CREST, ON THE HUD, WHERE IT BELONGS. ==============
    Twelve painted faction crests ship with this game and, until now, the last
@@ -2526,6 +2738,32 @@ body.game-page::after {
    Spaceport's second line down to two words instead of three. */
 .game-page .build-grid small { font-size: 9px; letter-spacing: 0; }
 
+/* THE BLOCKING REQUIREMENT, ON THE CARD.
+   Written by the shim in game.html out of build.js's own `title`, because a
+   title is mouse-only and a disabled key takes no focus, so the two rows the
+   player most needs an explanation for were the two with no way to get one.
+
+   Bronze, not --faint. --faint is licensed for dead keys precisely because the
+   player is not allowed to act on them — but this line is the instruction for
+   how to MAKE the key live, so it has to clear the reading floor: #c79a47
+   measures 6.4-7.0:1 on the dead face, against --faint's 2.8-3.0:1. It is the
+   one lit thing on an unlit card, which is also what makes it findable. */
+/* Stated at (0,3,0) on purpose: `.game-page .building-button small` above is
+   (0,2,1) and paints every <small> in these cards --muted, which would have
+   made the requirement the same colour as the cost line it has to be told
+   apart from. */
+.game-page .build-grid .req-note,
+.game-page .ship-grid .req-note {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0;
+    line-height: 1.25;
+    color: var(--bronze);
+    text-shadow: 0 1px 0 rgba(0,0,0,0.85);
+}
+
 /* --- structures: the library's own plates, one per card ---------------- */
 .game-page .build-grid [data-building-id="0"]::before { background-image: url('../images/ui/icons-buildings-metal-extractor.png'); }
 .game-page .build-grid [data-building-id="1"]::before { background-image: url('../images/ui/icons-buildings-crystal-refinery.png'); }
@@ -2650,7 +2888,11 @@ body.game-page::after {
     background-size: 10px 10px;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 1H8L10 4 5 9 0 4Z' transform='translate(0.55 0.55)' fill='%230a0e15' stroke='%230a0e15' stroke-width='1' stroke-linejoin='miter'/%3E%3Cpath d='M2 1H8L6.6 4H3.4Z' fill='%23c3cfe0'/%3E%3Cpath d='M2 1 0 4H3.4Z' fill='%23aebed2'/%3E%3Cpath d='M8 1 10 4H6.6Z' fill='%2399aac1'/%3E%3Cpath d='M0 4H5V9Z' fill='%238494ab'/%3E%3Cpath d='M10 4H5V9Z' fill='%2366768d'/%3E%3C/svg%3E");
 }
-.game-page .cost-note { color: var(--faint); }
+/* "Shipyards 2 · 340 prod" — the requirement line on a build card, i.e. the
+   text that explains why a key is or is not pressable. --stencil rather than
+   --muted because this lands on the PLATE face, not in a well, and --muted
+   drops to 4.1:1 on --steel-2. */
+.game-page .cost-note { color: var(--stencil); }
 
 /* UNAFFORDABLE / UNAVAILABLE. build.js sets both `disabled` and `.disabled`.
    The key sinks into its socket, loses every highlight, gains a machined
@@ -2661,7 +2903,17 @@ body.game-page::after {
 .game-page .ship-button:disabled,      .game-page .ship-button.disabled {
     cursor: not-allowed;
     transform: none;
-    color: #6d7788;
+    /* THE LOCKED LADDER IS THE THING A STRATEGY PLAYER SQUINTS AT MOST. At turn
+       one, seven of nine hulls plus the Spaceport upgrade and the Warp Gate are
+       disabled — i.e. everything the player is planning towards — and this label
+       was #6d7788, which measures 4.11:1 on the lighter end of the plate below
+       at 11.5px. WCAG exempts inactive controls, so it was never a violation; it
+       was still unreadable on a laptop panel in a lit room. --muted measures
+       5.3:1 on the same plate. The state is carried by the hatch, the sunk
+       socket, the desaturated icon and the removed text-shadow — four signals
+       that all survive greyscale — so nothing is lost by making the words
+       legible. */
+    color: var(--muted);
     text-shadow: none;
     background:
         repeating-linear-gradient(135deg, rgba(0,0,0,0.3) 0 5px, rgba(0,0,0,0) 5px 10px),
@@ -2711,7 +2963,12 @@ body.game-page::after {
 .game-page .building-button:disabled .cost-crystal, .game-page .building-button.disabled .cost-crystal,
 .game-page .defense-button:disabled .cost-crystal,  .game-page .defense-button.disabled .cost-crystal,
 .game-page .ship-button:disabled .cost-crystal,     .game-page .ship-button.disabled .cost-crystal {
-    color: #5b6472;
+    /* 9.5px numerals at #5b6472 measured 2.86:1 on this plate — a price tag the
+       player cannot read on the card they are saving up for. #7e8899 clears 4.5:1
+       against the LIGHTER end of the locked gradient (the hatch only darkens it
+       further) and still sits well below the live card's ink, so the dead cost
+       still reads as dead beside an affordable one. */
+    color: #7e8899;
 }
 /* The chips are painted artwork, so they go dead the way the card plates do —
    the same grayscale-and-dim the locked build icon takes, not a second recipe. */
@@ -2730,7 +2987,13 @@ body.game-page::after {
     background:
         repeating-linear-gradient(135deg, rgba(150,40,30,0.32) 0 6px, rgba(0,0,0,0) 6px 12px),
         linear-gradient(180deg, #241a1c, #171012) !important;
-    color: #7d666a !important;
+    /* Same reasoning as the generic locked plate above: these two doctrine/tech
+       locks were #7d666a (3.2:1) and #857a63 (3.5:1) on their own darker fills —
+       the hull names a player is furthest from and reads most often. Raised to
+       ~5:1 while staying inside their own hue family, so red-hatch and
+       amber-hatch remain distinguishable from each other and from the plain
+       lock, which is the signal these two exist to carry. */
+    color: #9d858a !important;
     box-shadow: inset 0 0 0 1px rgba(196,146,146,0.20), inset 2px 2px 5px rgba(0,0,0,0.75) !important;
     cursor: not-allowed !important;
 }
@@ -2738,7 +3001,7 @@ body.game-page::after {
     background:
         repeating-linear-gradient(135deg, rgba(180,130,30,0.26) 0 6px, rgba(0,0,0,0) 6px 12px),
         linear-gradient(180deg, #242018, #171410) !important;
-    color: #857a63 !important;
+    color: #998d73 !important;
     box-shadow: inset 0 0 0 1px rgba(196,172,124,0.20), inset 2px 2px 5px rgba(0,0,0,0.75) !important;
     cursor: not-allowed !important;
 }
@@ -3230,7 +3493,7 @@ body.game-page::after {
 }
 .game-page .operations-detail li { color: var(--muted); }
 .game-page .intel-ledger-row { border-bottom: 1px solid rgba(0,0,0,0.5); box-shadow: inset 0 -1px 0 rgba(255,255,255,0.03); }
-.game-page .intel-ledger-row span:last-child { color: var(--faint); }
+.game-page .intel-ledger-row span:last-child { color: var(--muted); }
 
 /* --------------------------------------------------------------------
    Sector survey panel
@@ -3292,8 +3555,11 @@ body.game-page::after {
    width buys legibility, not a second column. */
 .game-page .survey-col { min-width: 0; }
 .game-page .survey-col + .survey-col { display: grid; gap: 7px; align-content: start; margin-top: 7px; }
-.game-page #sectordisplay td + td { text-align: right; }
-.game-page #sectorShipTable td + td { width: 22%; }
+/* :is(td, th), NOT td. The survey and hull tables now carry real row and column
+   headers (game.html), so half of what these rules paint is a <th>. :is() keeps
+   the same specificity an element selector had, so nothing below has to move. */
+.game-page #sectordisplay :is(td, th) + :is(td, th) { text-align: right; }
+.game-page #sectorShipTable :is(td, th) + :is(td, th) { width: 22%; }
 .game-page .sector-panel-heading {
     display: flex; justify-content: space-between; align-items: flex-start;
     gap: 8px; margin-bottom: 7px;
@@ -3338,8 +3604,13 @@ body.game-page::after {
 .game-page .sector-intel-state.live    { color: #241502; background: linear-gradient(180deg, var(--amber-hi), var(--amber) 55%, var(--amber-lo)); }
 .game-page .sector-intel-state.sensor  { color: var(--amber-hi); background: linear-gradient(180deg, #46402f, #241f14); }
 .game-page .sector-intel-state.memory  { color: var(--bronze); background: linear-gradient(180deg, #2b2f38, #171a20); }
+/* The dead socket is the bottom rung of the ladder, but UNKNOWN is a real,
+   actionable reading — it is what tells a player this sector is worth a probe.
+   The socket depth carries "lowest rung"; the TEXT still has to be read, so it
+   is --muted (6.6:1 here) rather than --faint (3.5:1). The rung below a live
+   lamp is not a disabled control. */
 .game-page .sector-intel-state.unknown {
-    color: var(--faint);
+    color: var(--muted);
     background: #05080e;
     box-shadow: inset 2px 2px 4px rgba(0,0,0,0.85), inset -1px -1px 0 rgba(255,255,255,0.05);
 }
@@ -3421,14 +3692,22 @@ body.game-page::after {
     border: 2px solid var(--ink);
     box-shadow: inset 2px 2px 6px rgba(0,0,0,0.8);
 }
-.game-page #sectordisplay td {
+.game-page #sectordisplay :is(td, th) {
     padding: 3px 7px;
     font-size: 10.5px;
     line-height: 1.35;
+    /* A <th> is bold and centred by UA default. The header cells here are the
+       mono stencil labels down the left and across the top of an instrument
+       readout, and they were <td>s until the semantics were fixed — so the
+       defaults are unwound and the painting is unchanged. The right-hand cells
+       still take their right-alignment from the +-combinator rule above, which
+       is more specific than this. */
+    font-weight: inherit;
+    text-align: left;
     border-bottom: 1px solid rgba(0,0,0,0.6);
     box-shadow: inset 0 -1px 0 rgba(255,255,255,0.026);
 }
-.game-page #sectordisplay td:first-child {
+.game-page #sectordisplay :is(td, th):first-child {
     font-family: var(--font-mono);
     font-size: 9.5px;
     letter-spacing: 0.06em;
@@ -3436,9 +3715,9 @@ body.game-page::after {
     color: var(--bronze);
     white-space: nowrap;
 }
-.game-page #sectordisplay td div { color: var(--bright); font-weight: 600; }
-.game-page #sectorShipTable tr:first-child td { color: var(--bronze); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
-.game-page #sectorShipTable tr:first-child td div { color: var(--bronze); font-weight: 400; }
+.game-page #sectordisplay :is(td, th) div { color: var(--bright); font-weight: 600; }
+.game-page #sectorShipTable tr:first-child :is(td, th) { color: var(--bronze); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+.game-page #sectorShipTable tr:first-child :is(td, th) div { color: var(--bronze); font-weight: 400; }
 .game-page .sector-local-inventory {
     margin-top: 6px;
     padding: 6px 8px;
@@ -3838,12 +4117,16 @@ body.game-page::after {
         linear-gradient(90deg, rgba(0,0,0,0) calc(100% - 2px), var(--bronze) calc(100% - 2px)) 0 0 / 100% 2px no-repeat,
         linear-gradient(var(--bronze), var(--bronze)) 0 2px / 100% 1px no-repeat;
 }
+/* Same signage family as the panel codes on the rail beside it, so the same
+   colour: --stencil, 8.5:1 on the hull rail this sits on. It was --faint,
+   which is 3.4:1 — the scale legend was the least legible text on the chart
+   while being the only thing that says what the chart's units ARE. */
 .game-page .chart-scale-label {
     font-family: var(--font-mono);
     font-size: 9px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--faint);
+    color: var(--stencil);
     white-space: nowrap;
 }
 /* Phones and short landscape drop the chart entirely; the frame goes with it. */
@@ -3903,7 +4186,11 @@ body.game-page::after {
     outline: none;
     caret-color: var(--amber-hi);
 }
-.game-page #chat::placeholder { color: var(--faint); }
+/* A placeholder is the only instruction this input carries, and an empty chat
+   box is its normal resting state — so this string is on screen more than any
+   other in the comms rail. --muted is 6.3:1 on the input's well; --faint was
+   3.3:1. Placeholders are NOT covered by the disabled-control exemption. */
+.game-page #chat::placeholder { color: var(--muted); }
 .game-page #chat:focus {
     border-color: var(--amber);
     box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8), 0 0 0 2px rgba(240,162,51,0.32);
@@ -4072,7 +4359,10 @@ body.game-page::after {
     font-weight: 400;
     font-size: 9px;
     letter-spacing: 0.1em;
-    color: var(--faint);
+    /* The meter's own figure, in a well: --muted is 6.3:1 here. It was --faint
+       (3.3:1), which made the one NUMBER on the idle comms face the hardest
+       thing in the bay to read. */
+    color: var(--muted);
 }
 /* A tall bay (the survey does not always want its full height) gets the face at
    instrument scale and the readout stacked under it, so 270px of glass is not
@@ -4400,7 +4690,7 @@ body.game-page:has(#chatMessages > *) .comms-idle { display: none; }
     font-family: var(--font-mono);
     font-size: 9px;
     letter-spacing: 0.16em;
-    color: var(--faint);
+    color: var(--stencil);
 }
 /* Advisory severity, on the locked palette: neutral for information, amber for
    anything that wants a decision, crimson for a loss. The sky-blue headline
@@ -4453,7 +4743,9 @@ body.game-page:has(#chatMessages > *) .comms-idle { display: none; }
 /* --------------------------------------------------------------------
    Multi-move dialog & remaining overlays, brought into the same language
    -------------------------------------------------------------------- */
-.game-page #multiMove {
+/* The plate, not the scrim: #multiMove is a full-viewport veil now (see the base
+   rule), so the console material belongs on the panel floated on it. */
+.game-page #multiMove .multi-move-plate {
     background: var(--rivets), var(--grain), var(--face);
     background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
     border: 2px solid var(--ink);
@@ -4484,8 +4776,12 @@ body.game-page:has(#chatMessages > *) .comms-idle { display: none; }
 }
 .game-page #multiMove button:hover:not(:disabled) { filter: brightness(1.16); transform: none; }
 .game-page #multiMove button:active:not(:disabled) { transform: translateY(3px); box-shadow: inset 2px 2px 6px rgba(0,0,0,0.7); }
-.game-page #multiMove button:disabled { filter: none; opacity: 1; }
-.game-page .multi-move-header b {
+/* The dead-key face for these three lives with every other dead key on the
+   console (search "A dead key is a dead key"). What used to be here instead was
+   `filter: none; opacity: 1` — a rule that cancelled the legacy grey-out and put
+   nothing in its place, so Move Attack Ships / Move All Ships / Move Selected
+   rendered as fully lit beveled steel while reporting disabled:true. */
+.game-page .multi-move-header h2 {
     font-family: var(--font-head);
     font-weight: 400;
     letter-spacing: 0.04em;
@@ -4513,6 +4809,655 @@ body.game-page:has(#chatMessages > *) .comms-idle { display: none; }
 
 /* Reduced motion: the presses are 70ms and carry state, so they stay, but the
    global block below already collapses every transition. Nothing extra needed. */
+
+/* ====================================================================
+   RECENT EVENTS — the last panel on this HUD still in the old language.
+
+   Every rule here is `!important` and that is not laziness: connect.js builds
+   this panel with document.createElement and writes its paint as an INLINE
+   style string (rgba(12,16,33,0.9), a hairline white border, 12px corners, and
+   five lowercase blue pills for the filters). An inline style outranks any
+   stylesheet, so a console-language conversion of a panel another file paints
+   inline can only be stated this way. The alternative — leaving it — is worse
+   than the specificity: with the survey, the console, the chart, the map key
+   and now the codex and the reconnect window all in beveled steel, a
+   translucent blue card with rounded corners in the top right is the one thing
+   on screen that reads as a different product.
+
+   ONLY PAINT IS TOUCHED. Position, width, max-height and overflow are left to
+   connect.js and game-screen.js, which measure this panel and stack the
+   advisor under it — changing its box here would move something else. The
+   event GLYPH colours are left alone too: they carry the event's kind, which
+   is gameplay signal, and the brief says signal wins.
+   -------------------------------------------------------------------- */
+.game-page #event-panel {
+    padding: 0 !important;
+    color: var(--text) !important;
+    font-family: var(--font-ui) !important;
+    font-size: 12.5px !important;
+    background: var(--rivets), var(--grain), var(--face) !important;
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat !important;
+    border: 2px solid var(--ink) !important;
+    border-radius: 3px !important;
+    box-shadow: var(--plate-shadow) !important;
+}
+/* The header row becomes an embossed instrument bar, bled to the plate edge and
+   sticky, because the panel scrolls and a title that scrolls away from an event
+   log is a title that is not there when you need it. */
+.game-page #event-panel > div:first-child {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 3 !important;
+    /* Was an inline `flex; justify-content: space-between` — a title and five
+       keys competing for one 340px line. In the console's own type the keys no
+       longer fit beside the title and wrapped raggedly, so the row becomes a
+       stack: name on top, key well under it, which is what the command pad and
+       the codex already do with a tab strip. */
+    display: block !important;
+    margin: 0 0 6px !important;
+    padding: 6px 9px 7px 11px !important;
+    font-family: var(--font-head) !important;
+    font-size: 10.5px !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.07em !important;
+    text-transform: uppercase !important;
+    color: var(--amber-hi) !important;
+    background: linear-gradient(180deg, #1a222f, #0d121c) !important;
+    border-bottom: 2px solid var(--ink) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -2px 0 rgba(0,0,0,0.55) !important;
+    text-shadow: 0 1px 0 var(--ink) !important;
+}
+/* A recessed key well, the same one the command pad's tab strip sits in. */
+.game-page #event-filters {
+    display: flex !important;
+    gap: 3px !important;
+    margin-top: 6px !important;
+    padding: 3px !important;
+    background: #070b12 !important;
+    border: 2px solid var(--ink) !important;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8) !important;
+}
+/* Five console micro-keys instead of five blue pills. The latched state is read
+   off aria-pressed — which renderEventFeed already maintains — rather than off
+   the inline background it also writes, so the visible state and the announced
+   state cannot drift apart. */
+.game-page #event-filters button {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding: 0 4px !important;
+    height: 19px !important;
+    font-family: var(--font-mono) !important;
+    font-size: 9px !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+    border-radius: 0 !important;
+    border: 2px solid var(--ink) !important;
+    color: var(--stencil) !important;
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4)) !important;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.14), inset -1px -1px 0 rgba(0,0,0,0.5), 0 2px 0 var(--ink) !important;
+    text-shadow: 0 1px 0 var(--ink) !important;
+    transition: filter 0.12s ease !important;
+}
+.game-page #event-filters button:hover[aria-pressed="false"] { filter: brightness(1.22) !important; }
+.game-page #event-filters button:active[aria-pressed="false"] {
+    transform: translateY(2px) !important;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.65) !important;
+}
+/* Latched down AND lit, the same two-channel state every other key on this
+   console uses, so the active filter survives greyscale. */
+.game-page #event-filters button[aria-pressed="true"] {
+    color: #241502 !important;
+    background: linear-gradient(180deg, var(--amber-hi), var(--amber) 52%, var(--amber-lo)) !important;
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.5), inset -2px -2px 0 rgba(120,70,8,0.55), 0 2px 0 var(--ink) !important;
+    text-shadow: none !important;
+}
+/* The log itself sits in a recessed well, like every other readout here. */
+.game-page #event-feed-list {
+    margin: 0 9px 9px !important;
+    padding: 8px 9px 3px !important;
+    background: var(--well) !important;
+    border: 2px solid var(--ink) !important;
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.75), inset -1px -1px 0 rgba(255,255,255,0.045) !important;
+}
+.game-page #event-feed-list:empty { display: none !important; }
+/* A CLIPPED FEED HAS TO READ AS CONTINUING, NOT AS DAMAGE.
+   Measured before this existed: clientHeight 121 against scrollHeight 300 with
+   maskImage none — 60% of the report below a cut that ran through the middle of
+   the letterforms. The command pad answered exactly this question for
+   .tab-panel with a 26px bottom fade, on the argument that a sliced panel and a
+   continuing panel must be distinguishable when the platform draws no
+   scrollbar; this panel was left out of that pass.
+
+   A STICKY PSEUDO-ELEMENT, NOT A MASK. A mask on the scroller fades the panel's
+   own face and border out along with the text and leaves the galaxy showing
+   through the bottom 26px — the fix that looks like a second bug, which is the
+   reason the pad's own fade is an overlay too. Negative margin pulls it back
+   over the last rows so it adds no height; the side margins line it up with the
+   well (#event-feed-list is inset 9px). Mounted only while something is
+   actually below the fold — see fitScroller() in game.html — so the last line
+   of a short or fully-scrolled feed is never dimmed for nothing. */
+.game-page #event-panel.is-clipped::after {
+    content: "";
+    display: block;
+    position: sticky;
+    bottom: 0;
+    height: 26px;
+    margin: -26px 9px 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(9,13,21,0), rgba(9,13,21,0.88) 62%, var(--well));
+}
+.game-page #event-panel::-webkit-scrollbar { width: 10px; }
+.game-page #event-panel::-webkit-scrollbar-track { background: #05070d; box-shadow: inset 1px 0 0 rgba(0,0,0,0.9); }
+.game-page #event-panel::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, var(--steel-hi), var(--steel-3));
+    border: 1px solid var(--ink);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.18);
+}
+
+/* ====================================================================
+   SIGNAL LOST — the reconnection window.
+
+   The most stressful thirty seconds in a multiplayer game, and it shipped as
+   a flat #333 box with a #444 border filling 80% of the viewport, containing
+   a <center> tag, a SECOND <h1> (duplicating the sr-only one in the
+   accessibility tree), and a naked <button style="padding:20px"> wearing
+   browser-default chrome. It was the last surface on this page still in
+   pre-conversion styling. It also took no focus, was not aria-modal, trapped
+   nothing, and offered exactly one recovery: reload the page.
+
+   Three things changed and only one of them is paint:
+     - MATERIAL. Console plate, embossed title bar, plain --ink borders, amber
+       key for the action. Same recipe as the codex, stated through the same
+       tokens.
+     - SIZE. A compact plate on a graded scrim instead of an opaque box over
+       four fifths of the screen, so the board stays visible behind it. The
+       player has not left the game; they have lost the line to it.
+     - TRUTH. connect.js has been auto-reconnecting every 5s all along, and
+       this panel told the player to refresh the page. The copy now leads with
+       the reconnect that is actually happening, says what is safe (the empire
+       and every order already sent are on the server), and keeps reload as
+       the manual fallback it should always have been.
+   ==================================================================== */
+.game-page #lobbyWindow {
+    background:
+        radial-gradient(120% 90% at 50% 44%, rgba(4,7,12,0.84), rgba(2,4,7,0.94) 68%);
+}
+/* ==== THE CHART-NAMING PROMPT, IN THE CONSOLE'S OWN METAL. ===========
+   The last panel still in the pre-conversion language, and it appears MID-MATCH:
+   a 14px-radius #0f1424 card with a 1px rgba(255,255,255,0.10) rim and #e8ecff
+   text, floating over square riveted steel plates. Against the converted HUD it
+   had become the thing that looks broken.
+
+   `display` is left to name-picker.js, which owns showing and hiding by writing
+   an inline `display` — so this file states none, and the panel is hidden by
+   `[hidden]`-like default below rather than by fighting an inline style. */
+.game-page #namePrompt {
+    display: none;
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 22px;
+    z-index: 2998;
+    box-sizing: border-box;
+    width: min(520px, calc(100vw - 32px));
+    background: var(--rivets), var(--grain), var(--face);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    box-shadow: var(--plate-shadow);
+    color: var(--text);
+}
+.game-page #namePrompt .gp-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 0;
+    padding-right: 8px;
+}
+.game-page #namePrompt .gp-titlebar h2 {
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+}
+/* No stencil code on this bar: the close key already occupies the top-right,
+   which is where every other panel's code sits, and a transient prompt is not
+   an installed instrument. */
+.game-page #namePromptClose { width: 26px; height: 26px; flex: none; }
+.game-page #namePromptBlurb {
+    margin: 11px 13px 0;
+    padding: 8px 10px;
+    background: var(--well);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.75);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text);
+}
+.game-page #namePromptOptions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin: 0;
+    padding: 11px 13px 13px;
+}
+/* THE CANDIDATE KEYS. name-picker.js writes a flat-blue inline style onto each
+   of these and an inline style beats any selector here, so the shim in game.html
+   strips it and republishes the one thing it encoded — which candidate the
+   server chose — as data-chosen. Everything else is the console's key recipe.
+   The rules are written to work with or without the shim (nothing here depends
+   on the attribute existing), so if name-picker.js ever stops writing inline
+   styles these keys simply keep rendering. */
+.game-page #namePromptOptions button {
+    height: 28px;
+    padding: 0 11px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    color: var(--text);
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 1px;
+    cursor: pointer;
+    text-shadow: 0 1px 0 var(--ink);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.16), inset -1px -1px 0 rgba(0,0,0,0.5), 0 2px 0 var(--ink);
+}
+.game-page #namePromptOptions button:hover { filter: brightness(1.16); color: var(--bright); background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4)); }
+.game-page #namePromptOptions button:active { transform: translateY(2px); box-shadow: inset 2px 2px 5px rgba(0,0,0,0.65); }
+/* The server's own pick, latched down and lit — the same state language the
+   codex tabs use, so "this is the one already on the chart" survives greyscale
+   as depth and not only as a lighter fill. */
+.game-page #namePromptOptions button[data-chosen="1"] {
+    color: #241502;
+    background: linear-gradient(180deg, var(--amber-hi), var(--amber) 52%, var(--amber-lo));
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.5), inset -2px -2px 0 rgba(120,70,8,0.55), 0 2px 0 var(--ink);
+    text-shadow: none;
+}
+.game-page #namePromptOptions button[data-chosen="1"]:hover { color: #241502; filter: brightness(1.09); background: linear-gradient(180deg, var(--amber-hi), var(--amber) 52%, var(--amber-lo)); }
+
+.game-page .reconnect-dialog {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(440px, calc(100vw - 28px));
+    max-height: calc(100vh - 28px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    background: var(--rivets), var(--grain), var(--face);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    box-shadow: var(--plate-shadow);
+    color: var(--text);
+    outline: none;
+}
+/* Reuses the console's own instrument header, so the panel that appears when
+   things go wrong is made of the same metal as the panels that were working a
+   second earlier. The heading lives INSIDE the bar (the dialog is named by it)
+   and takes the bar's type rather than bringing its own. */
+.game-page .reconnect-dialog .gp-titlebar { margin-bottom: 0; }
+.game-page .reconnect-dialog .gp-titlebar h2 {
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+}
+.game-page .reconnect-dialog .gp-titlebar::after { content: "NET-00"; }
+.game-page .reconnect-body {
+    padding: 13px 15px 15px;
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    line-height: 1.55;
+}
+/* The live state, in its own recessed well: this is the one line that changes
+   while the player watches it, so it gets an instrument to sit in rather than
+   being a paragraph that quietly rewrites itself. */
+.game-page .reconnect-state {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 11px;
+    padding: 8px 10px;
+    background: var(--well);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.78), inset -1px -1px 0 rgba(255,255,255,0.05);
+}
+/* The lamp. A filled disc, not a glow: it is either lit or it is not, and it
+   is never the only carrier — the text beside it says the same thing. */
+.game-page .reconnect-lamp {
+    flex: none;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.45);
+    animation: reconnect-pulse 1.4s ease-in-out infinite;
+}
+@keyframes reconnect-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.28; } }
+.game-page .reconnect-state b {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+}
+.game-page .reconnect-state span {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--stencil);
+    font-variant-numeric: tabular-nums;
+}
+.game-page .reconnect-body p { margin: 0 0 10px; }
+.game-page .reconnect-body p:last-of-type { margin-bottom: 13px; }
+.game-page .reconnect-body strong { color: var(--bright); font-weight: 600; }
+.game-page .reconnect-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.game-page .reconnect-actions .gp-key { height: 32px; padding: 0 14px; font-size: 11px; }
+
+/* ====================================================================
+   THE CODEX — the last surface still in the old visual language.
+
+   It shipped as a flat #0f1424 card with 16px corners, hairline white
+   borders, pill tabs and a 6px backdrop blur: a translucent glass sheet
+   dropped on top of a riveted steel console. Every inline style that made
+   it that has moved here, and the panel is now built out of the same three
+   atoms as every other instrument on this page — riveted plate, embossed
+   title bar, recessed well — so opening the help does not look like opening
+   a different product.
+
+   The blur is gone rather than restyled. `backdrop-filter` promotes the
+   whole viewport-sized scrim to its own composited layer and re-blurs it
+   every frame the map animates underneath: measurable in the audit's frame
+   pacing, and it is also precisely the sleek-translucent idiom this HUD
+   does not use. A flat scrim reads as "the console is lit and everything
+   else is dark", which is what an industrial panel would actually do.
+
+   THE ONLY ACCENT EDGES IN HERE ARE FUNCTIONAL: the selected tab's amber
+   face (a latched key, which also drops into its socket, so the state
+   survives greyscale) and the focus ring. No decorative coloured stripe.
+   ==================================================================== */
+
+/* Screen-reader-only. Used for the page's <h1>: a HUD has no visible title
+   bar to promote, and inventing one would cost a dense interface real
+   pixels to say something every sighted player already knows. The clip
+   technique keeps the text IN the accessibility tree — the opposite of
+   hiding it — so a screen reader gets a document heading and the landmark
+   list has something to hang off. */
+.sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+.game-page #helpOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2999;
+    display: none;              /* the controller flips this to flex */
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    /* The scrim has to do the job the blur used to: say "this panel is the only
+       live thing on screen". A flat 0.72 veil did not — the HUD behind it stayed
+       almost fully legible, so the modal read as a card lying on a working
+       console rather than as a console that had taken the screen. Darker, and
+       graded from the middle, so the map is still THERE (the player has not left
+       the game) without competing with the text. */
+    background:
+        radial-gradient(120% 90% at 50% 44%, rgba(4,7,12,0.84), rgba(2,4,7,0.94) 68%);
+}
+.game-page #helpOverlay.is-open { display: flex; }
+
+/* The plate. Same recipe as every other console panel, stated through the
+   shared tokens so it cannot drift from them. */
+.game-page .codex-dialog {
+    width: 100%;
+    max-width: 760px;
+    max-height: min(86vh, 720px);
+    display: flex;
+    flex-direction: column;
+    background: var(--rivets), var(--grain), var(--face);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    box-shadow: var(--plate-shadow);
+    color: var(--text);
+    outline: none;
+}
+
+/* Embossed title bar, bleeding to the plate edge like .gp-titlebar. The
+   stencil code is signage in the same family as SCN-02 / CON-01 / KEY-07. */
+.game-page .codex-titlebar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 11px 8px 13px;
+    background: linear-gradient(180deg, #1a222f, #0d121c);
+    border-bottom: 2px solid var(--ink);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -2px 0 rgba(0,0,0,0.55);
+}
+.game-page .codex-titlebar h2 {
+    margin: 0;
+    font-family: var(--font-head);
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--amber-hi);
+    text-shadow: 0 1px 0 var(--ink);
+}
+.game-page .codex-code {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: var(--stencil);
+}
+
+/* The close key is a real key now. It was a transparent hitbox with an icon
+   in it and NO focus indicator of any kind — one of the six controls the
+   keyboard sweep could not see. It inherits .gp-key/.gp-key--icon from the
+   console; only the size is pinned here so it sits on the title bar's line. */
+.game-page #helpClose { width: 28px; height: 28px; flex: none; }
+
+/* Tab strip: a recessed key well seated on top of the reader, exactly like
+   the command pad's. The tabs were pill buttons in a row with a 10% white
+   border; two of the five states were told apart by an 0.10-vs-transparent
+   background, which is not a state a player can see. */
+.game-page .codex-tablist {
+    flex: none;
+    display: flex;
+    gap: 3px;
+    margin: 11px 11px 0;
+    padding: 3px;
+    background: #070b12;
+    border: 2px solid var(--ink);
+    border-bottom: 0;
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.game-page .codex-tablist::-webkit-scrollbar { display: none; }
+/* AN OVERFLOW WITH NO SCROLLBAR IS A HIDDEN SECTION. The strip hides its
+   scrollbar (a 15px browser scrollbar inside a 32px key well looks like
+   damage), which is fine right up until the strip actually overflows — and
+   then two of the five sections sat off the right edge with no bar, no fade
+   and no arrow, so a player on a phone had no way to know the lore existed.
+   codex.js MEASURES scrollWidth against clientWidth and stamps these, so the
+   fade appears only when there is genuinely something past the edge, and the
+   side it appears on tracks the scroll position. A luminance fade, not a
+   coloured edge: the strip dissolves into its own well. */
+.game-page .codex-tablist.can-scroll-right {
+    mask-image: linear-gradient(to right, #000 calc(100% - 26px), rgba(0,0,0,0.15));
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), rgba(0,0,0,0.15));
+}
+.game-page .codex-tablist.can-scroll-left {
+    mask-image: linear-gradient(to left, #000 calc(100% - 26px), rgba(0,0,0,0.15));
+    -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 26px), rgba(0,0,0,0.15));
+}
+.game-page .codex-tablist.can-scroll-left.can-scroll-right {
+    mask-image: linear-gradient(to right, rgba(0,0,0,0.15), #000 26px, #000 calc(100% - 26px), rgba(0,0,0,0.15));
+    -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,0.15), #000 26px, #000 calc(100% - 26px), rgba(0,0,0,0.15));
+}
+.game-page .codex-tab {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 26px;
+    padding: 0 9px;
+    font-family: var(--font-head);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #9aa5b8;
+    background: linear-gradient(180deg, var(--steel-hi), var(--steel-3) 55%, var(--steel-4));
+    border: 2px solid var(--ink);
+    border-radius: 1px;
+    cursor: pointer;
+    text-shadow: 0 1px 0 var(--ink);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.15), inset -1px -1px 0 rgba(0,0,0,0.5), 0 2px 0 var(--ink);
+    transition: filter 0.12s ease, transform 0.07s ease, box-shadow 0.07s ease;
+}
+.game-page .codex-tab:hover[aria-selected="false"] { filter: brightness(1.2); color: var(--bright); }
+.game-page .codex-tab:active[aria-selected="false"] {
+    transform: translateY(2px);
+    box-shadow: inset 2px 2px 5px rgba(0,0,0,0.65);
+}
+/* Latched down AND lit: depth carries the state, the amber face confirms it. */
+.game-page .codex-tab[aria-selected="true"] {
+    color: #241502;
+    background: linear-gradient(180deg, var(--amber-hi), var(--amber) 52%, var(--amber-lo));
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.5), inset -2px -2px 0 rgba(120,70,8,0.55), 0 2px 0 var(--ink);
+    text-shadow: none;
+    filter: none;
+}
+
+/* The reader itself: a bounded, scrolling well. tabindex="0" in the markup
+   makes it keyboard-scrollable, which a 58vh scroll box has to be. */
+.game-page .codex-panel {
+    flex: 1 1 auto;
+    margin: 0 11px 11px;
+    padding: 12px 14px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    background: var(--well);
+    border: 2px solid var(--ink);
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.75), inset -1px -1px 0 rgba(255,255,255,0.045);
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--text);
+}
+/* SCROLL CONTAINERS RING ON :focus, NOT ON :focus-visible, AND THAT IS
+   DELIBERATE. Everywhere else on this page the ring is :focus-visible only, so
+   it stays off mouse clicks — correct for a button, where the click IS the
+   feedback. A scroll region is not a button: it has no press, no state and no
+   label, and the only thing focusing it does is redirect the arrow keys. A
+   player who clicks into the reader and then presses Down deserves to be told
+   which box is about to move, whichever way the focus arrived. It is also what
+   the audit's sweep can see: :focus-visible is a heuristic the browser declines
+   to apply to a programmatically focused <div>, so a ring stated that way is a
+   ring that exists for real keyboard users and cannot be verified by anything.
+
+   Named panels rather than a blanket [tabindex] rule ON PURPOSE: the galaxy
+   map's hex tiles are role="option" with a roving tabindex, and they already
+   carry a purpose-built focus reticle drawn as SVG geometry (ui.js,
+   buildReticle) that traces the hexagon. A CSS outline there would put a
+   RECTANGLE around a hexagon that is already ringed. -3px so the ring seats
+   inside the plate's own border instead of landing on the panel 8px away. */
+.game-page .codex-panel:focus,
+.game-page #sectordisplay[tabindex="0"]:focus,
+.game-page #mapLegend[tabindex="0"]:focus,
+/* Recent events. The HUD's only record of battles resolved, fleets lost and
+   turns advanced, and the one scroll box that was left out of this rule — see
+   fitScroller() in game.html for why axe never reported it. */
+.game-page #event-panel[tabindex="0"]:focus {
+    outline: 2px solid var(--amber);
+    outline-offset: -3px;
+}
+.game-page .codex-panel p { margin: 0 0 9px; }
+.game-page .codex-panel p:last-child { margin-bottom: 0; }
+.game-page .codex-panel strong { color: var(--bright); }
+.game-page .codex-panel em { color: var(--amber-hi); font-style: italic; }
+
+/* Quick Help. It is the new-player path, so it is set as instructions rather
+   than as a bulleted paragraph: a marker in the console's own signage colour,
+   and the sentence in reading colour. */
+.game-page #codexHelp {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.game-page .codex-panel li {
+    position: relative;
+    margin: 0 0 8px;
+    padding-left: 15px;
+}
+.game-page .codex-panel li:last-child { margin-bottom: 0; }
+.game-page .codex-panel li::before {
+    content: "\25B8";
+    position: absolute;
+    left: 0;
+    color: var(--bronze);
+}
+.game-page .codex-panel li b { color: var(--bright); font-weight: 600; }
+
+/* Reference tables. Every one of these rows used to carry its own inline
+   `opacity` — 0.55 for the third column of The Twelve, which put a whole
+   column of the codex under the reading floor. Opacity is replaced by real
+   colours from the palette, all of which clear 4.5:1 on the well. */
+.game-page .codex-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+.game-page .codex-table td {
+    padding: 5px 10px 5px 0;
+    vertical-align: top;
+    border-bottom: 1px solid rgba(160,180,210,0.09);
+}
+.game-page .codex-table tr:last-child td { border-bottom: 0; }
+.game-page .codex-table td:last-child { padding-right: 0; }
+.game-page .codex-term {
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    letter-spacing: 0.06em;
+    color: var(--amber-hi);
+}
+.game-page .codex-def { color: var(--text); }
+.game-page .codex-aside { color: var(--stencil); }
+.game-page .codex-note { color: var(--stencil); margin-bottom: 10px; }
+
+/* Phone: the plate takes the window, and the tab strip WRAPS to a second row.
+   It used to scroll sideways on the argument that a second row would eat the
+   reader — it costs the reader 29px, and what it bought was two of the five
+   sections (The Twelve, Words) parked off the right edge of a strip with its
+   scrollbar suppressed. Half the codex, invisible, on the one form factor
+   where a player is most likely to be reading it instead of playing. 29px is
+   the cheaper thing to lose. The fade above still covers the in-between case
+   (a short landscape window wide enough to stay on one row and too narrow to
+   fit it). */
+@media (max-width: 560px), (max-height: 520px) {
+    .game-page #helpOverlay { padding: 8px; }
+    .game-page .codex-dialog { max-height: calc(100vh - 16px); }
+    .game-page .codex-tablist { flex-wrap: wrap; row-gap: 3px; }
+    .game-page .codex-tab { flex: 0 0 auto; }
+}
 
 /* Keyboard focus, shared by the game screen and the lobby — the two pages that use
    this stylesheet and the only two that had no focus indication at all. The auth,

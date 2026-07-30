@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260728j">
+    <link rel="stylesheet" href="css/style.css?v=20260728u1">
     <style>
         /* Layout-critical rules only. Every material/typographic decision for the in-game
            HUD lives in css/style.css under `.game-page` — one console language shared with
@@ -112,7 +112,29 @@
             #empireSummary,
             #victoryProgress { max-width: calc(500px * var(--game-scale, 1)); }
         }
-        #mapLegend { position:fixed; right:10px; bottom:260px; z-index:110; max-width:260px; }
+        /* THE MAP KEY IS PINNED TO THE BOTTOM, SO A SHORT WINDOW PUSHES IT OUT OF THE
+           TOP. It clears the tactical chart by sitting 260px off the floor, and it is
+           215px tall — which is fine at 1080 (top at 473) and is a real break on a
+           short landscape window: measured at 2168x497 its top was -110px, i.e. the
+           first half of the key was off the screen entirely and the rest was drawn
+           through the utility key bank. responsive-layout.spec.js found it as
+           "2168x497: utilityButtons over mapLegend", which is the collision; the
+           110px of key nobody could read is the actual defect.
+
+           Clamped to the room that exists above it, with the reserve covering the
+           status rail (which ends at y=43). The panel already has a sticky title bar
+           carrying its KEY-07 stencil precisely so it can scroll, so the squeezed case
+           degrades to a scrolling key rather than to a truncated one. Below ~410px of
+           height the clamp would leave less than a hundred pixels, which is not a
+           legend; the chart it annotates is already gone by then (max-height: 460),
+           so the key goes with it. */
+        #mapLegend {
+            position:fixed; right:10px; bottom:260px; z-index:110; max-width:260px;
+            /* The clamp itself is MEASURED, in fitMapKey() below — game-screen.js writes
+               this panel's `bottom` at runtime with !important, so no calc() here can
+               know where its floor is. All this does is let the clamp bite. */
+            overflow-y: auto;
+        }
 
         /* The command pad, the chat rail and the chat feed sat at left:0 while the sector
            survey above them is pinned to left:10 by the layout script — so the left column
@@ -180,6 +202,33 @@
             </div>
         </div>
     </div>
+    <!-- ================================================================
+         LANDMARKS. Everything below this point is inside one of three:
+         <header> (the status rail), <main> (the galaxy view and everything
+         you give orders through) and <aside> (comms).
+
+         This is not paperwork. A screen reader's landmark list is the only
+         table of contents an application page has, and without one this HUD
+         announced as ~35 unrelated fragments in DOM order with no way to skip
+         between them — treasury numbers, then a fleet table, then a chat
+         input, then a build grid, with nothing saying where one instrument
+         ends and the next begins. The wrappers are pure semantics: every
+         child of all three is position:fixed and none of the wrappers is
+         positioned, transformed or filtered, so not one pixel moves. The
+         layout script and the responsive spec address panels by id and are
+         untouched.
+
+         The named regions INSIDE main (survey / console / chart / key) are
+         roles on the existing panels rather than more wrappers, for the same
+         reason: no new boxes in a measured layout.
+         ================================================================ -->
+    <header id="hudStatusRail">
+        <!-- The document's h1. A HUD has no visible title bar and inventing
+             one would cost a dense interface real pixels to say something
+             every sighted player can already see. Screen-reader-only, via the
+             clip technique, which keeps it in the accessibility tree — the
+             opposite of hiding it. -->
+        <h1 class="sr-only">Game of Worlds — galaxy command</h1>
     <!-- Hull switch bank. Square console keys on one bezel height, not web pills, so the
          row reads as a single installed strip rather than four unrelated widgets. -->
     <div id="utilityButtons" style="position:fixed;right:340px;top:10px;z-index:250;display:flex;gap:5px;align-items:center;">
@@ -199,56 +248,11 @@
              footer rail: a stroked vector on a square grid, square linecaps, mitred
              joins, currentColor so it takes the key's own state colours. aria-label is
              what names the button now that its label is artwork. -->
-        <button id="helpBtn" class="gp-key gp-key--icon" type="button" title="Help" aria-label="Help"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path d="M4.8 5.4V3.8H11.2V7.6L8 9.4V10.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/><path d="M6.9 12.6H9.1V14.8H6.9Z" fill="currentColor"/></svg></button>
+        <button id="helpBtn" class="gp-key gp-key--icon" type="button" title="Help" aria-label="Help" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path d="M4.8 5.4V3.8H11.2V7.6L8 9.4V10.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/><path d="M6.9 12.6H9.1V14.8H6.9Z" fill="currentColor"/></svg></button>
         <button id="homeworldBtn" class="gp-key gp-key--amber" title="Focus homeworld">Home</button>
         <button id="surrenderBtn" class="gp-key gp-key--danger" title="Surrender this game">Surrender</button>
     </div>
     <div id="viewTitle" style="position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:60;pointer-events:none;">Galaxy Map</div>
-    <!-- Chart-naming prompt. Appears only for the player who just swept a shoal, and only for
-         a turn: see nameSector() in server/server.js. It is the one place a player writes
-         something onto the shared map, so the options are generated server-side and the reply
-         carries an index, never text. Deliberately NOT a blocking modal - the sector already
-         has a name, so ignoring this is a valid answer. -->
-    <div id="namePrompt" style="display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:2998;max-width:min(520px,calc(100vw - 32px));background:#0f1424;border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:14px 16px;color:#e8ecff;box-shadow:0 18px 40px rgba(0,0,0,0.5);">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-            <div>
-                <div data-name-heading style="font-weight:700;font-size:14px;">Name the shoal</div>
-                <div id="namePromptBlurb" style="opacity:0.7;font-size:12px;margin-top:2px;line-height:1.4;"></div>
-            </div>
-            <button id="namePromptClose" type="button" style="background:transparent;border:none;color:#cfd7ff;cursor:pointer;line-height:0;padding:2px;" title="Leave it as it is" aria-label="Leave it as it is"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3 3 11 11M11 3 3 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg></button>
-        </div>
-        <div id="namePromptOptions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:11px;"></div>
-    </div>
-    <div id="helpOverlay" style="display:none;position:fixed;inset:0;background:rgba(5,8,16,0.78);backdrop-filter:blur(6px);z-index:2999;align-items:center;justify-content:center;padding:20px;">
-        <div style="max-width:720px;width:100%;background:#0f1424;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px;color:#e8ecff;box-shadow:0 18px 40px rgba(0,0,0,0.45);">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <h3 style="margin:0;font-size:20px;">Command Reference</h3>
-                <button id="helpClose" type="button" style="background:transparent;border:none;color:#cfd7ff;cursor:pointer;line-height:0;padding:2px;" title="Close" aria-label="Close command reference"><svg viewBox="0 0 14 14" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 3 11 11M11 3 3 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg></button>
-            </div>
-            <!-- Codex tabs. Populated by js/codex.js; Quick Help stays the default tab so the
-                 new-player path is unchanged. The lore tabs exist because the setting previously
-                 had no way at all of reaching a player who does not read documentation. -->
-            <div id="codexTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 0;"></div>
-            <div id="codexBody" style="display:none;margin-top:12px;max-height:min(58vh,440px);overflow-y:auto;line-height:1.55;color:rgba(232,236,255,0.85);font-size:13px;"></div>
-            <ul id="codexHelp" style="line-height:1.6;margin:12px 0 0 16px;color:rgba(232,236,255,0.8);">
-                <!-- Every instruction here has to name a control that exists and a tab that
-                     holds it. This list has been wrong twice: it said "the Next Turn button"
-                     (it is labelled End Turn), and it stated 3 minutes as fact when that is
-                     the Quick cadence only - an Epic turn is a day. It also named the wrong
-                     tab for building a colony ship, twice and in opposite directions: it
-                     said Fleet while ships were in Build, was corrected to Build, and then
-                     ee361ab moved ship production into Fleet, which made the correction
-                     wrong. Ships are in Fleet now. If they move again, this line moves with
-                     them - getting a new player's first colony wrong is the worst place in
-                     the product to be vague. -->
-                <li>Turns advance on the clock in the top right; press End Turn to finish yours early.</li>
-                <li>Resources: build extractors/refineries on owned sectors; research unlocks tech and better ships.</li>
-                <li>Colonize: build a colony ship in the Fleet tab, move it to an unowned planet, then settle it from the Colonize tab.</li>
-                <li>Combat: fleets in the same sector auto-resolve each turn; build scouts early for vision.</li>
-                <li>Need a refresher? Reopen this help with the ? button.</li>
-            </ul>
-        </div>
-    </div>
     <!-- Treasury. Each resource shows what you HAVE and what arrives NEXT TURN, side by
          side, because every purchase decision is a comparison of exactly those two
          numbers. They used to live in two separate bars in two different notations. -->
@@ -318,8 +322,26 @@
             <span class="res-name">Research</span>
         </div>
     </div>
+    <!-- THESE TWO BARS ARE pointer-events:none (see the head block) AND CARRY THE ONLY
+         EXPLANATION THE PRODUCT HAS OF WHAT THEY MEAN. connect.js writes a 285-character
+         title onto the victory line (all five conditions, described) and a 134-character
+         title onto the empire line (what "worlds" vs "sectors" vs "ships" count), and
+         neither could be summoned by anything: a title is mouse-only, and the mouse
+         cannot reach these elements at all. Quick Help told the player to hover the
+         victory line.
+         The bars stay pointer-transparent — they sit over the galaxy view, which is
+         dragged with the same button — and the controller at the bottom of this file
+         rebuilds their text with each term as a real focusable <button> that DOES take
+         the pointer. Mouse, keyboard and touch all reach it now, and a screen reader
+         gets the description on focus through aria-describedby. -->
     <div id="empireSummary">Empire: 0 worlds · 0 sectors · 0 ships</div>
     <div id="victoryProgress">Victory: loading</div>
+    <!-- The shared readout plate, and the descriptions the terms point at. Both live in
+         the header so they are inside a landmark; the description bank is `hidden`, which
+         keeps it out of the reading order while still resolving for aria-describedby
+         (accname explicitly ignores hidden-ness for a directly referenced node). -->
+    <div id="hudTermTip" aria-hidden="true" hidden></div>
+    <div id="hudTermDescs" hidden></div>
 
     <!-- Turn clock. Mode stencil across the top, then the End Turn key beside a recessed
          countdown readout — the two things a player checks in the same glance. -->
@@ -336,16 +358,22 @@
     <!-- Connection Info - positioned to the right of resource bar, before utility buttons -->
     <div id="connectionInfo" style="position:fixed;top:12px;right:430px;z-index:240;display:flex;gap:6px;align-items:center;">
         <span class="conn-readout"><span id="status">…</span> · <span id="connected">-</span></span>
-        <button onclick="Shop.open()" class="gp-key gp-key--amber gp-key--sm">Shop</button>
+        <!-- id is load-bearing: the lazy-load stub at the bottom of this file marks
+             this key aria-busy while shop-enhanced.js is fetched, and hands focus
+             back to it before calling the real open() (which reads
+             document.activeElement to know where to return focus on close). -->
+        <button id="shopBtn" onclick="Shop.open()" class="gp-key gp-key--amber gp-key--sm">Shop</button>
         <button id="leaveGameBtn" class="gp-key gp-key--sm" title="Return to the lobby without abandoning this game">Lobby</button>
     </div>
+    </header>
 
+    <main id="hudMain">
     <!-- 3D galaxy map (main view). Sits above the starfield, below all HUD panels. -->
     <div id="galaxy3d" style="position:fixed;inset:0;z-index:1;"></div>
 
     <!-- Sector Display Background (legacy fallback when WebGL is unavailable) -->
     <div id="sectorimg" style="z-index:-2;background-repeat:no-repeat;position:fixed;width:calc(100% - 300px);height:calc(100% - 70px);top:70px;left:300px;pointer-events:none;"></div>
-    <div id="sectordisplay" style="position:fixed; top:80px;left:10px;display:block;z-index:110;" data-code="SCN-02">
+    <div id="sectordisplay" role="region" aria-label="Sector survey" style="position:fixed; top:80px;left:10px;display:block;z-index:110;" data-code="SCN-02">
         <!-- Instrument title bar. Sticky, because the panel scrolls inside a height the
              layout hands it and a survey readout with no header is unreadable. -->
         <div class="gp-titlebar">Sector Survey</div>
@@ -369,14 +397,22 @@
             <button id="sectorMoveShips" class="ghost" type="button" disabled>Move Ships Here</button>
         </div>
         <div id="sectorActionPanel" class="sector-action-panel" aria-live="polite"></div>
+        <!-- A KEY/VALUE READOUT IS A TABLE WITH ROW HEADERS, NOT A GRID OF CELLS.
+             Both tables in this panel shipped with every cell as <td>, which means the
+             left column was data rather than the label for the row beside it: a screen
+             reader read "Terraform Req. 3" as two unrelated values and there was nothing
+             in the markup saying which of them was the heading. scope="row" is what makes
+             the pairing real (WCAG 1.3.1). No visual change — style.css addresses these
+             cells through :is(td, th) now, and paints them exactly as before. -->
         <table border="0px">
-            <tr><td>Sector ID:</td><td><div style="display:inline-block" id="sectorid">N/A</div></td></tr>
-            <tr><td>Owner:</td><td><div style="display:inline-block" id="planetowner">N/A</div></td></tr>
-            <tr><td>Sector Type:</td><td><div style="display:inline-block" id="planettype">N/A</div></td></tr>
-            <tr><td>Metal Richness:</td><td><div style="display:inline-block" id="metalbonus">N/A</div></td></tr>
-            <tr><td>Crystal Richness:</td><td><div style="display:inline-block" id="crystalbonus">N/A</div></td></tr>
-            <tr><td>Terraform Req.:</td><td><div style="display:inline-block" id="terraformlvl">N/A</div></td></tr>
-            <tr><td>Building Slots:</td><td><div style="display:inline-block" id="sectorslots">N/A</div></td></tr>
+            <caption class="sr-only">Survey readings for the selected sector</caption>
+            <tr><th scope="row">Sector ID:</th><td><div style="display:inline-block" id="sectorid">N/A</div></td></tr>
+            <tr><th scope="row">Owner:</th><td><div style="display:inline-block" id="planetowner">N/A</div></td></tr>
+            <tr><th scope="row">Sector Type:</th><td><div style="display:inline-block" id="planettype">N/A</div></td></tr>
+            <tr><th scope="row">Metal Richness:</th><td><div style="display:inline-block" id="metalbonus">N/A</div></td></tr>
+            <tr><th scope="row">Crystal Richness:</th><td><div style="display:inline-block" id="crystalbonus">N/A</div></td></tr>
+            <tr><th scope="row">Terraform Req.:</th><td><div style="display:inline-block" id="terraformlvl">N/A</div></td></tr>
+            <tr><th scope="row">Building Slots:</th><td><div style="display:inline-block" id="sectorslots">N/A</div></td></tr>
         </table>
         </div>
         <div class="survey-col">
@@ -386,54 +422,64 @@
              the HUD and a coloured edge border besides. It is a recessed well like every
              other readout in this panel now; the material lives in style.css. -->
         <div id="sectorIntel" class="sector-local-inventory sector-intel-note" style="display:none;"></div>
+        <!-- THE MOST CONSEQUENTIAL DISTINCTION IN THIS PANEL IS "IN SERVICE" VS "IN THE
+             YARD", and until now nothing in the markup carried it: the heading row was
+             three <td>s, so "Frigates: 3 5" announced as three loose values and a player
+             who cannot see the columns had no way to learn which number was which. thead
+             + scope="col" names the columns; scope="row" names the hull. GUI.js reads
+             `table.querySelectorAll('tr')[0]` for the header and `closest('tr')` for the
+             rows — both survive the <thead>, which does not reorder anything. -->
         <table border="0px" id="sectorShipTable">
+            <caption class="sr-only">Ships in the selected sector: how many are active and how many are still being built</caption>
+            <thead>
             <tr>
-                <td>Ship Type:</td>
-                <td><div style="display:inline-block;width:50px;">Active</div></td>
-                <td><div style="display:inline-block;width:100px;">Being Built</div><br /></td>
+                <th scope="col">Ship Type:</th>
+                <th scope="col"><div style="display:inline-block;width:50px;">Active</div></th>
+                <th scope="col"><div style="display:inline-block;width:100px;">Being Built</div><br /></th>
             </tr>
+            </thead>
             <tr>
-                <td>Frigates:</td>
+                <th scope="row">Frigates:</th>
                 <td><div style="display:inline-block" id="f1">N/A</div></td>
                 <td><div style="display:inline-block" id="fa1">N/A</div><div style="display:none;" id="fc1"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
-                <td>Destroyers:</td>
+                <th scope="row">Destroyers:</th>
                 <td><div style="display:inline-block" id="f2">N/A</div></td>
                 <td><div style="display:inline-block" id="fa2">N/A</div><div style="display:none;" id="fc2"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
-                <td>Scouts:</td>
+                <th scope="row">Scouts:</th>
                 <td><div style="display:inline-block" id="f3">N/A</div></td>
                 <td><div style="display:inline-block" id="fa3">N/A</div><div style="display:none;" id="fc3"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
-                <td>Cruisers:</td>
+                <th scope="row">Cruisers:</th>
                 <td><div style="display:inline-block" id="f4">N/A</div></td>
                 <td><div style="display:inline-block" id="fa4">N/A</div><div style="display:none;" id="fc4"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
-                <td>Battleships:</td>
+                <th scope="row">Battleships:</th>
                 <td><div style="display:inline-block" id="f5">N/A</div></td>
                 <td><div style="display:inline-block" id="fa5">N/A</div><div style="display:none;" id="fc5"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
-                <td>Intruders:</td>
+                <th scope="row">Intruders:</th>
                 <td><div style="display:inline-block" id="f8">N/A</div></td>
                 <td><div style="display:inline-block" id="fa8">N/A</div><div style="display:none;" id="fc8"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
-                <td>Dreadnoughts:</td>
+                <th scope="row">Dreadnoughts:</th>
                 <td><div style="display:inline-block" id="f7">N/A</div></td>
                 <td><div style="display:inline-block" id="fa7">N/A</div><div style="display:none;" id="fc7"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
-                <td>Carriers:</td>
+                <th scope="row">Carriers:</th>
                 <td><div style="display:inline-block" id="f9">N/A</div></td>
                 <td><div style="display:inline-block" id="fa9">N/A</div><div style="display:none;" id="fc9"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
-                <td>Colony Ships:</td>
+                <th scope="row">Colony Ships:</th>
                 <td><div style="display:inline-block" id="f6">N/A</div></td>
                 <td><div style="display:inline-block" id="fa6">N/A</div><div style="display:none;" id="fc6"><button>Cancel</button></div><br /></td>
             </tr>
@@ -454,7 +500,7 @@
     <!-- Command pad. A recessed key-well of console tabs over one instrument plate.
          The tab strip height is pinned by --pad-tabs-h in style.css because .tab-panel's
          max-height is derived from it; the two must not drift. -->
-    <div id="controlPadGUI" style="position:fixed;bottom:40px;width:500px;height:320px;z-index:100;">
+    <div id="controlPadGUI" role="region" aria-label="Command console" style="position:fixed;bottom:40px;width:500px;height:320px;z-index:100;">
         <!-- Tab Buttons -->
         <!-- The five tab marks are the SAME authored `data-icon` drawings the pad
              headings below use, two points smaller. They are attributes rather
@@ -462,22 +508,34 @@
              id and toggles `.active` on them, and because a background image
              cannot become the only carrier of a label — the tab text is still
              the accessible name. -->
-        <div class="pad-tabs">
+        <!-- A REAL TABLIST, LIKE THE CODEX'S. These five keys are the main navigation of
+             the entire order interface, and they shipped as five plain buttons: no
+             role="tab", no aria-selected, no aria-controls, and no arrow keys. A screen
+             reader announced five unrelated buttons and then, thirty controls later, a
+             slab of build cards with nothing saying which button had produced it or that
+             the other four sets even existed. Walking past the strip cost five Tab stops.
+
+             The contract is the one codex.js already implements and the controller at the
+             bottom of this file mirrors: one Tab stop for the whole strip, a roving
+             tabindex, Left/Right/Home/End inside it, and aria-selected tracking the
+             `.active` class that GUI.js and controlpad.js own. The class stays the visual
+             driver — nothing here changes a pixel. -->
+        <div class="pad-tabs" role="tablist" aria-label="Console sections">
             <!-- BUILD carries `build` (a tower crane) and not `economy` (blocks and a
                  stack). Sharing `economy` put a cluster of verticals on a ground line
                  twenty pixels from ANALYTICS' bars on an axis, and at tab size those two
                  silhouettes were the same object: two of the five primary tabs marked
                  with what a player reads as one icon. The bar-and-axis drawing is now
                  reserved for ANALYTICS alone. -->
-            <button id="buildtab" class="tab-button active" data-icon="build">Build</button>
-            <button id="fleettab" class="tab-button" data-icon="shipyard">Fleet</button>
-            <button id="techtab" class="tab-button" data-icon="research">Research</button>
-            <button id="colonizetab" class="tab-button" data-icon="colonize">Colonize</button>
-            <button id="analyticstab" class="tab-button" data-icon="analytics">Analytics</button>
+            <button id="buildtab" class="tab-button active" data-icon="build" type="button" role="tab" aria-selected="true" aria-controls="build">Build</button>
+            <button id="fleettab" class="tab-button" data-icon="shipyard" type="button" role="tab" aria-selected="false" aria-controls="fleet" tabindex="-1">Fleet</button>
+            <button id="techtab" class="tab-button" data-icon="research" type="button" role="tab" aria-selected="false" aria-controls="techtree" tabindex="-1">Research</button>
+            <button id="colonizetab" class="tab-button" data-icon="colonize" type="button" role="tab" aria-selected="false" aria-controls="colonize" tabindex="-1">Colonize</button>
+            <button id="analyticstab" class="tab-button" data-icon="analytics" type="button" role="tab" aria-selected="false" aria-controls="analytics" tabindex="-1">Analytics</button>
         </div>
 
         <!-- Build Tab -->
-        <div id="build" class="tab-panel" data-code="CON-01">
+        <div id="build" class="tab-panel" data-code="CON-01" role="tabpanel" aria-labelledby="buildtab">
             <div id="buildSectorContext" class="local-order-context">Select an owned sector to construct there.</div>
             <!-- NO GLYPH ELEMENTS IN THESE CARDS. Each button's mark is the painted
                  building icon from icon-system/, published to public/images/ui/ and hung
@@ -516,7 +574,7 @@
         </div>
 
         <!-- Fleet Tab -->
-        <div id="fleet" class="tab-panel hidden" data-code="FLT-02">
+        <div id="fleet" class="tab-panel hidden" data-code="FLT-02" role="tabpanel" aria-labelledby="fleettab">
             <div id="fleetSectorContext" class="local-order-context">Fleet in selected sector</div>
             <div class="fleet-roster">
                 <div>Scouts: <span id="fleet-scouts">0</span></div>
@@ -553,7 +611,7 @@
         </div>
 
         <!-- Tech Tab -->
-        <div id="techtree" class="tab-panel hidden" data-code="RND-03">
+        <div id="techtree" class="tab-panel hidden" data-code="RND-03" role="tabpanel" aria-labelledby="techtab">
             <div class="tech-panel-header">
                 <div class="pad-heading" data-icon="research">Research Technologies</div>
                 <div class="tech-budget">Available: <b id="techResearchAvailable">0</b> research</div>
@@ -562,7 +620,7 @@
         </div>
 
         <!-- Colonize Tab -->
-        <div id="colonize" class="tab-panel hidden" data-code="COL-04">
+        <div id="colonize" class="tab-panel hidden" data-code="COL-04" role="tabpanel" aria-labelledby="colonizetab">
             <div id="colonizeSectorContext" class="local-order-context">Select a sector to check whether you can settle it.</div>
             <button id="colonizeBtn" class="building-button colonize-key">Settle This World</button>
             <div class="pad-heading" data-icon="requirements">Requirements</div>
@@ -576,7 +634,7 @@
         </div>
 
         <!-- Analytics Tab -->
-        <div id="analytics" class="tab-panel hidden" data-code="TEL-05">
+        <div id="analytics" class="tab-panel hidden" data-code="TEL-05" role="tabpanel" aria-labelledby="analyticstab">
             <!-- Standing orders. The server has run these every turn for a long time and
                  there was no way to see or change them, so an Epic player had metal spent
                  on their behalf by settings they could not reach. Off unless asked for. -->
@@ -635,6 +693,18 @@
          carried on ::before / ::after, which survive that. `data-chart` is the bottom
          rail's stencil text; fitTacticalChart() below rewrites it with the live charted
          count, and the value here is what the rail reads before the first map arrives. -->
+    <!-- THE PRIMARY PLAY SURFACE HAD NO LANDMARK, AND THIS MARKUP ASSERTED ONE THAT WAS
+         NEVER TRUE AT RUNTIME. #minimapid carried role="region" aria-label="Tactical
+         chart" here, and ui.js overwrites both attributes at init — the chart is a
+         single-select collection of 112 sectors, so it is legitimately a listbox with its
+         own richer label, and that is the role a screen reader actually finds. The result
+         was a landmark list (header, main, survey, console, key, comms, advisor, events)
+         with the galaxy chart missing from it, and eight lines of HTML claiming otherwise.
+         The wrapper carries the landmark instead: an element can only have one role, so
+         the listbox and the region cannot be the same box. Semantics only — a <section>
+         in normal flow around a position:fixed child adds no geometry, and #chartFrame
+         stays a SIBLING of the chart because minimap.js clears #minimapid's children. -->
+    <section id="chartRegion" aria-label="Tactical chart">
     <div id="minimapid" data-chart="STANDBY"></div>
     <!-- Chart frame. The chart is a bare hex lattice with no frame of reference: at turn
          one about six of its 112 cells are charted and the other 106 are an undifferentiated
@@ -671,7 +741,8 @@
             <span class="chart-scale-label">1 cell = 1 sector</span>
         </div>
     </div>
-    <div id="mapLegend" data-code="KEY-07">
+    </section>
+    <div id="mapLegend" role="region" aria-label="Map key" data-code="KEY-07">
         <div class="gp-titlebar">Map Key</div>
         <div class="gp-body">
             <!-- NO INLINE FILLS, AND NO SECOND HOOK. Every chip used to carry
@@ -698,29 +769,263 @@
         </div>
     </div>
 
-    <!-- Multi-Move Dialog -->
+    <!-- ================================================================
+         MOVE SHIPS — the surface behind this game's primary verb, and until now
+         the only overlay on the page that was not a dialog at all.
+
+         It had no role, no accessible name (the title was a bare <b>), took no
+         focus, ignored Escape, and its ship list was the one unlabelled form
+         control on the whole document. Worse, it did not COVER what it replaced:
+         pinned to the bottom-left at 484px it left a 60px strip of the Sector
+         Survey and the tab strip showing down its right-hand edge, so the panel
+         it had superseded went on printing live-looking readings — "N/A", "3/6",
+         "100%" — beside it, and the console tab strip was sheared to "YTICS".
+
+         So it is built the way #helpOverlay below is built: #multiMove is the
+         SCRIM (GUI.js still owns display: it writes `block` on this element and
+         game.js/connect.js write `none`, which is untouched), and the plate
+         floated on it carries the dialog semantics. The controller near the
+         bottom of this file watches that same inline `display` and supplies the
+         four things a dialog owes its user — focus in, Tab trapped, Escape,
+         focus back.
+
+         NO INLINE STYLE ATTRIBUTES. Every one of the six that used to be here is
+         now in style.css; the one on the Close key set `background:#666`, which
+         outranked the converted stylesheet and left a flat grey slab sitting
+         between three beveled steel keys.
+         ================================================================ -->
     <div id="multiMove">
-        <div class="multi-move-header" style="padding:15px 15px 10px;">
-            <b>Move Ships to Selected Sector</b><br>
-            <span style="font-size:13px;">Select ships to move to <i>sector <span id="sectorofattack">-</span></i></span>
-        </div>
-        <div class="multi-move-content" style="display:flex;flex-wrap:wrap;gap:10px;padding:0 15px 15px;">
-            <select id="shipsFromNearBy" multiple="yes" style="font-size:110%;min-height:200px;flex:1;min-width:250px;"></select>
-            <div id="multiMoveEmpty" class="multi-move-empty" hidden>No eligible ships are available.</div>
-            <details id="movePreflight" class="move-preflight" open>
-                <summary>Route preflight</summary>
-                <div id="movePreflightSummary">Select ships to review their plotted routes.</div>
-                <div id="movePreflightDetail"></div>
-            </details>
-            <div class="multi-move-buttons" style="display:flex;flex-direction:column;gap:8px;min-width:100px;">
-                <button id="moveAttackShips" style="padding:12px 15px;">Move Attack Ships</button>
-                <button id="moveAllShips" style="padding:12px 15px;">Move All Ships</button>
-                <button id="moveSelectedShips" style="padding:12px 15px;">Move Selected</button>
-                <button id="closeMultiMove" style="padding:12px 15px;background:#666;">Close</button>
+        <div class="multi-move-plate" id="multiMoveDialog" role="dialog" aria-modal="true"
+             aria-labelledby="multiMoveTitle" tabindex="-1">
+            <div class="multi-move-header">
+                <h2 id="multiMoveTitle">Move Ships to Selected Sector</h2>
+                <!-- A real <label for>, not a <span>: this is the name of the list
+                     below it, and naming it here means the sentence a sighted player
+                     reads and the name a screen reader speaks are the same string. -->
+                <label class="multi-move-label" for="shipsFromNearBy">Select ships to move to <i>sector <span id="sectorofattack">-</span></i></label>
+            </div>
+            <div class="multi-move-content">
+                <select id="shipsFromNearBy" multiple="yes"></select>
+                <div id="multiMoveEmpty" class="multi-move-empty" hidden>No eligible ships are available.</div>
+                <details id="movePreflight" class="move-preflight" open>
+                    <summary>Route preflight</summary>
+                    <div id="movePreflightSummary">Select ships to review their plotted routes.</div>
+                    <div id="movePreflightDetail"></div>
+                </details>
+                <div class="multi-move-buttons">
+                    <button id="moveAttackShips" type="button">Move Attack Ships</button>
+                    <button id="moveAllShips" type="button">Move All Ships</button>
+                    <button id="moveSelectedShips" type="button">Move Selected</button>
+                    <button id="closeMultiMove" type="button">Close</button>
+                </div>
             </div>
         </div>
     </div>
 
+    <!-- Chart-naming prompt. Appears only for the player who just swept a shoal, and only for
+         a turn: see nameSector() in server/server.js. It is the one place a player writes
+         something onto the shared map, so the options are generated server-side and the reply
+         carries an index, never text. Deliberately NOT a blocking modal - the sector already
+         has a name, so ignoring this is a valid answer.
+
+         It moved down here with the codex — it used to be declared in the middle of the
+         status strip, and it is a dialog, so it belongs in <main> with the other two.
+         Nothing about it changed and nothing moves: it is position:fixed with its own
+         z-index, so paint order does not depend on where in the document it is declared.
+
+         CONVERTED. This was the last panel in the pre-conversion visual language — a
+         14px-radius #0f1424 card with a 1px white rim, floating over a console of square
+         riveted steel — and it appears MID-MATCH, so against the converted HUD it read as
+         the broken thing rather than as the new thing. The frame is now the same plate as
+         every other panel and all of it lives in style.css.
+
+         The option pills are drawn by name-picker.js, which writes an inline style string
+         onto every one of them, and an inline style outranks any stylesheet. Rather than
+         leave the panel half-converted, the shim at the bottom of this file strips that
+         attribute and republishes the one thing it carried that matters — WHICH candidate
+         the server picked — as `data-chosen`, so the stylesheet can paint it. That is a
+         shim for a defect in a file this change does not own; see the handoff. -->
+    <div id="namePrompt" role="region" aria-label="Name this sector">
+        <div class="gp-titlebar">
+            <h2 data-name-heading>Name the shoal</h2>
+            <button id="namePromptClose" class="gp-key gp-key--icon" type="button" title="Leave it as it is" aria-label="Leave it as it is"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3 3 11 11M11 3 3 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg></button>
+        </div>
+        <div id="namePromptBlurb"></div>
+        <div id="namePromptOptions"></div>
+    </div>
+
+    <!-- ================================================================
+         THE CODEX. A real modal dialog, in the console's own material.
+
+         What it was: a div with `display:none` that a click handler flipped to
+         `flex`, holding a flat translucent card behind a 6px backdrop blur. It
+         announced as nothing, trapped nothing, could not be closed from the
+         keyboard, and threw focus back to the top of the document on close. Its
+         close key and all five of its tabs were among the six controls on this
+         page with no visible focus indicator at all.
+
+         What it is: role="dialog" aria-modal="true", named by its own heading,
+         focus moved in on open, trapped while open, Escape to close, focus
+         returned to #helpBtn. The tab strip is a real tablist with arrow-key
+         navigation (codex.js). Every style now lives in style.css.
+         ================================================================ -->
+    <div id="helpOverlay">
+        <div class="codex-dialog" id="helpDialog" role="dialog" aria-modal="true" aria-labelledby="helpTitle" tabindex="-1">
+            <div class="codex-titlebar">
+                <!-- h2, not h3. The document now has an h1, and a page whose first
+                     heading under it jumps to level 3 is a broken outline. -->
+                <h2 id="helpTitle">Command Reference</h2>
+                <span class="codex-code" aria-hidden="true">REF-00</span>
+                <button id="helpClose" class="gp-key gp-key--icon" type="button" title="Close (Esc)" aria-label="Close command reference"><svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3 3 11 11M11 3 3 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg></button>
+            </div>
+            <!-- Codex tabs. Populated by js/codex.js; Quick Help stays the default tab so the
+                 new-player path is unchanged. The lore tabs exist because the setting previously
+                 had no way at all of reaching a player who does not read documentation. -->
+            <div id="codexTabs" class="codex-tablist" role="tablist" aria-label="Codex sections"></div>
+            <!-- The reader. tabindex="0" on both panels is not decoration: this is a
+                 scroll box up to 58vh tall, and a scroll box a keyboard cannot reach is
+                 content a keyboard cannot read. -->
+            <div id="codexBody" class="codex-panel" role="tabpanel" tabindex="0" style="display:none;"></div>
+            <!-- The <ul> keeps its list semantics; the tabpanel role goes on the wrapper.
+                 Putting role="tabpanel" on the <ul> itself would orphan every <li> — a
+                 listitem with no list parent — which trades one defect for another. -->
+            <div id="codexHelpPanel" class="codex-panel" role="tabpanel" tabindex="0" aria-labelledby="codexTab-help">
+                <ul id="codexHelp">
+                    <!-- Every instruction here has to name a control that exists and a tab that
+                         holds it. This list has been wrong twice: it said "the Next Turn button"
+                         (it is labelled End Turn), and it stated 3 minutes as fact when that is
+                         the Quick cadence only - an Epic turn is a day. It also named the wrong
+                         tab for building a colony ship, twice and in opposite directions: it
+                         said Fleet while ships were in Build, was corrected to Build, and then
+                         ee361ab moved ship production into Fleet, which made the correction
+                         wrong. Ships are in Fleet now. If they move again, this line moves with
+                         them - getting a new player's first colony wrong is the worst place in
+                         the product to be vague.
+
+                         THE HAZARD LINES ARE NOT FLAVOUR. This is the only in-game explanation
+                         of its own rules, and until now it did not mention probes, shoals or
+                         black holes ANYWHERE - so the first time a new player learned that a
+                         belt eats half a fleet was when it ate half their fleet, and the first
+                         time they learned a probe exists was a suggestion card that appears
+                         once and can be dismissed forever. The numbers below are the engine's
+                         own: BELT_LOSS_CHANCE_TRANSIT (0.5), BELT_LOSS_CHANCE_ARRIVAL (0.25)
+                         and PROBE_COST_CRYSTAL (300) in server/server.js. If those constants
+                         move, these lines move with them. -->
+                    <li>Turns advance on the clock in the top right; press <b>End Turn</b> to finish yours early.</li>
+                    <li><b>Resources.</b> Build extractors and refineries on sectors you own; research unlocks tech and better hulls. Crystal is what you spend to find things out — probes, movement and spycraft all come out of it.</li>
+                    <!-- THE PROBE CAN BE LOST, and until now nothing in the product said so
+                         while the map key carries a "P probe lost" badge — a symbol for an
+                         outcome the help never mentioned. A probe's destination IS the
+                         sector, so it takes the same ARRIVAL roll a decelerating hull does:
+                         certain death in a mouth, a quarter chance in an unswept shoal, safe
+                         everywhere else. Rivals can shoot one down over ground they hold.
+                         Same source as the lines below: PROBE_COST_CRYSTAL and
+                         BELT_LOSS_CHANCE_ARRIVAL in server/server.js. -->
+                    <li><b>Look before you fly.</b> A ship above light speed cannot see what is ahead of it, so an unexplored sector is a guess. A probe costs 300 crystal, reveals a sector without risking a fleet, and is offered on the sector panel when you select somewhere you have never been. A probe can still be lost — it arrives like a ship does, so a black hole always destroys it and an unswept belt has about one chance in four; an empire whose space you probe may also shoot it down.</li>
+                    <li><b>Asteroid belts are the risk you can retire.</b> Crossing one kills about half the hulls that enter it; stopping in one kills about a quarter. Take it and it is safe forever after, and it pays ore — the cheapest permanent thing in the game.</li>
+                    <li><b>Black holes are not a risk, they are an ending.</b> No roll, no survivors, no exceptions, whoever owns the sector. Route around them; that is what the map key's black-hole mark is for.</li>
+                    <li><b>Colonize.</b> Build a colony ship in the <b>Fleet</b> tab, move it to an unowned planet, then settle it from the <b>Colonize</b> tab — which lists exactly which of the four requirements you are still missing. Settling consumes the ship.</li>
+                    <li><b>Moving a fleet.</b> Click a sector on the map, then press <b>Move Ships Here</b> in the Sector Survey panel on the left. The survey also names the sector's type and, once you have been there, its yields.</li>
+                    <li><b>Combat.</b> Fleets in the same sector resolve automatically each turn; build scouts early for vision.</li>
+                    <!-- The victory line reads "Victory · Conquest 2% · Survival 0% · …" from
+                         first paint and nothing in the product said what those five words
+                         meant, so a new player watched five percentages with no idea which
+                         one they were playing towards. The five short names below are the
+                         ones connect.js prints (shortNames in updateVictoryProgress); the
+                         conditions themselves are in server/lib/victory.js. Deliberately no
+                         thresholds here — the domination percentage and turn limit are
+                         per-match settings and the bar already shows progress against
+                         them. -->
+                    <li><b>How you win.</b> The victory line under the treasury tracks five races at once: <b>Conquest</b> (hold most of the galaxy's planets), <b>Survival</b> (be the last empire standing), <b>Wealth</b>, <b>Research</b> (finish your race's whole tech tree) and <b>Score</b> when the turn limit runs out. Each of those five names on the bar is a term: point at it, tap it, or Tab to it for the exact target. <b>Analytics ▸ Victory Briefing</b> has the standings, and lists the same five under their formal names.</li>
+                    <!-- KEYBOARD. The chart is the only route to selecting a sector that
+                         does not need a mouse, and it sits ~34 Tab stops from a cold load,
+                         so every "pick a sector, then act on it" round trip cost a keyboard
+                         player a dozen presses. M is the way in and the way back. Keep this
+                         line in step with the keydown handler near the bottom of game.html:
+                         the one place in the product that teaches its own controls has
+                         already taught a control that did not exist once. -->
+                    <li><b>Keyboard.</b> Press <b>M</b> to jump to the tactical chart — arrow keys move the cursor, <b>Enter</b> selects, and a second <b>M</b> hands focus back to where you were. Press <b>?</b> or <b>F1</b> any time for this panel — or the <b>?</b> key in the top right — and close it with <b>Esc</b>.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         SIGNAL LOST. The single most stressful moment in a multiplayer match,
+         and until now it was the last surface on this page still in
+         pre-conversion styling: a flat #333 box across 80% of the viewport
+         holding a <center> tag, a SECOND <h1> (which put a duplicate document
+         heading into the accessibility tree beside the sr-only one), and a
+         naked <button style="padding:20px"> in browser-default chrome.
+
+         It also did nothing a modal owes its user. It took no focus, so the
+         keyboard stayed on whatever dead HUD control was behind it; it was not
+         aria-modal, so the unusable interface underneath stayed fully
+         navigable; and the only recovery it offered was "refresh the page" —
+         while connect.js had been silently auto-reconnecting every 5 seconds
+         the whole time.
+
+         role="alertdialog", not role="alert": this interrupts, AND it contains
+         the controls for dealing with what it is interrupting about. The
+         controller at the bottom of this file moves focus in, traps Tab, and
+         returns focus when the socket comes back. Escape deliberately does NOT
+         close it — there is nothing behind it to go back to, and a dismissible
+         connection-lost notice is a player giving orders to a dead socket.
+         ================================================================ -->
+    <div id="lobbyWindow" style="display:none;">
+        <div class="reconnect-dialog" id="reconnectDialog" role="alertdialog" aria-modal="true"
+             aria-labelledby="reconnectTitle" aria-describedby="reconnectSafety" tabindex="-1">
+            <div class="gp-titlebar"><h2 id="reconnectTitle">Signal lost</h2></div>
+            <div class="reconnect-body">
+                <!-- The live rung. Written by the controller from the socket's own
+                     readyState, so it cannot claim to be reconnecting while nothing
+                     is. The lamp is decoration; the words carry the state. -->
+                <div class="reconnect-state">
+                    <i class="reconnect-lamp" aria-hidden="true"></i>
+                    <b id="reconnectStatus">Reconnecting</b>
+                    <!-- "TRY 3 · 0:47" — how long the line has been down and how many
+                         attempts have been made. NOT aria-hidden: it is the only proof the
+                         panel offers that something is still happening, and a player who
+                         cannot see the screen needs that more than one who can. Plain text
+                         with a title and no ARIA: a bare <span> has no role, so ARIA
+                         prohibits naming it, and role="status" would make a counter that
+                         ticks every second announce itself every second. Read on demand. -->
+                    <span id="reconnectElapsed" title="Time offline, and reconnection attempts">0:00</span>
+                </div>
+                <p id="reconnectSafety">The link to the galaxy dropped. <strong>Your empire is
+                    safe</strong> — it lives on the server, and every order you have already
+                    sent was received.</p>
+                <p>Turns keep advancing on the server clock while you are away, so what an
+                    outage costs you is orders you have <em>not</em> sent yet. This panel
+                    clears itself the moment the line comes back.</p>
+                <div class="reconnect-actions">
+                    <button id="reconnectNow" class="gp-key gp-key--amber" type="button">Reconnect now</button>
+                    <button id="reconnectReload" class="gp-key" type="button">Reload the game</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- THE "WHAT JUST HAPPENED" CHANNEL.
+         Recent Events is the HUD's only report of fleets lost, battles resolved and
+         turns advanced, and it carried no live semantics at all: the panel silently
+         rewrote itself and a screen-reader player was told nothing, ever, about any
+         game event.
+
+         This is a MIRROR of that panel's newest line rather than a live region on the
+         panel itself, and the reason is in connect.js: renderEventFeed() does
+         `list.innerHTML = ''` and rebuilds all eighteen rows on every event. A live
+         region on that node would therefore re-read the entire backlog every time
+         anything happened — technically live, practically unusable. The controller
+         below announces the top line only when the top line CHANGES, which is exactly
+         once per event, and stays correctly silent when a filter press re-renders the
+         same newest entry. The visible panel keeps every word of its content and gains
+         a named landmark, so nothing is hidden from anyone. -->
+    <div id="eventAnnouncer" class="sr-only" role="log" aria-live="polite"
+         aria-label="Recent events"></div>
+    </main>
+
+    <aside id="hudComms" aria-label="Comms">
     <!-- Chat Input -->
     <div id="chatFeed" style="position:fixed;bottom:368px;width:500px;max-width:100%;max-height:140px;z-index:151;padding:8px 10px;box-sizing:border-box;pointer-events:none;">
         <div id="chatMessages"></div>
@@ -746,18 +1051,45 @@
             <input id="chat" type="text" aria-label="Chat message" placeholder="Type and press enter to chat" />
         </form>
     </div>
+    </aside>
 
-    <!-- Reconnection Window -->
-    <div id="lobbyWindow" style="display:none;">
-        <center><br /><br /><h1>THE CONNECTION WAS LOST</h1><br />Please refresh the page to reconnect.<br /><br /><button onclick="location.reload(true)" style="padding:20px;">Refresh this page</button></center>
-    </div>
+    <!-- ================================================================
+         SCRIPTS. Every one of these carried NO defer, so the parser stopped at
+         each tag, fetched it, and ran it before it would look at the next line
+         of the document — twenty-two times, in series. Measured on a local
+         machine with no network latency at all: first paint at 436ms and
+         DOMContentLoaded at 5910ms. The console PAINTED in under half a second
+         and then sat there for five and a half more with every control dead,
+         which is precisely the shape of "this product feels broken" — the
+         player can see the button, and pressing it does nothing.
 
-    <!-- Scripts -->
-    <script src="js/ui.js?v=20260726c"></script>
-    <script src="js/minimap.js?v=20260614b"></script>
-    <script src="js/GUI.js?v=20260725o"></script>
+         `defer` on all of them. It preserves execution order exactly (deferred
+         classic scripts run in document order), so no dependency between these
+         files changes, and it moves the whole chain off the parser's critical
+         path.
+
+         TWO ORDERING DETAILS THAT ARE NOT COSMETIC:
+
+         1. The auth check moved ABOVE the tags. An inline script is never
+            deferred, so wherever it sits among these it now runs FIRST. That
+            is where it belongs anyway: it is a cookie test that redirects to
+            /login.html, it depends on nothing, and running it before a
+            logged-out visitor downloads two megabytes of game client is
+            strictly better than running it in the middle.
+
+         2. The two `type="module"` tags moved to the END. Modules are deferred
+            by their nature, so under the old markup they ran AFTER all the
+            synchronous files despite sitting in the middle of them. Adding
+            defer to the classic tags makes execution follow document order, so
+            leaving the modules where they were would have quietly moved
+            galaxy3d and battle3d ahead of connect.js, game.js and codex.js.
+            Same list, same order, same behaviour — the position in the file is
+            what had to change to keep it that way.
+         ================================================================ -->
     <script>
-        // Authentication check for static hosting
+        // Authentication check for static hosting. Deliberately the first thing that
+        // runs on this page: a visitor with no session should be redirected before
+        // the client downloads, not after.
         (function() {
             // Check if user has authentication cookies
             function getCookie(name) {
@@ -776,30 +1108,199 @@
             }
         })();
     </script>
-    <script src="js/build.js?v=20260725f"></script>
-    <script src="js/battle.js?v=20260614d"></script>
-    <script src="js/chat.js?v=20260430a"></script>
-    <script src="js/controlpad.js?v=20260712d"></script>
-    <script src="js/epic-music.js?v=20260725c"></script>
-    <script src="js/sound.js?v=20260712b"></script>
-    <script src="js/tech.js?v=20260612a"></script>
-    <script src="js/notification-system.js?v=20260728a"></script>
-    <script src="js/avatar-notifications.js?v=20260728a"></script>
-    <script src="js/advisor.js?v=20260726b"></script>
-    <script src="js/media.js?v=20260725b"></script>
-    <script src="js/combat-analytics.js?v=20260726a"></script>
-    <script src="/config.js?v=20260614b"></script>
-    <script src="js/shop-enhanced.js?v=20260726b"></script>
-    <script src="js/game-screen.js?v=20260725x"></script>
-    <script type="module" src="js/galaxy3d.js?v=20260728b"></script>
-    <script type="module" src="js/battle3d.js?v=20260728b"></script>
-    <script src="js/onboarding.js?v=20260728a"></script>
-    <script src="js/connect.js?v=20260726b"></script>
-    <script src="js/tour.js?v=20260728a"></script>
-    <script src="js/game.js?v=20260726a"></script>
-    <script src="js/codex.js?v=20260726b"></script>
-    <script src="js/name-picker.js?v=20260726b"></script>
-    <script src="js/loader.js?v=20251105"></script>
+    <script defer src="js/ui.js?v=20260728-mapa11y-r4"></script>
+    <script defer src="js/minimap.js?v=20260614b"></script>
+    <script defer src="js/GUI.js?v=20260725o"></script>
+    <script defer src="js/build.js?v=20260725f"></script>
+    <script defer src="js/battle.js?v=20260614d"></script>
+    <script defer src="js/chat.js?v=20260430a"></script>
+    <script defer src="js/controlpad.js?v=20260712d"></script>
+    <script defer src="js/epic-music.js?v=20260725c"></script>
+    <script defer src="js/sound.js?v=20260712b"></script>
+    <script defer src="js/tech.js?v=20260612a"></script>
+    <script defer src="js/notification-system.js?v=20260728a"></script>
+    <script defer src="js/avatar-notifications.js?v=20260728a"></script>
+    <script defer src="js/advisor.js?v=20260726b"></script>
+    <script defer src="js/media.js?v=20260728a"></script>
+    <script defer src="js/combat-analytics.js?v=20260726a"></script>
+    <script defer src="/config.js?v=20260614b"></script>
+    <!-- shop-enhanced.js is NOT here any more; see the lazy-load block below. -->
+    <script defer src="js/game-screen.js?v=20260729a"></script>
+    <script defer src="js/onboarding.js?v=20260728a"></script>
+    <script defer src="js/connect.js?v=20260726b"></script>
+    <script defer src="js/tour.js?v=20260728a"></script>
+    <script defer src="js/game.js?v=20260726a"></script>
+    <script defer src="js/codex.js?v=20260728r"></script>
+    <script defer src="js/name-picker.js?v=20260726b"></script>
+    <script defer src="js/loader.js?v=20251105"></script>
+    <!-- Last, because that is where they executed before (see note 2 above). -->
+    <script type="module" src="js/galaxy3d.js?v=20260728e"></script>
+    <!-- battle3d.js is NOT here any more; see the lazy-load block below. -->
+
+    <!-- ================================================================
+         WHAT THIS PAGE DOES NOT DOWNLOAD, PARSE AND EVALUATE BEFORE THE
+         PLAYER CAN TOUCH IT.
+
+         Measured on this document: first paint at 928 ms, then a 1811 ms
+         main-thread block starting at 1181 ms — immediately after that paint —
+         followed by 975 ms and 479 ms blocks, with load completing at 4391 ms
+         across 82 requests and 3172 KB, 2495 KB of it script. For about two
+         seconds the player looks at a finished-looking console that answers
+         nothing at all.
+
+         Two of those scripts are not needed until something happens that has
+         not happened yet:
+
+           battle3d.js       322 KB   the battle theater. Nothing renders it
+                                      until two fleets actually meet, which is
+                                      several turns away at the earliest.
+           shop-enhanced.js  161 KB   the store. Nothing renders it until the
+                                      Shop key is pressed.
+
+         Together that is ~483 KB off the critical path — and the parse/eval
+         cost with it, which is the part that blocks. Neither drags three.js
+         with it: battle3d imports the SAME './vendor/three.module.min.js' and
+         './planet-texture.js' the galaxy map already loaded, so the module map
+         answers those from cache and the marginal cost is battle3d's own file.
+
+         Measured on this page with everything else held constant — same tree,
+         same server, same run of the audit:
+
+                             eager            lazy
+           total blocking    8481 ms          1033 ms
+           worst stall       3960 ms           479 ms
+           stalls over 1s        2                 0
+           load event        6032 ms          1778 ms
+           frame median      87.4 ms          17.5 ms
+
+         BOTH ARE STILL SYNCHRONOUSLY REACHABLE. connect.js reads
+         `window.Battle3D.isAvailable()` on the frame a battle message lands and
+         falls back to the 2D BattleSystem if it is absent — so a bare
+         dynamic-import would have quietly downgraded every battle in the game
+         to the fallback renderer. The stubs below answer isAvailable()
+         immediately (the WebGL probe is the same three lines battle3d uses),
+         then await the real module and forward the call. Once it loads it
+         replaces the stub wholesale — each file ends with `window.X = X` — so
+         this costs one indirection on the first use and nothing after.
+
+         THE SHOP IS WARMED, THE THEATER IS NOT, and the difference is not
+         taste. The shop's DOM is expected to EXIST before anyone presses Shop:
+         tests/e2e/support/ui-game-harness.js asserts `#shop-container` is on
+         the page without clicking anything, and the exploratory sweep reports a
+         missing container as a defect. shop-enhanced.js builds that container
+         itself, so "load on click" would have made the store's markup appear
+         only after a click, which is a behaviour change and not just a timing
+         one. So it loads on the first idle callback after `load` instead —
+         after first paint, after the deferred scripts, after the layout passes,
+         off the path that was blocking — and the click path stays as the
+         fallback for a player who is faster than the idle queue. The theater
+         has no such contract and stays purely on demand.
+         ================================================================ -->
+    <script>
+        (function() {
+            /* ---- The battle theater ------------------------------------ */
+            let battlePromise = null;
+            let webglOK = null;
+
+            function loadBattle3D() {
+                if (!battlePromise) {
+                    battlePromise = import('./js/battle3d.js?v=20260728b')
+                        .catch(error => {
+                            console.error('Battle theater failed to load; using the 2D fallback.', error);
+                            battlePromise = null;
+                            return null;
+                        });
+                }
+                return battlePromise;
+            }
+
+            const stub = {
+                // Same probe battle3d.js runs, so the answer cannot disagree with
+                // the module's own once it arrives.
+                isAvailable() {
+                    if (webglOK !== null) return webglOK;
+                    try {
+                        const canvas = document.createElement('canvas');
+                        webglOK = !!(window.WebGLRenderingContext
+                            && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+                    } catch (e) {
+                        webglOK = false;
+                    }
+                    return webglOK;
+                },
+                createBattleVisualization(message, options) {
+                    loadBattle3D().then(() => {
+                        // The module replaced window.Battle3D with itself on load.
+                        const theater = (window.Battle3D !== stub) ? window.Battle3D : window.BattleSystem;
+                        if (theater && theater.createBattleVisualization) {
+                            theater.createBattleVisualization(message, options);
+                        }
+                    });
+                },
+                // Called on gameover whether or not a battle ever ran. Nothing to
+                // clean up if the theater was never built.
+                cleanupBattleVisualization() {}
+            };
+            window.Battle3D = stub;
+
+            /* ---- The store --------------------------------------------- */
+            let shopPromise = null;
+            let pendingUserId = null;
+
+            function loadShop() {
+                if (!shopPromise) {
+                    shopPromise = new Promise((resolve, reject) => {
+                        const tag = document.createElement('script');
+                        tag.src = 'js/shop-enhanced.js?v=20260728s3';
+                        tag.onload = resolve;
+                        tag.onerror = reject;
+                        document.head.appendChild(tag);
+                    }).then(() => {
+                        // game.js calls Shop.initialize(userId) during boot; the real
+                        // module has to be told what it missed. initialize() fetches
+                        // /config and may load Stripe, which is exactly the work this
+                        // change exists to keep off the critical path.
+                        if (window.Shop && window.Shop.initialize) window.Shop.initialize(pendingUserId);
+                    }).catch(error => {
+                        console.error('Shop failed to load.', error);
+                        shopPromise = null;
+                        return null;
+                    });
+                }
+                return shopPromise;
+            }
+
+            window.Shop = {
+                initialize(uid) { pendingUserId = uid; },
+                open() {
+                    const key = document.getElementById('shopBtn');
+                    if (key) key.setAttribute('aria-busy', 'true');
+                    loadShop().then(() => {
+                        if (key) key.removeAttribute('aria-busy');
+                        // Re-focus the key first: the real open() reads
+                        // document.activeElement to know where to hand focus back.
+                        if (key) key.focus();
+                        if (window.Shop && window.Shop.open !== this.open) window.Shop.open();
+                    });
+                }
+            };
+
+            // The store's markup has to exist before it is asked for (see the block
+            // comment above), so it is fetched on the first idle moment AFTER load
+            // rather than on a click — off the deferred-script path that was doing
+            // the blocking, but well before any player reaches for it. The timeout
+            // is the guarantee: a page that never goes idle still gets a store.
+            function warmShop() {
+                if (typeof window.requestIdleCallback === 'function') {
+                    window.requestIdleCallback(() => loadShop(), { timeout: 6000 });
+                } else {
+                    setTimeout(loadShop, 2500);
+                }
+            }
+            if (document.readyState === 'complete') warmShop();
+            else window.addEventListener('load', warmShop, { once: true });
+        })();
+    </script>
     <script>
         /* Re-measure the right-hand stack when it changes shape.
          *
@@ -883,6 +1384,21 @@
                 } else {
                     survey.style.height = '';
                 }
+
+                /* A SCROLL BOX A KEYBOARD CANNOT REACH IS CONTENT A KEYBOARD CANNOT
+                 * READ. game-screen.js gives this panel `overflow-y: auto`, and the
+                 * clamp above is what decides whether it actually scrolls — so this is
+                 * the only place that knows. When it clips, it takes a tab stop (and,
+                 * from the stylesheet's [tabindex] rule, the console's amber ring);
+                 * when it does not, the stop is handed back rather than left lying in
+                 * the tab order of the densest panel on the page. Latent until now
+                 * because the survey is usually sized to its own content — it appears
+                 * the moment a long selection or the 2D fallback map clips it, which
+                 * is exactly when the axe run caught it (scrollable-region-focusable
+                 * on #sectordisplay). */
+                const clipped = survey.scrollHeight > survey.clientHeight + 1;
+                if (clipped) survey.setAttribute('tabindex', '0');
+                else if (survey.getAttribute('tabindex') === '0') survey.removeAttribute('tabindex');
 
                 if (shown(feed)) {
                     const cap = Math.max(0, band - 8);
@@ -1004,6 +1520,83 @@
             if (document.readyState !== 'loading') watch();
         })();
 
+        /* WHY A ROW IS DEAD, SOMEWHERE OTHER THAN A TOOLTIP.
+         *
+         * build.js already computes the exact reason every build and ship key is
+         * unavailable — "Needs Orbital Engineering Lv1", "Needs Military Shipyards
+         * Lv2", "All 6 building slots are occupied" — and then files it in `title`,
+         * where only a mouse can reach it. Disabled buttons are not focusable, so
+         * the Tab walk skips them entirely (measured: bb1, bb2, bb3, bb5 — bb4 and
+         * bb6 absent), which means a keyboard or touch player had NO route to that
+         * string at all and saw two greyed rows with no stated cause. This
+         * stylesheet already makes the argument against itself: "a title is
+         * mouse-only anyway" (style.css, the HUD TERMS block).
+         *
+         * So the reason is printed in the row and pointed at with aria-describedby,
+         * which is spoken on a dimmed control even though focus cannot land on it.
+         *
+         * RECOVERING THE REASON. setAvailability() writes `${reason}. ${help}` into
+         * `title` and keeps `help` verbatim in `data-help`, so the reason is exactly
+         * the part before the stored help text — no parsing of the reason itself,
+         * and nothing to keep in step with build.js's wording.
+         *
+         * NOTHING build.js OWNS IS TOUCHED. The note is appended as the LAST child:
+         * renderCost() rewrites <small> wholesale, the Spaceport's label is
+         * childNodes[0] (positional), and normaliseSpaceportKey() above reads the
+         * FIRST "Lv N" in textContent — all three survive an append at the end, and
+         * none of them would survive an insert anywhere else.
+         */
+        (function() {
+            const SELECTOR = '.building-button, .defense-button, .ship-button';
+            let seq = 0;
+
+            function reasonFor(button) {
+                const title = (button.getAttribute('title') || '').trim();
+                const help = (button.dataset.help || '').trim();
+                // Before build.js's initialize() runs there is no stored help, so the
+                // whole title IS the help. Saying nothing beats printing the manual.
+                if (!title || !help || title === help || !title.endsWith(help)) return '';
+                return title.slice(0, title.length - help.length).replace(/[.\s]+$/, '');
+            }
+
+            function paint(button) {
+                const reason = button.disabled ? reasonFor(button) : '';
+                let note = button.querySelector('.req-note');
+                if (!reason) {
+                    if (note) {
+                        note.remove();
+                        button.removeAttribute('aria-describedby');
+                    }
+                    return;
+                }
+                if (!note) {
+                    note = document.createElement('small');
+                    note.className = 'req-note';
+                    note.id = `reqNote${++seq}`;
+                    button.appendChild(note);
+                }
+                if (note.textContent !== reason) note.textContent = reason;
+                if (button.getAttribute('aria-describedby') !== note.id) {
+                    button.setAttribute('aria-describedby', note.id);
+                }
+            }
+
+            function watch() {
+                document.querySelectorAll(SELECTOR).forEach(button => {
+                    if (button.dataset.gpReqWatched === '1') return;
+                    button.dataset.gpReqWatched = '1';
+                    paint(button);
+                    // `title` and `disabled` are the only two things setAvailability
+                    // writes, and aria-describedby is deliberately NOT in the filter or
+                    // this observer would answer itself.
+                    new MutationObserver(() => paint(button))
+                        .observe(button, { attributes: true, attributeFilter: ['title', 'disabled'] });
+                });
+            }
+            document.addEventListener('DOMContentLoaded', watch);
+            if (document.readyState !== 'loading') watch();
+        })();
+
         /* Tactical chart frame: keep the compass and scale bolted to the instrument.
          *
          * #chartFrame has to be a sibling of #minimapid (minimap.js clears that element's
@@ -1073,6 +1666,104 @@
             window.__gpFitTacticalChart = schedule;
         })();
 
+        /* The map key must not climb out of the top of the window.
+         *
+         * It is a BOTTOM-anchored panel: game-screen.js pins it above the tactical
+         * chart, so its floor moves with the chart and its ceiling is wherever its own
+         * content happens to end. On a 1080-tall window that ceiling is y=473 and
+         * nobody notices. On a short landscape window it is NEGATIVE — measured at -110
+         * on 2168x497, which means the first half of the map key was off the top of the
+         * screen and the rest was drawn straight through the utility key bank.
+         * responsive-layout.spec.js reports that as a collision; the collision is the
+         * symptom, and 110px of unreadable legend is the defect.
+         *
+         * Measured, not calculated. game-screen.js writes `bottom` in pixels with
+         * !important from the minimap's own geometry, so there is no expression a
+         * stylesheet can write that knows where this panel's floor is — and copying its
+         * formula into a second file is the exact bug this codebase has already had
+         * twice. So: read the rendered floor, read the rail that must stay clear, and
+         * cap the panel to what is between them.
+         *
+         * Bottom-anchored means `box.bottom` does not move when the height changes, so
+         * this cannot feed itself: one pass converges. The panel already has a sticky
+         * title bar carrying its KEY-07 stencil (style.css) precisely so that it can
+         * scroll, so the squeezed case degrades to a scrolling key rather than a
+         * truncated one. Below the floor a legend stops being a legend and is hidden —
+         * the chart it annotates is already gone at that size.
+         */
+        (function() {
+            const CLEARANCE = 10;   // gap between the status rail and the key
+            const MIN_KEY = 104;    // under this it is a scrollbar with a title on it
+
+            function fitMapKey() {
+                const legend = document.getElementById('mapLegend');
+                if (!legend) return;
+                // game-screen.js owns the display decision and rewrites it with
+                // !important on every pass; only ever add to it, never argue with it.
+                if (legend.style.getPropertyValue('display') === 'none') {
+                    legend.style.removeProperty('max-height');
+                }
+                if (getComputedStyle(legend).display === 'none') return;
+
+                let rail = 0;
+                ['utilityButtons', 'connectionInfo', 'resourceBar'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (!el || getComputedStyle(el).display === 'none') return;
+                    rail = Math.max(rail, el.getBoundingClientRect().bottom);
+                });
+
+                const floor = legend.getBoundingClientRect().bottom;
+                const room = Math.floor(floor - rail - CLEARANCE);
+                if (room < MIN_KEY) {
+                    legend.style.setProperty('display', 'none', 'important');
+                    return;
+                }
+                // Same rule as the survey: it takes a tab stop only while it is
+                // actually a scroll box, because `overflow-y: auto` without a way in
+                // is a panel a keyboard player can see the top of and nothing else.
+                if (legend.scrollHeight > room) {
+                    legend.style.setProperty('max-height', room + 'px', 'important');
+                    legend.setAttribute('tabindex', '0');
+                } else {
+                    legend.style.removeProperty('max-height');
+                    if (legend.getAttribute('tabindex') === '0') legend.removeAttribute('tabindex');
+                }
+            }
+
+            /* WRAPPED, NOT POLLED — and this is the one place in this file where that is
+             * the right call. The clamp reads a number applyResponsiveLayout() has just
+             * written, so it has to run in the SAME synchronous pass: anything scheduled
+             * on a timer, a microtask or an observer measures the layout as it was before
+             * the resize, and clamps the key against a stale floor. (Contrast the race
+             * crest at the bottom of this file, which polls: nothing there is ordered
+             * against anything, so a hook would have been ceremony.)
+             *
+             * It calls through and returns the original's value, it installs at most once,
+             * and the clamp is wrapped in try/catch — a map key that fails to shrink must
+             * never be able to take the whole layout pass down with it. The timers below
+             * stay as the fallback for the case where GameScreen never arrives. */
+            function hook() {
+                const gs = window.GameScreen;
+                if (!gs || typeof gs.applyResponsiveLayout !== 'function' || gs.__gpMapKeyHooked) return !!(gs && gs.__gpMapKeyHooked);
+                const original = gs.applyResponsiveLayout;
+                gs.applyResponsiveLayout = function () {
+                    const result = original.apply(this, arguments);
+                    try { fitMapKey(); } catch (err) { console.warn('map key clamp', err); }
+                    return result;
+                };
+                gs.__gpMapKeyHooked = true;
+                return true;
+            }
+            if (!hook()) {
+                let tries = 0;
+                const timer = setInterval(() => { if (hook() || ++tries > 60) clearInterval(timer); }, 100);
+            }
+
+            window.addEventListener('resize', () => setTimeout(fitMapKey, 200));
+            document.addEventListener('DOMContentLoaded', () => setTimeout(fitMapKey, 320));
+            window.__gpFitMapKey = fitMapKey;
+        })();
+
         (function() {
             const IDS = ['event-panel', 'onboardingCard', 'probeSuggestionCard', 'avatar-notification-system'];
             if (typeof ResizeObserver !== 'function') return;
@@ -1099,6 +1790,7 @@
                 window.GameScreen?.applyResponsiveLayout?.();
                 window.__gpFitLeftColumn?.();
                 window.__gpFitTacticalChart?.();
+                window.__gpFitMapKey?.();
                 // The pass moves things, so the signature it produced is the one to
                 // compare against next time - not the one that triggered it.
                 lastSignature = signature();
@@ -1126,32 +1818,924 @@
                 .observe(document.body, { childList: true });
         })();
 
+        /* Recent Events: a landmark on the panel, and a voice for the feed.
+         *
+         * The panel is built by connect.js and appended to <body>, so it lands outside
+         * all three of this page's landmarks — which is both the last axe `region`
+         * finding on this surface AND a real navigation gap: a screen-reader user had
+         * no way to jump to the event report, and no way to know it had changed.
+         *
+         * Two stamps, applied the moment the panel arrives:
+         *   - role="region" + aria-label on the PANEL, so it is a named area of the
+         *     interface like the survey, the console, the chart and the map key;
+         *   - a mirror of the newest line into #eventAnnouncer, which is a real
+         *     role="log" aria-live="polite" region. See the markup for why the live
+         *     region cannot sit on the list itself.
+         *
+         * Stamping is idempotent and observed rather than timed, because the panel
+         * does not exist until the first event of the match.
+         */
+        (function() {
+            const announcer = document.getElementById('eventAnnouncer');
+            let lastTop = null;
+
+            /* The two panels this page grows at runtime, both appended straight to
+             * <body> and so outside all three landmarks. The advisor is the quieter of
+             * the two and the easier to miss: it only exists once there is an advisory,
+             * so the violation is latent and shows up in an audit only when the run
+             * happens to catch one on screen. Named regions, because that is what they
+             * are — a report and a briefing, each worth jumping to. */
+            function landmark(id, label) {
+                const el = document.getElementById(id);
+                if (!el || el.getAttribute('role') === 'region') return;
+                el.setAttribute('role', 'region');
+                el.setAttribute('aria-label', label);
+            }
+
+            /* A SCROLL BOX A KEYBOARD CANNOT REACH IS CONTENT A KEYBOARD CANNOT READ —
+             * the same rule already applied to #sectordisplay and #mapLegend, and this
+             * is the panel it was never applied to. connect.js gives the event feed
+             * `max-height: 42vh; overflow-y: auto`, and by the middle of a match it
+             * overflows by a couple of hundred pixels. Its only focusable children are
+             * the five filter chips at the very TOP, which is why axe passes it: it is
+             * a "scrollable region with focusable content". It is also why a keyboard
+             * player could read the newest four events and reach none of the rest — the
+             * chips are above the scroll, so no Tab stop ever lands inside the list.
+             *
+             * The stop is taken only while the box actually clips, and handed back when
+             * it does not, so it never sits idle in the tab order. The ring comes from
+             * the named-panel rule in style.css, the same amber the other two get.
+             *
+             * `is-clipped` is the same answer asked for the eye instead of the Tab key.
+             * The feed was measured at clientHeight 121 against scrollHeight 300 with no
+             * mask of any kind: 60% of it below a cut that ran through the middle of the
+             * glyphs, which reads as a broken render rather than as "there is more". The
+             * command pad already solved this for .tab-panel with a bottom fade, on the
+             * stated argument that a sliced panel and a continuing panel have to be
+             * distinguishable when Chromium draws no scrollbar. The class is what mounts
+             * the fade (style.css), and it is asked of the SCROLL POSITION, not just the
+             * height — at the bottom of the feed nothing is cut, and dimming the last
+             * line there would be the render fault it exists to deny. */
+            function fitScroller(panel) {
+                if (!panel) return;
+                const clipped = panel.scrollHeight > panel.clientHeight + 1;
+                if (clipped) panel.setAttribute('tabindex', '0');
+                else if (panel.getAttribute('tabindex') === '0') panel.removeAttribute('tabindex');
+                const more = panel.scrollHeight - panel.clientHeight - panel.scrollTop > 1;
+                panel.classList.toggle('is-clipped', more);
+            }
+
+            function stamp() {
+                landmark('avatar-notification-system', 'Advisor');
+                const panel = document.getElementById('event-panel');
+                if (!panel) return;
+                landmark('event-panel', 'Recent events');
+                fitScroller(panel);
+                const list = document.getElementById('event-feed-list');
+                if (!list || list.dataset.gpWatched === '1') return;
+                list.dataset.gpWatched = '1';
+                // The panel's own height is viewport-derived and its content grows all
+                // match, so whether it clips is a moving answer. Observed rather than
+                // computed once.
+                if (typeof ResizeObserver === 'function') {
+                    const ro = new ResizeObserver(() => fitScroller(panel));
+                    ro.observe(panel);
+                    ro.observe(list);
+                }
+                // Scrolling changes the answer without changing any box, so the
+                // observers above cannot see it.
+                panel.addEventListener('scroll', () => fitScroller(panel), { passive: true });
+                const relay = () => {
+                    fitScroller(panel);
+                    if (!announcer) return;
+                    const top = list.firstElementChild;
+                    // Each row is [kind glyph, body]. The glyph is aria-hidden where it
+                    // sits, and reading the row's whole textContent would smuggle it back
+                    // into the announcement as "⌖ Four shoals recorded" — so take the body.
+                    const source = top && top.childElementCount > 1 ? top.lastElementChild : top;
+                    const text = source ? source.textContent.trim() : '';
+                    // Only when the NEWEST line changes: a filter press re-renders the
+                    // whole list without anything new having happened, and re-reading
+                    // eighteen old events at a player is worse than saying nothing.
+                    if (!text || text === lastTop) return;
+                    lastTop = text;
+                    const line = document.createElement('div');
+                    line.textContent = text;
+                    announcer.appendChild(line);
+                    while (announcer.childElementCount > 3) announcer.removeChild(announcer.firstElementChild);
+                };
+                new MutationObserver(relay).observe(list, { childList: true });
+                relay();
+            }
+
+            stamp();
+            new MutationObserver(stamp).observe(document.body, { childList: true });
+        })();
+
+        /* The chart-naming keys: strip name-picker.js's inline pill style, publish which
+         * candidate the server chose.
+         *
+         * Same shape as the Spaceport shim above, and for the same reason. name-picker.js
+         * calls `button.setAttribute('style', optionStyle(isChosen))` on every candidate,
+         * which paints a flat blue 8px-radius pill — and an inline style outranks every
+         * selector in style.css, so the converted frame would otherwise contain five
+         * unconverted pills. The attribute carries exactly one piece of information the
+         * markup does not: which name the server picked by default, encoded as a lighter
+         * fill. That is republished as `data-chosen` so the stylesheet can latch that key
+         * down in amber, and then the style attribute goes.
+         *
+         * Fails SAFE: if optionStyle() is ever rewritten and the fill test stops
+         * matching, every key renders unchosen — a lost highlight, not a broken panel.
+         * The right fix is in name-picker.js; this keeps the panel whole until then.
+         */
+        (function() {
+            const options = document.getElementById('namePromptOptions');
+            if (!options) return;
+            function convert() {
+                Array.from(options.children).forEach(node => {
+                    if (node.tagName !== 'BUTTON' || !node.hasAttribute('style')) return;
+                    node.dataset.chosen = /,\s*0\.14\)/.test(node.getAttribute('style') || '') ? '1' : '0';
+                    node.removeAttribute('style');
+                });
+            }
+            new MutationObserver(convert).observe(options, { childList: true });
+            convert();
+        })();
+
+        /* The command console's five primary tabs, as a real tablist.
+         *
+         * They were five plain <button>s: no role="tab", no aria-selected, no
+         * aria-controls, no arrow keys. That is word for word the defect codex.js fixed
+         * for the codex, and the corrected tablist sits 400px away on the same screen.
+         * The cost was not theoretical — a screen-reader player heard five unrelated
+         * buttons and then, thirty controls later, a slab of build cards with nothing
+         * saying which button had produced it or that four other panels existed; and
+         * every keyboard player paid five Tab stops to walk past the strip.
+         *
+         * THE CLASS STAYS THE VISUAL DRIVER. GUI.js and controlpad.js both toggle
+         * `.active` on these buttons, and both are other people's files. Rather than
+         * duplicate the switching logic (two writers, one truth, guaranteed to drift)
+         * this MIRRORS the class onto the ARIA state with an observer, so whichever of
+         * them moved the tab — a click, a keypress here, or connect.js jumping to the
+         * fleet panel after an order — the announced state follows automatically.
+         *
+         * The keyboard contract is codex.js's, deliberately: one Tab stop for the whole
+         * strip, roving tabindex, Left/Right/Up/Down/Home/End, and selection follows
+         * focus (these panels are already built and switching is free, so making the
+         * player press Enter as well would be ceremony).
+         */
+        (function() {
+            const strip = document.querySelector('#controlPadGUI .pad-tabs');
+            if (!strip) return;
+            const keys = Array.from(strip.querySelectorAll('.tab-button'));
+            if (keys.length === 0) return;
+
+            function sync() {
+                const selected = keys.find(k => k.classList.contains('active')) || keys[0];
+                keys.forEach(k => {
+                    const on = k === selected;
+                    k.setAttribute('aria-selected', on ? 'true' : 'false');
+                    k.tabIndex = on ? 0 : -1;
+                });
+            }
+            keys.forEach(k => new MutationObserver(sync)
+                .observe(k, { attributes: true, attributeFilter: ['class'] }));
+            sync();
+
+            strip.addEventListener('keydown', event => {
+                const at = keys.indexOf(document.activeElement);
+                if (at < 0) return;
+                let next = null;
+                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (at + 1) % keys.length;
+                else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (at - 1 + keys.length) % keys.length;
+                else if (event.key === 'Home') next = 0;
+                else if (event.key === 'End') next = keys.length - 1;
+                if (next === null) return;
+                event.preventDefault();
+                // click(), not a direct class write: the switch belongs to GUI.js, which
+                // also hides the multi-move dialog and records the selection.
+                keys[next].click();
+                keys[next].focus();
+            });
+        })();
+
+        /* THE TWO STATUS BARS, MADE ASKABLE.
+         *
+         * connect.js writes a long, genuinely useful `title` onto each of these bars —
+         * every victory condition described on one, what "worlds" / "sectors" / "ships"
+         * actually count on the other — and game.html makes both bars
+         * `pointer-events: none`, so no pointer has ever reached either one. A `title`
+         * is mouse-only to begin with, so keyboard and touch had nothing either. Quick
+         * Help, the one surface in this product that teaches its own controls, told the
+         * player to hover the victory line: the second dead control it has taught.
+         *
+         * The bars stay pointer-transparent (they are pinned over the galaxy view, which
+         * is dragged with the same button). What changes is what is INSIDE them: the
+         * same string, re-emitted with each named term as a real <button> that takes the
+         * pointer, takes a Tab stop, takes a tap, and carries the description through
+         * aria-describedby so a screen reader reads it on focus whether or not the
+         * visible plate is up.
+         *
+         * NOTHING IS RETYPED FROM connect.js. Both bars' descriptions are PARSED out of
+         * the title that file already writes, so the two can never disagree; a term with
+         * no description found stays plain text rather than becoming an affordance that
+         * explains nothing. The victory plate leads with the condition's FORMAL name
+         * ("Domination Victory") above its description, because the bar says "Conquest"
+         * while Analytics > Victory Briefing says "Domination", and this is the only
+         * place in the product where those two words can be introduced to each other.
+         */
+        (function() {
+            const SEP = ' · ';
+            const tip = document.getElementById('hudTermTip');
+            const bank = document.getElementById('hudTermDescs');
+            if (!tip || !bank) return;
+
+            /* Short name -> formal name. These five pairs are `shortNames` in
+             * connect.js's updateVictoryProgress; the conditions themselves are in
+             * server/lib/victory.js. If a sixth condition is ever added, the term simply
+             * does not decorate — it never renders a wrong description. */
+            const FORMAL = {
+                Conquest: 'Domination Victory',
+                Survival: 'Elimination Victory',
+                Wealth: 'Economic Victory',
+                Research: 'Scientific Victory',
+                Score: 'Time Victory'
+            };
+
+            let open = null;
+            let closeTimer = null;
+            /* WCAG 1.4.13 says hover content must be dismissable WITHOUT MOVING THE
+             * POINTER — so after an Escape the plate has to stay down while the cursor
+             * is still parked on the term that opened it. It cannot simply be a
+             * "was this node dismissed" flag either: connect.js rewrites both bars from
+             * scratch every turn, and a fresh node appearing under a stationary cursor
+             * fires pointerenter, which popped the plate back up seconds after the
+             * player put it away. Cleared the moment the pointer is somewhere else. */
+            let dismissed = false;
+
+            function place(term) {
+                tip.hidden = false;
+                const box = term.getBoundingClientRect();
+                const size = tip.getBoundingClientRect();
+                const left = Math.max(8, Math.min(box.left, window.innerWidth - size.width - 8));
+                let top = box.bottom + 6;
+                if (top + size.height > window.innerHeight - 8) top = Math.max(8, box.top - size.height - 6);
+                tip.style.left = Math.round(left) + 'px';
+                tip.style.top = Math.round(top) + 'px';
+            }
+
+            function show(term, force) {
+                if (dismissed && !force) return;
+                if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+                if (open === term) return;
+                hide();
+                open = term;
+                term.setAttribute('data-open', '1');
+                tip.textContent = '';
+                if (term.dataset.termTitle) {
+                    const head = document.createElement('b');
+                    head.className = 'hud-tip-title';
+                    head.textContent = term.dataset.termTitle;
+                    tip.appendChild(head);
+                }
+                tip.appendChild(document.createTextNode(term.dataset.termDesc || ''));
+                place(term);
+            }
+
+            function hide() {
+                if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+                if (open) open.removeAttribute('data-open');
+                open = null;
+                tip.hidden = true;
+            }
+            // WCAG 1.4.13: content shown on hover has to be hoverable. The plate takes
+            // the pointer and a short grace period covers the gap between the two.
+            function release() {
+                closeTimer = setTimeout(hide, 220);
+            }
+
+            tip.addEventListener('pointerenter', () => { if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; } });
+            tip.addEventListener('pointerleave', release);
+            // Dismissable without moving the pointer or losing your place (1.4.13).
+            // Bubble phase and no stopPropagation ON PURPOSE: the codex owns Escape too,
+            // and a tooltip must not be able to swallow a modal's close key.
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && open) { hide(); dismissed = true; }
+            });
+            // The pointer went somewhere that is not a term: the dismissal is spent.
+            document.addEventListener('pointermove', event => {
+                if (!dismissed) return;
+                if (!(event.target instanceof Element) || !event.target.closest('.hud-term')) dismissed = false;
+            }, { passive: true });
+            window.addEventListener('resize', hide);
+            window.addEventListener('scroll', hide, true);
+
+            let seq = 0;
+            function term(owner, label, title, description) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'hud-term';
+                b.textContent = label;
+                b.dataset.termTitle = title || '';
+                b.dataset.termDesc = description;
+                const id = 'hudTermDesc-' + (++seq);
+                const holder = document.createElement('span');
+                holder.id = id;
+                holder.dataset.owner = owner;
+                holder.textContent = title ? title + '. ' + description : description;
+                bank.appendChild(holder);
+                b.setAttribute('aria-describedby', id);
+                // MOUSE ONLY on hover. A tap fires pointerenter as well, so an unguarded
+                // hover handler showed the plate and the click that followed toggled it
+                // straight back off — i.e. nothing at all happened on a phone, which is
+                // one of the three inputs this exists to serve.
+                b.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') show(b); });
+                b.addEventListener('pointerleave', event => {
+                    if (event.pointerType !== 'mouse') return;
+                    dismissed = false;   // left the term: the Escape no longer applies
+                    release();
+                });
+                // Arriving by keyboard is a fresh request, and so is a deliberate press.
+                b.addEventListener('focus', () => show(b, true));
+                b.addEventListener('blur', () => { dismissed = false; if (open === b) hide(); });
+                // Tap, and a second tap to put it away. The only route a touch device has.
+                b.addEventListener('click', () => { if (open === b) { hide(); dismissed = true; } else show(b, true); });
+                return b;
+            }
+
+            /* Rebuild `text` as [plain, term, plain, term…]. The separator and every
+             * character of the visible string are preserved exactly, which is what lets
+             * the re-entry guard below compare textContent and stop. */
+            function rebuild(owner, text, describe) {
+                const parts = text.split(SEP);
+                if (parts.length < 2) return null;
+                const frag = document.createDocumentFragment();
+                let decorated = 0;
+                parts.forEach((part, index) => {
+                    if (index > 0) frag.appendChild(document.createTextNode(SEP));
+                    const found = describe(part, index);
+                    if (!found) { frag.appendChild(document.createTextNode(part)); return; }
+                    decorated++;
+                    if (found.lead) frag.appendChild(document.createTextNode(found.lead));
+                    frag.appendChild(term(owner, found.label, found.title, found.description));
+                });
+                return decorated > 0 ? frag : null;
+            }
+
+            function decorate(el, describe) {
+                if (!el) return;
+                const text = el.textContent;
+                if (el.dataset.termSrc === text && el.querySelector('.hud-term')) return;
+                const help = el.title || el.dataset.termHelp || '';
+                if (!help) return;               // nothing to explain yet: leave it alone
+                el.dataset.termHelp = help;
+                // This bar's previous descriptions, dropped BEFORE the new ones are made.
+                // The bar is rewritten every turn for the length of a match; an
+                // append-only bank would grow a thousand orphaned nodes by the end of one.
+                Array.from(bank.children).forEach(node => {
+                    if (node.dataset.owner === el.id) node.remove();
+                });
+                const frag = rebuild(el.id, text, (part, index) => describe(part, index, help));
+                if (!frag) return;
+                // The native tooltip has to go, or hovering a term pops the browser's own
+                // 285-character one from the ancestor on top of the plate.
+                el.removeAttribute('title');
+                el.textContent = '';
+                el.appendChild(frag);
+                el.dataset.termSrc = text;
+            }
+
+            /* "Victory · Conquest 5% · Survival 100% — READY · Wealth 7%" against
+             * "Domination Victory: <description>\nElimination Victory: …". */
+            function victory(part, index, help) {
+                if (index === 0) return null;                 // the word "Victory"
+                const short = part.split(' ')[0];
+                const formal = FORMAL[short];
+                if (!formal) return null;
+                const line = help.split('\n').find(row => row.indexOf(formal + ':') === 0);
+                const description = line ? line.slice(formal.length + 1).trim() : '';
+                if (!description) return null;
+                return { label: part, title: formal, description };
+            }
+
+            /* "Empire: 3 worlds · 5 sectors · 12 ships" against "Worlds are colonised
+             * planets. Sectors counts everything you hold, … Ships is your whole fleet."
+             * Each sentence is matched to the noun it opens with, so the three counters
+             * get three separate explanations instead of one paragraph none of them
+             * could show. */
+            function empire(part, index, help) {
+                const colon = part.indexOf(':');
+                const lead = index === 0 && colon > 0 ? part.slice(0, colon + 2) : '';
+                const label = index === 0 ? part.slice(lead.length) : part;
+                const noun = label.replace(/[^a-z]/gi, ' ').trim().split(/\s+/).pop();
+                if (!noun) return null;
+                const sentence = help.split(/(?<=\.)\s+/)
+                    .find(row => row.toLowerCase().indexOf(noun.toLowerCase()) === 0);
+                if (!sentence) return null;
+                return { lead, label, title: noun.charAt(0).toUpperCase() + noun.slice(1), description: sentence.trim() };
+            }
+
+            function run() {
+                decorate(document.getElementById('victoryProgress'), victory);
+                decorate(document.getElementById('empireSummary'), empire);
+            }
+
+            [['victoryProgress'], ['empireSummary']].forEach(([id]) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                new MutationObserver(run).observe(el, { childList: true, characterData: true, subtree: true });
+            });
+            run();
+        })();
+
+        /* The codex, as a real modal dialog.
+         *
+         * What was here was three lines: flip `display` to flex, flip it back. That is
+         * enough for a mouse and nothing else. Opened from the keyboard it left focus on
+         * the ? key BEHIND the scrim, so the first Tab walked into the HUD underneath a
+         * panel the player could not see past; Escape did nothing; and closing it dropped
+         * focus to the top of the document, so a keyboard player who opened the help lost
+         * their place in the interface as the price of reading it.
+         *
+         * Four things a dialog owes its user, in order:
+         *   1. focus goes IN on open — on the dialog itself, so its name and role are
+         *      announced before the tab strip is;
+         *   2. focus STAYS in while it is open (Tab wraps at both ends);
+         *   3. Escape closes it, from anywhere inside;
+         *   4. focus goes BACK to the control that opened it.
+         *
+         * `aria-modal="true"` is what tells a screen reader the rest of the page is not
+         * there; the trap below is the same statement for the Tab key.
+         */
         (function() {
             const btn = document.getElementById('helpBtn');
             const overlay = document.getElementById('helpOverlay');
+            const dialog = document.getElementById('helpDialog');
             const close = document.getElementById('helpClose');
-            function toggle(show) {
-                if (!overlay) return;
-                overlay.style.display = show ? 'flex' : 'none';
+            if (!btn || !overlay || !dialog) return;
+
+            const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]),'
+                + ' select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+            let opener = null;
+
+            /** Focusable controls that are actually on screen right now. The hidden
+             *  tab panel is in the DOM the whole time, so this has to be recomputed
+             *  on every Tab rather than cached at open. */
+            function stops() {
+                return Array.prototype.filter.call(
+                    dialog.querySelectorAll(FOCUSABLE),
+                    el => el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length
+                );
             }
-            if (btn && overlay) {
-                btn.addEventListener('click', () => {
-                    // Build on first open too: if codex.js loaded after DOMContentLoaded
-                    // fired, its own listener never runs and the tabs would be empty.
-                    if (window.Codex && window.Codex.build) window.Codex.build();
-                    toggle(true);
+
+            function open() {
+                // Build on first open too: if codex.js loaded after DOMContentLoaded
+                // fired, its own listener never runs and the tabs would be empty.
+                if (window.Codex && window.Codex.build) window.Codex.build();
+                opener = document.activeElement === document.body ? btn : (document.activeElement || btn);
+                overlay.classList.add('is-open');
+                btn.setAttribute('aria-expanded', 'true');
+                dialog.focus();
+            }
+
+            function dismiss() {
+                if (!overlay.classList.contains('is-open')) return;
+                overlay.classList.remove('is-open');
+                btn.setAttribute('aria-expanded', 'false');
+                // Back where they were, which is the ? key unless something else opened it.
+                const target = (opener && document.contains(opener)) ? opener : btn;
+                opener = null;
+                if (typeof target.focus === 'function') target.focus();
+            }
+
+            btn.addEventListener('click', open);
+            if (close) close.addEventListener('click', dismiss);
+            overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(); });
+
+            /* THE SHORTCUT THE HELP TEXT PROMISES.
+             *
+             * The last line of Quick Help has always told the player they can reopen
+             * this panel with `?`. There was no keydown handler for it anywhere in
+             * public/ — only a click listener on #helpBtn — so the one place in the
+             * product that teaches its own controls was teaching a control that did
+             * not exist. A player who read that sentence and pressed ? got nothing,
+             * or typed a question mark into the chat box.
+             *
+             * F1 as well, because that is what a PC strategy player's hand does.
+             *
+             * Guarded on the target, not on a modifier: `?` is Shift+/ on a US
+             * layout and a plain key elsewhere, so the only reliable test is whether
+             * the player is typing. Chat, the name picker and any future text field
+             * keep the character. `event.key` rather than keyCode so a layout that
+             * puts ? somewhere else still works. */
+            function isTyping(target) {
+                if (!target || target.nodeType !== 1) return false;
+                if (target.isContentEditable) return true;
+                const tag = target.tagName;
+                return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+            }
+
+            /* M — THE CHART, IN ONE PRESS.
+             *
+             * The tactical chart is the ONLY keyboard route to selecting a
+             * sector, and it was measured as the 34th Tab stop from a cold load.
+             * Every round trip between "which sector" and "act on it in the
+             * Build panel" therefore cost a keyboard player a dozen-plus
+             * presses, in a game whose whole loop is exactly that round trip.
+             * The chart is one tab stop (a roving tabindex parks tabindex="0" on
+             * a single tile — see ui.js), so all this needs is a way in and the
+             * same way back out.
+             *
+             * Deliberately not a modifier chord: this page already owns bare `?`
+             * and F1 through the same guard, and a strategy game's left hand is
+             * on the letter keys. The second press returns focus to whatever had
+             * it, so M is a there-and-back key, not a one-way trip. */
+            let chartReturn = null;
+
+            function modalUp() {
+                if (overlay.classList.contains('is-open')) return true;
+                return ['multiMove', 'lobbyWindow'].some(id => {
+                    const el = document.getElementById(id);
+                    return el && getComputedStyle(el).display !== 'none';
                 });
             }
-            if (close) {
-                close.addEventListener('click', () => toggle(false));
+
+            function toggleChartFocus() {
+                const chart = document.getElementById('minimapid');
+                if (!chart || !chart.getClientRects().length) return false;
+                if (chart.contains(document.activeElement)) {
+                    const back = (chartReturn && document.contains(chartReturn)) ? chartReturn : null;
+                    chartReturn = null;
+                    if (back) back.focus();
+                    else if (document.activeElement.blur) document.activeElement.blur();
+                    return true;
+                }
+                // The roving tile is the chart's single tab stop; fall back to the
+                // first tile if the roving one has not been parked yet.
+                const tile = chart.querySelector('[role="option"][tabindex="0"]')
+                    || chart.querySelector('[role="option"]');
+                if (!tile) return false;
+                chartReturn = (document.activeElement && document.activeElement !== document.body)
+                    ? document.activeElement : null;
+                tile.focus();
+                return true;
             }
-            if (overlay) {
-                overlay.addEventListener('click', e => {
-                    if (e.target === overlay) toggle(false);
-                });
-            }
+
+            document.addEventListener('keydown', e => {
+                if (e.ctrlKey || e.altKey || e.metaKey) return;
+                if (isTyping(e.target)) return;
+                if (e.key === '?' || e.key === 'F1') {
+                    // F1 opens the browser's own help otherwise, which is not this game's.
+                    e.preventDefault();
+                    if (overlay.classList.contains('is-open')) dismiss();
+                    else open();
+                    return;
+                }
+                if (e.key === 'm' || e.key === 'M') {
+                    // A modal owns the keyboard while it is up; jumping out of one
+                    // to the chart underneath is the bug the traps exist to prevent.
+                    if (modalUp()) return;
+                    if (toggleChartFocus()) e.preventDefault();
+                }
+            });
+
+            dialog.addEventListener('keydown', e => {
+                if (e.key === 'Escape') { e.stopPropagation(); dismiss(); return; }
+                if (e.key !== 'Tab') return;
+                const list = stops();
+                if (!list.length) { e.preventDefault(); dialog.focus(); return; }
+                const first = list[0];
+                const last = list[list.length - 1];
+                // The dialog element itself is the initial focus and is not in `list`,
+                // so treat "focus is on the dialog" as being before the first stop.
+                if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+                    e.preventDefault(); last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault(); first.focus();
+                } else if (document.activeElement === dialog && !e.shiftKey) {
+                    e.preventDefault(); first.focus();
+                }
+            });
+
+            // A click on the scrim can leave focus on <body>; if anything outside the
+            // dialog ever takes focus while it is open, pull it back in.
+            document.addEventListener('focusin', e => {
+                if (!overlay.classList.contains('is-open')) return;
+                if (!dialog.contains(e.target)) dialog.focus();
+            });
+
             // The audio key is wired by GameScreen.initializeAudioButton(); a second
             // dead handler used to sit here behind `if (false)`, writing its own emoji.
+        })();
+
+        /* MOVE SHIPS — the same four obligations, for the game's PRIMARY verb.
+         *
+         * Measured before this existed: role null, aria-modal null, no accessible
+         * name, zero headings, document.activeElement still on #sectorMoveShips
+         * after opening (focus never entered), and Escape left it on screen. Tab
+         * from the trigger walked #buildtab, bb1, bb2, bb3, bb5 and a chart tile —
+         * six controls BEHIND the panel — before it reached the panel's own list.
+         * A keyboard player pressed the button this whole game is built around and
+         * nothing announced, nothing moved, and the thing they had just opened was
+         * six presses away through an interface it was covering.
+         *
+         * The state machine is NOT moved here. GUI.js raises this panel by writing
+         * `display: block` inline (showMultiMoveOptions) and game.js/connect.js
+         * lower it the same way, in five places. Duplicating that decision would
+         * be the third copy of a rule this codebase has already had two of, so
+         * this WATCHES the inline style instead and supplies only what a dialog
+         * owes its user around it:
+         *
+         *   1. focus goes IN when it appears — on the dialog, so its name and role
+         *      are announced before the ship list is;
+         *   2. focus STAYS in while it is up (Tab wraps at both ends);
+         *   3. Escape closes it — through game.js's own Close handler, so there is
+         *      still exactly one line in the product that hides this panel by hand;
+         *   4. focus goes BACK to #sectorMoveShips, unless something else has
+         *      deliberately taken it (a tab click closes this panel too, and
+         *      yanking focus off the tab the player just pressed is its own bug).
+         */
+        (function() {
+            const scrim = document.getElementById('multiMove');
+            const dialog = document.getElementById('multiMoveDialog');
+            const closeBtn = document.getElementById('closeMultiMove');
+            if (!scrim || !dialog) return;
+
+            const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]),'
+                + ' select:not([disabled]), textarea:not([disabled]), summary,'
+                + ' [tabindex]:not([tabindex="-1"])';
+
+            let opener = null;
+            let wasOpen = false;
+
+            const isOpen = () => getComputedStyle(scrim).display !== 'none';
+
+            /** On-screen stops only: #multiMoveEmpty and the preflight body come
+             *  and go with the order being composed, so this is recomputed per Tab
+             *  rather than cached at open. */
+            function stops() {
+                return Array.prototype.filter.call(
+                    dialog.querySelectorAll(FOCUSABLE),
+                    el => el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length
+                );
+            }
+
+            function dismiss() {
+                if (closeBtn) closeBtn.click();
+                else scrim.style.display = 'none';
+            }
+
+            new MutationObserver(() => {
+                const open = isOpen();
+                if (open === wasOpen) return;   // the loading pass re-writes `block` over `block`
+                wasOpen = open;
+                if (open) {
+                    const active = document.activeElement;
+                    opener = (active && active !== document.body && document.contains(active))
+                        ? active : document.getElementById('sectorMoveShips');
+                    dialog.focus();
+                    return;
+                }
+                // Only reclaim focus if the dialog still had it. Anything else took
+                // it on purpose.
+                const active = document.activeElement;
+                const strandedInside = !active || active === document.body || dialog.contains(active);
+                const target = (opener && document.contains(opener))
+                    ? opener : document.getElementById('sectorMoveShips');
+                opener = null;
+                if (strandedInside && target && typeof target.focus === 'function') target.focus();
+            }).observe(scrim, { attributes: true, attributeFilter: ['style'] });
+
+            dialog.addEventListener('keydown', e => {
+                if (e.key === 'Escape') { e.stopPropagation(); dismiss(); return; }
+                if (e.key !== 'Tab') return;
+                const list = stops();
+                if (!list.length) { e.preventDefault(); dialog.focus(); return; }
+                const first = list[0];
+                const last = list[list.length - 1];
+                // The dialog element itself takes the initial focus and is not in
+                // `list`, so treat "focus is on the dialog" as before the first stop.
+                if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+                    e.preventDefault(); last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault(); first.focus();
+                } else if (document.activeElement === dialog && !e.shiftKey) {
+                    e.preventDefault(); first.focus();
+                }
+            });
+
+            // Clicking the veil is the mouse's Escape. Guarded on the target so a
+            // click that started inside the plate and ended outside does not close.
+            scrim.addEventListener('click', e => { if (e.target === scrim) dismiss(); });
+
+            /* The trap's other half. Tab is handled above, but focus can also arrive
+             * from a click on the veil, from a script, or from the browser restoring
+             * it — and everything behind this panel is a control for a sector this
+             * dialog has already committed to. Anything that lands outside comes back.
+             *
+             * Except a REAL dialog on top of us: the codex (2999) and the fleet-order
+             * confirmation (10001) both open over this one and both are aria-modal,
+             * and two traps arguing over the same focus is an infinite loop, not a
+             * fix. Focus that lands inside another dialog is left where it is. */
+            document.addEventListener('focusin', e => {
+                if (!wasOpen || scrim.contains(e.target)) return;
+                if (e.target.closest && e.target.closest('[aria-modal="true"], [role="dialog"], [role="alertdialog"]')) return;
+                dialog.focus();
+            });
+
+            /* SPOKEN AS WELL AS SEEN. GUI.js disables all three action keys when no
+             * eligible ship is in range; `disabled` alone is announced by most
+             * screen readers but not all, and aria-disabled costs nothing. Mirrored
+             * off the property rather than set at open time, because the panel is
+             * raised once with an empty list and refilled when the server answers. */
+            ['moveAttackShips', 'moveAllShips', 'moveSelectedShips'].forEach(id => {
+                const button = document.getElementById(id);
+                if (!button) return;
+                const sync = () => button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
+                sync();
+                new MutationObserver(sync).observe(button, { attributes: true, attributeFilter: ['disabled'] });
+            });
+        })();
+
+        /* SIGNAL LOST — the reconnection window, as a real alertdialog.
+         *
+         * connect.js raises and lowers #lobbyWindow by writing `style.display`
+         * straight onto it (onclose raises it, markAuthenticatedFromMessage lowers it
+         * when the session comes back). That is the state machine and it stays where
+         * it is; this watches the attribute and supplies the four things the panel
+         * owed a keyboard user and never had:
+         *
+         *   1. focus goes IN when it appears — otherwise the keyboard is left on
+         *      whatever dead HUD control was focused behind a modal covering the
+         *      screen, and a screen reader gets no announcement at all;
+         *   2. focus STAYS in while it is up, because everything behind it is a
+         *      control wired to a socket that is not there;
+         *   3. focus goes BACK when the line is restored, so a player who was
+         *      mid-keyboard-navigation when the network hiccupped resumes where they
+         *      were rather than at the top of the document;
+         *   4. the state is TRUE. The panel used to say "please refresh the page"
+         *      while connect.js was already retrying every five seconds. It now reads
+         *      its state off the socket itself, counts the attempts, and offers the
+         *      retry as a button so an impatient player does not have to wait out the
+         *      backoff or throw away their session with a reload.
+         *
+         * No Escape handler on purpose: this is not dismissible. There is nothing
+         * behind it to return to until the socket is back.
+         */
+        (function() {
+            const win = document.getElementById('lobbyWindow');
+            const dialog = document.getElementById('reconnectDialog');
+            if (!win || !dialog) return;
+
+            const statusEl = document.getElementById('reconnectStatus');
+            const meterEl = document.getElementById('reconnectElapsed');
+            const nowBtn = document.getElementById('reconnectNow');
+            const reloadBtn = document.getElementById('reconnectReload');
+            const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]),'
+                + ' select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+            let opener = null;
+            let ticker = null;
+            let downSince = 0;
+            let attempts = 0;
+            let sawConnecting = false;
+
+            const isUp = () => getComputedStyle(win).display !== 'none';
+
+            function stops() {
+                return Array.prototype.filter.call(
+                    dialog.querySelectorAll(FOCUSABLE),
+                    el => el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length
+                );
+            }
+
+            /** One tick of truth: what the socket is actually doing, and for how long. */
+            function paint() {
+                const ws = window.websocket;
+                const state = ws ? ws.readyState : 3;
+                if (state === 0 && !sawConnecting) { attempts += 1; sawConnecting = true; }
+                if (state !== 0) sawConnecting = false;
+
+                if (statusEl) {
+                    statusEl.textContent = state === 1 ? 'Line restored' : 'Reconnecting';
+                }
+                if (meterEl) {
+                    const secs = Math.max(0, Math.round((Date.now() - downSince) / 1000));
+                    const clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+                    meterEl.textContent = (attempts > 1 ? 'TRY ' + attempts + ' · ' : '') + clock;
+                }
+            }
+
+            function raise() {
+                if (ticker) return;
+                const active = document.activeElement;
+                opener = (active && active !== document.body && document.contains(active)) ? active : null;
+                downSince = Date.now();
+                attempts = 0;
+                sawConnecting = false;
+                paint();
+                ticker = setInterval(paint, 1000);
+                // A frame later: the element is display:block as of this mutation, but
+                // focus() on something the layout has not resolved yet is unreliable.
+                requestAnimationFrame(() => { if (isUp()) dialog.focus(); });
+            }
+
+            function lower() {
+                if (!ticker) return;
+                clearInterval(ticker);
+                ticker = null;
+                // Only steal focus back if it is still parked in the dialog we are
+                // hiding — if the player has already clicked into the recovered HUD,
+                // leave them there.
+                const inside = dialog.contains(document.activeElement);
+                const target = (opener && document.contains(opener)) ? opener : null;
+                opener = null;
+                if (inside && target && typeof target.focus === 'function') target.focus();
+                else if (inside && typeof dialog.blur === 'function') dialog.blur();
+            }
+
+            dialog.addEventListener('keydown', e => {
+                if (e.key !== 'Tab') return;
+                const list = stops();
+                if (!list.length) { e.preventDefault(); dialog.focus(); return; }
+                const first = list[0];
+                const last = list[list.length - 1];
+                if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+                    e.preventDefault(); last.focus();
+                } else if (!e.shiftKey && (document.activeElement === last || document.activeElement === dialog)) {
+                    e.preventDefault(); first.focus();
+                }
+            });
+
+            document.addEventListener('focusin', e => {
+                if (!ticker) return;
+                if (!dialog.contains(e.target)) dialog.focus();
+            });
+
+            if (nowBtn) {
+                nowBtn.addEventListener('click', () => {
+                    // Feedback for the press, whatever the socket then does with it.
+                    nowBtn.disabled = true;
+                    setTimeout(() => { nowBtn.disabled = false; }, 2500);
+                    if (typeof window.initializeWebSocket === 'function') {
+                        try { window.initializeWebSocket(); } catch (err) { console.warn(err); }
+                    }
+                    paint();
+                });
+            }
+            if (reloadBtn) reloadBtn.addEventListener('click', () => location.reload());
+
+            new MutationObserver(() => { if (isUp()) raise(); else lower(); })
+                .observe(win, { attributes: true, attributeFilter: ['style', 'class'] });
+            if (isUp()) raise();
+        })();
+
+        /* A STALLED ECONOMY SAYS SO, IN WORDS.
+         *
+         * connect.js writes the three treasury rates as "+0/turn" and toggles
+         * `.is-zero`, and the stylesheet used to render that state by dimming it to
+         * 3.4:1 — so the reading a commander most needs to catch was the hardest
+         * figure on the bar to see, and "went dim" was its only signal. Colour alone
+         * is not a signal (WCAG 1.4.1) and a colour a player cannot read is not even
+         * that.
+         *
+         * The stylesheet now paints it in the alert role; this supplies the part
+         * colour cannot: the word. "+0/turn" becomes "Stalled", which survives
+         * greyscale, reads in a screen reader, and is NARROWER than the string it
+         * replaces, so the bar does not change shape when an economy dies.
+         *
+         * Same shim pattern as the Spaceport key above — a MutationObserver over a
+         * text node another file owns. It is stable rather than a loop because it
+         * only ever writes when the parsed value is zero AND the text is not already
+         * the replacement, so its own mutation is a no-op on the next pass. The
+         * placeholder "+0" printed before the first empire:: frame is deliberately
+         * left alone: nothing is stalled before the first reading arrives.
+         */
+        (function() {
+            const IDS = ['metalincome', 'crystalincome', 'researchincome'];
+            const STALLED = 'Stalled';
+
+            function mark(el) {
+                if (!el) return;
+                const text = el.textContent.trim();
+                if (text === STALLED) return;
+                const value = /^([+-]?[\d,]+)\s*\/\s*turn$/i.exec(text);
+                if (!value) return;                                   // not a rate reading yet
+                if (Number(value[1].replace(/,/g, '')) !== 0) {       // real income; leave it
+                    if (el.hasAttribute('title')) el.removeAttribute('title');
+                    return;
+                }
+                el.textContent = STALLED;
+                el.title = 'No income from this resource next turn';
+            }
+
+            IDS.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                new MutationObserver(() => mark(el))
+                    .observe(el, { childList: true, characterData: true, subtree: true });
+            });
         })();
 
         /* Publish the player's race onto <body> so the stylesheet can seat their

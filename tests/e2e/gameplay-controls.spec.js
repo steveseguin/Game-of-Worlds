@@ -172,6 +172,7 @@ test.describe('Authoritative gameplay controls', () => {
         await page.locator('#closeMultiMove').click();
 
         await fogTile.click();
+        await expect(page.locator('#probeSuggestionCard')).toBeVisible({ timeout: 10000 });
         await page.locator('#probeSuggestionSend').click();
         await expect(page.locator('#sectorIntelState')).toHaveText('Probe scan', { timeout: 15000 });
         await expect(page.locator('#metalbonus')).not.toHaveText('Unknown');

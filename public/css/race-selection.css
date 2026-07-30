@@ -113,6 +113,65 @@
        MIN_DRAW's shortest bar is 3.6px and clears the baseline rule. */
     --rs-plot-h: 56px;
 
+    /* ------------------------------------------- THE THREE SURFACE TILES
+
+       Brushed steel at 128px and two starfields at 512px, and they are BAKED
+       here rather than drawn by the client, because generating them at runtime
+       cost this screen every complaint it had about speed.
+
+       They used to be built on open by a canvas: white noise convolved along
+       each row for the machining streaks, 420 stars across three brightness
+       classes with real blooms and cross flares for the void. The drawing was
+       never the problem — measured on the live page it is 2 ms of work. The
+       problem was the last line of each maker, canvas.toDataURL(), which
+       compresses a PNG synchronously on the main thread: 2357 ms across the
+       three, and a 2.1 SECOND window in which the console did not answer a
+       click. Neither toBlob() nor an idle slice fixed it, because the cost is
+       not the encoder itself — it is the encoder QUEUING behind twelve crest
+       decodes and the software raster of a thousand fresh nodes.
+
+       So the same pixels are generated once, offline, by the same seeded
+       algorithm and shipped as three lossless WebP files. No canvas, no encode
+       and no idle callback.
+
+       THEY ARE FILES AND NOT DATA URIs, which they were until an audit weighed
+       this sheet. base64 inflates a byte by a third and is incompressible noise
+       on top of that, so 19.6 KB of texture cost 26.1 KB of raw stylesheet and
+       21.2 KB GZIPPED — a quarter of the whole sheet's transfer weight. This
+       sheet is a render-blocking <link> in the lobby head, so every player paid
+       all of that on every lobby visit whether or not they ever opened this
+       console, and none of the three tiles could be cached, revalidated or
+       fetched independently of the CSS.
+
+       As url()s the bytes leave the blocking path and become three parallel,
+       separately-cacheable image fetches. The custom properties are declared on
+       #raceSelectionModal, which does not exist until the console is built, so
+       nothing is requested while the player is only in the lobby.
+
+       Measured on the open, they are not late: the requests go out before the
+       console is reported visible and the tiles are 3.5-8.5 KB each, so the
+       first frame the console draws is textured. On a cold cache over a slow
+       link there is a window where a plate is its gradient without the
+       machining noise on top; that is the trade for 21 KB off every lobby
+       visit, and the plate is legible in both states.
+
+       TO REGENERATE: the recipe is mulberry32(0x51F7A3) white noise convolved
+       with [.05 .09 .14 .18 .20 .18 .14 .09 .05] circularly along each row of a
+       128px tile, alpha = |v| * 13, lit pixels rgb(226,238,255) and dark ones
+       rgb(0,0,2); and mulberry32(0x2A17B3)/0x77C41D over 512px with 300/120
+       stars, brightness = rnd()^1.4, three classes at 0.88 and 0.55 with a
+       7px-radius bloom plus cross flare, a 3.6px halo, and a bare pixel. It was
+       deterministic when it ran in the browser, which is the only reason it
+       could be lifted out of it.
+
+       They stay CUSTOM PROPERTIES rather than being written into the fifteen
+       rules that use them: those rules read `background: var(--rs-brush),
+       <gradient>`, and a var() that fails to resolve invalidates the whole
+       shorthand and drops the gradient with it. */
+    --rs-brush: url("../images/ui/rs-tile-brush.webp");
+    --rs-stars-far: url("../images/ui/rs-tile-stars-far.webp");
+    --rs-stars-near: url("../images/ui/rs-tile-stars-near.webp");
+
     --rs-pad: clamp(12px, 2.2vw, 24px);
     /* Reserved band under the housing. It grounds the console on the frame and
        gives docked status strips somewhere to live that is not on top of the
@@ -477,9 +536,7 @@
 .race-selector-eyebrow,
 .race-grid-heading,
 .race-detail-kicker,
-.race-confirm-note,
 .race-card-index,
-.race-card-sig,
 .race-card-mark,
 .race-note-body b,
 .race-selector-gauge-label,
@@ -513,7 +570,11 @@
    exclusive: the shadow paints behind the ELEMENT box, so on a clipped fill it
    would show as a rectangle of grey behind the words. The copy carries the two
    1px steps and the seat shadow; the clipped layer sits exactly on top of it. */
-.race-selector-header h2 {
+/* An <h1>, not the <h2> it used to be: while this dialog is up it inerts the
+   page behind it, so the lobby's own level-one heading leaves the accessibility
+   tree and this console has to supply the document's h1 itself. Same plate,
+   same stamp — the change is in the outline, not in the ink. */
+.race-selector-header h1 {
     position: relative;
     margin: 0;
     font-family: 'Russo One', 'Segoe UI', sans-serif;
@@ -527,7 +588,7 @@
     color: transparent;
     -webkit-text-fill-color: transparent;
 }
-.race-selector-header h2::before {
+.race-selector-header h1::before {
     content: attr(data-text);
     position: absolute;
     z-index: -1;
@@ -622,10 +683,20 @@
     letter-spacing: 0.12em;
 }
 
-/* Channel key: the legend for every meter on the screen, framed as an
-   instrument and bolted into the run of bare plate that used to be a 620px
-   dead zone. It is the one piece of chrome that makes the abbreviations on
-   twelve cards and two charts legible. */
+/* ------------------------------------------------------- THE COMPARATOR
+
+   This box used to be a static KEY: seven codes and the words they stand for,
+   printed once, doing nothing. Right information, wrong form — a player picking
+   a faction is not asking "what does RSC mean", they are asking "who researches
+   fastest, and what does that cost me", and answering that meant opening twelve
+   dossiers because the registry RANKS existed only inside the selected
+   faction's plot.
+
+   It is a row of PRESSABLE KEYS now, same beveled material as every other
+   control on this console, and arming one makes all twelve cards answer on that
+   channel at once. Eight keys in two rows of four — the same 4-column grid the
+   legend used, so the header's geometry is unchanged and the roster below it
+   loses no height. */
 .race-selector-key {
     flex: none;
     display: grid;
@@ -649,22 +720,154 @@
 }
 .race-selector-key-grid {
     display: grid;
-    grid-template-columns: repeat(4, auto);
-    gap: 2px 14px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
 }
-.race-selector-key-grid span { display: flex; align-items: baseline; gap: 5px; }
-.race-selector-key-grid b {
+/* A key: two-step chamfer, brushed face, hard drop — the plate language at
+   button scale, so it reads as pressable rather than as a label someone made
+   clickable. */
+.rs-chan {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    min-width: 0;
+    margin: 0;
+    padding: 3px 7px;
+    background:
+        var(--rs-brush),
+        linear-gradient(180deg, #3C4A5D 0, #2A3543 52%, #1D2735 100%);
+    border: 1px solid var(--rs-edge);
+    border-radius: 1px;
+    box-shadow:
+        inset 1px 1px 0 rgba(190, 208, 232, 0.36),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.75),
+        0 2px 0 rgba(0, 0, 0, 0.6);
     color: #BDC9D9;
+    cursor: pointer;
+    text-align: left;
+}
+.rs-chan b {
+    flex: none;
+    color: #CFDAE9;
     font-family: var(--rs-mono);
     font-size: 11px;
     font-weight: 400;
     letter-spacing: 0.06em;
 }
-.race-selector-key-grid em {
-    color: #8A9AB0;
+/* #A8B6C8 and not the #8A9AB0 the old static legend used. The legend sat on
+   the key box's flat #131B25 ground where that ink measured 7:1; a KEY is a
+   raised plate whose chamfer tops out at #3C4A5D, and against the lightest part
+   of its own face the same ink is 3.15:1. Measured against the plate's brightest
+   step rather than its darkest, which is the only reading that means anything
+   for type on a bevel. */
+.rs-chan em {
+    min-width: 0;
+    overflow: hidden;
+    color: #A8B6C8;
+    font-family: 'Rajdhani', 'Segoe UI', sans-serif;
     font-size: 12px;
     font-style: normal;
     font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#raceSelectionModal .rs-chan:hover {
+    box-shadow:
+        inset 1px 1px 0 rgba(226, 238, 252, 0.5),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.75),
+        0 3px 0 rgba(0, 0, 0, 0.65);
+}
+#raceSelectionModal .rs-chan:active {
+    box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.85), inset -1px -1px 0 rgba(198, 220, 246, 0.1);
+}
+/* ARMED. The key stays DOWN — inset chamfer, seated face — and the ink comes
+   up. State is carried by the depression as well as by the value, because a key
+   that only changes colour when it latches is a key that a monochrome
+   screenshot cannot report the state of. */
+#raceSelectionModal .rs-chan[aria-pressed="true"] {
+    background:
+        var(--rs-brush),
+        linear-gradient(180deg, #131B25 0, #1B2431 60%, #26313F 100%);
+    box-shadow:
+        inset 2px 2px 4px rgba(0, 0, 0, 0.9),
+        inset -1px -1px 0 rgba(198, 220, 246, 0.14);
+}
+#raceSelectionModal .rs-chan[aria-pressed="true"] b { color: #F3F7FC; }
+#raceSelectionModal .rs-chan[aria-pressed="true"] em { color: #D3DDEA; }
+/* Every stop on this console shows where the cursor is. Same amber ring, same
+   3px stand-off as the roster's — one focus language for the whole screen. */
+#raceSelectionModal .rs-chan:focus { outline: none; }
+#raceSelectionModal .rs-chan:focus-visible {
+    outline: 2px solid #E7A63A;
+    outline-offset: 2px;
+    box-shadow:
+        inset 1px 1px 0 rgba(226, 238, 252, 0.5),
+        inset -1px -1px 0 rgba(0, 0, 0, 0.75),
+        0 0 10px rgba(231, 166, 58, 0.35),
+        0 2px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* ------------------------------------------- A KEY YOU CAN ACTUALLY HIT
+
+   These measured 84x23 CSS px on desktop and 80x22 at 390px wide, packed four
+   across: the smallest interactive targets on the surface at every viewport
+   tested, and the control that re-sorts the entire twelve-card comparison a
+   player is in the middle of reading. Under 24px tall on a phone, a mis-tap
+   between CST and SPD is the default outcome rather than the accident.
+
+   On a coarse pointer the key gets a real 44px hit area — the WCAG 2.2 AAA
+   target size, and comfortably over the 24px AA floor — WITHOUT the chip
+   growing to 44px and taking a fifth of the phone header with it: the plate
+   keeps its compact face and a transparent ::after expands the target around
+   it. The expansion is inset horizontally by half the 3px grid gap so two
+   neighbouring keys still cannot claim the same pixel. */
+@media (pointer: coarse) {
+    /* 36px of plate + 8px of gutter is a 44px pitch, which is the number that
+       makes the expansion below SAFE: any hit area taller than the row pitch
+       overlaps the key above or below it, and a target that steals its
+       neighbour's taps is not a bigger target, it is a different mis-tap. */
+    .race-selector-key-grid { gap: 8px; }
+    .rs-chan {
+        position: relative;
+        min-height: 36px;
+        padding: 6px 7px;
+    }
+    .rs-chan::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: -1px;
+        right: -1px;
+        width: auto;
+        height: 44px;
+        transform: translateY(-50%);
+    }
+}
+
+/* The comparator's spoken confirmation, and the roster keyboard's error line.
+   Off-screen but IN the accessibility tree — it is a role="status", so it is
+   read when it changes and silent otherwise. */
+.race-compare-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* The roster's own title bar carries the comparator's finding, and the finding
+   is a sentence with proper nouns in it rather than a code — so it drops the
+   bar's uppercase tracking for the duration. */
+.race-grid-heading h2 {
+    margin: 0;
+    font: inherit;
+    font-weight: inherit;
+    letter-spacing: inherit;
+    color: inherit;
 }
 
 /* Framed gauge: how much of the registry you are cleared for. Same plate family
@@ -777,6 +980,74 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
 }
+
+/* ------------------------------------------------- the roster's scroll state
+
+   THE CUT HAS TO READ AS A CUT.
+
+   At 1366x768 the roster measured scrollHeight 669 against clientHeight 522 and
+   showed EIGHT of the twelve factions; at 1280x720 it showed six. It did that
+   with no scrollbar (the platform draws an overlay one — measured width 0), no
+   fade, no mask, and this foot rail sitting flush against the clip line, so the
+   sliced third row read as the bottom of a finished list. The single most
+   consequential choice in the game was being made from two thirds of the
+   options, and the player was never told the rest were there.
+
+   The geometry is fixed first — fitRoster() tightens the crest aperture until
+   all twelve fit, because a wide `contain` port is mostly black mat and that is
+   the only slack on the card. What is left over gets three signals and not one,
+   because a wall of near-identical plates hides a soft edge:
+
+     1. the bay fades into the plate at the bottom, so the cut cannot be an edge;
+     2. the gutter carries a real machined scrollbar with a reserved track,
+        instead of the platform's invisible overlay;
+     3. THIS RAIL SAYS THE NUMBER. "4 more below" in words, in the accessibility
+        tree, updated on every scroll — a count is the one signal that survives
+        a player who never looks at the bottom of the box. */
+.race-grid-foot-more {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: #E2C58A;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-align: center;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.race-grid-foot-more[hidden] { display: none; }
+/* When the rail is carrying a real message the decorative graduation channel
+   steps aside; two of them plus a sentence is a crowded 22px strip. */
+.race-grid-shell.is-scrollable .race-grid-foot-channel { display: none; }
+
+.race-grid-shell.is-scrollable .race-grid {
+    /* A fade, not a hard clip. The bottom 34px of the bay dissolves into the
+       plate so a half-shown card reads as "there is more of this" rather than
+       as a card that has been damaged. */
+    -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 34px), rgba(0, 0, 0, 0.12) 100%);
+    mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 34px), rgba(0, 0, 0, 0.12) 100%);
+    /* A real, always-drawn scrollbar instead of the platform's overlay one,
+       which measured 0px wide and was invisible until the pointer was already
+       inside the bay.
+
+       NOTHING HERE MAY CHANGE THE BAY'S HEIGHT. An earlier revision added a
+       bottom apron in this state, which made the state its own cause: applying
+       the affordance pushed the content 11px taller, which kept the content
+       overflowing, which kept the affordance applied — a roster that had just
+       been fitted to show all twelve reported itself as scrolling. The fade
+       below is drawn INTO the existing box; the gutter reserved here only
+       narrows the bay, which can only ever make the content SHORTER, and
+       markRosterScrollState carries the hysteresis that stops it flipping back.
+
+       A reserved gutter and a full-width bar, not the platform's overlay one:
+       the overlay scrollbar measured 0px and does not exist until the pointer
+       is already inside the box a player has not been told is scrollable. */
+    scrollbar-gutter: stable;
+    scrollbar-width: auto;
+    scrollbar-color: #7C8DA6 #05080D;
+}
 /* One honest pitch, clipped by the channel wall so no tick is drawn half. */
 .race-grid-foot-channel {
     flex: 1 1 auto;
@@ -837,6 +1108,168 @@
     scrollbar-color: #4A5C74 #05080D;
     scrollbar-width: thin;
 }
+
+/* ------------------------------------------------------ loading and failure
+
+   THE CONSOLE OPENS BEFORE THE DATA ARRIVES, so it needs something honest to
+   show in the gap. Measured before this pass: 1858 ms of wall clock between the
+   click on Create Game and any pixel of this screen, with the lobby simply
+   sitting there — which does not read as "loading", it reads as "the game
+   hung". The dialog now goes up on the click and fills in behind a skeleton
+   roster, and every failure path lands in a state with a button in it.
+
+   The skeleton is the CARD'S OWN GEOMETRY, not a generic shimmer: a port, a
+   name bar, a rail and a gate strip in the same proportions, so the twelve bays
+   are already the right size and nothing jumps when the factions land. */
+.race-card-skeleton {
+    display: grid;
+    grid-auto-rows: max-content;
+    justify-items: center;
+    padding: 10px 10px 3px;
+    background: var(--rs-brush), linear-gradient(180deg, #303B4B 0, #232D3B 46%, #1A2231 100%);
+    border: 1px solid var(--rs-edge);
+    border-radius: 2px;
+    box-shadow:
+        inset 2px 2px 0 rgba(120, 136, 156, 0.34),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.7),
+        0 3px 0 rgba(0, 0, 0, 0.5);
+}
+.race-card-skeleton .rsk-port {
+    width: calc(100% + 20px);
+    margin: -10px -10px 0;
+    aspect-ratio: var(--rs-port-aspect, 1.42);
+    background: linear-gradient(180deg, #060A11, #030509);
+    box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.95), inset 0 -1px 0 rgba(178, 202, 232, 0.18);
+}
+.race-card-skeleton .rsk-name,
+.race-card-skeleton .rsk-rail,
+.race-card-skeleton .rsk-note {
+    width: 100%;
+    background: linear-gradient(180deg, #131B25, #0C121A);
+    box-shadow: inset 0 1px 0 rgba(174, 196, 224, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.7);
+}
+.race-card-skeleton .rsk-name { height: 13px; width: 62%; margin: 6px 0 0; }
+.race-card-skeleton .rsk-rail { height: 34px; margin-top: 6px; }
+.race-card-skeleton .rsk-note { height: 34px; margin-top: 5px; }
+/* ONE moving part, not twelve. The bay has to read as WORKING rather than as
+   broken furniture, and the cheapest honest way to say so is a single lamp
+   travelling the foot rail's graduation channel — a background-position pass on
+   one 7px strip. A shimmer on all twelve skeleton ports says the same thing and
+   costs twelve continuously-repainted layers on the one frame where the main
+   thread is already the scarce resource. */
+.race-grid-shell.is-loading .race-grid-foot-channel {
+    background:
+        linear-gradient(90deg, rgba(226, 197, 138, 0) 40%, rgba(226, 197, 138, 0.7) 50%, rgba(226, 197, 138, 0) 60%),
+        repeating-linear-gradient(90deg,
+            rgba(168, 192, 224, 0.42) 0 1px,
+            rgba(0, 0, 0, 0) 1px 5px,
+            rgba(168, 192, 224, 0.20) 5px 6px,
+            rgba(0, 0, 0, 0) 6px 10px),
+        linear-gradient(180deg, #04070C, #080D14);
+    background-size: 220% 100%, auto, auto;
+    animation: rsSweep 1.4s linear infinite;
+}
+@keyframes rsSweep {
+    from { background-position: 120% 0, 0 0, 0 0; }
+    to   { background-position: -120% 0, 0 0, 0 0; }
+}
+
+/* THE FAILURE STATE IS A STATE, NOT A BLANK PANEL.
+   loadUnlockedRaces() used to return silently when the socket was not open and
+   handleUnlockedRaces() used to console.error a bad payload — both of which
+   ended with the player never being asked to pick a race at all, in a lobby
+   that cannot reopen this console because it is still waiting for the answer.
+   Both now land here, and this has a Retry in it. */
+/* The bay centres on its own failure. `.race-grid` packs its rows to the top,
+   which is right for a roster and wrong for a single notice: it left the message
+   pinned to the ceiling of an otherwise empty 600px bay, which reads as debris
+   rather than as the screen's current state. */
+.race-grid-shell.is-error .race-grid { align-content: center; }
+.race-registry-error {
+    grid-column: 1 / -1;
+    align-self: center;
+    justify-self: center;
+    max-width: 420px;
+    display: grid;
+    gap: 9px;
+    justify-items: center;
+    padding: 22px 24px;
+    background: var(--rs-brush), linear-gradient(180deg, #2A3341, #1A222E);
+    border: 2px solid var(--rs-edge);
+    box-shadow:
+        inset 2px 2px 0 rgba(150, 165, 184, 0.5),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.85),
+        0 3px 0 rgba(0, 0, 0, 0.55);
+    text-align: center;
+}
+.race-registry-error b {
+    color: #F0D9A4;
+    font-family: 'Russo One', 'Segoe UI', sans-serif;
+    font-size: 0.98rem;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+}
+.race-registry-error span { color: #C3CEDD; font-size: 0.86rem; line-height: 1.4; }
+.race-registry-error small {
+    color: #8C9BB0;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+}
+/* TWO ROUTES OUT, BOTH OF THEM CONTROLS.
+   The panel used to end on a sentence describing a way out that does not exist
+   from inside this dialog — "leave the game from the lobby and create it again"
+   — while the lobby was inert in 8 subtrees, Escape deliberately did not close,
+   and the only live control was RETRY. If RETRY kept failing the screen was a
+   terminal dead end. The recovery the copy describes is now a button next to
+   the one that retries. */
+.race-registry-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.race-retry-btn,
+.race-leave-btn {
+    margin: 2px 0;
+    padding: 9px 26px;
+    background: var(--rs-brush), linear-gradient(180deg, #4A5A70 0, #354356 52%, #26313F 100%);
+    border: 1px solid var(--rs-edge);
+    border-radius: 2px;
+    box-shadow:
+        inset 2px 2px 0 rgba(190, 208, 232, 0.4),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.8),
+        0 3px 0 rgba(0, 0, 0, 0.6);
+    color: #EEF3FA;
+    cursor: pointer;
+    font-family: 'Russo One', 'Segoe UI', sans-serif;
+    font-size: 0.84rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+/* The second route is the same plate one step back in the hierarchy — darker
+   face, same bevel, same amplitude. Retrying is what a player should try first;
+   leaving must never look broken or punitive. */
+.race-leave-btn {
+    padding: 9px 20px;
+    background: var(--rs-brush), linear-gradient(180deg, #333F4E 0, #232C39 52%, #19212C 100%);
+    color: #DCE5F1;
+    font-size: 0.78rem;
+}
+#raceSelectionModal .race-retry-btn:hover,
+#raceSelectionModal .race-leave-btn:hover {
+    box-shadow:
+        inset 2px 2px 0 rgba(226, 238, 252, 0.52),
+        inset -2px -2px 0 rgba(0, 0, 0, 0.8),
+        0 4px 0 rgba(0, 0, 0, 0.62);
+}
+#raceSelectionModal .race-retry-btn:active,
+#raceSelectionModal .race-leave-btn:active {
+    box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.88), inset -1px -1px 0 rgba(198, 220, 246, 0.12);
+}
+#raceSelectionModal .race-retry-btn:focus,
+#raceSelectionModal .race-leave-btn:focus { outline: none; }
+#raceSelectionModal .race-retry-btn:focus-visible,
+#raceSelectionModal .race-leave-btn:focus-visible {
+    outline: 2px solid #FFE2AA;
+    outline-offset: 3px;
+}
+.race-detail-empty.is-loading strong { color: #E7CE96; }
 
 /* --------------------------------------------------------------------- card
 
@@ -1045,7 +1478,12 @@
     box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.55), inset -1px -1px 0 rgba(96, 52, 4, 0.6), 0 2px 0 rgba(0, 0, 0, 0.55);
 }
 .race-card.active .race-card-mark { display: block; }
-.race-card.active .race-card-sig { display: none; }
+/* SELECTED takes the corner; the readings step down under it rather than being
+   suppressed. The previous version hid the card's one figure on the selected
+   card, which meant the faction you were actually considering was the only one
+   on the wall whose numbers you could not see. */
+.race-card.active .race-card-poles,
+.race-card.active .race-card-compare { top: 24px; }
 
 /* ---------------------------------------------------------------- the PORT
 
@@ -1099,8 +1537,15 @@
        the plates letterbox into ~7px of mat on each flank and that mat is
        INVISIBLE, because it is measured: the outermost pixel column of all
        twelve crests runs luma 0.0 down its whole length (max 1.0), and this
-       mat is #000. There is no step for an edge to be seen at. */
-    aspect-ratio: 1.42;
+       mat is #000. There is no step for an edge to be seen at.
+
+       --rs-port-aspect is fitRoster()'s handle on this number. The port is the
+       only part of a card with slack in it — everything below it is type at a
+       legibility floor — so when three rows will not fit the bay, the height
+       comes out of the mat rather than out of the roster's last row. It is set
+       on .race-grid, so it reaches the card ports and never the hero medallion,
+       and it can only ever be TIGHTER than the value written here. */
+    aspect-ratio: var(--rs-port-aspect, 1.42);
     overflow: hidden;
     /* the mat. Black, because the plates are painted on black. */
     background: #000;
@@ -1311,18 +1756,52 @@
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
 }
 
-/* The card's one figure: the discipline this doctrine bends hardest. Set in the
-   figure face (Rajdhani 600, tabular lining) rather than the code face, because
-   it is a reading and readings have to resolve at a glance. */
-.race-card-sig {
+/* ------------------------------------------------- the card's TRADE-OFF PAIR
+
+   Two readings, stacked, at the same size and the same weight: what this
+   doctrine is best at, and what it gives up for that.
+
+   IT REPLACES ONE CHIP THAT ENCODED ITS MEANING IN INK COLOUR ALONE.
+   The old badge printed whichever channel deviated most in EITHER direction and
+   left bronze-vs-oxide to say which it was — so "DEF x1.40" on Mechanicus and
+   "MET x0.80" on the Bioform Collective were the same size, in the same corner,
+   in the same face, one an advantage and one a permanent penalty. Desaturate
+   that roster and the two are identical. It was also a bad summary on its own
+   terms: seven of the twelve cards led with their WEAKNESS and never said what
+   the faction was FOR.
+
+   THREE REDUNDANT ENCODINGS, so no single one carries the meaning:
+     SHAPE     a CSS triangle pointing up on the advantage, down on the penalty.
+               A triangle and not a glyph — none of this console's three faces
+               carry the arrow characters, and a fallback face substituting for
+               two characters on twelve cards is exactly the mismatched-metric
+               detail the frame is trying not to have.
+     POSITION  the advantage is ALWAYS the upper row and the penalty ALWAYS the
+               lower one, on every card, whatever the values are.
+     COLOUR    bronze and oxide, as everywhere else on this console.
+
+   A doctrine with nothing on one side says so in words — "no penalty" — rather
+   than leaving the row empty, because a blank slot reads as missing data and
+   this one is the best news on the card. */
+.race-card-poles {
     position: absolute;
     top: 5px;
     right: 5px;
     z-index: 2;
-    max-width: 52%;
+    display: grid;
+    gap: 2px;
+    justify-items: end;
+    max-width: 62%;
+}
+.race-card-pole {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     padding: 2px 5px;
-    background: rgba(4, 7, 11, 0.84);
+    background: rgba(4, 7, 11, 0.86);
     box-shadow: inset 0 0 0 1px rgba(150, 172, 200, 0.26);
     color: #BAC6D6;
     font-family: var(--rs-num);
@@ -1332,10 +1811,146 @@
     letter-spacing: 0.03em;
     line-height: 13px;
     white-space: nowrap;
+}
+/* The triangle. 4px half-width, 5px tall — big enough to read the direction at
+   1:1 on a 217px card, small enough not to become a bullet. */
+.race-card-pole i {
+    flex: none;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+}
+.race-card-pole b {
+    flex: none;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+}
+.race-card-pole em {
+    min-width: 0;
+    overflow: hidden;
+    font-style: normal;
     text-overflow: ellipsis;
 }
-.race-card-sig[data-tone="up"] { color: var(--rs-bronze-hi); }
-.race-card-sig[data-tone="down"] { color: var(--rs-oxide); }
+.race-card-pole[data-tone="up"] { color: var(--rs-bronze-hi); }
+.race-card-pole[data-tone="up"] i { border-bottom: 5px solid var(--rs-bronze-hi); }
+.race-card-pole[data-tone="down"] { color: var(--rs-oxide); }
+.race-card-pole[data-tone="down"] i { border-top: 5px solid var(--rs-oxide); }
+/* The two "nothing on this side" states. Steel, not the reading colours: an
+   absence is not a reading, and colouring "no penalty" bronze would make a
+   missing value look like a bonus. The bar glyph is a flat rule — neither up
+   nor down — so the shape channel stays honest too. */
+.race-card-pole[data-tone="none-up"],
+.race-card-pole[data-tone="none-down"],
+.race-card-pole[data-tone="flat"] { color: #9DAABE; }
+.race-card-pole[data-tone="none-up"] i,
+.race-card-pole[data-tone="none-down"] i,
+.race-card-pole[data-tone="flat"] i {
+    width: 8px;
+    height: 2px;
+    border: 0;
+    background: #6E7C90;
+}
+.race-card-pole[data-tone="flat"] em { letter-spacing: 0.02em; }
+
+/* ------------------------------------------------ the comparator's readout
+
+   The seven per-channel figures a card carries for the header comparator. All
+   seven are in the DOM from the moment the card is built and CSS shows the
+   armed one, so arming a channel is one attribute on the grid rather than
+   twelve DOM rewrites — the roster cannot drop a frame changing channel.
+
+   It takes the trade-off pair's slot rather than sitting beside it, because
+   while a channel is armed the pair is the wrong question: you asked who is
+   fastest, not what each faction's own headline is. */
+.race-card-compare {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 2;
+    display: none;
+    max-width: 66%;
+}
+.race-card-compare > span {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px;
+    background: rgba(4, 7, 11, 0.88);
+    box-shadow: inset 0 0 0 1px rgba(150, 172, 200, 0.3);
+    color: #BAC6D6;
+    white-space: nowrap;
+}
+.race-card-compare b {
+    font-family: var(--rs-num);
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    line-height: 14px;
+}
+/* The rank, and it is the point of the whole mode: a multiplier alone never
+   said whether x1.00 metal was good. Mono, in a cut seat, so it reads as an
+   index rather than as a second measurement. */
+.race-card-compare i {
+    padding: 1px 4px;
+    background: rgba(0, 0, 0, 0.72);
+    box-shadow: inset 0 0 0 1px rgba(140, 162, 190, 0.3);
+    color: #B8C5D6;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    font-style: normal;
+    letter-spacing: 0.04em;
+}
+.race-card-compare [data-tone="up"] b { color: var(--rs-bronze-hi); }
+.race-card-compare [data-tone="down"] b { color: var(--rs-oxide); }
+/* First in the registry on the armed channel. Marked by a lit seat, not by a
+   colour swap — the tone colours are already spoken for by advantage/penalty,
+   and the leader can be either. */
+.race-card-compare [data-lead] i {
+    background: linear-gradient(180deg, #E8EFF9 0, #AFBECF 100%);
+    color: #10151D;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+/* Arming a channel: the readout appears, the pair stands down, and the rail
+   below promotes the armed bay. */
+.race-grid[data-compare] .race-card-poles { display: none; }
+.race-grid[data-compare] .race-card-compare { display: block; }
+.race-grid[data-compare="0"] .race-card-compare > span[data-chan="0"],
+.race-grid[data-compare="1"] .race-card-compare > span[data-chan="1"],
+.race-grid[data-compare="2"] .race-card-compare > span[data-chan="2"],
+.race-grid[data-compare="3"] .race-card-compare > span[data-chan="3"],
+.race-grid[data-compare="4"] .race-card-compare > span[data-chan="4"],
+.race-grid[data-compare="5"] .race-card-compare > span[data-chan="5"],
+.race-grid[data-compare="6"] .race-card-compare > span[data-chan="6"] { display: flex; }
+
+/* THE RAIL ANSWERS THE SAME QUESTION THE READOUT DOES.
+   Six bays knock back to a third and the armed one keeps full strength, so a
+   column of twelve cards can be read down as twelve single readings instead of
+   twelve seven-bay charts. The well, the rule and the code row are untouched —
+   the instrument is still an instrument, it is just focused. */
+.race-grid[data-compare] .race-meter { opacity: 0.3; }
+.race-grid[data-compare="0"] .race-meter:nth-child(1),
+.race-grid[data-compare="1"] .race-meter:nth-child(2),
+.race-grid[data-compare="2"] .race-meter:nth-child(3),
+.race-grid[data-compare="3"] .race-meter:nth-child(4),
+.race-grid[data-compare="4"] .race-meter:nth-child(5),
+.race-grid[data-compare="5"] .race-meter:nth-child(6),
+.race-grid[data-compare="6"] .race-meter:nth-child(7) { opacity: 1; }
+/* and the code under it, so the armed channel is named on every card */
+.race-grid[data-compare] .race-meter-codes > span { opacity: 0.42; }
+.race-grid[data-compare="0"] .race-meter-codes > span:nth-child(1),
+.race-grid[data-compare="1"] .race-meter-codes > span:nth-child(2),
+.race-grid[data-compare="2"] .race-meter-codes > span:nth-child(3),
+.race-grid[data-compare="3"] .race-meter-codes > span:nth-child(4),
+.race-grid[data-compare="4"] .race-meter-codes > span:nth-child(5),
+.race-grid[data-compare="5"] .race-meter-codes > span:nth-child(6),
+.race-grid[data-compare="6"] .race-meter-codes > span:nth-child(7) {
+    opacity: 1;
+    color: #E4EBF5;
+}
 
 .race-card h3 {
     max-width: 100%;
@@ -1497,19 +2112,33 @@
     height: 4px;
     background: linear-gradient(180deg, #8695AB 0, #5A6779 55%, #333C4A 100%);
 }
-/* The channel names. 9px mono, ~7:1 on the plate, on the rail's own inset so a
-   code sits under the bay it names. */
+/* The channel names, on the rail's own inset so a code sits under the bay it
+   names.
+
+   11px, NOT THE 9px THIS WAS STRUCK AT. Eighty-four of the eighty-seven
+   sub-11px elements on this screen were these seven codes, times twelve cards —
+   and they are the key to the only comparative instrument a card carries. 9px
+   Share Tech Mono on a 1366 laptop is at the edge of legibility for a player
+   with normal sight and simply unreadable with mild low vision, with no zoom,
+   no tooltip and no larger restatement anywhere on the screen.
+
+   The width is bought back from the tracking and the rail's own inset rather
+   than from the type: seven bays of a 191px card are 27px each, and MET at 11px
+   mono with the letter-spacing dropped measures ~20px, so the row still centres
+   under its bays with clearance. Each code also carries its channel's full name
+   as a title now, so the abbreviation resolves on hover as well as growing. */
 .race-meter-codes {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    padding: 1px var(--rail-pad) 0;
-    color: #94A4B9;
+    padding: 1px 2px 0;
+    color: #9EAEC3;
     font-family: var(--rs-mono);
-    font-size: 9px;
-    letter-spacing: 0.02em;
-    line-height: 9px;
+    font-size: 11px;
+    letter-spacing: 0;
+    line-height: 12px;
     text-align: center;
 }
+.race-meter-codes > span { cursor: help; }
 
 /* ---------------------------------------------------------- card footer rail
 
@@ -1598,6 +2227,22 @@
     white-space: nowrap;
 }
 
+/* THE RESTRICTION IS NOT ALLOWED TO BE THE QUIETEST THING ON THE CARD.
+   The strip's tag used to read DOCTRINE on every authorized faction — the name
+   of the topic, not of the finding — and its caption sat at #B2BFD1 while the
+   headline figure two inches above it was set in bronze at 12px. So the ONE
+   line that says what you can never build, for the whole match, was the least
+   emphasised statement on a card whose whole job is a trade-off. The tag now
+   states the finding (RESTRICTED / NO LIMITS) and the restricted caption is set
+   at the same grade the gate captions get. Steel, not red: this is the price of
+   a doctrine, not a fault. */
+.race-card-note[data-note="restriction"] .race-note-body b { color: #C3B190; }
+.race-card-note[data-note="restriction"] .race-note-body em { color: #E6EDF7; font-weight: 600; }
+.race-card-note[data-note="restriction"] .race-note-body { border-color: #47536B; }
+/* "No limits" is a finding too, and a good one — it just does not get the
+   emphasis, because nothing here has to be weighed. */
+.race-card-note[data-note="clear"] .race-note-body em { color: #AEBCCE; }
+
 /* Achievement / recruitment gate — sealed hatch. */
 .race-card-note[data-gate="service"] .race-note-flag {
     background:
@@ -1647,7 +2292,12 @@
    for most players. */
 .race-card.locked .race-meters { opacity: 0.82; }
 .race-card.locked .race-card-index { color: #93A1B4; }
-.race-card.locked .race-card-sig { color: #8B98AA; }
+/* A sealed faction's trade-off is still the reason to want it, so the pair
+   knocks back rather than draining to steel — the reading colours survive at
+   reduced strength, which is what "you can see what you would be getting"
+   means. */
+.race-card.locked .race-card-poles,
+.race-card.locked .race-card-compare { opacity: 0.88; }
 /* Only INSPECTING restores a sealed faction's art — you are looking at its
    dossier, so you get to see what you would be unlocking. Hover does not: a
    painting that changes when the pointer crosses it is the defect that made the
@@ -1660,7 +2310,8 @@
 
 .race-detail-panel {
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
+    /* three tracks: the scroll port, the fold rail, the confirm rail */
+    grid-template-rows: minmax(0, 1fr) auto auto;
     padding: 8px;
     background:
         linear-gradient(rgba(120, 160, 210, 0.05) 1px, transparent 1px),
@@ -1686,10 +2337,85 @@
     gap: 3px;
     overflow-y: auto;
     padding: 1px 4px 1px 2px;
-    scrollbar-color: #4A5C74 transparent;
+    /* A DRAWN TRACK, NOT THE PLATFORM'S OVERLAY ONE — the same treatment the
+       roster bay gets, for the same reason. The overlay scrollbar this used to
+       rely on measures 0px wide and does not exist until the pointer is already
+       inside a box the player has not been told is scrollable, which on this
+       panel meant the permanent restrictions sat under an invisible fold with
+       nothing at all to suggest they were there. The gutter is reserved in both
+       states so nothing reflows when the state flips. */
+    scrollbar-gutter: stable;
+    scrollbar-color: #4A5C74 #05080D;
     scrollbar-width: thin;
 }
 .race-detail-content > * { flex: none; }
+.race-detail-panel.is-scrollable .race-detail-content {
+    scrollbar-width: auto;
+    scrollbar-color: #7C8DA6 #05080D;
+}
+
+/* ------------------------------------------------- the dossier's fold rail
+
+   The roster bay states its own overflow in words — "4 MORE BELOW ▼ SCROLL OR
+   USE THE ARROW KEYS" — and this panel, six inches to its right, stated
+   nothing. Measured at 1366x768 the dossier hid 178px with a restricted faction
+   inspected, and the two blocks entirely below the cut were TECH & HULL ACCESS
+   ("3 restrictions — LOCK MISSILES / CAP ARMOR <= LV3 / NO DREADNOUGHT") and
+   HULL CALIBRATION: the permanent costs, on the screen whose own subtitle says
+   they last the whole match. The same screen was inconsistent with itself.
+
+   Same rail, same ink, same machined seat as the roster's foot — and when the
+   restrictions are what is below the cut it NAMES them rather than counting
+   them, because "2 more below" and "restrictions below" are not the same
+   warning. */
+.race-detail-foot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 1px 5px;
+    padding: 2px 8px;
+    background: linear-gradient(180deg, #1E2735, #141C27);
+    border: 1px solid #0A0F17;
+    box-shadow: inset 0 1px 0 rgba(174, 196, 224, 0.24), inset 0 -1px 0 rgba(0, 0, 0, 0.8);
+}
+.race-detail-foot-code {
+    flex: none;
+    color: #7C8CA3;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+.race-detail-foot-channel {
+    flex: 1 1 auto;
+    height: 7px;
+    overflow: hidden;
+    background:
+        repeating-linear-gradient(90deg,
+            rgba(168, 192, 224, 0.42) 0 1px,
+            rgba(0, 0, 0, 0) 1px 5px,
+            rgba(168, 192, 224, 0.20) 5px 6px,
+            rgba(0, 0, 0, 0) 6px 10px),
+        linear-gradient(180deg, #04070C, #080D14);
+    box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.9), inset 0 -1px 0 rgba(174, 196, 224, 0.18);
+}
+.race-detail-foot-more {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: #E2C58A;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-align: center;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.race-detail-foot-more[hidden] { display: none; }
+/* Two rails and a sentence do not fit one 22px strip; the decorative one steps
+   aside exactly as the roster's does. */
+.race-detail-panel.is-scrollable .race-detail-foot-channel { display: none; }
 
 /* A dossier for a faction with a long restriction list is taller than the bay.
    That is fine — it is a dossier — but the cut has to READ as "there is more",
@@ -1702,12 +2428,14 @@
    THE FADE IS A CUE, NOT A DIMMER. It used to run 34px deep and end at 10%
    alpha, which took a LIVE row of chips down to about 40% — the value a
    disabled control is drawn at on this console — so the one faction that still
-   overruns the bay looked like it had greyed out its own last instrument. 18px
-   ending at 55% still reads as "the plate carries on past the wall" and never
-   takes type below the contrast the rest of the panel is set at. */
+   overruns the bay looked like it had greyed out its own last instrument. 24px
+   ending at 45% still reads as "the plate carries on past the wall" and never
+   takes type below the contrast the rest of the panel is set at. The fade is
+   the soft half of the signal; the hard half is the fold rail below, which says
+   the same thing in words and in the accessibility tree. */
 .race-detail-panel.is-scrollable .race-detail-content {
-    -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 18px), rgba(0, 0, 0, 0.55) 100%);
-    mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 18px), rgba(0, 0, 0, 0.55) 100%);
+    -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 24px), rgba(0, 0, 0, 0.45) 100%);
+    mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 24px), rgba(0, 0, 0, 0.45) 100%);
 }
 
 /* ------------------------------------------------------------------- the hero
@@ -1736,7 +2464,16 @@
 
 .race-detail-hero {
     position: relative;
-    flex: 1 1 auto;
+    /* GROW, BUT NEVER SHRINK BELOW WHAT IS PRINTED ON IT.
+       `1 1 auto` let the dossier's overflow squeeze this plate under its own
+       content, and because the plate is overflow:hidden the squeeze CLIPPED
+       rather than scrolled: measured at 1366x768 on a locked faction the hero
+       was 192px holding 213px of rail and identity block, so the gate lost its
+       last line — "unlocks for good", the half of the sentence that turns a
+       wall into a goal. `1 0 auto` keeps it the flexible track (it still takes
+       every spare pixel in the bay and still opens Terra at ~380px) while making
+       its own content the floor. The dossier scrolls; the plate does not lie. */
+    flex: 1 0 auto;
     /* THE FLOOR IS THE HEIGHT AT WHICH A 16:9 PAINTING IS STILL A PAINTING.
        It used to be 146px — the head rail plus the medallion and its seat —
        which is furniture, not art: a faction with four sealed branches and two
@@ -2395,19 +3132,23 @@
     filter: brightness(var(--hull-gain, 1)) contrast(1.06) saturate(1.04);
 }
 /* The design name, on its own rail. Same treatment as the meter code row: mono,
-   near-black seat, ~7:1, and never over a painting. */
+   near-black seat, ~7:1, and never over a painting. 11px, which is this
+   screen's type floor everywhere — these three were the last elements under it
+   after the rail legend was raised, and "COLONY WORK VESSEL" set at 10px in a
+   145px bay is exactly the kind of caption that reads as a texture rather than
+   as a word. The tracking pays for the extra pixel. */
 .race-fleet-bay b {
     display: grid;
     align-content: center;
-    padding: 2px 3px 3px;
+    padding: 2px 2px 3px;
     background: linear-gradient(180deg, #0A0F16, #05080D);
     box-shadow: inset 0 1px 0 rgba(160, 186, 220, 0.18);
-    color: #C4D0E0;
+    color: #C7D3E3;
     font-family: var(--rs-mono);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 400;
-    letter-spacing: 0.05em;
-    line-height: 12px;
+    letter-spacing: 0.01em;
+    line-height: 13px;
     text-align: center;
     text-transform: uppercase;
 }
@@ -2623,15 +3364,77 @@
     filter: drop-shadow(0 1px 0 rgba(255, 226, 172, 0.5));
 }
 .race-hero-gate-body { min-width: 0; display: grid; align-content: center; gap: 1px; padding: 4px 0; }
+/* "FACTION LOCKED" — the finding, set at the finding's weight.
+   This line used to name the CHANNEL ("SERVICE RECORD") in the muted grade,
+   because the words "Faction Locked" were stamped on the global confirm plate
+   instead. They do not belong there: the plate carries the player's commitment,
+   not a verdict on whatever faction they happen to be reading. The status is
+   stated here, beside the faction it is true of, and the channel has moved down
+   to the mechanism line where it is context rather than headline. */
 .race-hero-gate-body b {
-    color: #A8B6CA;
+    color: #E7CE96;
     font-family: var(--rs-mono);
     font-size: 11px;
     font-weight: 400;
     letter-spacing: 0.11em;
     text-transform: uppercase;
 }
+/* WHAT SURVIVED THE CLICK, WHERE THE CLICK HAPPENED.
+   Opening a locked faction no longer throws the player's pick away — but a
+   change that quiet is indistinguishable from the old silent loss unless the
+   screen says so. This strip names the faction the confirm plate is still
+   holding, directly under the hero of the faction being read, at the moment a
+   player might otherwise think they have lost it. It only exists when there IS
+   a pick to hold and a locked faction on screen to threaten it.
+
+   It sits OUTSIDE the hero plate on purpose: that plate is overflow:hidden with
+   a height set by its medallion, and the first draft of this notice lived in the
+   gate inside it and got its faction name clipped off the bottom edge. */
+.race-detail-held {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 9px;
+    background: linear-gradient(180deg, #1B2431, #10161F);
+    border: 1px solid #0A0F17;
+    box-shadow: inset 0 1px 0 rgba(174, 196, 224, 0.2), inset 0 -1px 0 rgba(0, 0, 0, 0.8);
+    color: #D9E2EF;
+    font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.2;
+}
+.race-detail-held i {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #E4EEFA;
+    box-shadow: 0 0 6px rgba(190, 216, 245, 0.9);
+}
+.race-detail-held span { min-width: 0; }
+.race-detail-held b {
+    color: #F5F8FD;
+    font-family: var(--rs-num);
+    font-size: 12.5px;
+    font-weight: 700;
+}
 .race-hero-gate-body em { color: #EAF0F8; font-size: 14px; font-style: normal; font-weight: 600; line-height: 1.15; }
+/* HOW the gate opens, under WHAT it asks for.
+   "Win 3 games" is a number with no frame around it, and the two questions it
+   leaves are the ones that decide whether it reads as a goal or as a wall: does
+   this reset, and does it have to happen in ONE match. Both answers are good
+   news and both are true of the engine (server/lib/races.js reads a lifetime
+   user_stats row and re-checks the gate on every visit), so the line is worth
+   the 13px it costs. Set at the muted grade — it is a footnote to the objective,
+   not a second objective. */
+.race-hero-gate-body small {
+    color: #93A2B7;
+    font-family: var(--rs-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    line-height: 1.25;
+}
 /* The purchase action takes its own row UNDER the objective rather than
    squeezing in beside a two-line one, and it sits in the objective's column so
    its two ends land on the gate's own inner edges. Spanning 1/-1 with a negative
@@ -2669,9 +3472,52 @@
 /* ------------------------------------------------------------- confirm rail */
 
 .race-confirm-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 2px; padding-top: 6px; border-top: 2px solid var(--rs-edge); box-shadow: inset 0 2px 0 rgba(180, 206, 240, 0.16); }
-.race-confirm-note { display: flex; align-items: center; gap: 7px; color: #9AA9BE; font-size: 11px; line-height: 1.3; }
-.race-confirm-note span { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #E4EEFA; box-shadow: 0 0 6px rgba(190, 216, 245, 0.95); }
+/* THE LINE THAT SAYS WHETHER THIS IS REVERSIBLE, AND IT IS NOW TRUE.
+   It read "Selection locks when you confirm", which was false — the waiting
+   view keeps a Choose / Change control that reopens this console pre-selected
+   and sends //changerace. A screen that overstates the cost of a decision makes
+   a player stop exploring the twelve things it exists to show them, so the
+   reversibility gets the lead ("Not final." in near-white) and the deadline
+   follows it. */
+/* SET AS A SENTENCE, NOT AS A STENCIL. This line was in the mono-uppercase
+   group with the panel codes and the axis labels, which is right for PNL-RS-01
+   and wrong for the one piece of PROSE on the console: 11px mono caps at 0.06em
+   took it to three lines in the confirm rail and made the most consequential
+   sentence on the screen the hardest one to read. It is body copy now — the
+   body face, sentence case — and it fits on two. */
+.race-confirm-note {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #A9B7CB;
+    font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.01em;
+    line-height: 1.25;
+    text-transform: none;
+}
+.race-confirm-note em { color: #E7EEF8; font-style: normal; font-weight: 600; }
+/* The sentence is ONE flex item. It used to be two — the emphasised opening and
+   the rest as a bare text node — so the line always broke at the em dash
+   whatever the width was, and the rail's most important line read as two
+   fragments stacked. */
+.race-confirm-note span { min-width: 0; }
+.race-confirm-note i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: #E4EEFA; box-shadow: 0 0 6px rgba(190, 216, 245, 0.95); }
 
+/* THE PLATE'S DARK STOP MOVED, BECAUSE TYPE SITS ON IT.
+   The gradient used to run #FFD992 -> #E0A22C at 52% -> #8A5F1B at 100%, which
+   put the button's SECOND line — the faction a player is committing to for an
+   entire match — on metal around rgb(176,124,34). Sampled across that sub-line's
+   own band the ink measured 4.48:1, under the 4.5:1 AA floor for 11px text, and
+   3.28:1 against the bottom of the band. axe reports nothing here because it
+   skips elements with gradient backgrounds, so the surface's clean a11y score
+   never covered it.
+   Darkening the ink alone could not fix it: against rgb(176,124,34) even pure
+   black tops out at 5.75:1. So the dark step is held back to the last 14% of the
+   plate — where nothing is set — and the sub-line now sits on ~rgb(219,154,43).
+   With the ink at #261904 that reads 7.1:1, and the stamped top line better
+   still. The bevel is unchanged: the plate keeps its lit crown, its seated foot
+   and its 3px hard drop. */
 .race-confirm-btn,
 .race-purchase-btn {
     flex: none;
@@ -2681,7 +3527,7 @@
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    background: linear-gradient(180deg, #FFD992 0, #E0A22C 52%, #8A5F1B 100%);
+    background: linear-gradient(180deg, #FFD992 0, #E0A22C 62%, #D9962A 86%, #8A5F1B 100%);
     border: 2px solid #05070A;
     border-radius: 2px;
     box-shadow:
@@ -2695,7 +3541,7 @@
 #raceSelectionModal .race-confirm-btn:hover,
 #raceSelectionModal .race-purchase-btn:hover {
     filter: brightness(1.09);
-    background: linear-gradient(180deg, #FFD992 0, #E0A22C 52%, #8A5F1B 100%);
+    background: linear-gradient(180deg, #FFD992 0, #E0A22C 62%, #D9962A 86%, #8A5F1B 100%);
 }
 .race-confirm-btn:focus-visible,
 .race-purchase-btn:focus-visible { outline: 2px solid #FFE2AA; outline-offset: 3px; }
@@ -2729,6 +3575,79 @@
 }
 /* 11px floor applies to the price on this button too — it is a figure. */
 .race-purchase-btn { flex: none; padding: 8px 13px; font-size: 11px; }
+
+/* THE ESCAPE ANSWER.
+   There is no cancel path in the host flow, so this console deliberately does
+   not close on Escape — but it used to swallow the key in absolute silence,
+   which is a different defect: a player performs the universal modal-dismiss
+   reflex, gets nothing at all, and concludes the interface is frozen. The key
+   now writes the reason into the status region (handleModalKeys) and the confirm
+   plate takes two short pulses, so the answer arrives in words for a screen
+   reader AND as a place to look for everyone else. Two pulses, 900 ms total, on
+   the button's own amber — not a shake, which is nausea-adjacent and reads as
+   an error rather than as a signpost. */
+@keyframes rsNudge {
+    0%, 100% { box-shadow: var(--rs-plate-up); }
+    30%, 70%  { box-shadow: var(--rs-plate-up), 0 0 0 3px rgba(231, 166, 58, 0.62); }
+}
+.race-confirm-bar.is-nudged .race-confirm-btn {
+    --rs-plate-up:
+        inset 0 2px 0 rgba(255, 244, 214, 0.85),
+        inset 0 -3px 0 rgba(94, 60, 8, 0.9),
+        0 3px 0 rgba(0, 0, 0, 0.6);
+    animation: rsNudge 450ms ease-in-out 2;
+}
+.race-confirm-bar.is-nudged .race-confirm-note { color: #F0D9A4; }
+
+/* THE COMMIT BUTTON NAMES ITS SUBJECT.
+   Two lines: the action in the stamped face, and underneath it the faction it
+   would take — or, when the button is seated, the objective that would authorize
+   the faction being inspected. A disabled control that says only "Faction
+   Locked" is a dead end at the exact moment a player is reaching for something;
+   with the objective on it, the seated button is the answer rather than the
+   refusal. The subject line is set in the figure face at 11px, tracking off, so
+   a proper noun does not have to survive the stamp's 0.08em. */
+/* Two lines in the same plate height the one-line label had: the vertical
+   padding pays for the subject line, so the confirm rail does not grow and the
+   dossier's scroll port keeps every pixel it had. */
+.race-confirm-btn { display: grid; justify-items: center; gap: 1px; padding: 7px 20px; line-height: 1.05; }
+.race-confirm-btn b { font-weight: 400; }
+/* #261904, not #4A3208. The two lines stay distinguishable by FACE, WEIGHT and
+   TRACKING — stamped Russo One at 0.08em over a 600-weight figure face at
+   0.02em — rather than by one of them being paler than the other, which is how
+   the sub-line ended up below the AA floor in the first place. */
+.race-confirm-btn em {
+    max-width: 190px;
+    overflow: hidden;
+    color: #261904;
+    font-family: var(--rs-num);
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-overflow: ellipsis;
+    text-transform: none;
+    white-space: nowrap;
+}
+.race-confirm-btn em:empty { display: none; }
+/* 4.8:1 against the seated plate's LIGHTEST step (#2E3846), not its darkest —
+   the objective on a locked confirm is the line telling a player how to get the
+   faction they just reached for, and it is the one piece of type on this screen
+   that sits on an inverted bevel. */
+.race-confirm-btn:disabled em { color: #98A6B9; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.9); }
+
+/* The dossier's scroll port, when it is deep enough to become a tab stop. */
+#raceSelectionModal .race-detail-content:focus { outline: none; }
+#raceSelectionModal .race-detail-content:focus-visible {
+    outline: 2px solid #E7A63A;
+    outline-offset: -2px;
+}
+/* The console takes focus when the dialog opens so the player is announced INTO
+   it rather than left on a control the seal just made unreachable. That is a
+   programmatic focus on a container, never a keyboard destination, so it does
+   not draw a ring — :focus-visible would not match it anyway, and this makes
+   that explicit rather than incidental. */
+#raceSelectionModal .race-selection-container:focus { outline: none; }
 
 /* ------------------------------------------------------------------- toasts
 
@@ -2778,8 +3697,32 @@ body:has(#raceSelectionModal) #toast-root .toast::before {
 
 /* --------------------------------------------------------------- responsive */
 
+/* THE COMPARATOR KEEPS ITS WORDS.
+
+   This block used to read `.rs-chan em { display: none }`, on the argument that
+   the three-letter codes carry the toolbar on their own because they are
+   stencilled under every card. They are — and that was the problem. Below
+   1500px the toolbar read ALL MET CRY RSC CST SPD ATK DEF, the card rails read
+   MET CRY RSC CST SPD ATK DEF and the dossier plot's axis read MET CRY RSC CST
+   SPD ATK DEF: three instruments keyed to seven abbreviations that were then
+   expanded NOWHERE on the screen. A new player on a mainstream laptop could not
+   work out whether CST was cost or construction, or whether a longer SPD bar
+   was good, on the one screen where the answer lasts the whole match.
+
+   The width comes off the decorative rail beside it instead. That rail measured
+   374px at 1366 — a stencilled panel code and a graduation channel, carrying no
+   information at all — against a toolbar that needed about 160 more. Decoration
+   yields to the screen's only comparison tool; it already yields at 1340 for
+   exactly this reason, and this just moves the same decision up one step.
+
+   Each key also carries its channel's full name as title + aria-label, so the
+   code resolves on hover and under a screen reader at every width, including
+   the phone layout where the words genuinely cannot fit. */
 @media (max-width: 1500px) {
-    .race-selector-key-grid { grid-template-columns: repeat(3, auto); gap: 2px 12px; }
+    .race-selector-rail { display: none; }
+    .race-selector-key-grid { gap: 3px; }
+    .rs-chan { gap: 4px; padding: 3px 6px; }
+    .rs-chan em { font-size: 11px; }
 }
 
 /* Laptop heights. The console is height-bound, not width-bound: at 900px there
@@ -2801,7 +3744,7 @@ body:has(#raceSelectionModal) #toast-root .toast::before {
        1.85 rather than 16:9, because the caption strip below grew when it
        stopped amputating its own descenders and this is where a height-bound
        layout is supposed to pay for that — in dead black ground, not in type. */
-    .race-port { aspect-ratio: 1.85; }
+    .race-port { aspect-ratio: var(--rs-port-aspect, 1.85); }
     .race-card h3 { font-size: 0.79rem; }
     .race-meter-well { height: 27px; }
     /* NO FIXED HEIGHT ON THE CAPTION STRIP AT ANY VIEWPORT. This used to pin it
@@ -2818,8 +3761,82 @@ body:has(#raceSelectionModal) #toast-root .toast::before {
     .race-fleet-port { aspect-ratio: 3 / 2; }
 }
 
-@media (max-width: 1340px) {
-    .race-selector-key { display: none; }
+/* ------------------------------------------------------- the laptop budget
+
+   EVERY PIXEL THIS BLOCK RECLAIMS IS A FACTION.
+
+   At 1366x768 — the most common laptop resolution in the world — the roster
+   needed 669px of bay and had 522, so it showed eight of the twelve factions
+   and cut the last four through the middle of their bodies. fitRoster() closes
+   most of that gap by taking the height out of the crest apertures' black mat,
+   but it will not go below a floor where a crest stops being an emblem, and on
+   a 768px screen that floor still left the roster one row short.
+
+   So this block goes looking for the rest of it in the chrome, and it only
+   takes from things that are furniture rather than information: the padding
+   around the console, the header's own breathing room, the roster's title bar
+   and its foot rail. Nothing here changes a type size, a meter, a gate strip or
+   a restriction — the four things a player is actually reading. The result is
+   all twelve factions on screen at 1366x768 and at 1280x720, which is worth
+   more than 30px of console margin at any resolution.
+
+   Above 860px tall none of this applies and the console keeps its full
+   proportions. */
+@media (max-height: 860px) {
+    /* --rs-pad, not `padding`: the housing's own height is
+       `100vh - pad*2 - apron`, so overriding the padding alone shrinks the frame
+       around the console without giving the console the pixels back. At 1280x720
+       that discrepancy was 28px — a sixth of a card row — spent on nothing. */
+    #raceSelectionModal { --rs-pad: 12px; --rs-apron: 10px; }
+    .race-selection-main { gap: 10px; padding: 6px; }
+    .race-selector-header { padding: 4px 20px 4px 24px; }
+    .race-selector-key { padding: 4px 10px 5px; }
+    .race-selector-gauge { padding: 4px 9px; }
+    .race-grid-heading { padding: 4px 13px; }
+    .race-grid-foot { margin: 0 5px 3px; padding: 1px 8px; }
+    .race-grid-foot-channel { height: 5px; }
+    .race-card { padding: 8px 8px 3px; }
+    .race-meter-well { height: 25px; }
+}
+
+/* THE COMPARATOR SURVIVES THE NARROW BREAKPOINTS.
+   This rule used to read `.race-selector-key { display: none }`, which was
+   defensible when the box was a static legend and is not now that it is the
+   screen's comparison tool: display:none takes it out of the accessibility tree
+   as well as off the plate, so every viewport under 1340px lost the only way to
+   rank twelve factions on one channel. It gives up the machined rail beside it
+   instead — that rail is decoration and this is not. */
+/* FOUR COLUMNS FOR AS LONG AS THE CARDS CAN CARRY THEM, because the ROW COUNT
+   is what decides how many factions a player sees.
+
+   This stepped down to three columns at 1340px, which is a width-first reading
+   of a height-bound screen: at 1280x720 it turned a 3-row roster into a 4-row
+   one and dropped the visible count from twelve to six — the worst result on
+   this screen, produced by a rule meant to protect card width. A card at 1280
+   in four columns measures 192px against 213 at 1366; the rail's seven bays are
+   27px each and its 11px codes need 20, so nothing on the card is short of
+   room. Three columns is held back until 1180, where four genuinely stops
+   working. */
+/* ------------------------------------------- THE PERMANENT COST GOES FIRST
+
+   On a short viewport the dossier is taller than its bay and something has to
+   fall below the fold. What fell used to be TECH & HULL ACCESS and HULL
+   CALIBRATION — the two blocks a player will regret not reading, on the screen
+   whose own subtitle says "restrictions last the whole match" — while FLEET
+   PROFILE, three paintings that state no mechanic at all, kept its place above
+   them.
+
+   Under 800px of viewport the order is inverted: what this faction permanently
+   gives up is read before what its hulls look like. The fold rail still says
+   there is more, and the fleet plate is what is now under it. DOM order is
+   untouched, so nothing changes for a screen reader and there is no focusable
+   element in any of these blocks for the visual order to disagree with. */
+@media (max-height: 800px) {
+    .race-detail-fleet { order: 1; }
+    .race-detail-stamp-line { order: 2; }
+}
+
+@media (max-width: 1180px) {
     .race-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
@@ -2829,8 +3846,36 @@ body:has(#raceSelectionModal) #toast-root .toast::before {
     #raceSelectionModal { --rs-plot-h: 128px; }
 }
 
+/* THE HEADER PLATE WRAPS WHERE THE ROSTER DOES.
+   The three header items are all `flex: none` on a header with no wrap, so
+   below ~1000px they simply ran off the right edge of the plate they are bolted
+   to. Measured at 860px — a width this block deliberately targets, since the
+   roster re-flows into a filmstrip here — the gauge spanned x=778..890 against a
+   header right edge of 841: "AUTHORIZED 01/12 FACTIONS" sliced down the middle,
+   rendering as "AUTHOR…" over "01/" over "FACTI…". It was worse the narrower it
+   got (163px past the edge at 640) and only came right at 560, where the phone
+   block already wraps the plate. So the wrap starts here instead, at the same
+   width everything else re-flows, and the phone block keeps only what is
+   genuinely phone-sized.
+   The comparator takes the full-width row, not the gauge: it is the widest item
+   and the one that reads as a toolbar, which leaves the heading and the count on
+   the top line where `space-between` puts one at each end of the plate. */
 @media (max-width: 900px) {
     #raceSelectionModal { --rs-apron: 0px; }
+    .race-selector-header { flex-wrap: wrap; }
+    /* border-box, or the key's 2px border and 11px side padding are added
+       OUTSIDE a 100% basis resolved against the header's content width — this
+       sheet has no global box-sizing reset. */
+    .race-selector-key { order: 3; flex: 1 0 100%; box-sizing: border-box; }
+    /* The heading takes the slack and the gauge keeps its width, or the gauge is
+       the item that gets pushed off the plate again.
+       `flex: 1 1 0` and not `1 1 auto`: with an `auto` basis the heading's base
+       size is the max-content width of its own sub-line, which at 640px is wider
+       than the plate on its own — so the wrap put the count on a row BELOW the
+       heading, alone and hard against the left edge, with 500px of empty plate
+       beside it. A zero basis makes the heading fill whatever the count leaves,
+       and the sub-line wraps instead of the layout. */
+    .race-selector-heading { width: auto; max-width: none; min-width: 0; flex: 1 1 0; }
     .race-selection-container { height: min(940px, calc(100vh - 24px)); min-height: 0; overflow-y: auto; grid-template-rows: auto auto; }
     .race-selection-main { display: flex; flex-direction: column; overflow: visible; }
     .race-grid-shell,
@@ -2851,22 +3896,89 @@ body:has(#raceSelectionModal) #toast-root .toast::before {
     body:has(#raceSelectionModal) #toast-root { right: 12px; left: 12px; bottom: 12px; }
 }
 
+/* ------------------------------------------ THE PHONE ROSTER IS A ROSTER
+
+   At 390x844 this bay was a single horizontal strip: scrollWidth 2829 against
+   clientWidth 354, i.e. 2,475px of hidden scroll, with TEN of the twelve
+   factions entirely outside the viewport. There was no scrollbar, no edge fade
+   and no count — the foot rail that correctly reads "4 MORE BELOW ▼" on a short
+   desktop viewport was an EMPTY STRING here, because it only ever counted
+   vertical overflow. A capture of it shows a faction card sliced by the left
+   edge, mid-strip, with nothing to say the other ten exist.
+
+   It wraps to two columns and scrolls the way every other viewport does, which
+   is not just tidier: it is the whole reason the roster's existing "N MORE
+   BELOW ▼ SCROLL OR USE THE ARROW KEYS" logic — the fade, the drawn track, the
+   spoken count, the arrow-key reach — starts working on a phone. The bay is
+   capped so the roster cannot push the primary action a screen and a half down
+   the page; fitRoster() then tightens the crest apertures to fit what it can. */
+@media (max-width: 600px) {
+    /* The bay's own column has to be CLAMPED, not `auto`. The shell is a grid
+       with rows declared and no columns, so its single implicit column is
+       auto-sized — i.e. to the roster's max-content — and the roster only got
+       away with that while it was a horizontal rail whose overflow made its
+       max-content irrelevant. Wrapped to two columns it blew the track out to
+       414px inside a 354px shell and sliced the right-hand column off the
+       screen: the same defect as the rail, produced by the fix for it.
+       minmax(0, 1fr) says the column is the container and no wider. */
+    .race-grid-shell { grid-template-columns: minmax(0, 1fr); }
+    .race-grid {
+        /* fitRoster() reads this and stands down: six rows of card cannot be
+           made to fit half a phone viewport, and trying flattened every crest
+           to a 49px letterbox for a roster that scrolled regardless. */
+        --rs-fit: 0;
+        grid-auto-flow: row;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-auto-columns: auto;
+        grid-auto-rows: max-content;
+        max-height: 52vh;
+        /* auto rather than hidden on the cross axis: there is nothing to scroll
+           sideways once the roster wraps, so it never draws a bar — and leaving
+           it auto keeps the bay's overflow contract identical in both axes for
+           anything measuring it. */
+        overflow-x: auto;
+        overflow-y: auto;
+        scroll-snap-type: none;
+    }
+    .race-card { scroll-snap-align: none; }
+    /* The commit control follows the dossier down rather than sitting at the
+       bottom of a long page: once the dossier is on screen the plate is pinned
+       to the foot of the viewport, so the primary action is never something a
+       player has to go looking for. */
+    .race-confirm-bar {
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+        margin: 12px -11px -11px;
+        padding: 10px 11px;
+        background: linear-gradient(180deg, rgba(22, 32, 43, 0.86), #16202B 34%);
+        border-top: 2px solid var(--rs-edge);
+    }
+}
+
 @media (max-width: 560px) {
     #raceSelectionModal { padding: 7px; place-items: stretch; }
     .race-selection-container { width: 100%; height: calc(100vh - 14px); }
+    /* The plate already wraps and the comparator already has its own row from
+       900px down — see that block. What is phone-specific is the tighter gutter
+       and dropping the sub-line, which is the one thing here that cannot be
+       shortened any further. */
     .race-selector-header { min-height: 0; gap: 10px; padding: 12px 12px 10px; }
     .race-selector-header p { display: none; }
-    .race-selector-header h2 { font-size: 1.14rem; }
-    /* The heading takes the slack and the gauge keeps its width, or the gauge
-       gets pushed off the right edge of the plate. */
-    .race-selector-heading { width: auto; max-width: none; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+    .race-selector-header h1 { font-size: 1.14rem; }
+    /* The eyebrow is the only line long enough to force the heading wider than
+       the slack it has, so it clips to one line here rather than pushing the
+       gauge. */
+    .race-selector-heading { overflow: hidden; }
     .race-selector-eyebrow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .race-selector-rail { display: none; }
     .race-selector-gauge { padding: 5px 9px; }
     .race-selector-gauge-read strong { font-size: 1.2rem; }
     .race-selection-main { gap: 9px; padding: 9px; }
     .race-grid-heading small { display: none; }
-    .race-grid { grid-auto-columns: minmax(230px, 84vw); padding: 7px; }
+    /* grid-auto-columns is gone with the horizontal rail it sized — the roster
+       is an explicit two-column grid at this width (see the block above). */
+    .race-grid { padding: 7px; }
     .race-detail-panel { padding: 11px; }
     /* Below this the identity block cannot hold a name beside a 132px
        medallion on the plate, so the medallion steps down and the name takes
@@ -2881,7 +3993,34 @@ body:has(#raceSelectionModal) #toast-root .toast::before {
     .race-confirm-btn { width: 100%; padding: 13px 15px; }
 }
 
+/* REDUCED MOTION, DELIVERED RATHER THAN DECLARED.
+
+   The only rule this block used to carry was `transition: none` on the two star
+   layers — and on its own that made things WORSE, not better. attachParallax()
+   bound its pointermove listener unconditionally, so under
+   prefers-reduced-motion the starfield still tracked the cursor (measured live:
+   --rs-px 0.7708, --rs-py 0.6667, far layer at translate(-5.4, -3.3), near at
+   (-13.9, -8.0)); stripping the easing off that left it SNAPPING to the pointer
+   instead of gliding, which for a vestibular-sensitive player is strictly worse
+   than shipping no rule at all.
+
+   Two halves, and either one alone is a bug: the listener is never attached
+   (see attachParallax), and the two offsets are pinned to zero here so the
+   layers cannot move even if something else sets them. `!important` because
+   the JS writes those custom properties as an inline style on the dialog, and
+   an inline declaration outranks a stylesheet one without it. */
 @media (prefers-reduced-motion: reduce) {
+    #raceSelectionModal {
+        --rs-px: 0 !important;
+        --rs-py: 0 !important;
+    }
     .race-card, .race-confirm-btn, .race-purchase-btn { transition: none; }
     .race-void-far, .race-void-near, .race-void-mark { transition: none; }
+    /* The loading sweep and the Escape nudge are the only two animations this
+       console runs. Both are removed outright rather than shortened: a skeleton
+       that does not shimmer is still a skeleton, and the nudge's message is
+       carried by the status region regardless. */
+    .race-grid-shell.is-loading .race-grid-foot-channel { animation: none; }
+    .race-confirm-bar.is-nudged .race-confirm-btn { animation: none; }
+    .race-confirm-bar.is-nudged { outline: 2px solid #E7A63A; outline-offset: 3px; }
 }

@@ -462,7 +462,18 @@
         // The checklist goes first while it exists: it is what a new player is following,
         // and it retires itself once onboarding is done.
         fitRight(onboardingCard, { maxHeight: 320, minHeight: 80 });
-        fitRight(probeCard, { maxHeight: 200, minHeight: 70 });
+        // Probe actions now live inside the Sector Survey. Treating that embedded card
+        // like the old body-level floating notification lets fitRight() hide it whenever
+        // the right-hand stack is crowded, even though there is still room in the survey.
+        // It also leaves display:none !important on a freshly re-created card after the
+        // fleet dialog closes, making "Send Probe" silently unreachable. Only apply the
+        // floating-panel layout to the legacy body fallback.
+        if (probeCard?.closest('#sectorActionPanel')) {
+            ['display', 'box-sizing', 'width', 'right', 'left', 'top', 'max-height', 'overflow-y']
+                .forEach(property => probeCard.style.removeProperty(property));
+        } else {
+            fitRight(probeCard, { maxHeight: 200, minHeight: 70 });
+        }
         fitRight(document.getElementById('event-panel'), { maxHeight: Math.round(viewportHeight * 0.42), minHeight: 120 });
 
         if (avatar) {

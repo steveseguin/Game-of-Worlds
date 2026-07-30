@@ -25,7 +25,14 @@
 
     --text:  #cdd6e6;
     --muted: #8b94a8;
-    --faint: #5e6678;
+    /* Was #5e6678, which measured 3.33:1 against the --ink panel behind it and
+       failed WCAG AA on both of the places it is used (.auth-footer-note at
+       11.2px and .auth-sysline at 10.24px — small text, so 4.5:1 is required,
+       not 3:1). #7b8599 measures 5.17:1 on the same background: comfortably
+       over the line rather than the 4.51:1 a minimal same-hue nudge would have
+       given, since text this small has no margin for antialiasing. It still
+       sits below --muted, so the de-emphasis the token exists for survives. */
+    --faint: #7b8599;
 
     --font-head: 'Russo One', 'Segoe UI', sans-serif;
     --font-ui:   'Rajdhani', 'Segoe UI', system-ui, sans-serif;

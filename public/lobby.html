@@ -15,8 +15,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260728c">
-    <link id="race-selection-styles" rel="stylesheet" href="css/race-selection.css?v=20260728r3">
+    <link rel="stylesheet" href="css/style.css?v=20260728u1">
+    <link id="race-selection-styles" rel="stylesheet" href="css/race-selection.css?v=20260728r9">
     <style>
     /* ===================================================================
        COMMAND LOBBY — beveled riveted metal console (WC2 / SC1 era)
@@ -199,6 +199,10 @@
     .panel-grid.in-game { grid-template-columns: 1fr; }
     .panel-grid.in-game #createGameCard { display: none; }
     .card { position: relative; padding: 18px; border-radius: 5px; }
+    /* h2 as well as h3: the card titles were h3 under an h1, which axe flags as a
+       skipped heading level, so they were promoted. The selector has to follow or
+       every panel loses its embossed title bar. */
+    .card h2,
     .card h3 {
         margin: -18px -18px 16px; padding: 11px 16px;
         font-family: var(--font-head); font-size: 0.96rem; letter-spacing: 0.05em; text-transform: uppercase;
@@ -547,7 +551,11 @@
         </div>
     </header>
 
-    <div class="lobby-shell">
+    <!-- A <main> rather than a <div>: without one, axe reports landmark-one-main and
+         eleven "region" violations, and a screen-reader user has no way to skip the
+         header and jump to the actual lobby. Styles target .lobby-shell by class, so
+         the element change is purely semantic. -->
+    <main class="lobby-shell">
         <div class="shell-rail">
             <span class="code">SYS://COMMAND.LOBBY</span>
             <span class="hazard"></span>
@@ -571,7 +579,7 @@
 
         <div class="panel-grid" id="lobbyPanelGrid">
             <div class="card" id="createGameCard" data-code="PNL-01">
-                <h3>Create a New Game</h3>
+                <h2>Create a New Game</h2>
                 <div class="form-row" style="margin-bottom:12px;">
                     <input type="text" id="gameName" placeholder="Game name" aria-label="Game name">
                 </div>
@@ -621,7 +629,7 @@
             </div>
 
             <div class="card" data-code="VIS-03">
-                <h3>Tactical Display</h3>
+                <h2>Tactical Display</h2>
                 <div class="viewscreen">
                     <img src="images/type8.gif" alt="" aria-hidden="true">
                     <span class="vs-grid"></span>
@@ -634,7 +642,7 @@
         </div>
 
         <div class="card" data-code="ROST-12" style="margin-top:18px;">
-            <h3>Available Games</h3>
+            <h2>Available Games</h2>
             <table id="gameList" class="game-list">
                 <tr>
                     <th>Game ID</th>
@@ -650,7 +658,7 @@
                 </tr>
             </table>
         </div>
-    </div>
+    </main>
 
     <div id="toast-root"></div>
 
@@ -673,6 +681,6 @@
     <script src="/config.js?v=20260614b"></script>
     <script src="js/epic-music.js?v=20260725b"></script>
     <script src="js/sound.js?v=20260712a"></script>
-    <script src="js/lobby.js?v=20260728r8"></script>
+    <script src="js/lobby.js?v=20260728r9"></script>
 </body>
 </html>

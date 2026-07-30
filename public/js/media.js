@@ -39,9 +39,18 @@
             }
         } catch (_) {}
 
+        // Only the short effects are worth fetching up front. The two end-game
+        // themes and the two ambient beds are 188 KB and 126 KB each — 628 KB of
+        // audio that was being pulled down before the player had done anything,
+        // on a page that already ships 3.4 MB. Victory and defeat cannot play
+        // until a match ENDS, and the ambients start on a scene change, so all
+        // four load on demand instead; the effects that fire on a click stay
+        // eager because a late click sound is a felt defect.
+        const DEFERRED = new Set(['victory', 'defeat', 'battleAmbient', 'spaceAmbient']);
+
         Object.entries(sounds).forEach(([key, src]) => {
             const el = new Audio(src);
-            el.preload = 'auto';
+            el.preload = DEFERRED.has(key) ? 'none' : 'auto';
             if (key === 'battleAmbient' || key === 'spaceAmbient') {
                 el.loop = true;
                 el.volume = 0.35;

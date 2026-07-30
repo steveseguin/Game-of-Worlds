@@ -451,12 +451,23 @@ const SURFACES = {
             await registerUser(page, uniqueId('shot_'));
             await createAndStartGame(page);
             await settleGame(page);
-            await page.evaluate(() => {
-                if (window.Codex && window.Codex.open) window.Codex.open();
-                else document.querySelector('#codexBtn, [data-open-codex]')?.click();
-            }).catch(() => {});
-            await sleep(1800);
+            // The codex has no open() — it is an overlay in game.html toggled by
+            // #helpBtn, which also lazily calls Codex.build(). Calling a method that
+            // does not exist failed silently and photographed the plain map instead,
+            // so this surface went unreviewed while being reported as captured.
+            const opened = await page.evaluate(() => {
+                const btn = document.getElementById('helpBtn');
+                if (!btn) return false;
+                btn.click();
+                return true;
+            });
+            if (!opened) { await ctx.note('codex', '#helpBtn not found'); await page.close(); return; }
+            await page.waitForSelector('#helpOverlay', { state: 'visible', timeout: 10000 }).catch(() => {});
+            await sleep(1500);
             await ctx.shot(page, 'codex');
+            // Second tab too: the help pane and the lore sections are different layouts.
+            const tab = page.locator('#codexTabs button').nth(1);
+            if (await tab.count()) { await tab.click().catch(() => {}); await sleep(1000); await ctx.shot(page, 'codex-section'); }
             await page.close();
         }
     }

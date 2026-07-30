@@ -230,13 +230,20 @@ test.describe('Lobby end-to-end flows', () => {
         // The dossier was rebuilt around a painted hero and an identity block;
         // `.race-detail-header` no longer exists anywhere in the markup or the
         // stylesheet, so this assertion was querying a dead selector. The faction
-        // name now sits in `.race-detail-ident h3`. What is being protected is
-        // unchanged: clicking a LOCKED card still opens that faction's dossier,
-        // and the confirm button stays disabled so it cannot be taken.
+        // name now sits in `.race-detail-ident h3`. A locked card is inspectable
+        // without becoming the player's choice: Terran was selected when the
+        // roster settled, so browsing Silicon must preserve and name that pick.
         const lockedCard = page.locator('.race-card.locked').filter({ hasText: 'Silicon Collective' });
         await lockedCard.click();
         await expect(page.locator('.race-detail-ident')).toContainText('Silicon Collective');
-        await expect(page.locator('#confirmRaceBtn')).toBeDisabled();
+        await expect(page.locator('.race-detail-held')).toContainText(
+            'Your pick is unchanged — confirm still takes Terran Empire'
+        );
+        await expect(page.locator('#confirmRaceBtn')).toBeEnabled();
+        await expect(page.locator('#confirmRaceBtn')).toContainText('Terran Empire');
+        await expect(lockedCard).toHaveAttribute('aria-checked', 'false');
+        await expect(page.locator('.race-card.unlocked', { hasText: 'Terran Empire' }))
+            .toHaveAttribute('aria-checked', 'true');
 
         await page.setViewportSize({ width: 390, height: 844 });
         const mobileLayout = await page.evaluate(() => {
@@ -245,8 +252,11 @@ test.describe('Lobby end-to-end flows', () => {
             const detail = document.querySelector('.race-detail-panel').getBoundingClientRect();
             const styles = getComputedStyle(grid);
             return {
-                horizontalRoster: styles.overflowX === 'auto',
-                noNestedVerticalRoster: styles.overflowY === 'hidden',
+                wrappedRoster: styles.gridAutoFlow === 'row'
+                    && styles.gridTemplateColumns.split(' ').length === 2,
+                boundedVerticalRoster: styles.overflowY === 'auto'
+                    && grid.scrollHeight > grid.clientHeight,
+                noHorizontalRosterOverflow: grid.scrollWidth <= grid.clientWidth + 1,
                 detailBelowRoster: shell.bottom <= detail.top,
                 detailNotSticky: getComputedStyle(document.querySelector('.race-detail-panel')).position !== 'sticky',
                 // `.race-detail-grid` — a two-column stat grid — no longer exists;
@@ -264,8 +274,9 @@ test.describe('Lobby end-to-end flows', () => {
             };
         });
         expect(mobileLayout).toEqual({
-            horizontalRoster: true,
-            noNestedVerticalRoster: true,
+            wrappedRoster: true,
+            boundedVerticalRoster: true,
+            noHorizontalRosterOverflow: true,
             detailBelowRoster: true,
             detailNotSticky: true,
             detailStatsFitViewport: true
