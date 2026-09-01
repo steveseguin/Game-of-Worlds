@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "dotenv": "^16.0.0",
-    "mysql2": "^3.13.0",
+    "mysql2": "^3.22.0",
     "stripe": "^14.0.0",
     "three": "^0.184.0",
     "websocket": "^1.0.35"
