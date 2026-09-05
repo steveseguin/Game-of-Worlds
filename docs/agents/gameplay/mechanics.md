@@ -174,3 +174,7 @@ Other end paths:
 - Solo sandbox expiry.
 
 All end paths should stop timers and clear reconnect state enough that players can return to the lobby cleanly.
+
+## Standing-order construction
+
+Standing orders use the same purchase handlers as manual orders, explicitly targeting the homeworld. Automated rebuilds obey ownership and building slots; scouts obey race access and costs, research, local Spaceport tier and per-turn production capacity. Guarded spending and purchase rollback apply to both. Overlapping standing-order runs for one player/game are ignored until the active run finishes, preventing duplicate automatic purchases.

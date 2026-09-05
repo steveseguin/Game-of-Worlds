@@ -56,6 +56,7 @@ let turnSchemaReady = Promise.resolve();
 const lobbySeatReservations = new Map();
 const lobbyMutationCounts = new Map();
 const pendingBuildingPurchases = new Set();
+const pendingStandingOrders = new Set();
 const initializingGames = new Set();
 const processingTurns = new Set();
 const pendingProbeRequests = new Set();
@@ -7069,105 +7070,57 @@ function setStandingOrders(gameId, playerId, incoming = {}) {
 }
 
 async function applyStandingOrdersForPlayer(gameId, playerId) {
-    const orders = getStandingOrders(gameId, playerId);
+    const tables = gameTables(gameId);
+    const key = `${gameId}:${playerId}`;
+    if (pendingStandingOrders.has(key)) return [];
+    pendingStandingOrders.add(key);
     const summary = [];
-    if (!orders) return summary;
-
     try {
+        const orders = getStandingOrders(gameId, playerId);
         const playerRows = await queryDb(
-            `SELECT metal, crystal, homeworld, is_ai FROM players${gameId} WHERE userid = ? LIMIT 1`,
+            `SELECT homeworld, is_ai FROM ${tables.players} WHERE userid = ? LIMIT 1`,
             [playerId]
         );
-        if (!playerRows || playerRows.length === 0) {
-            return summary;
-        }
-        const player = playerRows[0];
-        // A human's resources are not ours to spend uninvited. The mode defaults turn
-        // auto-rebuild and auto-scout ON in Epic, and applyStandingOrdersForGame runs over
-        // EVERY player, not just AI - so an Epic player had metal and crystal spent on
-        // their behalf with no panel showing it and no way to stop it. The only notice was
-        // a systemalert, which until recently arrived with the wire prefix still attached.
-        //
-        // AI keeps its mode defaults, which is what "kept for AI" in the client was always
-        // meant to mean. A human gets automation only after explicitly asking for it in
-        // the Standing Orders panel, which sets `configured`.
-        const isAi = Number(player.is_ai) === 1;
-        if (!isAi && !orders.configured) {
-            return summary;
-        }
-        let metal = Number(player.metal) || 0;
-        let crystal = Number(player.crystal) || 0;
+        const player = playerRows && playerRows[0];
+        if (!player || (Number(player.is_ai) !== 1 && !orders.configured)) return summary;
         const homeworld = Number(player.homeworld);
-        if (!Number.isFinite(homeworld)) {
-            return summary;
-        }
+        if (!isPositiveSafeInteger(homeworld)) return summary;
+        const sectorToken = homeworld.toString(16);
 
+        // Use the authoritative purchase handlers so automation obeys the same
+        // ownership, slots, race costs, production capacity and refunds as clicks.
         if (orders.autoRebuild) {
-            const sectorRows = await queryDb(
-                `SELECT owner FROM map${gameId} WHERE sectorid = ? LIMIT 1`,
-                [homeworld]
+            const buildings = await queryDb(
+                `SELECT type FROM ${tables.buildings} WHERE sectorid = ? AND owner = ?`,
+                [homeworld, playerId]
             );
-            if (sectorRows && sectorRows[0] && Number(sectorRows[0].owner) === Number(playerId)) {
-                const buildingRows = await queryDb(
-                    `SELECT type, COUNT(*) as count FROM buildings${gameId} WHERE sectorid = ? AND owner = ? GROUP BY type`,
-                    [homeworld, playerId]
-                );
-                const buildingCounts = {};
-                (buildingRows || []).forEach(row => {
-                    buildingCounts[row.type] = row.count;
-                });
-                for (const [type, label] of [[0, 'metal extractor'], [1, 'crystal refinery']]) {
-                    if (buildingCounts[type]) continue;
-                    const cost = BUILDING_COSTS[type];
-                    if (metal < cost.metal || crystal < cost.crystal) continue;
-                    metal -= cost.metal;
-                    crystal -= cost.crystal;
-                    await queryDb(
-                        `UPDATE players${gameId} SET metal = ?, crystal = ? WHERE userid = ?`,
-                        [metal, crystal, playerId]
-                    );
-                    await queryDb(
-                        `INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`,
-                        [homeworld, type, playerId]
-                    );
-                    summary.push(`Auto-built ${label} on homeworld`);
-                }
+            const existing = new Set((buildings || []).map(row => Number(row.type)));
+            for (const [type, label] of [[0, 'metal extractor'], [1, 'crystal refinery']]) {
+                if (existing.has(type)) continue;
+                const result = await runAiMutation(gameId, playerId,
+                    stub => buyBuilding(`//buybuilding:${type}:${sectorToken}`, stub));
+                if (result.ok) summary.push(`Auto-built ${label} on homeworld`);
             }
         }
 
         if (orders.autoScout) {
-            const scoutCost = (combatSystem.SHIP_TYPES.SCOUT && combatSystem.SHIP_TYPES.SCOUT.cost) || { metal: 200, crystal: 0 };
-            const scoutCountRows = await queryDb(
-                `SELECT COUNT(*) as count FROM ships${gameId} WHERE owner = ? AND type = ?`,
+            const rows = await queryDb(
+                `SELECT COUNT(*) as count FROM ${tables.ships} WHERE owner = ? AND type = ?`,
                 [playerId, SCOUT_SHIP_ID]
             );
-            const currentScouts = (scoutCountRows && scoutCountRows[0] && scoutCountRows[0].count) || 0;
-            const desiredScouts = Number.isFinite(orders.targetScouts) ? orders.targetScouts : 2;
-            if (currentScouts < desiredScouts && metal >= scoutCost.metal && crystal >= (scoutCost.crystal || 0)) {
-                const spaceportRows = await queryDb(
-                    `SELECT COUNT(*) as count FROM buildings${gameId} WHERE owner = ? AND sectorid = ? AND type = 3`,
-                    [playerId, homeworld]
-                );
-                const hasSpaceport = ((spaceportRows && spaceportRows[0] && spaceportRows[0].count) || 0) > 0;
-                if (hasSpaceport) {
-                    metal -= scoutCost.metal;
-                    crystal -= (scoutCost.crystal || 0);
-                    await queryDb(
-                        `UPDATE players${gameId} SET metal = ?, crystal = ? WHERE userid = ?`,
-                        [metal, crystal, playerId]
-                    );
-                    await queryDb(
-                        `INSERT INTO ships${gameId} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                        [playerId, SCOUT_SHIP_ID, homeworld]
-                    );
-                    summary.push('Auto-built scout to keep vision online');
-                }
+            const currentScouts = Number(rows && rows[0] && rows[0].count) || 0;
+            const target = Number.isFinite(orders.targetScouts) ? orders.targetScouts : 2;
+            if (currentScouts < target) {
+                const result = await runAiMutation(gameId, playerId,
+                    stub => buyShip(`//buyship:${SCOUT_SHIP_ID}:${sectorToken}`, stub));
+                if (result.ok) summary.push('Auto-built scout to keep vision online');
             }
         }
     } catch (err) {
         console.warn(`Standing orders failed for player ${playerId} in game ${gameId}:`, err.message || err);
+    } finally {
+        pendingStandingOrders.delete(key);
     }
-
     return summary;
 }
 

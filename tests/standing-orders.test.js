@@ -31,7 +31,7 @@ test('standing orders build econ and scouts when resources allow', async () => {
         res
     ));
     await new Promise(res => db.query(
-        `UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`,
+        `UPDATE map${gameId} SET owner = ?, type = 10 WHERE sectorid = ?`,
         [1, 1],
         res
     ));
@@ -100,7 +100,7 @@ async function seedGame(gameId, { isAi, orders }) {
     await run(`INSERT INTO players${gameId} (userid, race_id, metal, crystal, research, is_ai) VALUES (?, ?, ?, ?, ?, ?)`,
         [1, 1, 500, 200, 50, isAi ? 1 : 0]);
     await run(`UPDATE players${gameId} SET homeworld = ?, currentsector = ? WHERE userid = ?`, [1, 1, 1]);
-    await run(`UPDATE map${gameId} SET owner = ? WHERE sectorid = ?`, [1, 1]);
+    await run(`UPDATE map${gameId} SET owner = ?, type = 10 WHERE sectorid = ?`, [1, 1]);
     await run(`INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`, [1, 3, 1]);
 
     server.gameState.activeGames[gameId] = { mode: 'epic', standingOrders: { 1: orders } };
@@ -162,4 +162,67 @@ test('setStandingOrders stamps consent, so the panel is the way in', () => {
     assert.equal(saved.configured, true, 'choosing orders must mark them as chosen');
     assert.equal(saved.autoRebuild, true);
     assert.equal(saved.targetScouts, 3);
+});
+
+function query(db, sql, params = []) {
+    return new Promise((resolve, reject) => db.query(sql, params,
+        (err, rows) => err ? reject(err) : resolve(rows)));
+}
+
+async function seedAutomatedGame(gameId, overrides = {}) {
+    return seedGame(gameId, { isAi: false, orders: {
+        configured: true, autoRebuild: false, autoScout: true, targetScouts: 2, ...overrides
+    } });
+}
+
+test('standing orders cannot overfill a homeworld with economy buildings', async () => {
+    const id = 51;
+    const db = await seedAutomatedGame(id, { autoRebuild: true, autoScout: false });
+    for (let i = 0; i < 5; i++) {
+        await query(db, `INSERT INTO buildings${id} (sectorid, type, owner) VALUES (?, ?, ?)`, [1, 2, 1]);
+    }
+    assert.deepEqual(await server.applyStandingOrdersForPlayer(id, 1), []);
+    assert.equal(await spentMetal(db, id), 0);
+    const rows = await query(db, `SELECT COUNT(*) as count FROM buildings${id} WHERE sectorid = ?`, [1]);
+    assert.equal(rows[0].count, 6);
+});
+
+test('standing scouts consume local production capacity and stop when exhausted', async () => {
+    const id = 52;
+    const db = await seedAutomatedGame(id);
+    server.gameState.turns[id] = 1;
+    await query(db, `UPDATE buildings${id} SET production_turn = ?, production_used = 0 WHERE id = ? AND production_turn <> ?`, [1, 1, 1]);
+    await query(db, `UPDATE buildings${id} SET production_used = production_used + ? WHERE id = ? AND owner = ? AND production_turn = ? AND production_used + ? <= ?`, [12, 1, 1, 1, 12, 12]);
+    assert.deepEqual(await server.applyStandingOrdersForPlayer(id, 1), []);
+    assert.equal(await spentMetal(db, id), 0);
+    server.gameState.turns[id] = 2;
+    assert.equal((await server.applyStandingOrdersForPlayer(id, 1)).length, 1);
+    const ports = await query(db, `SELECT type, level, production_turn, production_used FROM buildings${id} WHERE sectorid = ?`, [1]);
+    assert.equal(ports[0].production_used, require('../server/lib/combat').SHIP_TYPES.SCOUT.buildSlots);
+});
+
+test('standing scouts use race-adjusted costs', async () => {
+    const id = 53;
+    const db = await seedAutomatedGame(id);
+    const races = require('../server/lib/races');
+    const scout = require('../server/lib/combat').SHIP_TYPES.SCOUT;
+    const race = Object.values(races.RACE_TYPES).find(r =>
+        races.canRaceBuildShip(r.id, scout.id) &&
+        races.applyShipModifiers(r.id, scout.id, scout).cost.metal !== scout.cost.metal);
+    assert.ok(race);
+    await query(db, `UPDATE players${id} SET race_id = ? WHERE userid = ?`, [race.id, 1]);
+    assert.equal((await server.applyStandingOrdersForPlayer(id, 1)).length, 1);
+    assert.equal(await spentMetal(db, id), races.applyShipModifiers(race.id, scout.id, scout).cost.metal);
+});
+
+test('overlapping standing-order runs do not duplicate construction', async () => {
+    const id = 54;
+    const db = await seedAutomatedGame(id, { autoRebuild: true });
+    const summaries = await Promise.all([
+        server.applyStandingOrdersForPlayer(id, 1), server.applyStandingOrdersForPlayer(id, 1)
+    ]);
+    assert.deepEqual(summaries[1], []);
+    const rows = await query(db, `SELECT type FROM buildings${id} WHERE sectorid = ?`, [1]);
+    assert.equal(rows.filter(row => row.type === 0).length, 1);
+    assert.equal(rows.filter(row => row.type === 1).length, 1);
 });
