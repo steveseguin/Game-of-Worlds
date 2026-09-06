@@ -49,3 +49,5 @@ The faction chooser now uses `public/css/race-polish.css`, a compact roster, ful
 Lobby membership is retained until a leave acknowledgement arrives. Clearing or switching rooms discards the old roster and pending automatic start; faction confirmations recheck the connection before sending. Malformed escaped player names no longer abort a roster update.
 
 Mobile game tabs use two rows, and the layout reserves 78 pixels for a wrapped chat footer below 560 pixels. Login now puts the account form ahead of decorative content on small screens. Guide and archive action links use the same button rules; archive caption contrast is corrected. The shared identity is documented in docs/art-direction/official-identity.md.
+
+Lobby action labels now use Arial Black at weight 900, including nested captions that previously retained narrow legacy font families. Dropdowns and disclosure controls use bold Arial. The button-weight browser regression checks parent and nested label styles, contrast, and a successful faction-change acknowledgement. The mock database now supports the waiting-status query used by faction changes.

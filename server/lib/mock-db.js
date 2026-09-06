@@ -336,7 +336,8 @@ class MockDatabase {
                 return this._async(callback, null, []);
             }
 
-            if (/^SELECT creator, maxplayers, started(, mode)? FROM games WHERE id = \? LIMIT 1/i.test(normalized)
+            if (/^SELECT started, status FROM games WHERE id = \? LIMIT 1/i.test(normalized)
+                || /^SELECT creator, maxplayers, started(, mode)? FROM games WHERE id = \? LIMIT 1/i.test(normalized)
                 || /^SELECT id, creator, started(, mode)? FROM games WHERE id = \? LIMIT 1/i.test(normalized)
                 || /^SELECT id, creator, maxplayers, started, turn, mode, status, mapwidth, mapheight FROM games WHERE id = \? LIMIT 1/i.test(normalized)
                 || /^SELECT \* FROM games WHERE id = \?/i.test(normalized)) {

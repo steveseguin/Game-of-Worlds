@@ -63,3 +63,25 @@
  a:focus-visible { outline: 3px solid #b9e1ff !important; outline-offset: 3px !important; }
 }
 .game-page #chat { box-sizing: border-box; }
+/* Lobby labels use an actual heavy face, including nested legacy captions.
+   Setting weight on the parent alone leaves the old narrow caption fonts intact. */
+@layer readable-controls {
+ .lobby-page :is(button, [role="button"], .open-game-banner, .danger-link, .resume-link),
+ .lobby-page :is(button, [role="button"], .open-game-banner, .danger-link, .resume-link) :is(span,b,strong,em,i,small,p,div,h3,h4,label) {
+  font-family: "Arial Black", Arial, sans-serif !important;
+  font-weight: 900 !important;
+  font-style: normal !important;
+  letter-spacing: 0 !important;
+  text-shadow: none !important;
+ }
+ .lobby-page :is(button, .open-game-banner, .danger-link, .resume-link):not(.race-card) {
+  font-size: 15px !important;
+  min-height: 44px !important;
+ }
+ .lobby-page :is(select, summary) {
+  font-family: Arial, sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 15px !important;
+  letter-spacing: 0 !important;
+ }
+}
