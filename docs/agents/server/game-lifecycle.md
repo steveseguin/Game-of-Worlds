@@ -121,3 +121,7 @@ Abandoned games use `abandonGame()`:
 - Terminal game paths must stop timers, clear `battlePause[gameId]`, and delete `activeGames[gameId]`.
 - Reconnect changes must preserve the `clientMap[userId] === connection` close-guard invariant.
 - Any new game-over path should state whether it is completed, abandoned, or a player-only exit.
+
+## Recovery and terminal-game guards
+
+Startup player-read failures leave persisted games untouched rather than abandoning them. Current-game snapshots report an explicit temporary error on game, schema, player or count lookup failures and retain session membership. Completed and abandoned games clear stale membership without rebuilding runtime; start commands also reject terminal games. Failed leave lookups or player deletions retain the session and stop before further empire deletion. Join membership lookup failures stop before reserving a new seat.

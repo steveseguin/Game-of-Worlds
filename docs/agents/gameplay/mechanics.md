@@ -182,3 +182,7 @@ Standing orders use the same purchase handlers as manual orders, explicitly targ
 ## Failure handling and AI research
 
 Income calculations propagate authoritative technology, sector and building read failures instead of recording a reduced payment as complete; the turn retry can credit the correct income. Only a missing legacy bonus column permits the flat-yield fallback. Battles stop before simulation if sector ownership, turrets or combatant profiles cannot be loaded. Fleet lookup failures skip elimination rather than declaring a fleetless empire. Colony settlement verifies the selected ship still has the same owner, sector and type before consuming it; a moved ship is preserved and the claim rolls back. AI research selection skips technologies already at the race-specific cap and selects an available branch.
+
+## Hazard reports and score scope
+
+Enemy hazard-loss reports go only to players with local live sensor coverage of the sector, using the same sector-audience calculation as other local events. Distant opponents do not learn hidden fleet positions or hazard losses from global messages. Final and time-victory scores award planet points only for owned sector types 6-10; route markers and secured hazards do not count as planets.

@@ -418,3 +418,17 @@ test('victory progress reports only active achievable end states', async () => {
         resetGameState();
     }
 });
+
+
+test('score planet points exclude transit routes and secured hazards', async () => {
+    const db = createMockDatabase();
+    const id = 93;
+    await dbQuery(db, `INSERT INTO players${id} (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)`, [7, 1, 0, 0, 0]);
+    for (let type = 0; type <= 10; type++) {
+        await dbQuery(db, `UPDATE map${id} SET type = ?, owner = ? WHERE sectorid = ?`, [type, 7, type + 1]);
+    }
+    const scores = await new Promise((resolve, reject) => victory.calculateScores(id, db,
+        (err, rows) => err ? reject(err) : resolve(rows)));
+    assert.equal(scores[0].planets, 5);
+    assert.equal(scores[0].score, 5000);
+});

@@ -72,6 +72,12 @@ This file records review findings that matter for future work. Keep entries conc
 | AI research caps | Research selection repeatedly chose a race-capped technology and stalled. | Filter priority and fallback choices by race caps. |
 | Dependency advisories | Locked mysql2, qs and brace-expansion versions had published advisories. | Update within existing version ranges and verify npm audit is clean. |
 | Webhook failure acknowledgement | Processing failures returned HTTP 200, preventing delivery retries after transient database errors. | Return 500 for processing failures and 400 for invalid signatures; acknowledge successful processing only. |
+| Startup abandonment on read failure | A temporary player-table error was treated as an empty game and abandoned it. | Skip the failed restoration without altering persisted membership or game status. |
+| Reconnect and terminal-game recovery | Failed snapshot reads cleared membership; completed/abandoned rooms could restart timers via snapshot or start. | Retain membership on read failures and reject terminal-game restoration. |
+| Race changes during play | Race changes could alter active empires and race a pending start. | Validate IDs and waiting status; serialize against start with the lobby-mutation guard. |
+| Join/leave read failures | Join could treat a failed membership read as a new player; leave detached players despite failed reads/deletes. | Stop on failures before new membership or destructive cleanup. |
+| Hidden hazard reports | Arrival losses disclosed fleet coordinates and hazard details to every opponent. | Restrict reports to local sector observers and normalize game IDs. |
+| Planet score inflation | Empty routes and hazards earned the same score as colonized worlds. | Restrict the scored planet join to sector types 6-10. |
 
 ## Active Risks To Revisit
 

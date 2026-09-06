@@ -664,7 +664,7 @@ function getMapSizeFromGameRow(game) {
 }
 
 function restoreStartedGameRuntime(game, options = {}) {
-    if (!game || !game.id) {
+    if (!game || !game.id || ['completed', 'abandoned'].includes(String(game.status || '').toLowerCase())) {
         return null;
     }
 
@@ -1737,6 +1737,10 @@ function handleGameStart(connection) {
         const game = results[0];
         const creatorId = String(game.creator);
         const isStarted = Number(game.started) === 1;
+        if (['completed', 'abandoned'].includes(String(game.status || '').toLowerCase())) {
+            connection.sendUTF('Error: This game has ended');
+            return;
+        }
 
         if (isStarted) {
             restoreStartedGameRuntime({ id: gameId, ...game });
@@ -4729,6 +4733,17 @@ function areAdjacentSectors(sector1, sector2, gameId) {
 // Black holes annihilate fleets, asteroids damage them (if not owned),
 // empty space can be held, and unowned planets require explicit colonization.
 // ============================================================================
+function notifyHazardObservers(gameId, playerId, sectorId, message) {
+    computeSectorAudience(gameId, [sectorId]).then(audience => {
+        gameState.clients.forEach(client => {
+            if (Number(client.gameid) === Number(gameId) && Number(client.name) !== Number(playerId)
+                && audience.has(Number(client.name))) {
+                client.sendUTF(message);
+            }
+        });
+    }).catch(error => console.warn('Hazard observer notification failed:', error.message || error));
+}
+
 function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
     const finish = () => { try { done && done(); } catch (e) { console.error('arrival cb error:', e); } };
 
@@ -4755,11 +4770,8 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                         const lostCount = (result && result.affectedRows) || 0;
                         connection.sendUTF(`Error: There is a mouth at ${sectorId}. I know because nothing came back from ${sectorId}. That is the only way anyone has ever known.`);
                         // Notify other players
-                        gameState.clients.forEach(c => {
-                            if (c.gameid === gameId && Number(c.name) !== numericPlayerId) {
-                                c.sendUTF(`Success: An enemy fleet did not come out of ${sectorId}. They found the mouth the way everyone finds one.`);
-                            }
-                        });
+                        notifyHazardObservers(gameId, numericPlayerId, sectorId,
+                            `Success: An enemy fleet did not come out of ${sectorId}. They found the mouth the way everyone finds one.`);
                         finish();
                     }
                 );
@@ -4798,11 +4810,8 @@ function applyArrivalEffects(gameId, playerId, sectorId, connection, done) {
                             connection.sendUTF(msg);
                             // Notify other players if there were losses
                             if (destroyedCount > 0) {
-                                gameState.clients.forEach(c => {
-                                    if (c.gameid === gameId && Number(c.name) !== numericPlayerId) {
-                                        c.sendUTF(`Success: An enemy fleet lost ${destroyedCount} hulls to the shoal at ${sectorId}. Their chart is worse than ours - that is worth more than the hulls.`);
-                                    }
-                                });
+                                notifyHazardObservers(gameId, numericPlayerId, sectorId,
+                                    `Success: An enemy fleet lost ${destroyedCount} hulls to the shoal at ${sectorId}. Their chart is worse than ours - that is worth more than the hulls.`);
                             }
                             // Survivors secure the belt: it becomes safe transit (and a small mine).
                             //
@@ -5962,7 +5971,12 @@ function handleJoinGame(data, connection) {
             const game = games[0];
 
             db.query(`SELECT * FROM players${gameId} WHERE userid = ? LIMIT 1`, [playerId], (existingErr, existing) => {
-                if (!existingErr && existing && existing.length > 0) {
+                if (existingErr) {
+                    finishLobbyMutation();
+                    connection.sendUTF('joingame::error::Unable to verify game membership. Please try again.');
+                    return;
+                }
+                if (existing && existing.length > 0) {
                     db.query(`SELECT COUNT(*) AS count FROM players${gameId}`, (countErr, counts) => {
                         const playerCount = countErr
                             ? 1
@@ -6125,9 +6139,14 @@ function sendCurrentGameSnapshot(connection, callback) {
         return;
     }
 
+    const unavailable = error => {
+        connection.sendUTF('Error: Current game is temporarily unavailable; please try again');
+        if (callback) callback(error, null);
+    };
     db.query('SELECT * FROM games WHERE id = ? LIMIT 1', [currentGameId], (gameErr, games) => {
+        if (gameErr) return unavailable(gameErr);
         const game = !gameErr && Array.isArray(games) && games.length > 0 ? games[0] : null;
-        if (!game) {
+        if (!game || ['completed', 'abandoned'].includes(String(game.status || '').toLowerCase())) {
             clearStaleCurrentGame(connection, currentGameId, () => {
                 connection.sendUTF('currentgame::null');
                 if (callback) callback(null, null);
@@ -6137,13 +6156,13 @@ function sendCurrentGameSnapshot(connection, callback) {
 
         ensurePlayerTableColumns(currentGameId, tableErr => {
             if (tableErr) {
-                connection.sendUTF('currentgame::null');
-                if (callback) callback(tableErr, null);
+                unavailable(tableErr);
                 return;
             }
 
             db.query(`SELECT * FROM players${currentGameId} WHERE userid = ? LIMIT 1`, [playerId], (playerErr, players) => {
-                const player = !playerErr && Array.isArray(players) && players.length > 0 ? players[0] : null;
+                if (playerErr) return unavailable(playerErr);
+                const player = Array.isArray(players) && players.length > 0 ? players[0] : null;
                 if (!player) {
                     clearStaleCurrentGame(connection, currentGameId, () => {
                         connection.sendUTF('currentgame::null');
@@ -6153,7 +6172,8 @@ function sendCurrentGameSnapshot(connection, callback) {
                 }
 
                 db.query(`SELECT COUNT(*) AS count FROM players${currentGameId}`, (countErr, counts) => {
-                    const rawCount = !countErr && counts && counts[0]
+                    if (countErr) return unavailable(countErr);
+                    const rawCount = counts && counts[0]
                         ? (counts[0].count ?? counts[0].c ?? 1)
                         : 1;
                     const playerCount = Number.isFinite(Number(rawCount)) ? Number(rawCount) : 1;
@@ -6226,42 +6246,37 @@ function handleChangeRace(data, connection) {
         connection.sendUTF('changerace::error::Join a game before changing race.');
         return;
     }
-
     const parts = data.split(':');
-    const raceId = parsePositiveInt(parts[1], 1);
+    const raceId = /^\d+$/.test(parts[1] || '') ? Number(parts[1]) : NaN;
     const playerId = Number(connection.name);
     const gameId = Number(connection.gameid);
-
-    getUserStats(playerId, (statsErr, userStats) => {
-        if (statsErr) {
-            connection.sendUTF('changerace::error::Unable to load your account stats.');
-            return;
+    if (parts.length !== 2 || !Object.values(raceSystem.RACE_TYPES).some(race => race.id === raceId)) {
+        connection.sendUTF('changerace::error::Invalid race.');
+        return;
+    }
+    if (initializingGames.has(gameId)) {
+        connection.sendUTF('changerace::error::The game is starting; race changes are closed.');
+        return;
+    }
+    const finish = beginLobbyMutation(gameId);
+    const fail = message => { finish(); connection.sendUTF(`changerace::error::${message}`); };
+    db.query('SELECT started, status FROM games WHERE id = ? LIMIT 1', [gameId], (gameErr, games) => {
+        if (gameErr || !games || !games.length) return fail('Unable to load game. Please try again.');
+        if (Number(games[0].started) === 1 || ['in-progress', 'completed', 'abandoned'].includes(games[0].status)) {
+            return fail('Race changes are only allowed before the game starts.');
         }
-
-        raceSystem.isRaceUnlocked(playerId, raceId, userStats, db, unlocked => {
-            if (!unlocked) {
-                connection.sendUTF('changerace::error::Race not unlocked.');
-                return;
-            }
-
-            db.query(
-                `UPDATE players${gameId} SET race_id = ? WHERE userid = ?`,
-                [raceId, playerId],
-                err => {
-                    if (err) {
-                        connection.sendUTF('changerace::error::Failed to update race.');
-                        return;
-                    }
-
+        getUserStats(playerId, (statsErr, userStats) => {
+            if (statsErr) return fail('Unable to load your account stats.');
+            raceSystem.isRaceUnlocked(playerId, raceId, userStats, db, unlocked => {
+                if (!unlocked) return fail('Race not unlocked.');
+                db.query(`UPDATE players${gameId} SET race_id = ? WHERE userid = ?`, [raceId, playerId], (err, result) => {
+                    if (err || !result || Number(result.affectedRows) !== 1) return fail('Failed to update race.');
+                    finish();
                     connection.raceid = raceId;
-                    const race = getRaceById(raceId);
-                    connection.sendUTF(`changerace::success::${JSON.stringify({
-                        raceId,
-                        raceName: race.name
-                    })}`);
+                    connection.sendUTF(`changerace::success::${JSON.stringify({ raceId, raceName: getRaceById(raceId).name })}`);
                     broadcastPlayerList(gameId);
-                }
-            );
+                });
+            });
         });
     });
 }
@@ -6276,7 +6291,11 @@ function handleLeaveGame(connection) {
     const playerId = Number(connection.name);
 
     db.query('SELECT creator, maxplayers, started FROM games WHERE id = ? LIMIT 1', [gameId], (gameErr, games) => {
-        if (gameErr || !games || games.length === 0) {
+        if (gameErr) {
+            connection.sendUTF('Error: Unable to leave game right now; please try again');
+            return;
+        }
+        if (!games || games.length === 0) {
             connection.gameid = null;
             connection.raceid = null;
             connection.sendUTF('lobby::');
@@ -6285,7 +6304,11 @@ function handleLeaveGame(connection) {
 
         const game = games[0];
 
-        db.query(`DELETE FROM players${gameId} WHERE userid = ?`, [playerId], () => {
+        db.query(`DELETE FROM players${gameId} WHERE userid = ?`, [playerId], deleteErr => {
+            if (deleteErr) {
+                connection.sendUTF('Error: Unable to leave game right now; please try again');
+                return;
+            }
             db.query('UPDATE users SET currentgame = NULL WHERE id = ? AND currentgame = ?', [playerId, gameId], () => {
                 connection.gameid = null;
                 connection.raceid = null;
@@ -6950,8 +6973,13 @@ async function resumeActiveGamesFromDatabase() {
                 return;
             }
             getGamePlayers(gameId, (playersErr, players) => {
-                if (playersErr || players.length === 0 || !hasHumanPlayers(players)) {
-                    const reason = playersErr || players.length === 0
+                if (playersErr) {
+                    console.warn(`Unable to resume game ${gameId}:`, playersErr.message || playersErr);
+                    resolve(false);
+                    return;
+                }
+                if (players.length === 0 || !hasHumanPlayers(players)) {
+                    const reason = players.length === 0
                         ? 'No players remain'
                         : 'No human players remain';
                     abandonGame(gameId, reason, () => resolve(false));

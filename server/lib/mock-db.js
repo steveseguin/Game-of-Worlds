@@ -809,7 +809,8 @@ class MockDatabase {
                             playerId,
                             resources: (Number(player.metal) || 0) + (Number(player.crystal) || 0) + (Number(player.research) || 0),
                             tech: player.tech || '',
-                            planets: Array.from(map.values()).filter(sector => Number(sector.owner) === playerId).length,
+                            planets: Array.from(map.values()).filter(sector => Number(sector.owner) === playerId
+                                && (!/m\.type BETWEEN 6 AND 10/i.test(normalized) || (Number(sector.type) >= 6 && Number(sector.type) <= 10))).length,
                             ships: ships.filter(ship => Number(ship.owner) === playerId).length,
                             buildings: buildings.filter(building => Number(building.owner) === playerId).length
                         };

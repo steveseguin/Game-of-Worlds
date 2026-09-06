@@ -308,7 +308,7 @@ function calculateScores(gameId, db, callback) {
             COUNT(DISTINCT s.id) as ships,
             COUNT(DISTINCT b.id) as buildings
          FROM players${gameId} p
-         LEFT JOIN map${gameId} m ON m.owner = p.userid
+         LEFT JOIN map${gameId} m ON m.owner = p.userid AND m.type BETWEEN 6 AND 10
          LEFT JOIN ships${gameId} s ON s.owner = p.userid
          LEFT JOIN buildings${gameId} b ON b.owner = p.userid
          GROUP BY p.userid`,
