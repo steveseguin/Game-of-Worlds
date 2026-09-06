@@ -3210,3 +3210,7 @@ a:focus-visible, button:focus-visible { outline: 3px solid #a9d8ff; outline-offs
 .hud-foot__brand { flex-wrap: wrap; gap: 10px; }
 .module__code { display: none; }
 .module__id { display: inline; color: #dcb77a; font-family: var(--font-ui); font-size: 12px; letter-spacing: .12em; }
+/* Warm action labels need enough weight to stay crisp against the light fill. */
+.btn--primary, .btn--key { font-weight: 750; color: #16120b; }
+.btn--primary { font-size: 17px; }
+.btn__sub { font-weight: 650; color: #241c10; }

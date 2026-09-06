@@ -1,0 +1,9 @@
+/* The official mark and wordmark are shared by every public surface. */
+.official-brand { display: inline-flex; align-items: center; gap: 10px; color: #f5f7fa; text-decoration: none; flex-shrink: 0; }
+.official-brand .official-mark { display: block; width: 36px; height: 36px; flex: 0 0 36px; border: 0; box-shadow: none; filter: none; }
+.official-brand .official-wordmark { font: 750 15px/1.15 "Segoe UI", system-ui, sans-serif; letter-spacing: .035em; color: #f5f7fa; text-shadow: none; white-space: nowrap; }
+.official-brand:focus-visible { outline: 3px solid #b9e1ff; outline-offset: 4px; border-radius: 4px; }
+.purchase-brand { margin-bottom: 24px; }
+#utilityButtons .official-brand .official-mark { width: 28px; height: 28px; flex-basis: 28px; }
+@media (max-width: 640px) { .official-brand .official-wordmark { font-size: 12px; } .official-brand .official-mark { width: 28px; height: 28px; flex-basis: 28px; } }
+.demo-brand { position: fixed; top: 12px; left: 12px; z-index: 20; background: #0b121c; padding: 6px 10px; border-radius: 5px; }

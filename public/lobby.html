@@ -10,8 +10,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Game of Worlds — Command Lobby</title>
-    <link rel="icon" type="image/x-icon" href="favicon.ico">
-    <link rel="icon" type="image/png" href="images/minilogo.png">
     <link rel="stylesheet" href="css/style.css?v=20260905b">
     <link id="race-selection-styles" rel="stylesheet" href="css/race-selection.css?v=20260728r9">
     <style>
@@ -535,14 +533,17 @@
         *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
     }
     </style>
-    <link rel="stylesheet" href="css/lobby-polish.css?v=20260905a">
+    <link rel="stylesheet" href="css/lobby-polish.css?v=20260905b">
+    <link rel="stylesheet" href="/css/controls.css?v=20260905a">
+<link rel="icon" href="/favicon.ico?v=20260905" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="/images/brand/game-of-worlds-mark.svg?v=20260905">
+    <link rel="apple-touch-icon" href="/images/brand/apple-touch-icon.png?v=20260905">
+    <link rel="stylesheet" href="/css/brand.css?v=20260905a">
+<link rel="stylesheet" href="/css/race-polish.css?v=20260905a">
 </head>
 <body class="lobby-page">
     <header class="hud-bar">
-        <a class="hud-brand" href="/">
-            <span class="hud-sigil" aria-hidden="true"><span></span><span></span></span>
-            <span><b>GAME OF WORLDS</b><i>// COMMAND LOBBY</i></span>
-        </a>
+        <a class="hud-brand official-brand" href="/" aria-label="Game of Worlds home"><img class="official-mark" src="/images/brand/game-of-worlds-mark.svg" alt="" width="36" height="36"><span class="official-wordmark">GAME OF WORLDS</span></a>
         <div class="hud-readouts">
             <span id="lobbyConnectionState" class="conn" data-state="connecting">Lobby: Connecting…</span>
             <span class="hud-online">CMDRS ONLINE<b id="online-count">?</b></span>
@@ -667,6 +668,6 @@
     <script src="/config.js?v=20260614b"></script>
     <script src="js/epic-music.js?v=20260725b"></script>
     <script src="js/sound.js?v=20260712a"></script>
-    <script src="js/lobby.js?v=20260728r9"></script>
+    <script src="js/lobby.js?v=20260905b"></script>
 </body>
 </html>

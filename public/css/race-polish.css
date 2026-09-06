@@ -1,0 +1,100 @@
+/* Faction choice prioritizes names, meaningful values and a persistent action. */
+#raceSelectionModal { background: #080e17; --rs-mono: "Segoe UI", system-ui, sans-serif; --rs-num: "Segoe UI", system-ui, sans-serif; font-family: "Segoe UI", system-ui, sans-serif; padding: 20px; }
+#raceSelectionModal .race-void, #raceSelectionModal .race-selector-rail, #raceSelectionModal .race-selector-gauge, #raceSelectionModal .race-selector-eyebrow, #raceSelectionModal .race-grid-foot-code, #raceSelectionModal .race-grid-foot-channel, #raceSelectionModal .race-detail-stamp-line { display: none; }
+#raceSelectionModal :is(.race-selection-container,.race-selector-header,.race-grid-shell,.race-detail-panel,.race-card,.race-detail-instrument,.race-detail-special,.race-detail-fleet,.race-detail-doctrine,.race-detail-hulls,.race-confirm-bar,.race-grid-heading)::before,
+#raceSelectionModal :is(.race-selection-container,.race-selector-header,.race-grid-shell,.race-detail-panel,.race-card,.race-detail-instrument,.race-detail-special,.race-detail-fleet,.race-detail-doctrine,.race-detail-hulls,.race-confirm-bar,.race-grid-heading)::after { display: none; }
+#raceSelectionModal .race-selection-container { width: min(1280px,100%); max-width: none; height: calc(100dvh - 40px); max-height: none; padding: 0; background: #101925; border: 1px solid #3d4b5f; border-radius: 10px; box-shadow: none; overflow: hidden; }
+#raceSelectionModal .race-selector-header { padding: 22px 24px; background: #101925; border: 0; border-bottom: 1px solid #344257; box-shadow: none; gap: 18px; }
+#raceSelectionModal #rsTitle { font: 700 28px/1.2 "Segoe UI",system-ui,sans-serif; color: #f3f5f8; text-shadow: none; letter-spacing: -.02em; }
+#raceSelectionModal #rsTitle::before, #raceSelectionModal #rsTitle::after { display: none; }
+#raceSelectionModal #rsIntro { font-size: 15px; line-height: 1.5; color: #c5cfdd; max-width: none; }
+#raceSelectionModal .race-selector-key { display: none; }
+#raceSelectionModal .race-selection-main { grid-template-columns: minmax(280px,.8fr) minmax(0,1.4fr); gap: 20px; padding: 20px; overflow: hidden; }
+#raceSelectionModal .race-grid-shell, #raceSelectionModal .race-detail-panel { background: #0e1621; border: 1px solid #344257; border-radius: 6px; box-shadow: none; }
+#raceSelectionModal .race-grid-heading { background: none; box-shadow: none; padding: 14px; border: 0; }
+#raceSelectionModal .race-grid-heading h2 { font: 650 16px "Segoe UI",system-ui,sans-serif; color: #e5ebf3; letter-spacing: 0; }
+#raceSelectionModal .race-grid-heading small { display: none; }
+#raceSelectionModal .race-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: max-content; align-content: start; gap: 12px; padding: 12px; overflow-y: auto; }
+#raceSelectionModal .race-card { padding: 10px; border-radius: 5px; gap: 8px; }
+#raceSelectionModal .race-card h3 { font: 700 14px/1.3 "Segoe UI",system-ui,sans-serif; color: #f5f7fa; text-shadow: none; margin: 0; min-height: 36px; white-space: normal; }
+#raceSelectionModal .race-card :is(.race-meters,.race-card-index,.race-pole-strip,.race-compare-readouts,.race-card-mark) { display: none; }
+#raceSelectionModal .race-card .race-port { width: 100%; height: 76px; min-height: 76px; aspect-ratio: auto; background: #0b111b; box-shadow: none; border: 0; }
+#raceSelectionModal .race-card-note { background: none; border: 0; box-shadow: none; padding: 0; min-height: 34px; }
+#raceSelectionModal .race-note-body { font-size: 12px; line-height: 1.4; }
+#raceSelectionModal .race-note-body b { font-size: 12px; letter-spacing: 0; }
+#raceSelectionModal .race-note-body em { display: none; }
+#raceSelectionModal .race-grid-foot { background: none; border: 0; box-shadow: none; font-size: 12px; }
+#raceSelectionModal .race-detail-panel { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+#raceSelectionModal .race-detail-content { display: flex; flex-direction: column; gap: 18px; padding: 20px; flex: 1; min-height: 0; overflow-y: auto; mask-image: none; }
+#raceSelectionModal .race-detail-content > * { flex-shrink: 0; }
+#raceSelectionModal .race-detail-hero { min-height: 0; background: none; border: 0; box-shadow: none; }
+#raceSelectionModal .race-world-plate { display: none; }
+#raceSelectionModal .race-hero-foot { position: relative; background: none; border: 0; box-shadow: none; padding: 0; grid-template-columns: 80px minmax(0,1fr); gap: 16px; }
+#raceSelectionModal .race-port.is-hero { width: 80px; height: 80px; min-height: 0; box-shadow: none; }
+#raceSelectionModal .race-detail-kicker { display: none; }
+#raceSelectionModal .race-detail-ident h3 { color: #f3f6fa; font: 700 24px/1.25 "Segoe UI",system-ui,sans-serif; text-shadow: none; letter-spacing: -.02em; }
+#raceSelectionModal .race-detail-tagline { display: block; -webkit-line-clamp: unset; font: 400 15px/1.6 "Segoe UI",system-ui,sans-serif; color: #c7d1df; }
+#raceSelectionModal :is(.race-detail-special,.race-detail-instrument,.race-detail-fleet,.race-detail-doctrine,.race-detail-hulls,.race-detail-clear) { background: none; border: 0; box-shadow: none; padding: 0; opacity: 1; }
+#raceSelectionModal .race-detail-special { font-size: 15px; line-height: 1.6; }
+#raceSelectionModal .race-detail-special strong { font-size: 13px; color: #e5bf7e; }
+#raceSelectionModal .race-detail-special span { color: #e6edf6; font-size: 15px; }
+#raceSelectionModal .race-detail-instrument-bar { background: none; border: 0; box-shadow: none; padding: 0 0 8px; }
+#raceSelectionModal .race-detail-instrument-bar span { font-size: 17px; letter-spacing: 0; font-weight: 700; text-transform: none; color: #f3f6fa; }
+#raceSelectionModal .race-detail-instrument-bar small, #raceSelectionModal .race-detail-summary { display: none; }
+#raceSelectionModal .doctrine-chart p { margin: 0 0 14px; color: #becbdb; font-size: 13px; line-height: 1.5; }
+#raceSelectionModal .doctrine-row { display: grid; grid-template-columns: 145px minmax(50px,1fr) 60px; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid #2d3b4f; color: #edf2f8; }
+#raceSelectionModal .doctrine-label { font-size: 14px; font-weight: 600; }
+#raceSelectionModal .doctrine-row strong { font-size: 17px; text-align: right; font-variant-numeric: tabular-nums; }
+#raceSelectionModal .doctrine-bar { position: relative; height: 12px; background: #273549; border-radius: 3px; overflow: hidden; }
+#raceSelectionModal .doctrine-bar::after { content: ''; position: absolute; left: 50%; top: 0; height: 100%; border-left: 2px solid #f5f7fa; }
+#raceSelectionModal .doctrine-bar i { display: block; height: 100%; background: #b5c5db; }
+#raceSelectionModal [data-tone=up] .doctrine-bar i { background: #e5bf7e; }
+#raceSelectionModal [data-tone=down] .doctrine-bar i { background: #e28d83; }
+#raceSelectionModal .doctrine-note { grid-column: 1/-1; color: #b9c8dc; font-size: 12px; margin-top: -8px; }
+#raceSelectionModal .race-confirm-bar { flex: 0 0 auto; margin: 0; padding: 16px 20px; background: #172233; border: 0; border-top: 1px solid #506077; box-shadow: none; display: flex; gap: 12px; }
+#raceSelectionModal .race-confirm-note { font: 400 13px/1.5 "Segoe UI",system-ui,sans-serif; color: #d3dcea; text-shadow: none; }
+#raceSelectionModal #confirmRaceBtn { min-height: 60px; min-width: 240px; padding: 12px 20px; border-radius: 5px; }
+#raceSelectionModal #confirmRaceBtn b { font-size: 17px; }
+#raceSelectionModal #confirmRaceBtn em { font: 600 14px/1.5 "Segoe UI",system-ui,sans-serif; }
+@media (max-width: 800px) {
+ #raceSelectionModal { padding: 0; }
+ #raceSelectionModal .race-selection-container { height: 100dvh; border-radius: 0; }
+ #raceSelectionModal .race-selector-header { padding: 16px; }
+ #raceSelectionModal #rsTitle { font-size: 24px; }
+ #raceSelectionModal .race-selection-main { grid-template-columns: 1fr; overflow-y: auto; display: block; padding: 12px; }
+ #raceSelectionModal .race-grid-shell { max-height: 280px; margin-bottom: 16px; }
+ #raceSelectionModal .race-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+ #raceSelectionModal .race-detail-panel { overflow: visible; }
+ #raceSelectionModal .race-detail-content { overflow: visible; padding: 16px; }
+ #raceSelectionModal .race-confirm-bar { position: sticky; bottom: -12px; z-index: 5; flex-direction: column; }
+ #raceSelectionModal #confirmRaceBtn { width: 100%; min-width: 0; }
+ #raceSelectionModal .doctrine-row { grid-template-columns: 125px minmax(25px,1fr) 55px; gap: 8px; }
+ #raceSelectionModal .race-hero-foot { grid-template-columns: 56px minmax(0,1fr); }
+ #raceSelectionModal .race-port.is-hero { width: 56px; height: 56px; }
+}
+#raceSelectionModal::after, #raceSelectionModal::before { display: none; }
+body:has(#raceSelectionModal) #toast-root { display: none; }
+#raceSelectionModal #rsTitle { -webkit-text-fill-color: #f3f5f8; background: none; }
+#raceSelectionModal .race-card-poles, #raceSelectionModal .race-world-art, #raceSelectionModal .race-world-glass, #raceSelectionModal .race-hero-rail { display: none; }
+#raceSelectionModal .race-hero-foot { min-height: 0; }
+#raceSelectionModal .race-note-body { background: none; border: 0; box-shadow: none; }
+#raceSelectionModal .race-note-flag { display: none; }
+#raceSelectionModal .race-card-note { display: block; }
+#raceSelectionModal .race-detail-foot { background: #0e1621; box-shadow: none; border: 0; }
+#raceSelectionModal .race-detail-foot-code, #raceSelectionModal .race-detail-foot-channel { display: none; }
+#raceSelectionModal .doctrine-row { row-gap: 2px; padding: 7px 0; }
+#raceSelectionModal .doctrine-note { margin-top: 0; }
+#raceSelectionModal .race-detail-content { gap: 14px; }
+@media (max-width:800px) {
+ #raceSelectionModal .race-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+ #raceSelectionModal .race-selection-main { padding-bottom: 150px; }
+ #raceSelectionModal .race-confirm-bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; }
+ #raceSelectionModal #rsIntro { display: block; margin: 8px 0 0; font-size: 13px; }
+ #raceSelectionModal .race-confirm-note { font-size: 12px; }
+}
+#raceSelectionModal .doctrine-row { grid-template-columns: 145px minmax(50px,1fr) 60px 86px; line-height: 1.3; padding: 11px 0; }
+#raceSelectionModal .doctrine-note { grid-column: auto; font-size: 12px; }
+#raceSelectionModal .doctrine-label { font-size: 15px; }
+#raceSelectionModal .race-selector-heading .official-mark { width: 36px; height: 36px; float: left; margin: 0 12px 0 0; }
+@media (max-width:800px) { #raceSelectionModal .doctrine-row { grid-template-columns: 125px minmax(25px,1fr) 55px; } #raceSelectionModal .doctrine-note { grid-column: 1/-1; } }
+#raceSelectionModal .race-grid { --rs-fit: 0; }

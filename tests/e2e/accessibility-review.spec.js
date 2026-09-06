@@ -23,6 +23,7 @@ test('readable game panels, keyboard navigation and contrast',async({page},testI
  await createGame(page,uniqueId('readable'),{maxPlayers:'2',mode:'test'});await startGame(page,[page]);
  await page.locator('#tour-skip').waitFor({state:'visible',timeout:15000});await dismissFirstRunGuidance(page);
  await page.locator('#buildtab').focus();
+ await expect(page.locator('#buildtab')).toBeFocused();
  await page.keyboard.press('ArrowRight');await expect(page.locator('#fleettab')).toBeFocused();
  await page.keyboard.press('ArrowRight');await expect(page.locator('#techtab')).toBeFocused();
  await page.keyboard.press('Tab');await expect(page.locator('#techtree')).toBeFocused();
@@ -47,6 +48,11 @@ test('readable game panels, keyboard navigation and contrast',async({page},testI
  });
  expect(fits).toBe(true);
  await page.screenshot({path:testInfo.outputPath('main-mobile.png')});
+ for(const tab of await page.locator('.pad-tabs button').all()){
+  expect(await tab.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ }
+ await expect(page.locator('#chat')).toBeInViewport({ratio:1});
+ await expect(page.locator('#sectordisplay')).toBeVisible();
  await audit(page);
  expect(errors).toEqual([]);
 });

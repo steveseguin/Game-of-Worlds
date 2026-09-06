@@ -39,3 +39,13 @@ Coverage includes keyboard history controls, preserved drafts, screen-reader sem
 The landing hero uses a high-priority, dimensioned 93 KB WebP instead of procedural Three.js rendering and texture workers. Landing JavaScript now only measures the header and supplies text equivalents for faction meters. Typography renders directly from CSS; decorative ticker motion and metal framing are suppressed. Edit landing source files and run `node tools/build-landing.js` to refresh the shipped assets.
 
 The lobby puts the game browser before the labeled create form, removes the decorative tactical preview, and uses `public/css/lobby-polish.css` for the quieter palette and responsive layout. Waiting-room controls retain the existing lobby hooks. `tests/e2e/entry-design.spec.js` checks artwork readiness, absence of renderer requests, keyboard order, game creation, mobile overflow, and WCAG AA axe checks for all three entry surfaces.
+
+### Shared controls, faction choice and official identity
+
+All shipped public pages load `public/css/controls.css` for bold system-font button labels, solid high-contrast button fills, selected/disabled states, and keyboard focus. Its named important cascade layer intentionally wins over legacy page-specific important declarations. Keep label and background colors paired when adding button variants.
+
+The faction chooser now uses `public/css/race-polish.css`, a compact roster, full-label horizontal multiplier charts, and a confirmation bar that stays visible. Bar lengths encode raw multipliers on a 0-to-2 scale; the midpoint marks the 1.00 baseline. Text explicitly distinguishes advantages and penalties, including inverse ship costs. Actual values remain visible when a bar reaches the display limit. Faction selection, locked-faction inspection, and keyboard radio navigation retain the existing handlers.
+
+Lobby membership is retained until a leave acknowledgement arrives. Clearing or switching rooms discards the old roster and pending automatic start; faction confirmations recheck the connection before sending. Malformed escaped player names no longer abort a roster update.
+
+Mobile game tabs use two rows, and the layout reserves 78 pixels for a wrapped chat footer below 560 pixels. Login now puts the account form ahead of decorative content on small screens. Guide and archive action links use the same button rules; archive caption contrast is corrected. The shared identity is documented in docs/art-direction/official-identity.md.

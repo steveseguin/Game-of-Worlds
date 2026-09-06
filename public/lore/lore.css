@@ -680,3 +680,4 @@ footer p { margin: 0; }
     *::before,
     *::after { transition-duration: .001ms !important; }
 }
+.poster-wall figcaption b { color: #82372c; font-size: 12px; }

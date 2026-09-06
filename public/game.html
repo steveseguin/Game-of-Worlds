@@ -10,8 +10,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <link rel="modulepreload" href="js/vendor/three.module.min.js">
     <link rel="modulepreload" href="js/vendor/three.core.min.js">
-    <link rel="icon" type="image/x-icon" href="favicon.ico">
-    <link rel="icon" type="image/png" href="images/minilogo.png">
     <link rel="stylesheet" href="css/style.css?v=20260905b">
     <style>
         /* Layout-critical rules only. Every material/typographic decision for the in-game
@@ -171,6 +169,11 @@
         body.g3d-active #sectorimg { display: none !important; }
         #galaxy3d canvas { cursor: grab; }
     </style>
+    <link rel="stylesheet" href="/css/controls.css?v=20260905a">
+<link rel="icon" href="/favicon.ico?v=20260905" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="/images/brand/game-of-worlds-mark.svg?v=20260905">
+    <link rel="apple-touch-icon" href="/images/brand/apple-touch-icon.png?v=20260905">
+    <link rel="stylesheet" href="/css/brand.css?v=20260905a">
 </head>
 <body class="game-page">
     <!-- Structural, not decorative: the vertical rail the left column is bolted to. It
@@ -242,6 +245,7 @@
              same aria-pressed attribute updateAudioButton() already maintains. aria-label
              is what keeps the button named once its text is invisible — without it the
              accessible name would be "speaker high volume". -->
+        <a class="official-brand" href="/lobby.html" aria-label="Game of Worlds lobby"><img class="official-mark" src="/images/brand/game-of-worlds-mark.svg" alt="" width="36" height="36"></a>
         <button id="audioBtn" class="gp-key gp-key--icon" title="Toggle sound" aria-label="Toggle sound"></button>
         <!-- A DRAWN MARK, NOT A TYPED CHARACTER. This shipped as a literal "?" text
              node set in the header font — the only affordance in the top bar that was
@@ -1129,7 +1133,7 @@
     <script defer src="js/combat-analytics.js?v=20260726a"></script>
     <script defer src="/config.js?v=20260614b"></script>
     <!-- shop-enhanced.js is NOT here any more; see the lazy-load block below. -->
-    <script defer src="js/game-screen.js?v=20260905a"></script>
+    <script defer src="js/game-screen.js?v=20260905c"></script>
     <script defer src="js/onboarding.js?v=20260728a"></script>
     <script defer src="js/connect.js?v=20260905a"></script>
     <script defer src="js/tour.js?v=20260728a"></script>

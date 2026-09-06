@@ -1,0 +1,25 @@
+.auth-body { background: #0a1019; color: #eef2f7; font-family: "Segoe UI",system-ui,sans-serif; }
+.auth-body::before, .auth-body::after, .auth-shell::before, .auth-shell::after, .auth-hero::before, .auth-hero::after { display: none; }
+.auth-topbar { background: #0e1621; border: 0; border-bottom: 1px solid #344257; box-shadow: none; }
+.auth-shell { max-width: 1080px; margin: 40px auto; padding: 0 24px; gap: 48px; background: none; border: 0; box-shadow: none; }
+.auth-hero { padding: 24px 0; background: none; border: 0; box-shadow: none; }
+.auth-body .kicker, .auth-logo { display: none; }
+.auth-brand h1 { font: 700 36px/1.15 "Segoe UI",system-ui,sans-serif; letter-spacing: -.03em; color: #f4f6fa; text-shadow: none; }
+.auth-brand p { font: 400 17px/1.65 "Segoe UI",system-ui,sans-serif; color: #c5cfdd; }
+.auth-highlights li { background: none; box-shadow: none; border: 0; padding: 10px 0; color: #c5cfdd; font-size: 15px; }
+.auth-highlights li::before { display: none; }
+.auth-panel { border: 1px solid #3b4b60; border-radius: 8px; background: #111c2a; box-shadow: none; padding: 28px; }
+.auth-tabs { background: none; border: 0; box-shadow: none; padding: 0; gap: 10px; }
+.auth-panel label { color: #dae2ed; font: 600 14px/1.5 "Segoe UI",system-ui,sans-serif; text-transform: none; letter-spacing: 0; }
+.auth-panel input { color: #f3f6fa; background: #0b131f; border: 1px solid #677992; box-shadow: none; font: 400 16px "Segoe UI",system-ui,sans-serif; min-height: 44px; border-radius: 5px; }
+.auth-panel input:focus-visible { outline: 3px solid #b9e1ff; outline-offset: 3px; }
+.auth-panel button { min-height: 44px; border-radius: 5px; }
+.auth-back { font: 600 14px "Segoe UI",system-ui,sans-serif; color: #dce5f1; letter-spacing: 0; text-transform: none; }
+@media(max-width:800px) {
+ .auth-shell { margin: 24px auto; padding: 0 18px; gap: 20px; }
+ .auth-hero { padding: 0; }
+ .auth-brand h1 { font-size: 28px; margin: 0 0 10px; }
+ .auth-brand p { font-size: 15px; margin: 0; }
+ .auth-highlights { display: none; }
+ .auth-panel { padding: 20px; }
+}

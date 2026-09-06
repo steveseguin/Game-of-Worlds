@@ -61,3 +61,4 @@ body.lobby-page { --faint: #a5b4c8; } .lobby-page .section-label { font-size: 12
 .lobby-page .ai-section-row label { font-size: 12px; letter-spacing: 0; text-transform: none; }
 .lobby-page summary:focus-visible { outline: 3px solid #a9d8ff; outline-offset: 3px; }
 @media (max-width: 640px) { .lobby-page .in-game .game-list tr { border: 0; padding: 0; } .lobby-page .waiting-view { padding: 0; } }
+.lobby-page button.primary { font-weight: 750; font-size: 15px; color: #16120b; }

@@ -1369,6 +1369,7 @@ const RaceSelection = (function() {
         container.innerHTML = `
             <div class="race-selector-header" role="region" aria-label="Registry controls">
                 <div class="race-selector-heading">
+                    <img class="official-mark" src="/images/brand/game-of-worlds-mark.svg" alt="" width="36" height="36">
                     <div class="race-selector-eyebrow">Faction database // command authorization</div>
                     <h1 id="rsTitle" data-text="Select Your Race">Select Your Race</h1>
                     <p id="rsIntro">Choose an empire doctrine. Strengths are powerful; restrictions last the whole match.</p>
@@ -2104,7 +2105,7 @@ const RaceSelection = (function() {
                 ${meterRack(race)}
                 <span class="race-card-note" data-gate="${gate}" data-note="${noteKind}">
                     <i class="race-note-flag">${locked ? lockGlyph() : ''}</i>
-                    <span class="race-note-body"><b>${esc(noteTag)}</b><em>${esc(noteText)}</em></span>
+                    <span class="race-note-body"><b>${locked ? 'Locked' : 'Available'}</b><em>${esc(noteText)}</em></span>
                 </span>
                 <span class="race-card-mark" aria-hidden="true">Selected</span>
             </button>
@@ -2771,61 +2772,21 @@ const RaceSelection = (function() {
     // A multiplier alone could never carry that.
     // ------------------------------------------------------------------
     function doctrinePlot(race) {
-        const summary = deviationSummary(race);
-        // A DOCTRINE THAT BENDS NOTHING DOES NOT GET SEVEN COPIES OF ×1.00.
-        // The default faction is all-baseline, so the readout rail printed the
-        // same figure seven times over seven identical detents under seven
-        // identical ranks: 435x130px of the dossier's prime real estate saying
-        // one thing three ways, and the first instrument a player's eye lands on
-        // reading as an unpopulated widget. When every channel is at standard
-        // the rail carries the FINDING instead — which is a fact about the
-        // registry that no per-column figure can state — and the detents and the
-        // rank row below still carry the data.
-        const allBaseline = summary.reported > 0 && summary.up === 0 && summary.down === 0;
-        const readout = allBaseline
-            ? `<b>${baselineFinding()}</b>`
-            : CHANNELS.map(channel => {
-                const r = reading(race, channel);
-                const tone = r ? r.tone : 'flat';
-                return `<span data-tone="${tone}" title="${esc(readingTitle(channel, r))}">`
-                     + `${esc(readoutText(channel, r))}</span>`;
-            }).join('');
-        const cols = CHANNELS.map(channel => {
+        const rows = CHANNELS.map(channel => {
             const r = reading(race, channel);
+            const width = r ? Math.min(100, r.raw * 50) : 0;
             const tone = r ? r.tone : 'flat';
-            const k = r ? r.draw : 0;
-            return `<span class="rs-col" data-tone="${tone}" style="--k:${k.toFixed(3)}"`
-                 + ` title="${esc(readingTitle(channel, r))}">`
-                 + '<i class="rs-col-slot"></i>'
-                 + '<i class="rs-col-bar"></i>'
-                 + '<i class="rs-col-cap"></i>'
-                 + '</span>';
+            const note = !r ? 'Not reported' : tone === 'flat' ? 'Standard'
+                : channel.inverse ? (tone === 'up' ? 'Cheaper ships' : 'Higher cost')
+                : tone === 'up' ? 'Advantage' : 'Penalty';
+            return `<div class="doctrine-row" data-tone="${tone}">
+                <span class="doctrine-label">${esc(channel.label)}</span>
+                <span class="doctrine-bar" aria-hidden="true"><i style="width:${width}%"></i></span>
+                <strong>${r ? multiplierText(r.raw) : '--'}</strong>
+                <span class="doctrine-note">${note}</span>
+            </div>`;
         }).join('');
-        const codes = CHANNELS.map(channel => {
-            const s = standing(race, channel);
-            const r = reading(race, channel);
-            const title = s
-                ? `${channel.label} ${r ? multiplierText(r.raw) : ''} — ${ordinal(s.rank)} of ${s.of} in the registry`
-                : channel.label;
-            return `<span title="${esc(title)}"${s && s.rank <= 3 ? ' data-top="1"' : ''}>`
-                 + `<b>${channel.code}</b>`
-                 + `<em>${s ? `${s.rank}/${s.of}` : '--'}</em></span>`;
-        }).join('');
-        return `
-            <div class="rs-plot" role="img" aria-label="${esc(rackLabel(race, true))}">
-                <div class="rs-plot-read"${allBaseline ? ' data-flat="1"' : ''} aria-hidden="true">${readout}</div>
-                <div class="rs-plot-axis" aria-hidden="true">
-                    <span>&times;2.00</span><span>&times;1.00</span><span>&times;0.50</span>
-                </div>
-                <div class="rs-plot-well">
-                    <span class="rs-plot-rule" data-at="hi"></span>
-                    <span class="rs-plot-rule" data-at="lo"></span>
-                    <span class="rs-plot-base"></span>
-                    <span class="rs-plot-cols">${cols}</span>
-                </div>
-                <div class="rs-plot-codes" aria-hidden="true">${codes}</div>
-            </div>
-        `;
+        return `<div class="doctrine-chart"><p>Multipliers compared with standard ships and production. 1.00 is standard; lower ship cost is better.</p>${rows}</div>`;
     }
 
     // ------------------------------------------------------------------

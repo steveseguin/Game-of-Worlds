@@ -1,0 +1,65 @@
+/* Shared action readability. Important declarations live in a named layer so
+   old page-specific !important bevel rules cannot silently undo this contract. */
+@layer readable-controls {
+ :is(button, [role="button"], input[type="submit"], .btn, .button, .play, .archive-bar__github, .open-game-banner, .danger-link, .resume-link) {
+  font-family: "Segoe UI", system-ui, sans-serif !important;
+  font-weight: 700 !important;
+  color: #f5f7fa !important;
+  background: #25364b !important;
+  border-color: #71839a !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: currentColor !important;
+  letter-spacing: .015em !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+ }
+ :is(button, [role="button"], .btn, .button, .play, .archive-bar__github, .open-game-banner, .danger-link, .resume-link) :is(span,b,strong,em,i,small) {
+  font-weight: 700 !important;
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+ }
+ :is(button, [role="button"], .btn, .button, .play, .archive-bar__github, .open-game-banner, .danger-link, .resume-link):not(.race-card) {
+  font-size: 14px !important;
+ }
+ :is(button, [role="button"], .btn, .button, .play, .archive-bar__github):is(.primary,.button--primary,.btn--primary,.btn--key,.gp-key--amber,.race-confirm-btn,.race-purchase-btn), .open-game-banner,
+ :is(button,[role="tab"])[aria-selected="true"], button[aria-pressed="true"] {
+  background: #e5bf7e !important;
+  color: #17130c !important;
+  border-color: #edce99 !important;
+ }
+ :is(button, [role="button"], .btn, .button, .play, .archive-bar__github):hover:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(1.12) !important;
+ }
+ :is(button, [role="button"], input[type="submit"], .btn, .button, .play, .archive-bar__github):is(:disabled,[aria-disabled="true"]) {
+  background: #29313d !important;
+  color: #c3cbd5 !important;
+  border-color: #566273 !important;
+  filter: none !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+ }
+ :is(button, [role="button"], .btn, .button, .play, .archive-bar__github, .open-game-banner, .danger-link, .resume-link):focus-visible {
+  outline: 3px solid #b9e1ff !important;
+  outline-offset: 3px !important;
+ }
+ .race-card.selected { border-color: #f0c681 !important; outline: 2px solid #f0c681 !important; }
+}
+@layer readable-controls {
+ :is(button,[role="button"],.btn, .button, .play, .archive-bar__github) :is(p,div,h3,h4,label) { color: inherit !important; font-weight: 650 !important; text-shadow: none !important; }
+ .game-page .pad-tabs button { font-size: 13px !important; padding-left: 6px !important; padding-right: 6px !important; text-transform: none !important; }
+ #audioBtn { font-size: 0 !important; }
+ .race-card.active { border-color: #f0c681 !important; outline: 2px solid #f0c681 !important; }
+}
+@layer readable-controls {
+ @media (max-width: 560px) {
+  .game-page { --pad-tabs-h: 76px !important; }
+  .game-page .pad-tabs { display: grid !important; grid-template-columns: repeat(3,minmax(0,1fr)) !important; grid-template-rows: repeat(2,32px) !important; }
+  .game-page .pad-tabs button { font-size: 14px !important; }
+  .game-page #chatContainer { flex-wrap: wrap !important; align-content: center !important; }
+  .game-page #chatForm { flex: 1 0 100% !important; height: 30px !important; margin-right: 0 !important; }
+  .game-page #chatContainer .gp-key--text { width: 108px !important; text-transform: none !important; }
+ }
+ a:focus-visible { outline: 3px solid #b9e1ff !important; outline-offset: 3px !important; }
+}
+.game-page #chat { box-sizing: border-box; }

@@ -45,7 +45,7 @@
         document.body.style.width = '';
         document.body.style.height = '';
 
-        const chatHeight = clamp(40 * scale, 34, 46);
+        const chatHeight = veryNarrow ? 78 : clamp(40 * scale, 34, 46);
         const controlMaxWidth = Math.max(220, viewportWidth - 12);
         const controlMinWidth = Math.min(280, controlMaxWidth);
         let controlWidth = clamp(Math.min(500 * scale, controlMaxWidth), controlMinWidth, controlMaxWidth);
@@ -375,11 +375,18 @@
         if (sectorDisplay) {
             const sectorMaxWidth = veryNarrow ? Math.max(132, viewportWidth * 0.48) : 300;
             const sectorMinWidth = Math.min(veryNarrow ? 150 : 190, sectorMaxWidth);
-            const sectorWidth = clamp(240 * scale, sectorMinWidth, sectorMaxWidth);
+            const sectorWidth = veryNarrow ? sectorMaxWidth : clamp(240 * scale, sectorMinWidth, sectorMaxWidth);
             // Below a usable height this panel cannot be shown without printing over
             // the build pad. The Build tab still names the selected sector, so hiding
             // it costs the player nothing they cannot see elsewhere.
-            const sectorRoom = viewportHeight - sectorTop - bottomReserved - 12;
+            // The narrow survey and right-hand minimap can share the same row.
+            // Reserving the minimap's entire height hid sector actions after the
+            // chat footer grew, despite free space on the left.
+            const miniBounds = minimap && getComputedStyle(minimap).display !== 'none'
+                ? minimap.getBoundingClientRect() : null;
+            const besideMinimap = stackBottomPanels && (!miniBounds || miniBounds.left >= sectorWidth + 18);
+            const surveyBottom = besideMinimap ? chatHeight + measuredControlHeight + 12 : bottomReserved;
+            const sectorRoom = viewportHeight - sectorTop - surveyBottom - 12;
             const sectorMaxHeight = Math.max(64, sectorRoom);
             setImportant(sectorDisplay, 'display', (shortLandscape || sectorRoom < 90) ? 'none' : 'block');
             setImportant(sectorDisplay, 'top', px(sectorTop));

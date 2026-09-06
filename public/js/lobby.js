@@ -916,6 +916,8 @@ function clearCurrentGameTracking() {
     currentMaxPlayers = 0;
     currentPlayerCount = 0;
     currentPlayers = [];
+    currentPlayerDetails = [];
+    sandboxAutoStartTarget = null;
     isCurrentGameCreator = false;
     isStartingGame = false;
     isAwaitingRaceSelection = false;
@@ -999,7 +1001,7 @@ function loadRaceSelectionScript(callback) {
     }
 
     const script = document.createElement('script');
-    script.src = 'js/race-selection.js?v=20260728r9';
+    script.src = 'js/race-selection.js?v=20260905b';
     script.onload = () => {
         requestUnlockedRaces();
         callback();
@@ -1040,6 +1042,10 @@ function openRaceSelectorForCurrentGame() {
             }
             isAwaitingRaceSelection = false;
             pendingJoinGameId = null;
+            if (!canSendLobbyCommand(true)) {
+                requestCurrentGameSnapshot();
+                return;
+            }
             websocket.send(`//changerace:${raceId}`);
         }, currentRaceId);
     });
@@ -1076,19 +1082,18 @@ function joinGame(gameId) {
             const targetGame = pendingJoinGameId;
             isAwaitingRaceSelection = false;
             pendingJoinGameId = null;
+            if (!canSendLobbyCommand(true)) return;
             websocket.send(`//joingame:${targetGame}:${raceId}`);
         }, currentRaceId);
     });
 }
 
 function leaveGame() {
-    if (canSendLobbyCommand(false)) {
-        websocket.send('//leavegame');
-    } else {
-        window.location.href = '/lobby.html';
-    }
-    clearCurrentGameTracking();
-    renderGameListSkeleton('Leaving game…');
+    if (!canSendLobbyCommand(true)) return;
+    // Membership remains authoritative until the server acknowledges with lobby::.
+    // A failed delete must leave the current room available for retry.
+    websocket.send('//leavegame');
+    showToast('Leaving game...', 'info');
 }
 
 function resignCurrentGame() {
@@ -1130,6 +1135,11 @@ function startGame() {
 }
 
 function hydrateCurrentGame(payload) {
+    if (Number(currentGameId) !== Number(payload.gameId)) {
+        currentPlayerDetails = [];
+        sandboxAutoStartTarget = null;
+        countdownSeconds = null;
+    }
     currentGameId = Number(payload.gameId);
     currentGameName = escapeHtml(payload.gameName || '');
     currentMaxPlayers = Number(payload.maxPlayers) || 0;
@@ -1161,7 +1171,7 @@ function updatePlayerList(rawList) {
 
     const players = entries.map(entry => {
         const [id, encodedName, isAi, raceIdRaw, aiDiffRaw, aiStratRaw, isGuestRaw, levelRaw] = entry.split('|');
-        const decodedName = encodedName ? decodeURIComponent(encodedName) : `Player ${id}`;
+        const decodedName = encodedName ? decodeURIComponentSafe(encodedName) : `Player ${id}`;
         const isSelf = String(id) === String(userId);
         const raceLabel = getRaceName(Number(raceIdRaw)) || 'Race ?';
         return {

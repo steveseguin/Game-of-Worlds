@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+ <title>Game of Worlds</title>
+ <rect width="64" height="64" rx="14" fill="#0b121c"/>
+ <circle cx="32" cy="32" r="15" fill="#e5bf7e"/>
+ <ellipse cx="32" cy="32" rx="27" ry="9" transform="rotate(-28 32 32)" fill="none" stroke="#0b121c" stroke-width="8"/>
+ <ellipse cx="32" cy="32" rx="27" ry="9" transform="rotate(-28 32 32)" fill="none" stroke="#e5bf7e" stroke-width="4"/>
+ <circle cx="49" cy="13" r="3" fill="#f5f7fa"/>
+</svg>
