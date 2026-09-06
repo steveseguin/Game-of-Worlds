@@ -51,3 +51,18 @@ Lobby membership is retained until a leave acknowledgement arrives. Clearing or 
 Mobile game tabs use two rows, and the layout reserves 78 pixels for a wrapped chat footer below 560 pixels. Login now puts the account form ahead of decorative content on small screens. Guide and archive action links use the same button rules; archive caption contrast is corrected. The shared identity is documented in docs/art-direction/official-identity.md.
 
 Lobby action labels now use Arial Black at weight 900, including nested captions that previously retained narrow legacy font families. Dropdowns and disclosure controls use bold Arial. The button-weight browser regression checks parent and nested label styles, contrast, and a successful faction-change acknowledgement. The mock database now supports the waiting-status query used by faction changes.
+
+
+## In-game follow-up, September 6
+
+`game-polish.css` reduces panel effects, raises the countdown size, centers probe confirmation and exposes building capacity. `planet-inspection.js` drives a close-up in the existing WebGL context. Its orbit is illustrative, with counts and knowledge labels derived only from received sector intel. Exiting restores camera framing and sector visibility.
+
+`faction-hulls.js` supplies cached faction silhouettes to the galaxy and battle renderers. `pl` already carries each player's race; the game client now retains it and passes it to fleet/battle rendering. Unknown identities retain the generic hull. Planet glint is capped and reduced, and planet radii vary deterministically by class and sector. Empty owned routes no longer request world textures or draw generic planets.
+
+Validation includes the unit suite, mock HTTP/WebSocket integration, Chromium desktop/mobile screenshots, axe checks, modal keyboard handling and a synthetic 3D battle with two faction hull families. Ordinary UI campaigns are opt-in with `PLAY_REVIEW=1` and `tools/run-e2e.js tests/e2e/ai-campaign-review.spec.js`; these do not grant resources or reveal hidden server terrain. The first baseline campaign ended around turn 45 with an AI domination victory; lack of military pressure, rather than inability to expand, was the confirmed weakness.
+
+The automatic orientation briefing now yields to an order already in progress, including when it appeared just before that order. Explicit Help tours remain available. New home systems include one adjacent Terraforming-0 colony opportunity; later Terraforming research grows by 1.6 per level instead of doubling.
+
+Final ordinary campaigns against medium/balanced and aggressive/aggressive opponents both completed with AI domination victories. The driver placed UI orders in batches during the first 24 turns, then observed the endgame using End Turn; it did not inject game resources or edit terrain. In the medium campaign, the human reached five worlds by turn 21 (second world by turn 3). These are playthrough observations, not a claim of exhaustive or matched-seed balance validation.
+
+The chat transcript now uses the measured comms bay, fixing an invisible empty transcript layer that intercepted the mobile Inspect button. The inspection view restores focus to Inspect, or End Turn when the survey is hidden on a short landscape screen.

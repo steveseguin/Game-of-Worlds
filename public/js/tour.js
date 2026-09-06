@@ -904,13 +904,28 @@
         }
     }
 
+    // A delayed first-run briefing must not cover an order already in progress.
+    // This is only a page-session suppression; Help can still open the tour.
+    let playerStarted = false;
+    let automaticTour = false;
+    const notePlay = event => {
+        if (!event.isTrusted || ((overlay || bubble) && !automaticTour)) return;
+        if (event.target?.closest?.('#hudMain, #controlPadGUI, #minimapid, #turnTimeBar, #probeSuggestionCard')) {
+            playerStarted = true;
+            if (overlay || bubble) abortTour();
+        }
+    };
+    document.addEventListener('pointerdown',notePlay,true);
+    document.addEventListener('keydown',notePlay,true);
+
     function startTour(force = false) {
         if (overlay || bubble) return;
-        if (!force && isDismissed()) return;
+        if (!force && (isDismissed() || playerStarted)) return;
 
         live = steps.filter(step => stepRect(step));
         if (!live.length) return;
 
+        automaticTour = !force;
         ensureStyles();
         createOverlay();
         createBubble();

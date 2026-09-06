@@ -170,6 +170,7 @@
         #galaxy3d canvas { cursor: grab; }
     </style>
     <link rel="stylesheet" href="/css/controls.css?v=20260905b">
+    <link rel="stylesheet" href="/css/game-polish.css?v=20260905">
 <link rel="icon" href="/favicon.ico?v=20260905" sizes="any">
     <link rel="icon" type="image/svg+xml" href="/images/brand/game-of-worlds-mark.svg?v=20260905">
     <link rel="apple-touch-icon" href="/images/brand/apple-touch-icon.png?v=20260905">
@@ -383,6 +384,7 @@
         <!-- Instrument title bar. Sticky, because the panel scrolls inside a height the
              layout hands it and a survey readout with no header is unreadable. -->
         <div class="gp-titlebar">Sector Survey</div>
+        <button id="inspectPlanetBtn" type="button" hidden>Inspect planet</button>
         <div class="gp-body">
         <!-- Two instrument columns above 900px (style.css .survey-cols): orders and state
              on the left, the numeric survey and hull tables on the right. The panel is
@@ -542,6 +544,7 @@
 
         <!-- Build Tab -->
         <div id="build" class="tab-panel" data-code="CON-01" role="tabpanel" tabindex="0" aria-labelledby="buildtab">
+            <div id="planetCapacityStatus" hidden><strong></strong><meter min="0" max="12" value="0" aria-label="Occupied building slots"></meter><small></small></div>
             <div id="buildSectorContext" class="local-order-context">Select an owned sector to construct there.</div>
             <!-- NO GLYPH ELEMENTS IN THESE CARDS. Each button's mark is the painted
                  building icon from icon-system/, published to public/images/ui/ and hung
@@ -596,6 +599,7 @@
             <div id="fleetEmptyState" class="pad-empty">No ships of yours are in this sector.</div>
             <div id="fleetTotal" class="fleet-total"></div>
             <div class="pad-heading" data-icon="shipyard">Build Ships at Selected Spaceport</div>
+
             <div id="spaceportProductionStatus" class="local-order-context">Build a Spaceport to produce ships locally.</div>
             <!-- Same rule as the build grid: the hull plate is a ::before keyed off
                  `data-ship-id`, and icon-system/icons/ships/01..09 maps one-for-one onto
@@ -1119,13 +1123,14 @@
     <script defer src="js/ui.js?v=20260728-mapa11y-r4"></script>
     <script defer src="js/minimap.js?v=20260614b"></script>
     <script defer src="js/GUI.js?v=20260725o"></script>
-    <script defer src="js/build.js?v=20260725f"></script>
+    <script defer src="js/build.js?v=20260905"></script>
+    <script defer src="js/planet-inspection.js?v=20260905"></script>
     <script defer src="js/battle.js?v=20260614d"></script>
     <script defer src="js/chat.js?v=20260905c"></script>
     <script defer src="js/controlpad.js?v=20260712d"></script>
     <script defer src="js/epic-music.js?v=20260725c"></script>
     <script defer src="js/sound.js?v=20260712b"></script>
-    <script defer src="js/tech.js?v=20260612a"></script>
+    <script defer src="js/tech.js?v=20260906"></script>
     <script defer src="js/notification-system.js?v=20260728a"></script>
     <script defer src="js/avatar-notifications.js?v=20260728a"></script>
     <script defer src="js/advisor.js?v=20260726b"></script>
@@ -1133,16 +1138,16 @@
     <script defer src="js/combat-analytics.js?v=20260726a"></script>
     <script defer src="/config.js?v=20260614b"></script>
     <!-- shop-enhanced.js is NOT here any more; see the lazy-load block below. -->
-    <script defer src="js/game-screen.js?v=20260905c"></script>
+    <script defer src="js/game-screen.js?v=20260906"></script>
     <script defer src="js/onboarding.js?v=20260728a"></script>
-    <script defer src="js/connect.js?v=20260905a"></script>
-    <script defer src="js/tour.js?v=20260728a"></script>
+    <script defer src="js/connect.js?v=20260906"></script>
+    <script defer src="js/tour.js?v=20260906"></script>
     <script defer src="js/game.js?v=20260905b"></script>
     <script defer src="js/codex.js?v=20260728r"></script>
     <script defer src="js/name-picker.js?v=20260726b"></script>
     <script defer src="js/loader.js?v=20251105"></script>
     <!-- Last, because that is where they executed before (see note 2 above). -->
-    <script type="module" src="js/galaxy3d.js?v=20260905a"></script>
+    <script type="module" src="js/galaxy3d.js?v=20260906"></script>
     <!-- battle3d.js is NOT here any more; see the lazy-load block below. -->
 
     <!-- ================================================================
@@ -1212,7 +1217,7 @@
 
             function loadBattle3D() {
                 if (!battlePromise) {
-                    battlePromise = import('./js/battle3d.js?v=20260905c')
+                    battlePromise = import('./js/battle3d.js?v=20260906')
                         .catch(error => {
                             console.error('Battle theater failed to load; using the 2D fallback.', error);
                             battlePromise = null;
@@ -1434,6 +1439,15 @@
                         bay.style.width = Math.round(surveyBox.width) + 'px';
                         bay.style.top = Math.round(top) + 'px';
                         bay.style.height = Math.round(height) + 'px';
+                        // The transcript belongs in this same measured bay. A
+                        // full-width feed above the mobile minimap covered the
+                        // survey's Inspect button, even with no messages in it.
+                        if (feed) {
+                            feed.style.setProperty('left', Math.round(surveyBox.left) + 'px', 'important');
+                            feed.style.setProperty('width', Math.round(surveyBox.width) + 'px', 'important');
+                            feed.style.setProperty('bottom', Math.round(window.innerHeight - padBox.top + 8) + 'px', 'important');
+                            feed.style.setProperty('max-height', Math.floor(height) + 'px', 'important');
+                        }
                     }
                 }
             }

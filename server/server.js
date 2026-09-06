@@ -7509,7 +7509,7 @@ async function triggerAiTurn(gameId, eligiblePlayerIds = null) {
 // passed around without ever changing behaviour; these knobs are what it now buys.
 const AI_DIFFICULTY_PROFILES = Object.freeze({
     chill: Object.freeze({ shipsPerTurn: 1, metalReserve: 600, harass: false }),
-    medium: Object.freeze({ shipsPerTurn: 2, metalReserve: 300, harass: false }),
+    medium: Object.freeze({ shipsPerTurn: 2, metalReserve: 300, harass: true }),
     aggressive: Object.freeze({ shipsPerTurn: 4, metalReserve: 120, harass: true })
 });
 
@@ -7654,7 +7654,42 @@ async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 
     if (strat === 'aggressive' || profile.harass) {
         await handleAiHarass(gameId, playerId, homeworld);
     }
+    // Grow the economy where expansion actually happened. One affordable project
+    // per turn, after fleet orders, preserves the treasury needed for colony ships.
+    await developAiWorlds(gameId, playerId);
     await aiResearchAndDefend(gameId, playerId, strat);
+}
+
+async function developAiWorlds(gameId, playerId) {
+    const players = await queryDb(`SELECT * FROM players${gameId} WHERE userid = ? LIMIT 1`, [playerId]);
+    const player = players && players[0];
+    if (!player) return;
+    const worlds = (await queryDb(`SELECT * FROM map${gameId}`, []))
+        .filter(row => Number(row.owner) === Number(playerId) && Number(row.type) >= 6);
+    const buildings = await queryDb(`SELECT * FROM buildings${gameId}`, []);
+    const metal = Number(player.metal) || 0;
+    const crystal = Number(player.crystal) || 0;
+    // Leave a colony-ship budget intact; very poor colonies can still add the
+    // first extractor, whose production is how they escape that low balance.
+    for (const world of worlds) {
+        const local = buildings.filter(b => Number(b.sectorid) === Number(world.sectorid));
+        const limit = BUILDING_SLOTS_BY_TYPE[Number(world.type)] || 0;
+        if (local.length >= limit) continue;
+        const counts = {};
+        local.forEach(b => { counts[b.type] = (counts[b.type] || 0) + 1; });
+        const type = !counts[0] ? 0 : !counts[1] ? 1 : !counts[2] ? 2 : counts[0] < 2 ? 0 : null;
+        if (type === null) continue;
+        const cost = BUILDING_COSTS[type];
+        const reserve = counts[0] ? combatSystem.SHIP_TYPES.COLONY_SHIP.cost.metal : 0;
+        if (metal < cost.metal + reserve || crystal < cost.crystal) continue;
+        await queryDb(`UPDATE players${gameId} SET currentsector = ? WHERE userid = ?`, [world.sectorid,playerId]);
+        try {
+            await runAiMutation(gameId,playerId,stub=>buyBuilding(`//buybuilding:${type}`,stub));
+        } finally {
+            await queryDb(`UPDATE players${gameId} SET currentsector = ? WHERE userid = ?`, [player.homeworld,playerId]);
+        }
+        break;
+    }
 }
 
 async function handleAiExpansion(gameId, playerId, homeSector) {

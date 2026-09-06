@@ -1,6 +1,7 @@
 /** galaxy3d.js - Three.js main galaxy map view. Full rationale: docs/galaxy3d-design-notes.md#galaxy3d-js-three-js-main-galaxy-map-view */
 
 import * as THREE from './vendor/three.module.min.js';
+import { createFactionHullGeometry } from './faction-hulls.js?v=20260906';
 import { EffectComposer } from './vendor/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from './vendor/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
@@ -18,14 +19,14 @@ import {
     createAsteroidMaterial,
     ASTEROID_VARIANTS,
     seededRandom
-} from './planet-texture.js?v=20260728a';
+} from './planet-texture.js?v=20260906';
 
 /**
  * Where planet-texture.js lives, as an absolute URL, for the worker that bakes
  * worlds off the main thread. A blob-URL module worker resolves its own
  * relative imports against the blob, which is nowhere, so it has to be told.
  */
-const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.meta.url).href;
+const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta.url).href;
 
 (function () {
     // The landing page, login, race select and lobby all honour this; the game… Full rationale: docs/galaxy3d-design-notes.md#the-landing-page-login-race-select-and-lobby-all-honour-this
@@ -2889,9 +2890,8 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         if (entry.status === STATUS.BLACKHOLE || entry.type === 2) return null;
         if (entry.type === 1 || entry.status === STATUS.HAZARD) return null;
         if (entry.type === 3 || entry.type === 4) return null;
-        const isWorld = (entry.type >= 5 && entry.type <= 10)
-            || entry.status === STATUS.HOMEWORLD || entry.status === STATUS.OWNED
-            || entry.status === STATUS.ENEMY || entry.status === STATUS.COLONIZED;
+        // Ownership does not turn empty transit space into a planet.
+        const isWorld = entry.type >= 5 && entry.type <= 10;
         if (!isWorld) return null;
         return Math.max(5, Math.min(10, Number(entry.type) || 8));
     }
@@ -2900,12 +2900,9 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
     function worldOptions(type, sectorId) {
         return {
             // Richer worlds are visibly bigger, so value reads before you click.
-            // The ramp starts at 0.34, not 0.28: a class-6 world at 0.28 is forty
-            // pixels across at the map framing and there is no surface generator
-            // that can make forty pixels legible — it read as orange mush. The
-            // STEP between classes carries the "richer" signal and is intact; the
-            // floor is what was wrong.
-            radius: type === 10 ? 0.50 : 0.34 + (type - 5) * 0.038,
+            // Smaller classes leave navigable space between bodies. A stable size
+            // variation avoids identical marbles; inspection supplies the close-up.
+            radius: (type === 10 ? 0.46 : 0.22 + (type - 5) * 0.042) * (0.94 + ((Number(sectorId) || 0) % 5) * 0.03),
             spin: 0.06 + ((Number(sectorId) || 0) % 7) * 0.012,
             // The generator's atmosphere is a BACK-SIDE shell whose alpha comes. Full rationale: docs/galaxy3d-design-notes.md#the-generator-s-atmosphere-is-a-back-side-shell-whose-alpha-
             strength: 0.30,
@@ -3639,10 +3636,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
             content = buildStar(entry);
         } else if (entry.type >= 5 && entry.type <= 10) {
             content = buildPlanet(entry);
-        } else if (entry.status === STATUS.HOMEWORLD || entry.status === STATUS.OWNED ||
-                   entry.status === STATUS.ENEMY || entry.status === STATUS.COLONIZED) {
-            // Known important sector but type unknown yet: show a generic planet.
-            content = buildPlanet(entry);
+
         } else if (entry.status === STATUS.HAZARD) {
             content = buildAsteroids(entry);
         }
@@ -4874,7 +4868,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         hullMat.transparent = true;
         for (let i = 0; i < ships; i++) {
             const dart = new THREE.Group();
-            const hull = new THREE.Mesh(state.sharedGeo.dart, hullMat);
+            const hull = new THREE.Mesh(factionGeometry(opts.raceId || (mine ? window.GAME_STATE?.player?.raceAccess?.raceId : null)), hullMat);
             hull.scale.setScalar(scale);
             dart.add(hull);
             /** THE PLUME IS A CONE OUT OF THE NOZZLE, NOT A BALL BEHIND THE SHIP. Full rationale: docs/galaxy3d-design-notes.md#the-plume-is-a-cone-out-of-the-nozzle-not-a-ball-behind-the- */
@@ -5082,6 +5076,95 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         state.selectionRing.position.set(0, TILE_TOP + 0.001, 0);
     }
 
+    // Faction silhouettes follow the painted fleet vocabulary: modular industrial
+    // hulls, crystalline shards, organic wings, rings and stealth wedges. Geometry
+    // is cached with the existing shared meshes; moving fleets never allocate it.
+    function factionGeometry(raceId) {
+        const id = Math.max(1, Math.min(12, Number(raceId) || 1));
+        const key = `faction${id}`;
+        if (state.sharedGeo[key]) return state.sharedGeo[key];
+        if (id === 1) return state.sharedGeo.dart;
+        state.sharedGeo[key] = createFactionHullGeometry(id);
+        return state.sharedGeo[key];
+    }
+
+    let inspection = null;
+    function inspectPlanet(data) {
+        const entry = state.sectors.get(Number(data?.id));
+        if (!state.ready || !entry || worldClassOf(entry) === null) return false;
+        if (inspection) exitPlanetInspection();
+        inspection = { id: entry.id, zoom: state.zoom, target: state.camTarget.clone(), offset: state.camOffset.clone(),
+            orbit: new THREE.Group(), phase: 0, visibility: new Map(), baseDistance: window.innerWidth < 760 ? 3.7 : 2.5 };
+        const orbit = inspection.orbit;
+        orbit.position.copy(entry.group.position);
+        orbit.position.y = 0.44;
+        state.scene.add(orbit);
+        const myId = Number((document.cookie.match(/(?:^|; )userId=([^;]+)/)||[])[1]);
+        const ships = (Array.isArray(data.ships) ? data.ships : [])
+            .flatMap(ship=>Array(Math.min(8,Math.max(0,Number(ship.count)||1))).fill(ship)).slice(0,8);
+        const mat = new THREE.MeshStandardMaterial({color:0x566779,roughness:0.9,metalness:0.1});
+        const trim = new THREE.MeshStandardMaterial({color:0x15283c,roughness:0.8,metalness:0.25});
+        const hullMaterials = new Map();
+        const bodies = [];
+        ships.forEach((ship,i)=>{
+            const mine = Number(ship.owner)===myId;
+            const race = mine ? window.GAME_STATE?.player?.raceAccess?.raceId : window.GAME_STATE?.players?.[Number(ship.owner)]?.raceId;
+            if (!hullMaterials.has(mine)) hullMaterials.set(mine,shipMaterial(mine).clone());
+            const mesh = new THREE.Mesh(factionGeometry(race),hullMaterials.get(mine));
+            mesh.scale.setScalar(Number(ship.type)===6?0.1:0.075); orbit.add(mesh);
+            bodies.push({mesh,angle:1.2+i*Math.PI*2/ships.length,radius:0.63,ship:true});
+        });
+        const buildings = Array.isArray(data.buildings) ? data.buildings : [];
+        const port = buildings.find(b=>Number(b.type)===3);
+        const defenses = buildings.filter(b=>Number(b.type)===4).reduce((s,b)=>s+(Number(b.count)||1),0);
+        if (port) {
+            const station = new THREE.Group();
+            const hubGeo = new THREE.CylinderGeometry(0.065,0.065,0.16,8);
+            const hub = new THREE.Mesh(hubGeo,mat);station.add(hub);
+            for (const side of [-1,1]) {
+                const dock = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.025,0.12),mat);
+                dock.position.x=side*0.14;station.add(dock);
+                for (let k=0;k<5;k++) {
+                    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.028,0.006,0.10),trim);
+                    panel.position.set(side*(0.065+k*0.038),0.018,0);station.add(panel);
+                }
+                const gantry = new THREE.Mesh(new THREE.BoxGeometry(0.03,0.08,0.025),mat);
+                gantry.position.set(side*0.09,0.04,-0.045);station.add(gantry);
+            }
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.11,0.012,5,20),mat);
+            ring.rotation.x=Math.PI/2;station.add(ring);
+            station.scale.setScalar(0.7);
+            orbit.add(station);bodies.push({mesh:station,angle:1.25,radius:0.68});
+        }
+        for (let i=0;i<Math.min(6,defenses);i++) {
+            const defense = new THREE.Mesh(new THREE.OctahedronGeometry(0.045),mat);
+            orbit.add(defense);bodies.push({mesh:defense,angle:2+i,radius:0.66});
+        }
+        inspection.bodies=bodies;inspection.materials=[mat,trim,...hullMaterials.values()];
+        state.camOffset.set(0,0.3,1).normalize().multiplyScalar(inspection.offset.length());
+        state.camTarget.copy(entry.group.position);state.camTarget.y=0.44;
+        state.zoom = inspection.baseDistance/state.camOffset.length();
+        state.frameOffsetDirty=true;
+        return true;
+    }
+    function adjustPlanetInspection(angle = 0, factor = 1) {
+        if (!inspection) return;
+        state.camOffset.applyAxisAngle(new THREE.Vector3(0,1,0),angle);
+        state.zoom = Math.max(1.7/state.camOffset.length(),Math.min(5/state.camOffset.length(),state.zoom*factor));
+        state.frameOffsetDirty=true;
+    }
+    function exitPlanetInspection() {
+        if (!inspection) return;
+        state.zoom=inspection.zoom;state.camTarget.copy(inspection.target);state.camOffset.copy(inspection.offset);
+        state.scene.remove(inspection.orbit);
+        inspection.orbit.traverse(obj=>{if(obj.geometry&&!Object.values(state.sharedGeo).includes(obj.geometry)) obj.geometry.dispose();});
+        inspection.materials.forEach(material=>material.dispose());
+        inspection.visibility.forEach((visible,obj)=>{obj.visible=visible;});
+        inspection=null;
+        state.sectors.forEach(entry=>{entry.group.visible=true;});
+        state.frameOffsetDirty=true;
+    }
+
     function focusSector(sectorId) {
         const normalizedSectorId = Number(sectorId);
         const entry = state.sectors.get(normalizedSectorId);
@@ -5125,6 +5208,11 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         }
         state.camera.aspect = w / h;
         state.camera.updateProjectionMatrix();
+        if (inspection) {
+            const baseDistance = w < 760 ? 3.7 : 2.5;
+            state.zoom *= baseDistance / inspection.baseDistance;
+            inspection.baseDistance = baseDistance;
+        }
         updateFrameOffset();
     }
 
@@ -5172,6 +5260,20 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
     function updateFrameOffset() {
         state.frameOffset.set(0, 0, 0);
         if (!state.camera || !state.container) return;
+        if (inspection) {
+            const rect = state.container.getBoundingClientRect();
+            const detail = document.querySelector('#planetInspection .inspection-detail')?.getBoundingClientRect();
+            const head = document.querySelector('#planetInspection .inspection-head')?.getBoundingClientRect();
+            if (!detail || !head) return;
+            const x = rect.width >= 760 ? (detail.right + rect.width)/2 : rect.width/2;
+            const y = rect.width >= 760 ? rect.height/2 : (head.bottom + detail.top)/2;
+            const halfH = Math.tan(state.camera.fov*Math.PI/360)*state.camOffset.length()*state.zoom;
+            const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),state.camOffset).normalize();
+            const up = new THREE.Vector3().crossVectors(state.camOffset,right).normalize();
+            state.frameOffset.addScaledVector(right,-(x/rect.width*2-1)*halfH*state.camera.aspect);
+            state.frameOffset.addScaledVector(up,-(1-y/rect.height*2)*halfH);
+            return;
+        }
         const { w, h, left, top, usableW, usableH } = safeRect();
         // Where the clear band's centre sits, in -1..1 clip space.
         const ndcX = ((left + usableW / 2) - w / 2) / (w / 2);
@@ -5942,8 +6044,8 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
                 }
                 if (state.drag.moved) {
                     const scale = (state.camOffset.length() * (state.zoom || 1)) / 700;
-                    state.camTarget.x -= dx * scale;
-                    state.camTarget.z -= dy * scale;
+                    if (inspection) adjustPlanetInspection(-dx*0.008);
+                    else { state.camTarget.x -= dx * scale; state.camTarget.z -= dy * scale; }
                 }
                 state.drag.lastX = event.clientX;
                 state.drag.lastY = event.clientY;
@@ -5960,7 +6062,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
             // A CLICK IS PICKED IMMEDIATELY, not deferred to the frame. One
             // raycast is a fraction of a millisecond and a selection that waits
             // for a frame is a selection the player feels waiting.
-            if (wasClick) handleClick(event);
+            if (wasClick && !inspection) handleClick(event);
         });
 
         dom.addEventListener('pointerleave', () => {
@@ -5972,7 +6074,8 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
             gestured();
             event.preventDefault();
             const factor = event.deltaY > 0 ? 1.12 : 0.89;
-            state.zoom = Math.min(3.2, Math.max(0.35, (state.zoom || 1) * factor));
+            if (inspection) adjustPlanetInspection(0,factor);
+            else state.zoom = Math.min(3.2, Math.max(0.35, (state.zoom || 1) * factor));
             updateFrameOffset();
         }, { passive: false });
     }
@@ -6010,6 +6113,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
     }
 
     function handleHover(event) {
+        if (inspection) return;
         const sectorId = pickSector(event);
         if (state.hovered === sectorId) return;
         const prev = state.sectors.get(state.hovered);
@@ -6095,6 +6199,24 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         // did while the last frame was being drawn is answered on this one.
         drainHover();
 
+        if (inspection) {
+            state.sectors.forEach(entry => { entry.group.visible = entry.id === inspection.id; });
+            const selected = state.sectors.get(inspection.id);
+            const hide = obj => {
+                if (!inspection.visibility.has(obj)) inspection.visibility.set(obj,obj.visible);
+                obj.visible=false;
+            };
+            if (selected) {
+                selected.group.children.forEach(child=>{if(child!==selected.content) hide(child);});
+                selected.content?.children.forEach(child=>{if(child!==selected.content.userData.world) hide(child);});
+            }
+            if (!reduceMotion) inspection.phase += dt * 0.12;
+            for (const body of inspection.bodies) {
+                const angle = body.angle + inspection.phase;
+                body.mesh.position.set(Math.cos(angle)*body.radius, Math.sin(angle)*0.08, Math.sin(angle)*body.radius);
+                body.mesh.rotation.y = -angle;
+            }
+        }
         // Smooth camera. viewCentre is what lands in the middle of the canvas; the frame
         // offset pushes it aside so camTarget itself shows up in the un-occluded band.
         const offset = state.camOffset.clone().multiplyScalar(state.zoom || 1);
@@ -6675,6 +6797,9 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         setSectorDetail,
         setSelected,
         focusSector,
+        inspectPlanet,
+        exitPlanetInspection,
+        adjustPlanetInspection,
         frameSectors,
         setSafeArea,
         // Read-only view of the insets the HUD has claimed. Collapsing a panel is supposed

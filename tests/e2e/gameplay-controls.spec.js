@@ -116,6 +116,7 @@ test.describe('Authoritative gameplay controls', () => {
     });
 
     test('sector inspection keeps intel and explicit fleet choices in the left command context', async ({ page }) => {
+        page.setDefaultTimeout(10000);
         page.on('dialog', dialog => dialog.accept().catch(() => {}));
         const username = uniqueId('sector_ui_');
         await registerUser(page, {
@@ -147,7 +148,7 @@ test.describe('Authoritative gameplay controls', () => {
         await expect(page.locator('#sectorIntelState')).toHaveText('Unknown', { timeout: 10000 });
         await expect(page.locator('#planetowner')).toHaveText('Unknown');
         await expect(page.locator('#probeSuggestionCard')).toBeVisible();
-        await expect(page.locator('#sectorActionPanel #probeSuggestionCard')).toHaveCount(1);
+        await expect(page.locator('dialog#probeSuggestionCard')).toHaveAttribute('open', '');
 
         // A delayed push for a previously selected sector must update map memory
         // without replacing the command context the player is looking at now.

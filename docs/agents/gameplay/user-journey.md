@@ -121,3 +121,10 @@ When a user-facing rule changes, prefer a browser journey that proves the state 
 Battle completion and queued-restart delays are tracked with the playback timers, so explicit cleanup cancels both. A finishing battle completes once, and a queued battle reserves the transition gap before new arrivals. Completion callback errors are logged without stranding queued playback.
 
 Chat echo suppression matches both the authenticated player ID and the complete submitted text. Another player's matching message or a longer message remains visible.
+
+
+## Planet inspection and construction capacity
+
+Select a surveyed or sensor-visible planet and use **Inspect planet** in Sector Survey. The existing galaxy renderer enters an isolated orbital view; **Back to map** or Escape restores the map. Rotation and zoom have keyboard-operable buttons. The view labels live versus remembered intel, never fills sensor-only contacts with invented fleet/building details, and draws representative orbital positions for up to eight surveyed ships, the Spaceport and orbital defenses. Ship production is immediate, so the Spaceport readout shows remaining per-turn capacity, not a fictional queue.
+
+The Build tab pins a free-slot count and occupied-slot meter above construction options. Its limit comes from the server. Spaceport upgrades require no extra slot. Probe confirmation uses a centered native dialog with focused action, Escape dismissal and focus restoration. The turn countdown is 26px and uses tabular figures.

@@ -366,38 +366,18 @@ function generateGameMap(width, height, playerCount, random = Math.random) {
             let sectorType;
             const roll = random();
             
-            if (roll < 0.05) {
-                // 5% chance of black hole
-                sectorType = SECTOR_TYPES.BLACK_HOLE.id;
-            } else if (roll < 0.15) {
-                // 10% chance of asteroid belt
-                sectorType = SECTOR_TYPES.ASTEROID_BELT.id;
-            } else if (roll < 0.20) {
-                // 5% chance of unstable star
-                sectorType = SECTOR_TYPES.UNSTABLE_STAR.id;
-            } else if (roll < 0.25) {
-                // 5% chance of brown dwarf
-                sectorType = SECTOR_TYPES.BROWN_DWARF.id;
-            } else if (roll < 0.30) {
-                // 5% chance of small moon
-                sectorType = SECTOR_TYPES.SMALL_MOON.id;
-            } else if (roll < 0.45) {
-                // 15% chance of micro planet
-                sectorType = SECTOR_TYPES.MICRO_PLANET.id;
-            } else if (roll < 0.65) {
-                // 20% chance of small planet
-                sectorType = SECTOR_TYPES.SMALL_PLANET.id;
-            } else if (roll < 0.80) {
-                // 15% chance of medium planet
-                sectorType = SECTOR_TYPES.MEDIUM_PLANET.id;
-            } else if (roll < 0.90) {
-                // 10% chance of large planet
-                sectorType = SECTOR_TYPES.LARGE_PLANET.id;
-            } else {
-                // 10% chance of empty space
-                sectorType = SECTOR_TYPES.EMPTY.id;
-            }
-            
+            // Open routes leave room to maneuver; worlds are destinations.
+            if (roll < 0.02) sectorType = SECTOR_TYPES.BLACK_HOLE.id;       // 2%
+            else if (roll < 0.16) sectorType = SECTOR_TYPES.ASTEROID_BELT.id; // 14%
+            else if (roll < 0.19) sectorType = SECTOR_TYPES.UNSTABLE_STAR.id; // 3%
+            else if (roll < 0.22) sectorType = SECTOR_TYPES.BROWN_DWARF.id;   // 3%
+            else if (roll < 0.25) sectorType = SECTOR_TYPES.SMALL_MOON.id;    // 3%
+            else if (roll < 0.37) sectorType = SECTOR_TYPES.MICRO_PLANET.id;  // 12%
+            else if (roll < 0.49) sectorType = SECTOR_TYPES.SMALL_PLANET.id;  // 12%
+            else if (roll < 0.59) sectorType = SECTOR_TYPES.MEDIUM_PLANET.id; // 10%
+            else if (roll < 0.65) sectorType = SECTOR_TYPES.LARGE_PLANET.id;  // 6%
+            else sectorType = SECTOR_TYPES.EMPTY.id;                       // 35%
+
             // Generate mineral and crystal bonuses
             const metalBonus = Math.floor(random() * 200 + 50); // 50-250%
             const crystalBonus = Math.floor(random() * 200 + 50); // 50-250%
@@ -526,6 +506,26 @@ function generateGameMap(width, height, playerCount, random = Math.random) {
         }
     }
     
+    // Give each home system one practical first colony. Preserve natural small
+    // worlds where possible; this changes only one adjacent site per starting
+    // player, leaving the wider map's hazards and research gates intact.
+    const starterSites = new Set();
+    for (const homeId of homeworlds) {
+        const home = sectors[homeId - 1];
+        const neighbors = sectors.filter(sector => sector.sectorid !== homeId
+            && !occupiedHomeworlds.has(sector.sectorid)
+            && Math.max(Math.abs(sector.x-home.x),Math.abs(sector.y-home.y)) === 1);
+        const rank = sector => starterSites.has(sector.sectorid) ? 9
+            : [6,7].includes(sector.sectortype) ? 0
+            : sector.sectortype === 0 ? 1 : sector.sectortype === 5 ? 2 : 3;
+        neighbors.sort((a,b)=>rank(a)-rank(b)||a.sectorid-b.sectorid);
+        const site = neighbors[0];
+        if (!site) continue;
+        if (![6,7].includes(site.sectortype)) site.sectortype = SECTOR_TYPES.MICRO_PLANET.id;
+        site.terraformlvl=0;
+        starterSites.add(site.sectorid);
+    }
+
     return { sectors, homeworlds };
 }
 

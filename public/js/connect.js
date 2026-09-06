@@ -170,6 +170,8 @@ const MESSAGE_HANDLERS = {
                 sectorLabel,
                 durationMs: window.__battlePauseMs || 0,
                 battleResult: battle.result, // 'att' | 'def' | null — authoritative banner
+                attackerRaceId: GAME_STATE.players[battle.attackerId]?.raceId || (viewerRole === 'attacker' ? GAME_STATE.player.raceAccess?.raceId : null),
+                defenderRaceId: GAME_STATE.players[battle.defenderId]?.raceId || (viewerRole === 'defender' ? GAME_STATE.player.raceAccess?.raceId : null),
                 viewerRole,                  // 'attacker' | 'defender' | 'observer'
                 viewerWon,                   // true | false | null
                 planetType: battle.planetType || 0,
@@ -498,13 +500,14 @@ function renderProbeSuggestionCard(title, body, onProbe, onMove) {
         existing.parentNode.removeChild(existing);
     }
 
-    const card = document.createElement('aside');
+    const card = document.createElement('dialog');
     card.id = 'probeSuggestionCard';
     card.className = 'probe-suggestion-card';
+    card.setAttribute('aria-labelledby', 'probeSuggestionTitle');
     card.innerHTML = `
         <button class="probe-suggestion-close" type="button" aria-label="Dismiss probe suggestion">&times;</button>
         <div class="probe-suggestion-eyebrow">Optional Scan</div>
-        <h3>${escapeHtml(title)}</h3>
+        <h3 id="probeSuggestionTitle">${escapeHtml(title)}</h3>
         <p>${escapeHtml(body)}</p>
         <div class="probe-suggestion-actions">
             <button class="primary" type="button" id="probeSuggestionSend">Send Probe</button>
@@ -512,7 +515,9 @@ function renderProbeSuggestionCard(title, body, onProbe, onMove) {
             <button class="ghost" type="button" id="probeSuggestionDismiss">Dismiss</button>
         </div>
     `;
-    const close = () => card.remove();
+    const returnFocus = document.activeElement;
+    const close = () => { card.close(); card.remove(); if (returnFocus?.isConnected) returnFocus.focus(); };
+    card.addEventListener('cancel', event => { event.preventDefault(); close(); });
     card.querySelector('.probe-suggestion-close')?.addEventListener('click', close);
     card.querySelector('#probeSuggestionDismiss')?.addEventListener('click', close);
     card.querySelector('#probeSuggestionMove')?.addEventListener('click', () => {
@@ -523,7 +528,9 @@ function renderProbeSuggestionCard(title, body, onProbe, onMove) {
         close();
         onProbe();
     });
-    (document.getElementById('sectorActionPanel') || document.body).appendChild(card);
+    document.body.appendChild(card);
+    card.showModal();
+    card.querySelector('#probeSuggestionSend').focus();
 }
 
 // Render probe intel (spy ladder results) into the sector panel + a notification.
@@ -1911,7 +1918,7 @@ function handleFleetMove(message) {
     if (!Number.isFinite(from) || !Number.isFinite(to)) return;
     const mine = ownerId === Number(getCookie('userId'));
     if (typeof g3dCall === 'function') {
-        g3dCall('animateFleetMove', from, to, { mine, count, warp: viaWarpGate });
+        g3dCall('animateFleetMove', from, to, { mine, count, raceId: GAME_STATE.players[ownerId]?.raceId, warp: viaWarpGate });
     }
     if (window.GalaxyMap?.flashSector) {
         window.GalaxyMap.flashSector(to, mine ? '#66d9ff' : '#ff6b6b');
@@ -2570,7 +2577,7 @@ function updatePlayerList(message) {
             const playerId = Number(fields[0]);
             const playerName = fields.length > 1 ? decodeURIComponent(fields[1] || '') : players[i];
             if (Number.isSafeInteger(playerId) && playerId > 0) {
-                GAME_STATE.players[playerId] = { id: playerId, name: playerName || `Player ${playerId}` };
+                GAME_STATE.players[playerId] = { id: playerId, name: playerName || `Player ${playerId}`, raceId: Number(fields[3]) || null };
             }
             const playerNameElement = document.getElementById(`player${i}name`);
             if (playerNameElement) {

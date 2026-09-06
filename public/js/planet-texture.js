@@ -2999,7 +2999,7 @@ export const PLANET_RIG = {
     ambient: 0.032,
     // Sun glint. The lobe is narrow and it is NOT allowed to blow out: at 1.25
     // the ocean grew a white hole the size of a continent.
-    specular: 0.5,
+    specular: 0.12,
     emissiveIntensity: 1.45,
     // In-material limb scatter. This stacks with the atmosphere shell, so both
     // have to be modest — the pair is what reads, not either alone.
@@ -3183,7 +3183,7 @@ export function createPlanetSurfaceMaterial(type, sectorId, options) {
             '  vec3 H = normalize( L + V );',
             '  float sp = pow( max( dot( Nw, H ), 0.0 ), mix( 24.0, 480.0, gloss * gloss ) );',
             '  sp *= gloss * gloss * gloss * uSpecular * shadow * smoothstep( -0.02, 0.2, nl );',
-            '  col += uLightColor * min( sp, 0.85 );',
+            '  col += uLightColor * min( sp, 0.12 );',
             '#ifdef HAS_EMISSIVE',
             // Geometric normal on purpose: relief must not punch holes in the
             // night mask.

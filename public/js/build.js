@@ -209,6 +209,19 @@ const BuildSystem = (() => {
         const activeTurn = Number(typeof currentTurnNumber !== 'undefined' ? currentTurnNumber : 0);
         const productionUsed = spaceport && Number(spaceport.production_turn) === activeTurn ? Math.max(0, Number(spaceport.production_used) || 0) : 0;
         const productionRemaining = portTier ? Math.max(0, portTier.capacity - productionUsed) : 0;
+        const capacity = document.getElementById('planetCapacityStatus');
+        if (capacity) {
+            capacity.hidden = !owned || !slotLimit;
+            const remaining = Math.max(0, slotLimit - usedSlots);
+            capacity.querySelector('strong').textContent = `${remaining} of ${slotLimit} building slots free`;
+            const meter = capacity.querySelector('meter');
+            meter.max = slotLimit || 1;
+            meter.value = usedSlots;
+            meter.textContent = `${usedSlots} occupied`;
+            capacity.querySelector('small').textContent = remaining === 0
+                ? 'Planet full. Spaceport upgrades use no extra slot.'
+                : 'Each extractor, lab, defense, Spaceport or Warp Gate uses one slot. Plan a mixed economy.';
+        }
         const portStatus = document.getElementById('spaceportProductionStatus');
         if (portStatus) portStatus.textContent = portTier
             ? `Spaceport ${spaceportLevel}: ${productionRemaining}/${portTier.capacity} production available this turn`

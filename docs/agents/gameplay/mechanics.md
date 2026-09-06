@@ -186,3 +186,10 @@ Income calculations propagate authoritative technology, sector and building read
 ## Hazard reports and score scope
 
 Enemy hazard-loss reports go only to players with local live sensor coverage of the sector, using the same sector-audience calculation as other local events. Distant opponents do not learn hidden fleet positions or hazard losses from global messages. Final and time-victory scores award planet points only for owned sector types 6-10; route markers and secured hazards do not count as planets.
+
+
+## September 2026 map and AI polish
+
+New maps weight empty routes at 35%, asteroid belts at 14%, black holes at 2%, stars/dwarfs/moons at 3% each, and colonizable planets at 40% before homeworld placement and starter guarantees. Existing maps are preserved. Ownership never makes type-0 space render as a world. Planet class still determines building capacity and terraforming requirements; world requirements remain unchanged except for one adjacent Terraforming-0 starter colony per home system. Terraforming still starts at 140 research, but its cost multiplier is 1.6 rather than 2.0, making later requirements practical within a Quick match.
+
+The live controller is `runAiActions` in `server/server.js`. Medium opponents now use the military movement routine, while Chill retains its relaxed policy. After fleet orders, AI develops one affordable project on an owned planet with spare slots, adding metal, crystal and research infrastructure. It preserves a colony-ship reserve after the first extractor and restores the homeworld purchase destination in a finally block. All purchases still pass through `buyBuilding`.

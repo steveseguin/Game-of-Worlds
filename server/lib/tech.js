@@ -165,7 +165,7 @@ const TECHNOLOGIES = {
     },
     TERRAFORMING: {
         id: 7, key: 'TERRAFORMING', branch: 'TERRAFORM', name: 'Terraforming',
-        maxLevel: 5, baseCost: 140, costMultiplier: 2.0,
+        maxLevel: 5, baseCost: 140, costMultiplier: 1.6,
         effectPerLevel: { terraform: 1 },
         summary: 'Colonize planets whose terraform requirement is at or below this level.',
         requires: []

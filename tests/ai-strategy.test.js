@@ -143,3 +143,35 @@ test('AI researches another technology instead of repeatedly attempting a race-c
     assert.ok(tech.getLevel(levels, tech.TECHNOLOGIES.LASER_WEAPONS.id) > 0);
   } finally { resetGameState(); }
 });
+
+test('AI develops an empty colony and restores its purchase destination', async () => {
+  const db = createMockDatabase();serverLogic.setDatabase(db);resetGameState();
+  const id=82;
+  await query(db, `INSERT INTO players${id} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [7,1,1200,600,0,1,'medium','balanced']);
+  await query(db, `UPDATE players${id} SET homeworld = ?, currentsector = ? WHERE userid = ?`, [1,1,7]);
+  await query(db, `UPDATE map${id} SET owner = ?, type = 10 WHERE sectorid = ?`, [7,1]);
+  await query(db, `UPDATE map${id} SET owner = ?, type = 8 WHERE sectorid = ?`, [7,2]);
+  for(const type of [0,0,1,2,3,4]) await query(db, `INSERT INTO buildings${id} (sectorid, type, owner) VALUES (?, ?, ?)`, [1,type,7]);
+  try {
+    await serverLogic.triggerAiTurn(id);
+    const buildings=await query(db,`SELECT * FROM buildings${id}`,[]);
+    assert.ok(buildings.some(b=>Number(b.sectorid)===2&&Number(b.type)===0&&Number(b.owner)===7),'new colonies need extractors rather than remaining permanently bare');
+    const players=await query(db,`SELECT * FROM players${id} WHERE userid = ? LIMIT 1`,[7]);
+    assert.equal(Number(players[0].currentsector),1);
+  } finally {resetGameState();}
+});
+
+test('medium balanced AI moves a combat stack instead of remaining permanently passive', async () => {
+  const db=createMockDatabase();serverLogic.setDatabase(db);resetGameState();const id=83;
+  await query(db,`INSERT INTO players${id} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,[7,1,0,1000,0,1,'medium','balanced']);
+  await query(db,`INSERT INTO players${id} (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)`,[8,1,0,0,0]);
+  await query(db,`UPDATE players${id} SET homeworld = ?, currentsector = ? WHERE userid = ?`,[1,1,7]);
+  await query(db,`UPDATE map${id} SET owner = ?, type = 10 WHERE sectorid = ?`,[7,1]);
+  await query(db,`UPDATE map${id} SET owner = ?, type = 8 WHERE sectorid = ?`,[8,2]);
+  for(let i=0;i<2;i++)await query(db,`INSERT INTO ships${id} (owner, type, sectorid) VALUES (?, ?, ?)`,[7,1,1]);
+  try {
+    await serverLogic.triggerAiTurn(id);
+    const ships=await query(db,`SELECT * FROM ships${id}`,[]);
+    assert.ok(ships.some(ship=>Number(ship.owner)===7&&Number(ship.sectorid)!==1),'balanced opponents must exert military pressure');
+  } finally {resetGameState();}
+});

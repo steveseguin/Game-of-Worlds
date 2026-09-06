@@ -475,7 +475,7 @@
         // It also leaves display:none !important on a freshly re-created card after the
         // fleet dialog closes, making "Send Probe" silently unreachable. Only apply the
         // floating-panel layout to the legacy body fallback.
-        if (probeCard?.closest('#sectorActionPanel')) {
+        if (probeCard?.tagName === 'DIALOG' || probeCard?.closest('#sectorActionPanel')) {
             ['display', 'box-sizing', 'width', 'right', 'left', 'top', 'max-height', 'overflow-y']
                 .forEach(property => probeCard.style.removeProperty(property));
         } else {
@@ -507,7 +507,7 @@
             const tacticalLeft = shortLandscape || veryNarrow
                 ? 0
                 : Math.min(viewportWidth * 0.36, 10 + clamp(240 * scale, 190, 300) + 22);
-            setImportant(galaxyViewport, 'left', px(tacticalLeft));
+            setImportant(galaxyViewport, 'left', document.body.classList.contains('planet-inspecting') ? '0px' : px(tacticalLeft));
             setImportant(galaxyViewport, 'right', '0');
             setImportant(galaxyViewport, 'top', '0');
             setImportant(galaxyViewport, 'bottom', '0');

@@ -58,6 +58,7 @@
  * the caller falls back to the 2D BattleSystem.
  */
 import * as THREE from './vendor/three.module.min.js';
+import { createFactionHullGeometry } from './faction-hulls.js?v=20260906';
 // Same generator the galaxy map uses, so the world a battle is fought over looks
 // like the world on the map. Imported as a namespace on purpose: this file only
 // needs two of its ~30 exports and a namespace import cannot throw a link error
@@ -67,7 +68,7 @@ import * as THREE from './vendor/three.module.min.js';
 // twice, its texture cache would not be shared, and every world in the battle
 // would be regenerated from scratch alongside the identical one the map already
 // built. Bump the two together, always.
-import * as PlanetTex from './planet-texture.js?v=20260728a';
+import * as PlanetTex from './planet-texture.js?v=20260906';
 import { EffectComposer } from './vendor/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from './vendor/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from './vendor/addons/postprocessing/UnrealBloomPass.js';
@@ -1638,6 +1639,18 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
         _winSeed = typeId * 131 + (factionKey === 'attacker' ? 7 : 23);
         _winRow = 0;
 
+        if (battleRaces[factionKey] > 1) {
+            const body = createFactionHullGeometry(battleRaces[factionKey]);
+            body.rotateY(Math.PI/2);
+            const beam = meta.family === 'capital' || meta.family === 'colony' ? 1.25 : 1;
+            body.scale(1.6,1.6,1.6*beam);
+            addPart(R,body,M.hull);
+            addCollar(R,M.trim,-0.7,0.18,0.12,0.04);
+            for (let i=0;i<meta.guns;i++) addTurret(R,M,[0.65-i*0.32,0.24,0],0.075);
+            addEngines(R,M,meta.family==='capital'?3:meta.family==='colony'?2:1,-1.1,0.22,0.09);
+            if ([2,6,8,11].includes(battleRaces[factionKey])) addWindows(R,M,M.window,-0.3,0.35,0.21,0.22,3,0.44);
+            return R;
+        }
         switch (meta.family) {
             case 'dart': { // Scout / Intruder — sleek faceted interceptor
                 const body = new THREE.ConeGeometry(0.42, 2.9, 24); body.rotateZ(-Math.PI / 2);
@@ -1971,8 +1984,9 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
     }
 
     const templateCache = new Map();
+    const battleRaces = { attacker: 1, defender: 1 };
     function shipTemplate(typeId, factionKey) {
-        const key = typeId + ':' + factionKey;
+        const key = typeId + ':' + factionKey + ':' + battleRaces[factionKey];
         if (templateCache.has(key)) return templateCache.get(key);
         const meta = SHIP_META[typeId];
         const R = buildShipParts(typeId, factionKey);
@@ -5535,6 +5549,8 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
         const timeline = entry.timeline;
         const initial = timeline[0];
         const opts = entry.options || {};
+        battleRaces.attacker = Number(opts.attackerRaceId) || 1;
+        battleRaces.defender = Number(opts.defenderRaceId) || 1;
         // One seed for the whole battle: same payload, same picture, every time.
         const seed = (Number(opts.sectorId) || 7) * 2654435761 + sumCounts(initial.attackers) * 97 + sumCounts(initial.defenders) * 31;
         const rnd = rng(seed);
