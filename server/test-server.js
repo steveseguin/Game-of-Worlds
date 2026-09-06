@@ -13,6 +13,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const mysql2 = require('mysql2');
+const { client: WebSocketClient } = require('websocket');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const HOST = '127.0.0.1';
@@ -249,6 +250,36 @@ async function runMockServerSmoke() {
 
         const telemetryUnauth = await request('/api/game/1/combat-telemetry');
         assert.equal(telemetryUnauth.statusCode, 401);
+
+        // Exercise the actual WebSocket entry point and ensure transport logs
+        // cannot retain authentication payloads or HTTP query credentials.
+        await new Promise((resolve, reject) => {
+            const client = new WebSocketClient();
+            let socket;
+            const timeout = setTimeout(() => {
+                if (socket) socket.close();
+                reject(new Error('WebSocket authentication timed out'));
+            }, 5000);
+            client.on('connectFailed', error => { clearTimeout(timeout); reject(error); });
+            client.on('connect', connection => {
+                socket = connection;
+                connection.on('error', error => { clearTimeout(timeout); reject(error); });
+                connection.on('message', message => {
+                    if (message.type === 'utf8' && message.utf8Data === 'lobby::') {
+                        clearTimeout(timeout);
+                        connection.close();
+                        resolve();
+                    }
+                });
+                connection.sendUTF(`//auth:${registered.userId}:${registered.tempKey}`);
+            });
+            client.connect(`ws://${HOST}:${PORT}/`, undefined, BASE_URL);
+        });
+        const querySecret = 'integration-query-secret-marker';
+        assert.equal((await request(`/health?tempKey=${querySecret}`)).statusCode, 200);
+        await new Promise(resolve => setTimeout(resolve, 50));
+        assert.ok(!logs.includes(registered.tempKey), 'session key must not appear in server logs');
+        assert.ok(!logs.includes(querySecret), 'query credentials must not appear in server logs');
 
         console.log(`Mock integration smoke passed at ${BASE_URL}`);
     } catch (error) {

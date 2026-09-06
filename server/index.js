@@ -531,11 +531,11 @@ if (USE_MOCK_DB) {
 
 // Create HTTP server
 const httpServer = http.createServer((request, response) => {
-    console.log(`${new Date()} Received request for ${request.url}`);
     
     // Parse URL
     const parsedUrl = url.parse(request.url);
     let pathname = parsedUrl.pathname;
+    console.log(`${new Date()} Received request for ${pathname}`);
 
     if (['/health', '/status', '/api/status', '/debug/deploy'].includes(pathname) && ['GET', 'HEAD'].includes(request.method)) {
         sendJson(response, 200, buildStatusPayload(), request.method);
@@ -966,7 +966,7 @@ wsServer.on('request', request => {
             return;
         }
 
-        console.log(`Incoming message: ${data}`);
+        console.log(`Incoming WebSocket message (${Buffer.byteLength(data, 'utf8')} bytes)`);
         
         // Handle authentication
         if (connection.name === 'unknown') {

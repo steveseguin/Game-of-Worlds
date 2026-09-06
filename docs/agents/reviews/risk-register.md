@@ -84,6 +84,8 @@ This file records review findings that matter for future work. Keep entries conc
 | Partial single-source departure | A partially matched bulk move refunded crystal but left the matched ships at the destination. | Wrap production position updates in a transaction; roll back before refund, with compensation in lightweight mocks. |
 | Mock transit destruction | Parameterized ship-deletion ID lists ignored placeholders and ownership, masking transit-loss behavior. | Parse placeholder IDs and apply the owner guard; add live-handler transit regression coverage. |
 
+HTTP request logs omit query strings, and WebSocket logs record only message size. The integration smoke authenticates over the real WebSocket entry point and checks that session keys and query credentials never appear in captured server output.
+
 ## Active Risks To Revisit
 
 | Area | Risk | Why It Matters | Suggested Next Move |
