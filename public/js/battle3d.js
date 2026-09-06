@@ -4817,7 +4817,7 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
         // decided, and the pictures stop being comparable to each other.
         const override = window.__battle3dNoPost;
         if (override === true || (override !== false && !postAllowed)) {
-            if (composer) { composer.dispose && composer.dispose(); composer = null; bloomPass = null; sharpenPass = null; }
+            if (composer) { composer.passes.forEach(pass => pass.dispose?.()); composer.dispose(); composer = null; bloomPass = null; sharpenPass = null; }
             return;
         }
         if (composer) { sizePasses(); return; }
@@ -4838,6 +4838,8 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
                 samples: msaaSamples()
             });
             composer = new EffectComposer(renderer, rt);
+            // sizePasses supplies physical pixels, so never apply device scaling twice.
+            composer.setPixelRatio(1);
             composer.addPass(new RenderPass(scene, camera));
             // Half-resolution mip chain: bloom is the one pass whose cost scales
             // with pixels and it is a blur — full res buys nothing you can see
@@ -4877,9 +4879,8 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
     }
 
     /**
-     * EffectComposer.setSize() takes DEVICE pixels, not CSS pixels — passing the
-     * window size straight in silently renders the whole theater at 1/dpr on any
-     * HiDPI screen. Everything downstream is derived from the drawing buffer.
+     * The composer uses a pixel ratio of one. Pass physical drawing-buffer
+     * dimensions once; applying DPR again wastes GPU work and misaligns FXAA.
      */
     function sizePasses() {
         if (!composer) return;
@@ -4925,7 +4926,10 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
     // ----------------------------------------------------------------------
     function animate() {
         animHandle = requestAnimationFrame(animate);
-        if (!current) return;
+        if (!current || document.hidden) {
+            lastFrameSec = nowSec();
+            return;
+        }
         const now = nowSec();
         // Clamped BOTH ways: a tab that was hidden for a minute must not
         // teleport every particle, and a repeated timestamp must not stall the
@@ -5777,6 +5781,7 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
         camera.updateProjectionMatrix();
     }
     window.addEventListener('resize', onResize);
+    document.addEventListener('visibilitychange', () => { lastFrameSec = nowSec(); });
 
     // NOTE: we deliberately do NOT tear the battle down on tab-hide. The server
     // keeps the whole game frozen for the full playback window, so destroying the

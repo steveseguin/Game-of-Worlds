@@ -5490,3 +5490,38 @@ button:focus:not(:focus-visible) { outline: none; }
         scroll-behavior: auto !important;
     }
 }
+
+/* Readable command text: retain the console frame without tiny condensed copy. */
+.game-page { --muted: #b0bbcd; }
+.game-page .tech-card .tech-name { font-size: 14px; }
+.game-page .tech-card .tech-summary,
+.game-page .pad-note,
+.game-page .local-order-context,
+.game-page .req-list {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+}
+.game-page .tech-card .tech-req { font-size: 12px; }
+.game-page .tech-card:disabled { opacity: 1; }
+.game-page .tech-card:disabled .tech-name { color: #b0bbcd; }
+.game-page .tab-panel:focus-visible {
+    outline: 2px solid #ffdc96;
+    outline-offset: -3px;
+}
+
+@media (max-width: 560px) {
+    .game-page #turnTimeBar { max-width: none; }
+    .game-page #utilityButtons .gp-key--amber,
+    .game-page #utilityButtons .gp-key--danger {
+        width: auto !important;
+        min-width: 52px;
+        padding-inline: 8px;
+        flex-shrink: 0;
+    }
+}
+
+@media (max-height: 460px) and (orientation: landscape) {
+    /* Match game-screen's short-landscape height; the old 260px floor hid the header. */
+    .game-page #controlPadGUI { min-height: 140px !important; }
+}

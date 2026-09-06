@@ -5114,7 +5114,11 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         const h = Math.max(1, rect.height);
         state.viewH = h;
         state.renderer.setSize(w, h, false);
-        if (state.composer) state.composer.setSize(w, h);
+        if (state.composer) {
+            // Composer retains its own DPR; keep adaptive resolution and FXAA aligned.
+            state.composer.setPixelRatio(state.renderer.getPixelRatio());
+            state.composer.setSize(w, h);
+        }
         if (state.fxaaPass) {
             const pr = state.renderer.getPixelRatio();
             state.fxaaPass.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
@@ -5834,7 +5838,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
             // gone. Dropping it lets governPost() build a fresh one if the machine
             // still deserves one.
             if (state.composer) {
-                try { state.composer.dispose(); } catch (err) { /* already gone */ }
+                try { state.composer.passes.forEach(pass => pass.dispose?.()); state.composer.dispose(); } catch (err) { /* already gone */ }
                 state.composer = null;
                 state.bloomPass = null;
                 state.fxaaPass = null;
@@ -6025,10 +6029,18 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         }
     }
 
+    document.addEventListener('visibilitychange', () => {
+        // A suspended tab may receive no animation callbacks while hidden.
+        // Do not count its absence as a slow GPU frame when it returns.
+        state.clock?.getDelta();
+        state.lastFrameAt = 0;
+        state.lastWorkMs = 0;
+    });
+
     function animate() {
         state.animHandle = requestAnimationFrame(animate);
         // Frozen while the battle theater is on screen (the map is hidden behind it).
-        if (state.paused) {
+        if (state.paused || document.hidden) {
             state.clock.getDelta(); // keep the clock from accumulating a huge delta
             state.lastFrameAt = 0;  // and don't bill the pause to the frame budget
             return;
@@ -6588,7 +6600,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260728a', import.met
         // mip pairs. Dropping the reference without disposing them leaves that
         // resident on the one machine in the product that demonstrably has nothing
         // to spare — the old code did exactly that.
-        try { if (composer && composer.dispose) composer.dispose(); } catch (err) { /* best effort */ }
+        try { if (composer) { composer.passes.forEach(pass => pass.dispose?.()); composer.dispose(); } } catch (err) { /* best effort */ }
         console.info('Galaxy3D: dropping post-processing (%s) — %dms a frame', reason, Math.round(meanFrame));
     }
 

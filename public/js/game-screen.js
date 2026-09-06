@@ -83,8 +83,8 @@
         let bottomReserved = stackBottomPanels
             ? chatHeight + controlHeight + minimapHeight + 18
             : chatHeight + controlHeight + 12;
-        const turnWidth = clamp(300 * scale, veryNarrow ? 112 : 190, 330);
-        const turnHeight = clamp(90 * scale, veryNarrow ? 48 : 58, 96);
+        const turnWidth = clamp(300 * scale, 210, 330);
+        const turnHeight = clamp(90 * scale, 76, 96);
         const topReserved = stackBottomPanels ? Math.max(150, turnHeight + 102) : compact ? 76 : 80 * scale;
 
         const chatContainer = document.getElementById('chatContainer');
@@ -194,7 +194,7 @@
         }
 
         const resourceWidth = veryNarrow
-            ? Math.max(140, viewportWidth - turnWidth - 8)
+            ? Math.max(140, viewportWidth - 16)
             : Math.min(viewportWidth, Math.max(140, Math.min(500 * scale, viewportWidth - turnWidth - 24)));
 
         let utilityWidth = 0;
@@ -219,7 +219,7 @@
         // are stacked by MEASURING each block rather than by hard-coded tops. Fixed
         // offsets drifted apart from the scaled font sizes and left these panels
         // printing over each other at common laptop resolutions.
-        let columnTop = veryNarrow ? turnHeight + 8 : 0;
+        let columnTop = veryNarrow ? utilityRowBottom + 4 : 0;
         let columnRight = 0;
         // Trips once a panel runs out of vertical room. Everything further down the
         // column is lower priority, so once this is set the rest stays hidden too.

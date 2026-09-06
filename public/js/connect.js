@@ -640,7 +640,7 @@ function renderTurnTimer() {
         timerEl.style.color = "#ffd3a8";
     } else {
         timerEl.textContent = `${turnTimer}s`;
-        timerEl.style.color = turnTimer < 30 && turnTimer % 2 === 0 ? "#FF0000" : "#ffd3a8";
+        timerEl.style.color = turnTimer < 30 ? "#ff9285" : "#ffd3a8";
     }
 }
 

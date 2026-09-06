@@ -41,7 +41,7 @@ async function signInGuest(page, guestName = '') {
     if (guestName) {
         await page.fill('#guestUsername', guestName);
     }
-    const responsePromise = page.waitForResponse(res => res.url().endsWith('/guest-login') && res.request().method() === 'POST');
+    const responsePromise = page.waitForResponse(res => res.url().endsWith('/guest-login') && res.request().method() === 'POST', { timeout: 15000 });
     await page.click('#guestLoginBtn');
     const response = await responsePromise;
     if (response.status() >= 400) {

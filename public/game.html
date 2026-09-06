@@ -7,10 +7,12 @@
     <title>Game of Worlds</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <link rel="modulepreload" href="js/vendor/three.module.min.js">
+    <link rel="modulepreload" href="js/vendor/three.core.min.js">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260728u1">
+    <link rel="stylesheet" href="css/style.css?v=20260905a">
     <style>
         /* Layout-critical rules only. Every material/typographic decision for the in-game
            HUD lives in css/style.css under `.game-page` — one console language shared with
@@ -535,7 +537,7 @@
         </div>
 
         <!-- Build Tab -->
-        <div id="build" class="tab-panel" data-code="CON-01" role="tabpanel" aria-labelledby="buildtab">
+        <div id="build" class="tab-panel" data-code="CON-01" role="tabpanel" tabindex="0" aria-labelledby="buildtab">
             <div id="buildSectorContext" class="local-order-context">Select an owned sector to construct there.</div>
             <!-- NO GLYPH ELEMENTS IN THESE CARDS. Each button's mark is the painted
                  building icon from icon-system/, published to public/images/ui/ and hung
@@ -574,7 +576,7 @@
         </div>
 
         <!-- Fleet Tab -->
-        <div id="fleet" class="tab-panel hidden" data-code="FLT-02" role="tabpanel" aria-labelledby="fleettab">
+        <div id="fleet" class="tab-panel hidden" data-code="FLT-02" role="tabpanel" tabindex="0" aria-labelledby="fleettab">
             <div id="fleetSectorContext" class="local-order-context">Fleet in selected sector</div>
             <div class="fleet-roster">
                 <div>Scouts: <span id="fleet-scouts">0</span></div>
@@ -611,7 +613,7 @@
         </div>
 
         <!-- Tech Tab -->
-        <div id="techtree" class="tab-panel hidden" data-code="RND-03" role="tabpanel" aria-labelledby="techtab">
+        <div id="techtree" class="tab-panel hidden" data-code="RND-03" role="tabpanel" tabindex="0" aria-labelledby="techtab">
             <div class="tech-panel-header">
                 <div class="pad-heading" data-icon="research">Research Technologies</div>
                 <div class="tech-budget">Available: <b id="techResearchAvailable">0</b> research</div>
@@ -620,7 +622,7 @@
         </div>
 
         <!-- Colonize Tab -->
-        <div id="colonize" class="tab-panel hidden" data-code="COL-04" role="tabpanel" aria-labelledby="colonizetab">
+        <div id="colonize" class="tab-panel hidden" data-code="COL-04" role="tabpanel" tabindex="0" aria-labelledby="colonizetab">
             <div id="colonizeSectorContext" class="local-order-context">Select a sector to check whether you can settle it.</div>
             <button id="colonizeBtn" class="building-button colonize-key">Settle This World</button>
             <div class="pad-heading" data-icon="requirements">Requirements</div>
@@ -634,7 +636,7 @@
         </div>
 
         <!-- Analytics Tab -->
-        <div id="analytics" class="tab-panel hidden" data-code="TEL-05" role="tabpanel" aria-labelledby="analyticstab">
+        <div id="analytics" class="tab-panel hidden" data-code="TEL-05" role="tabpanel" tabindex="0" aria-labelledby="analyticstab">
             <!-- Standing orders. The server has run these every turn for a long time and
                  there was no way to see or change them, so an Epic player had metal spent
                  on their behalf by settings they could not reach. Off unless asked for. -->
@@ -1125,16 +1127,16 @@
     <script defer src="js/combat-analytics.js?v=20260726a"></script>
     <script defer src="/config.js?v=20260614b"></script>
     <!-- shop-enhanced.js is NOT here any more; see the lazy-load block below. -->
-    <script defer src="js/game-screen.js?v=20260729a"></script>
+    <script defer src="js/game-screen.js?v=20260905a"></script>
     <script defer src="js/onboarding.js?v=20260728a"></script>
-    <script defer src="js/connect.js?v=20260726b"></script>
+    <script defer src="js/connect.js?v=20260905a"></script>
     <script defer src="js/tour.js?v=20260728a"></script>
     <script defer src="js/game.js?v=20260726a"></script>
     <script defer src="js/codex.js?v=20260728r"></script>
     <script defer src="js/name-picker.js?v=20260726b"></script>
     <script defer src="js/loader.js?v=20251105"></script>
     <!-- Last, because that is where they executed before (see note 2 above). -->
-    <script type="module" src="js/galaxy3d.js?v=20260728e"></script>
+    <script type="module" src="js/galaxy3d.js?v=20260905a"></script>
     <!-- battle3d.js is NOT here any more; see the lazy-load block below. -->
 
     <!-- ================================================================
@@ -1204,7 +1206,7 @@
 
             function loadBattle3D() {
                 if (!battlePromise) {
-                    battlePromise = import('./js/battle3d.js?v=20260728b')
+                    battlePromise = import('./js/battle3d.js?v=20260905a')
                         .catch(error => {
                             console.error('Battle theater failed to load; using the 2D fallback.', error);
                             battlePromise = null;
