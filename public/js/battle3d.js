@@ -5689,7 +5689,8 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
     }
 
     function finishBattle(skipped) {
-        if (!current) return;
+        if (!current || current.finishing) return;
+        current.finishing = true;
         clearTimers();
         const opts = current.options || {};
 
@@ -5704,12 +5705,11 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
             hud = null;
             teardownBattle();
             current = null;
-            running = false;
+            running = battleQueue.length > 0;
 
             if (window.Galaxy3D?.setPaused) window.Galaxy3D.setPaused(false);
             if (sectorId && window.GalaxyMap?.clearBattleSector) window.GalaxyMap.clearBattleSector(sectorId);
             if (window.GameScreen?.restoreTitle) window.GameScreen.restoreTitle();
-            if (typeof onComplete === 'function') onComplete();
 
             // Draining the queue has to go through the guarded entry point. The
             // theater hides the entire game UI while it is up, so a throw on the
@@ -5717,7 +5717,7 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
             // body with nothing on screen and every control dead.
             if (battleQueue.length > 0) {
                 const next = battleQueue.shift();
-                setTimeout(() => {
+                timers.push(setTimeout(() => {
                     try {
                         startBattle(next);
                     } catch (err) {
@@ -5730,11 +5730,16 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
                                 next.options);
                         }
                     }
-                }, 200);
+                }, 200));
+            }
+            try {
+                if (typeof onComplete === 'function') onComplete();
+            } catch (error) {
+                console.error('Battle completion callback failed:', error);
             }
         };
 
-        setTimeout(teardown, skipped ? 60 : 520);
+        timers.push(setTimeout(teardown, skipped ? 60 : 520));
     }
 
     // ----------------------------------------------------------------------

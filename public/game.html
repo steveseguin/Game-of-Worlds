@@ -1117,7 +1117,7 @@
     <script defer src="js/GUI.js?v=20260725o"></script>
     <script defer src="js/build.js?v=20260725f"></script>
     <script defer src="js/battle.js?v=20260614d"></script>
-    <script defer src="js/chat.js?v=20260905b"></script>
+    <script defer src="js/chat.js?v=20260905c"></script>
     <script defer src="js/controlpad.js?v=20260712d"></script>
     <script defer src="js/epic-music.js?v=20260725c"></script>
     <script defer src="js/sound.js?v=20260712b"></script>
@@ -1208,7 +1208,7 @@
 
             function loadBattle3D() {
                 if (!battlePromise) {
-                    battlePromise = import('./js/battle3d.js?v=20260905b')
+                    battlePromise = import('./js/battle3d.js?v=20260905c')
                         .catch(error => {
                             console.error('Battle theater failed to load; using the 2D fallback.', error);
                             battlePromise = null;

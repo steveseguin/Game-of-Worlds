@@ -221,7 +221,12 @@ const ChatSystem = (function() {
     function shouldSuppressOwnEcho(message) {
         const now = Date.now();
         pendingOwnMessages = pendingOwnMessages.filter(entry => now - entry.time < 6000);
-        const index = pendingOwnMessages.findIndex(entry => message.includes(`says: ${entry.text}`));
+        const ownId = typeof getCookie === 'function' ? String(getCookie('userId') || '') : '';
+        if (!/^\d+$/.test(ownId)) return false;
+        const prefix = `Player ${ownId} says: `;
+        if (!String(message).startsWith(prefix)) return false;
+        const text = String(message).slice(prefix.length);
+        const index = pendingOwnMessages.findIndex(entry => text === entry.text);
         if (index === -1) return false;
         pendingOwnMessages.splice(index, 1);
         return true;

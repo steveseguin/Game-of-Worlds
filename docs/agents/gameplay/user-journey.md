@@ -115,3 +115,9 @@ Victory, surrender, no-human abandonment, stale-game cleanup, and solo sandbox e
 - Test-mode map journeys use `TEST_MAP_SEED` for reproducible hazards/routes; production map generation remains random.
 
 When a user-facing rule changes, prefer a browser journey that proves the state before action, feedback during it, authoritative result afterward, and refresh/reconnect recovery—not only a direct handler unit test.
+
+## Client transition integrity
+
+Battle completion and queued-restart delays are tracked with the playback timers, so explicit cleanup cancels both. A finishing battle completes once, and a queued battle reserves the transition gap before new arrivals. Completion callback errors are logged without stranding queued playback.
+
+Chat echo suppression matches both the authenticated player ID and the complete submitted text. Another player's matching message or a longer message remains visible.
