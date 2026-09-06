@@ -71,3 +71,7 @@ Route and arrival resolution is shared by both movement paths:
 - Add or update tests when changing command delimiters, sector token parsing, movement cost, or arrival effects.
 - Use `tests/movement-validation.test.js` for malformed protocol and all-or-nothing movement checks.
 - Use E2E tests when changing `mmoptionsv2::` parsing, `fleetmove::`, route confirmation, or visible movement UI behavior. Keep legacy `mmoptions:` parsing only as an explicit compatibility path.
+
+## Departure and transit integrity
+
+Both movement protocols reject same-sector moves and malformed field counts before accessing player resources. Route lookups must contain every crossed sector; incomplete data rolls back the move and refunds crystal. Single-source bulk departures use a MySQL transaction so partially matched ship updates roll back before a refund. Lightweight test adapters compensate partial updates. Destination exploration and movement messages occur only after transit leaves survivors. Multi-source movement messages omit destroyed source groups and count only surviving hulls. The mock database supports parameterized ship-deletion ID lists and their ownership guard.

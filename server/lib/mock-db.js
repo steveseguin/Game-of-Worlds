@@ -1519,9 +1519,12 @@ class MockDatabase {
                     let removed = 0;
                     const idListMatch = normalized.match(/id IN \(([^)]+)\)/i);
                     if (idListMatch) {
-                        const ids = idListMatch[1].split(',').map(v => Number(v.trim())).filter(Number.isFinite);
+                        let parameterIndex = 0;
+                        const ids = idListMatch[1].split(',').map(value => value.trim() === '?'
+                            ? Number(params[parameterIndex++]) : Number(value.trim())).filter(Number.isFinite);
+                        const owner = /AND owner = \?/i.test(normalized) ? Number(params[parameterIndex]) : null;
                         for (let i = ships.length - 1; i >= 0; i--) {
-                            if (ids.includes(ships[i].id)) {
+                            if (ids.includes(ships[i].id) && (owner === null || Number(ships[i].owner) === owner)) {
                                 ships.splice(i, 1);
                                 removed++;
                             }

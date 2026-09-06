@@ -4374,6 +4374,7 @@ function moveFleetWithCompletion(data, connection, complete) {
         !isPositiveSafeInteger(gameId) ||
         !isPositiveSafeInteger(fromSector) ||
         !isPositiveSafeInteger(toSector) ||
+        fromSector === toSector || parts.length !== 5 ||
         !selection ||
         !isSectorWithinGameMap(gameId, fromSector) ||
         !isSectorWithinGameMap(gameId, toSector)
@@ -4480,7 +4481,8 @@ async function applyIntermediateRouteHazards(gameId, playerId, targetSector, rou
         route: group.viaWarp ? [] : traceDirectRoute(group.sourceSector, targetSector, mapSize.width, mapSize.height).slice(0, -1)
     }));
     const routeIds = [...new Set(groups.flatMap(group => group.route))];
-    if (!routeIds.length) return { destroyed: 0, survivors: groups.reduce((n, group) => n + group.shipIds.length, 0) };
+    if (!routeIds.length) return { destroyed: 0, survivors: groups.reduce((n, group) => n + group.shipIds.length, 0),
+        bySource: new Map(groups.map(group => [group.sourceSector, group.shipIds.length])) };
 
     const placeholders = routeIds.map(() => '?').join(',');
     const rows = await queryDb(
@@ -4488,6 +4490,7 @@ async function applyIntermediateRouteHazards(gameId, playerId, targetSector, rou
         routeIds
     );
     const sectors = new Map((rows || []).map(row => [Number(row.sectorid), row]));
+    if (routeIds.some(id => !sectors.has(id))) throw new Error('Incomplete movement route data');
     const destroyed = new Set();
     const reports = [];
 
@@ -4528,7 +4531,47 @@ async function applyIntermediateRouteHazards(gameId, playerId, targetSector, rou
         }
     });
     const total = groups.reduce((n, group) => n + group.shipIds.length, 0);
-    return { destroyed: destroyed.size, survivors: Math.max(0, total - destroyed.size) };
+    return { destroyed: destroyed.size, survivors: Math.max(0, total - destroyed.size),
+        bySource: new Map(groups.map(group => [group.sourceSector, group.shipIds.filter(id => !destroyed.has(id)).length])) };
+}
+
+// MySQL must undo a partially matched bulk move before the caller refunds it.
+function writeFleetDeparture(gameId, playerId, fromSector, toSector, selectedIds, callback) {
+    const placeholders = selectedIds.map(() => '?').join(',');
+    const sql = `UPDATE ships${gameId} SET sectorid = ? WHERE id IN (${placeholders}) AND owner = ? AND sectorid = ?`;
+    const params = [toSector, ...selectedIds, playerId, fromSector];
+    if (typeof db.getConnection !== 'function') {
+        // Lightweight mock adapters have no transactions; compensate only when
+        // their bulk write reports that some, but not all, ships changed sector.
+        db.query(sql, params, (err, result) => {
+            const affected = Number(result && result.affectedRows) || 0;
+            if (!err && affected > 0 && affected !== selectedIds.length) {
+                db.query(sql, [fromSector, ...selectedIds, playerId, toSector], rollbackErr =>
+                    callback(rollbackErr, { affectedRows: 0 }));
+                return;
+            }
+            callback(err, result);
+        });
+        return;
+    }
+    (async () => {
+        let session;
+        try {
+            session = await openTransactionSession();
+            const result = await session.query(sql, params);
+            if (Number(result && result.affectedRows) !== selectedIds.length) {
+                await session.rollback();
+                return { affectedRows: 0 };
+            }
+            await session.commit();
+            return result;
+        } catch (error) {
+            if (session) await session.rollback().catch(() => {});
+            throw error;
+        } finally {
+            if (session) session.release();
+        }
+    })().then(result => callback(null, result), error => callback(error));
 }
 
 function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shipCounts, connection, viaWarpGate, complete = () => {}) {
@@ -4604,7 +4647,6 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                         return;
                     }
 
-                    const placeholders = selectedIds.map(() => '?').join(',');
                     db.query(
                         `UPDATE players${gameId} SET crystal = crystal - ?
                          WHERE userid = ? AND crystal >= ?`,
@@ -4618,10 +4660,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                                 return;
                             }
 
-                            db.query(
-                                `UPDATE ships${gameId} SET sectorid = ?
-                                 WHERE id IN (${placeholders}) AND owner = ? AND sectorid = ?`,
-                                [toSector, ...selectedIds, playerId, fromSector],
+                            writeFleetDeparture(gameId, playerId, fromSector, toSector, selectedIds,
                                 (moveErr, moveResult) => {
                                     const affected = moveResult && Number(moveResult.affectedRows);
                                     if (moveErr || affected !== selectedIds.length) {
@@ -4637,22 +4676,20 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                                         return;
                                     }
 
-                                    // Mark destination sector as explored
-                                    markSectorExplored(gameId, playerId, toSector);
-
-                                    // Everyone with eyes on either sector watches the fleet fly.
-                                    broadcastFleetMove(gameId, playerId, fromSector, toSector, totalShips, viaWarpGate);
-
-                                    const finishArrival = () => applyArrivalEffects(gameId, playerId, toSector, connection, () => {
-                                        try {
-                                            updateResources(connection);
-                                            updateSector2(gameId, fromSector);
-                                            updateSector2(gameId, toSector);
-                                            sendVisibleMapState(gameId, connection);
-                                        } finally {
-                                            complete();
-                                        }
-                                    });
+                                    const finishArrival = (arrivingShips = totalShips) => {
+                                        markSectorExplored(gameId, playerId, toSector);
+                                        broadcastFleetMove(gameId, playerId, fromSector, toSector, arrivingShips, viaWarpGate);
+                                        applyArrivalEffects(gameId, playerId, toSector, connection, () => {
+                                            try {
+                                                updateResources(connection);
+                                                updateSector2(gameId, fromSector);
+                                                updateSector2(gameId, toSector);
+                                                sendVisibleMapState(gameId, connection);
+                                            } finally {
+                                                complete();
+                                            }
+                                        });
+                                    };
                                     if (viaWarpGate) {
                                         finishArrival();
                                     } else {
@@ -4660,7 +4697,7 @@ function moveFleetExecute(gameId, playerId, fromSector, toSector, shipTypes, shi
                                             sourceSector: fromSector,
                                             shipIds: selectedIds
                                         }], connection).then(result => {
-                                            if (result.survivors > 0) finishArrival();
+                                            if (result.survivors > 0) finishArrival(result.survivors);
                                             else {
                                                 updateResources(connection);
                                                 updateSector2(gameId, fromSector);
@@ -5483,7 +5520,8 @@ function preMoveFleet(data, connection) {
     const gameId = Number(connection.gameid);
     const targetSector = parseSectorToken(parts[1]);
 
-    if (!isPositiveSafeInteger(playerId) || !isPositiveSafeInteger(gameId) || !isSectorWithinGameMap(gameId, targetSector)) {
+    if (!isPositiveSafeInteger(playerId) || !isPositiveSafeInteger(gameId) || !isSectorWithinGameMap(gameId, targetSector)
+        || parts.length < 5 || (parts.length - 2) % 3 !== 0) {
         connection.sendUTF("Error: Invalid fleet order");
         return;
     }
@@ -5493,7 +5531,8 @@ function preMoveFleet(data, connection) {
         const sourceSector = parseSectorToken(parts[i]);
         const shipType = parsePositiveDecimalToken(parts[i + 1]);
         const ordinal = parsePositiveDecimalToken(parts[i + 2]);
-        if (!isSectorWithinGameMap(gameId, sourceSector) || !SHIP_TYPE_IDS.includes(shipType) || !isPositiveSafeInteger(ordinal)) {
+        if (!isSectorWithinGameMap(gameId, sourceSector) || sourceSector === targetSector
+            || !SHIP_TYPE_IDS.includes(shipType) || !isPositiveSafeInteger(ordinal)) {
             connection.sendUTF("Error: Invalid fleet order");
             return;
         }
@@ -5627,29 +5666,31 @@ function preMoveFleet(data, connection) {
                                         });
                                     }
 
-                                    markSectorExplored(gameId, playerId, targetSector);
-                                    moveEntries.forEach(entry => {
-                                        broadcastFleetMove(gameId, playerId, entry.sourceSector, targetSector, entry.count, entry.viaWarp);
-                                    });
-
                                     const routeGroups = Array.from(touchedSectors).map(sourceSector => ({
                                         sourceSector,
                                         viaWarp: warpSources.has(sourceSector),
                                         shipIds: selectedMoves.filter(move => move.sourceSector === sourceSector).map(move => move.id)
                                     }));
-                                    const finishArrival = () => applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
-                                        updateResources(connection);
-                                        touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));
-                                        updateSector2(gameId, targetSector);
-                                        gameState.clients.forEach(client => {
-                                            if (Number(client.gameid) === Number(gameId)) {
-                                                sendVisibleMapState(gameId, client);
-                                            }
+                                    const finishArrival = result => {
+                                        markSectorExplored(gameId, playerId, targetSector);
+                                        routeGroups.forEach(group => {
+                                            const count = result.bySource.get(group.sourceSector) || 0;
+                                            if (count > 0) broadcastFleetMove(gameId, playerId, group.sourceSector, targetSector, count, group.viaWarp);
                                         });
-                                    });
+                                        applyArrivalEffects(gameId, playerId, targetSector, connection, () => {
+                                            updateResources(connection);
+                                            touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));
+                                            updateSector2(gameId, targetSector);
+                                            gameState.clients.forEach(client => {
+                                                if (Number(client.gameid) === Number(gameId)) {
+                                                    sendVisibleMapState(gameId, client);
+                                                }
+                                            });
+                                        });
+                                    };
                                     applyIntermediateRouteHazards(gameId, playerId, targetSector, routeGroups, connection)
                                         .then(result => {
-                                            if (result.survivors > 0) finishArrival();
+                                            if (result.survivors > 0) finishArrival(result);
                                             else {
                                                 updateResources(connection);
                                                 touchedSectors.forEach(sectorId => updateSector2(gameId, sectorId));

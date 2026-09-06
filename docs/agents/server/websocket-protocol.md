@@ -139,3 +139,5 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 Ship, building and technology IDs must be whole decimal tokens. An explicitly supplied construction or colonization sector must be a valid positive hexadecimal ID; only an omitted target uses the legacy current-sector cursor. Extra order fields are rejected. Standing-order updates accept Boolean toggles and integer scout targets from 0 to 6; omitted settings retain their saved values. Invalid updates leave the previous settings intact.
 
 Race changes require a valid whole decimal race ID and a waiting game. The handler holds the existing lobby-mutation lock through validation and persistence, so a start cannot overtake a pending race change. Updates during initialization, active play or terminal game states are rejected.
+
+Movement field counts are exact: `//move` contains source, destination, types and counts; `//sendmmf` contains a destination followed by complete source/type/ordinal triplets. Same-source/destination orders are rejected. `fleetmove::` arrival counts reflect hulls surviving transit, and destinations are not disclosed for groups destroyed before arrival.

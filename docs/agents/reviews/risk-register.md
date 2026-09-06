@@ -78,6 +78,11 @@ This file records review findings that matter for future work. Keep entries conc
 | Join/leave read failures | Join could treat a failed membership read as a new player; leave detached players despite failed reads/deletes. | Stop on failures before new membership or destructive cleanup. |
 | Hidden hazard reports | Arrival losses disclosed fleet coordinates and hazard details to every opponent. | Restrict reports to local sector observers and normalize game IDs. |
 | Planet score inflation | Empty routes and hazards earned the same score as colonized worlds. | Restrict the scored planet join to sector types 6-10. |
+| No-op and truncated fleet orders | Same-sector moves charged crystal; incomplete multi-move triplets executed their valid prefix. | Reject same-sector orders and enforce exact field counts before reads/writes. |
+| Transit destination disclosure | Destination exploration and animation preceded route hazards, disclosing locations never reached and counting destroyed hulls. | Publish destination/arrival only after transit survives, with survivor counts per source. |
+| Incomplete route data | Missing map rows were silently treated as safe crossings. | Require every crossed sector before resolving hazards; use existing rollback/refund handling on failure. |
+| Partial single-source departure | A partially matched bulk move refunded crystal but left the matched ships at the destination. | Wrap production position updates in a transaction; roll back before refund, with compensation in lightweight mocks. |
+| Mock transit destruction | Parameterized ship-deletion ID lists ignored placeholders and ownership, masking transit-loss behavior. | Parse placeholder IDs and apply the owner guard; add live-handler transit regression coverage. |
 
 ## Active Risks To Revisit
 
