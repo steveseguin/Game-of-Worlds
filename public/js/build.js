@@ -67,6 +67,9 @@ const BuildSystem = (() => {
      */
     function renderCost(label, { metal = 0, crystal = 0, shipyard = 0, production = 0, suffix = '' } = {}) {
         if (!label) return;
+        const key = JSON.stringify([metal, crystal, shipyard, production, suffix]);
+        if (label.dataset.costKey === key) return;
+        label.dataset.costKey = key;
         label.textContent = '';
         const chip = (value, cls, title) => {
             const span = document.createElement('span');
@@ -94,15 +97,19 @@ const BuildSystem = (() => {
 
     function setAvailability(button, enabled, reason) {
         if (!button) return;
-        button.disabled = !enabled;
+        if (button.disabled === enabled) button.disabled = !enabled;
         button.classList.toggle('disabled', !enabled);
         const help = button.dataset.help || '';
-        button.title = reason ? `${reason}. ${help}`.trim() : help;
+        const title = reason ? `${reason}. ${help}`.trim() : help;
+        if (button.title !== title) button.title = title;
     }
 
-    function hasResources(resources, cost) {
-        return Number(resources?.metal) >= Number(cost?.metal || 0)
-            && Number(resources?.crystal) >= Number(cost?.crystal || 0);
+    function resourceShortfall(resources, cost) {
+        const missing = ['metal', 'crystal'].map(key => {
+            const amount = Math.max(0, Math.ceil(Number(cost?.[key] || 0) - Number(resources?.[key] || 0)));
+            return amount ? `${amount.toLocaleString('en-US')} more ${key}` : '';
+        }).filter(Boolean);
+        return missing.length ? `Need ${missing.join(' and ')}` : '';
     }
 
     /**
@@ -152,7 +159,7 @@ const BuildSystem = (() => {
         const required = Number(sector.terraformLevel) || 0;
         const have = Number(techFx.terraform || 0);
         // Terraform requirement is only legible once we have live intel on the sector.
-        const terraformKnown = isPlanet && (unclaimed ? colonyShips > 0 || owner === myId : true);
+        const terraformKnown = isPlanet && !sector.sensorContactOnly && sector.terraformLevel != null;
 
         if (context) {
             context.textContent = hasPlanet
@@ -244,8 +251,8 @@ const BuildSystem = (() => {
             else if (type === 3 && spaceportLevel > 0 && Number(techFx.shipyards || 0) < spaceportLevel) reason = `Upgrade requires Military Shipyards Lv${spaceportLevel}`;
             else if (usedSlots >= slotLimit && !(type === 3 && spaceportLevel > 0)) reason = `All ${slotLimit} building slots are occupied`;
             else if (type === 5 && Number(techFx.orbital || 0) < 1) reason = 'Needs Orbital Engineering Lv1';
-            else if (type === 3 && spaceportLevel > 0 && !hasResources(resources, SPACEPORT_TIERS[spaceportLevel + 1])) reason = 'Not enough resources for this upgrade';
-            else if (!hasResources(resources, BUILDING_COSTS[type])) reason = 'Not enough resources';
+            else if (type === 3 && spaceportLevel > 0) reason = resourceShortfall(resources, SPACEPORT_TIERS[spaceportLevel + 1]);
+            else reason = resourceShortfall(resources, BUILDING_COSTS[type]);
             setAvailability(button, !reason, reason);
             if (type === 3 && button) {
                 const costLabel = button.querySelector('small');
@@ -264,7 +271,10 @@ const BuildSystem = (() => {
                 } else if (spaceportLevel >= 4) {
                     button.childNodes[0].textContent = '🚀 Spaceport Lv 4 ';
                     if (count) count.textContent = '';
-                    if (costLabel) costLabel.textContent = 'Maximum tier · 48 prod/turn';
+                    if (costLabel) {
+                        costLabel.textContent = 'Maximum tier · 48 prod/turn';
+                        delete costLabel.dataset.costKey;
+                    }
                 } else {
                     button.childNodes[0].textContent = '🚀 Spaceport ';
                     if (count) count.textContent = '';
@@ -298,7 +308,7 @@ const BuildSystem = (() => {
             else if (yardLevel < yardNeeded) reason = `Needs Military Shipyards Lv${yardNeeded}`;
             else if (spaceportLevel < yardNeeded + 1) reason = `Needs local Spaceport ${yardNeeded + 1}`;
             else if (productionRemaining < productionNeeded) reason = `Needs ${productionNeeded} production; ${productionRemaining} remains this turn`;
-            else if (!hasResources(resources, cost)) reason = 'Not enough resources';
+            else reason = resourceShortfall(resources, cost);
             setAvailability(button, !reason, reason);
         });
     }

@@ -12,6 +12,10 @@
  * - None, but used by the login.html page
  */
 const LoginSystem = (function() {
+    function lobbyDestination() {
+        const game = new URLSearchParams(window.location.search).get('game');
+        return /^[1-9]\d{0,9}$/.test(game || '') ? `/lobby.html?game=${game}` : '/lobby.html';
+    }
     function initialize() {
         const loginForm = document.getElementById('loginForm');
         if (loginForm) {
@@ -174,7 +178,7 @@ const LoginSystem = (function() {
                 persistAuth(data);
                 
                 // Redirect to game
-                window.location.href = '/lobby.html';
+                window.location.href = lobbyDestination();
             } else {
                 document.getElementById('loginError').textContent = data.error || 'Login failed';
             }
@@ -214,7 +218,7 @@ const LoginSystem = (function() {
         .then(data => {
             if (data.success) {
                 persistAuth(data);
-                window.location.href = '/lobby.html';
+                window.location.href = lobbyDestination();
                 return;
             }
             if (errorEl) {
@@ -285,7 +289,7 @@ const LoginSystem = (function() {
                 // Show success and redirect
                 successEl.textContent = data.upgraded ? 'Guest progress linked!' : 'Registration successful!';
                 setTimeout(() => {
-                    window.location.href = '/lobby.html';
+                    window.location.href = lobbyDestination();
                 }, 1000);
             } else {
                 errorEl.textContent = data.error || 'Registration failed';

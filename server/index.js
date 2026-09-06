@@ -744,6 +744,10 @@ const httpServer = http.createServer((request, response) => {
     
     // Check if the requested page is protected
     if (protectedPages.includes(pathname)) {
+        // Preserve only a validated room invitation, never an arbitrary redirect URL.
+        const invitedGame = new URLSearchParams(parsedUrl.query || '').get('game');
+        const loginLocation = pathname === '/lobby.html' && /^[1-9]\d{0,9}$/.test(invitedGame || '')
+            ? `/login.html?game=${invitedGame}` : '/login.html';
         // Parse cookies to check authentication
         const cookies = request.headers.cookie ? request.headers.cookie.split(';').reduce((acc, cookie) => {
             const [key, value] = cookie.trim().split('=');
@@ -757,7 +761,7 @@ const httpServer = http.createServer((request, response) => {
         // Verify authentication
         if (!userId || !tempKey) {
             // No authentication cookies, redirect to login
-            response.writeHead(302, {'Location': '/login.html'});
+            response.writeHead(302, {'Location': loginLocation});
             response.end();
             return;
         }
@@ -769,7 +773,7 @@ const httpServer = http.createServer((request, response) => {
                 !results[0].tempkey ||
                 !security.timingSafeEqualStrings(String(results[0].tempkey), String(tempKey || ''))) {
                 // Invalid credentials, redirect to login
-                response.writeHead(302, {'Location': '/login.html'});
+                response.writeHead(302, {'Location': loginLocation});
                 response.end();
                 return;
             }

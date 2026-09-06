@@ -161,17 +161,18 @@ test('AI develops an empty colony and restores its purchase destination', async 
   } finally {resetGameState();}
 });
 
-test('medium balanced AI moves a combat stack instead of remaining permanently passive', async () => {
+for(const [difficulty,strategy] of [['medium','balanced'],['chill','aggressive']]) test(`${difficulty} ${strategy} AI respects military difficulty and home defense`, async () => {
   const db=createMockDatabase();serverLogic.setDatabase(db);resetGameState();const id=83;
-  await query(db,`INSERT INTO players${id} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,[7,1,0,1000,0,1,'medium','balanced']);
+  await query(db,`INSERT INTO players${id} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,[7,1,0,1000,0,1,difficulty,strategy]);
   await query(db,`INSERT INTO players${id} (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)`,[8,1,0,0,0]);
   await query(db,`UPDATE players${id} SET homeworld = ?, currentsector = ? WHERE userid = ?`,[1,1,7]);
   await query(db,`UPDATE map${id} SET owner = ?, type = 10 WHERE sectorid = ?`,[7,1]);
   await query(db,`UPDATE map${id} SET owner = ?, type = 8 WHERE sectorid = ?`,[8,2]);
-  for(let i=0;i<2;i++)await query(db,`INSERT INTO ships${id} (owner, type, sectorid) VALUES (?, ?, ?)`,[7,1,1]);
+  for(let i=0;i<3;i++)await query(db,`INSERT INTO ships${id} (owner, type, sectorid) VALUES (?, ?, ?)`,[7,1,1]);
   try {
     await serverLogic.triggerAiTurn(id);
     const ships=await query(db,`SELECT * FROM ships${id}`,[]);
-    assert.ok(ships.some(ship=>Number(ship.owner)===7&&Number(ship.sectorid)!==1),'balanced opponents must exert military pressure');
+    assert.equal(ships.some(ship=>Number(ship.owner)===7&&Number(ship.sectorid)!==1),difficulty!=='chill','Chill stays defensive even with an aggressive strategy');
+    assert.ok(ships.some(ship=>Number(ship.owner)===7&&Number(ship.sectorid)===1),'leave a home guard');
   } finally {resetGameState();}
 });

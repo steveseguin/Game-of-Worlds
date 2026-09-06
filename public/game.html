@@ -170,7 +170,7 @@
         #galaxy3d canvas { cursor: grab; }
     </style>
     <link rel="stylesheet" href="/css/controls.css?v=20260905b">
-    <link rel="stylesheet" href="/css/game-polish.css?v=20260905">
+    <link rel="stylesheet" href="/css/game-polish.css?v=20260906b">
 <link rel="icon" href="/favicon.ico?v=20260905" sizes="any">
     <link rel="icon" type="image/svg+xml" href="/images/brand/game-of-worlds-mark.svg?v=20260905">
     <link rel="apple-touch-icon" href="/images/brand/apple-touch-icon.png?v=20260905">
@@ -384,6 +384,7 @@
         <!-- Instrument title bar. Sticky, because the panel scrolls inside a height the
              layout hands it and a survey readout with no header is unreadable. -->
         <div class="gp-titlebar">Sector Survey</div>
+        <div id="sectorDecision" class="sector-decision" aria-live="polite">Select a sector to plan your next move.</div>
         <button id="inspectPlanetBtn" type="button" hidden>Inspect planet</button>
         <div class="gp-body">
         <!-- Two instrument columns above 900px (style.css .survey-cols): orders and state
@@ -1122,8 +1123,8 @@
     </script>
     <script defer src="js/ui.js?v=20260728-mapa11y-r4"></script>
     <script defer src="js/minimap.js?v=20260614b"></script>
-    <script defer src="js/GUI.js?v=20260725o"></script>
-    <script defer src="js/build.js?v=20260905"></script>
+    <script defer src="js/GUI.js?v=20260906b"></script>
+    <script defer src="js/build.js?v=20260906b"></script>
     <script defer src="js/planet-inspection.js?v=20260905"></script>
     <script defer src="js/battle.js?v=20260614d"></script>
     <script defer src="js/chat.js?v=20260905c"></script>
@@ -1140,14 +1141,14 @@
     <!-- shop-enhanced.js is NOT here any more; see the lazy-load block below. -->
     <script defer src="js/game-screen.js?v=20260906"></script>
     <script defer src="js/onboarding.js?v=20260728a"></script>
-    <script defer src="js/connect.js?v=20260906"></script>
+    <script defer src="js/connect.js?v=20260906b"></script>
     <script defer src="js/tour.js?v=20260906"></script>
     <script defer src="js/game.js?v=20260905b"></script>
     <script defer src="js/codex.js?v=20260728r"></script>
     <script defer src="js/name-picker.js?v=20260726b"></script>
     <script defer src="js/loader.js?v=20251105"></script>
     <!-- Last, because that is where they executed before (see note 2 above). -->
-    <script type="module" src="js/galaxy3d.js?v=20260906"></script>
+    <script type="module" src="js/galaxy3d.js?v=20260906b"></script>
     <!-- battle3d.js is NOT here any more; see the lazy-load block below. -->
 
     <!-- ================================================================
@@ -1217,7 +1218,7 @@
 
             function loadBattle3D() {
                 if (!battlePromise) {
-                    battlePromise = import('./js/battle3d.js?v=20260906')
+                    battlePromise = import('./js/battle3d.js?v=20260906b')
                         .catch(error => {
                             console.error('Battle theater failed to load; using the 2D fallback.', error);
                             battlePromise = null;

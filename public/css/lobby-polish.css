@@ -62,3 +62,13 @@ body.lobby-page { --faint: #a5b4c8; } .lobby-page .section-label { font-size: 12
 .lobby-page summary:focus-visible { outline: 3px solid #a9d8ff; outline-offset: 3px; }
 @media (max-width: 640px) { .lobby-page .in-game .game-list tr { border: 0; padding: 0; } .lobby-page .waiting-view { padding: 0; } }
 .lobby-page button.primary { font-weight: 750; font-size: 15px; color: #16120b; }
+.lobby-page .waiting-meta .chip,.lobby-page .player-badge .chip,.lobby-page .slot-tag,.lobby-page .slot-me,.lobby-page .chip-mode,.lobby-page .chip-waiting,.lobby-page .chip-progress {background:none;border:0;border-radius:0;box-shadow:none;color:#cbd6e5;font:600 14px/1.5 "Segoe UI",sans-serif;text-shadow:none;letter-spacing:0;padding:0;cursor:default;}
+.lobby-page .waiting-meta {gap:8px 20px;}
+.lobby-page .waiting-meta .chip {background:transparent!important;border:0!important;box-shadow:none!important;text-transform:none!important;}
+.lobby-page .invite-block {padding:16px;}
+.lobby-page .invite-block h3 {margin:0 0 10px;padding:0;font:700 16px/1.4 "Segoe UI",sans-serif;background:none;border:0;box-shadow:none;text-transform:none;letter-spacing:0;color:#f0f4fa;}
+.lobby-page .waiting-header h2 {margin:6px 0 0;background:none;box-shadow:none;border:0;padding:0;font-size:24px;text-transform:none;letter-spacing:0;}
+.lobby-page .invite-block p,.lobby-page .waiting-footer span {color:#cbd6e5;font:14px/1.5 "Segoe UI",sans-serif;}
+.lobby-page .invite-row input {min-width:0;flex:1;}
+.lobby-page button.ghost,.lobby-page .waiting-actions button {font-weight:750;color:#f0f4fa;}
+@media(max-width:640px){.lobby-page .invite-row{flex-wrap:wrap;}.lobby-page .invite-row input{flex-basis:100%;}.lobby-page .waiting-footer{flex-wrap:wrap;gap:12px;}}

@@ -5034,9 +5034,9 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
      * in ~100 ms and the post chain adds ~500 ms on top, so post IS the cost and
      * it is the only thing worth switching off. Two rules make it safe:
      *
-     *  - The decision is applied at the START OF THE NEXT BATTLE, never mid-shot.
-     *    A governor that flips a pass off halfway through pops the whole image,
-     *    and the player is watching this one thing.
+     *  - Expensive post-processing can be removed during the opening shot.
+     *    Waiting for the next battle left the first one running at two FPS.
+     *    Shadow/light changes still wait, avoiding material recompilation mid-shot.
      *  - The sample RESETS per battle. The first version accumulated across the
      *    session, so the third battle a player ever saw silently lost its bloom
      *    on a machine that was rendering it perfectly well — and it quietly
@@ -5054,12 +5054,9 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
     /**
      * DYNAMIC RESOLUTION.
      *
-     * The two governors below decide what to switch OFF, and both apply at the
-     * start of the NEXT battle — which is right for anything that changes how
-     * the scene looks, and useless for the battle a player is actually watching.
-     * On a weak integrated GPU that meant the FIRST battle of a session, the one
-     * that sets every expectation, ran as a two-frame-a-second slideshow and the
-     * fix only arrived for a second battle the player might never see.
+     * Post-processing is removed first. If the opening still runs slowly,
+     * resolution may step down during this battle. Shadow and light changes
+     * wait for the next battle because they require material recompilation.
      *
      * Resolution is the exception, because it is the one lever that costs
      * nothing but sharpness: every pass in the chain is priced per pixel, the
@@ -5069,25 +5066,19 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
      * the establishing shot, before anything the player is reading is on screen
      * — and the decision then persists for the session so no later battle pops.
      */
-    // 500 ms, deliberately far above the other two thresholds. Resolution is
-    // the only lever here that costs the PICTURE rather than the lighting, so it
-    // is spent last and only where sharpness has stopped being the problem: at
-    // two frames a second nobody is looking at a panel line. Merely-bad machines
-    // are handled by the two tiers below, next battle, at full resolution.
-    const RES_BUDGET_MS = 500;
+    // After post-processing is removed, reduce pixels if the opening remains slow.
+    const RES_BUDGET_MS = 120;
     const RES_STEP = 0.82;              // 67% of the pixels
     let resScale = 1;
     /**
      * ...and the escape hatch, because a governed-down frame is not the frame
      * anyone is judging. `window.__battle3dLockRes = true` pins full resolution.
-     * Headless automation is pinned automatically: the capture harness and the
-     * store-page shots run through a software rasteriser where EVERY frame is
-     * over budget, so without this the pictures the art is judged from are
-     * always the degraded ones — which is exactly what happened.
+     * Art captures may opt in explicitly. Automated gameplay otherwise uses the
+     * same adaptive path as a player, so tests can measure real behavior.
      */
     function resLocked() {
         if (window.__battle3dLockRes !== undefined) return !!window.__battle3dLockRes;
-        return !!(navigator && navigator.webdriver);
+        return false;
     }
     // Shadow map + the four drive lights. Cheaper than the post chain but not
     // free — a depth pass over the fleet plus four more per-fragment lights on
@@ -5128,8 +5119,8 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
      * governor keyed off it had therefore never fired in its life.
      *
      * Three tiers, cheapest first:
+     *   post chain   NOW, after four slow frames. Costs the bloom.
      *   resolution   NOW, once, inside the opening third. Costs sharpness only.
-     *   post chain   next battle. Costs the bloom.
      *   shadows      next battle. Costs contact shadows and the drive lights.
      */
     function governFrame(rawDt, now) {
@@ -5137,6 +5128,14 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
         // The first third of a second is shader compilation, not frame cost.
         if (now - current.startedAt < 0.35 || rawDt <= 0) return;
         frameSamples.push(rawDt * 1000);
+        if (frameSamples.length === 4 && composer && window.__battle3dNoPost !== false &&
+            median(frameSamples) > RES_BUDGET_MS) {
+            postAllowed = false;
+            ensureComposer();
+            frameSamples.length = 0;
+            console.info('Battle3D: removed post-processing to restore responsiveness');
+            return;
+        }
         if (resScale === 1 && frameSamples.length === 4 && !resLocked() &&
             (now - current.startedAt) < current.durationSec * 0.3 &&
             median(frameSamples) > RES_BUDGET_MS) {

@@ -6378,7 +6378,19 @@ function handleLeaveGame(connection) {
                         if (String(game.creator) === String(playerId)) {
                             const nextCreator = humans[0] || remaining[0];
                             if (nextCreator) {
-                                db.query('UPDATE games SET creator = ? WHERE id = ?', [nextCreator.userid, gameId], () => {});
+                                db.query('UPDATE games SET creator = ? WHERE id = ?', [nextCreator.userid, gameId], transferErr => {
+                                    if (transferErr) {
+                                        console.warn('Unable to transfer lobby host:', transferErr.message);
+                                        broadcastPlayerList(gameId);
+                                        return;
+                                    }
+                                    // Ownership changes must reach the waiting-room controls,
+                                    // not just the roster. Send snapshots after the update.
+                                    gameState.clients.filter(client => Number(client.gameid) === gameId)
+                                        .forEach(client => sendCurrentGameSnapshot(client));
+                                    broadcastPlayerList(gameId);
+                                });
+                                return;
                             }
                         }
 
@@ -7651,7 +7663,7 @@ async function runAiActions(gameId, playerId, difficulty = 'medium', strategy = 
     }
 
     await handleAiExpansion(gameId, playerId, homeworld);
-    if (strat === 'aggressive' || profile.harass) {
+    if (profile.harass) {
         await handleAiHarass(gameId, playerId, homeworld);
     }
     // Grow the economy where expansion actually happened. One affordable project
@@ -7767,8 +7779,9 @@ async function handleAiHarass(gameId, playerId, homeSector) {
     if (!stacks || stacks.length === 0) return;
 
     const combatStacks = stacks.filter(row =>
-        Number(row.type) !== COLONY_SHIP_ID && Number(row.type) !== SCOUT_SHIP_ID && Number(row.count) >= 2
-    );
+        Number(row.type) !== COLONY_SHIP_ID && Number(row.type) !== SCOUT_SHIP_ID
+    ).map(row => ({ ...row, count: Math.max(0, Number(row.count) - (Number(row.sectorid) === Number(homeSector) ? 1 : 0)) }))
+        .filter(row => row.count >= 2); // keep a home guard instead of emptying the capital
     if (combatStacks.length === 0) return;
 
     const bestStack = combatStacks.reduce((best, row) => {

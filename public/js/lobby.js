@@ -154,7 +154,8 @@ document.addEventListener('DOMContentLoaded', () => {
     inviteGameId = params.get('game') ? Number(params.get('game')) : null;
 
     if (!userId || !tempKey) {
-        window.location.href = '/login.html';
+        window.location.href = inviteGameId && Number.isSafeInteger(inviteGameId) && inviteGameId > 0
+            ? `/login.html?game=${inviteGameId}` : '/login.html';
         return;
     }
 
@@ -746,7 +747,7 @@ function renderWaitingView() {
                     <header class="waiting-header">
                         <div>
                             <div class="waiting-eyebrow">🎮 Waiting room · Game ${currentGameId}</div>
-                            <h3>Waiting in Game ${currentGameId}</h3>
+                            <h2>Waiting in Game ${currentGameId}</h2>
                             <div class="waiting-game-name">${titleName}</div>
                         </div>
                         <div class="waiting-meta">
@@ -780,16 +781,17 @@ function renderWaitingView() {
                         ${aiSandboxBtn}
                     </section>
 
-                    <details class="invite-block">
-                        <summary>Invite a friend</summary>
+                    <section class="invite-block" aria-labelledby="roomInviteLabel">
+                        <h3 id="roomInviteLabel">Invite a friend to this room</h3>
                         <div class="invite-row">
-                            <input type="text" value="${inviteLink}" readonly>
-                            <button class="ghost" onclick="copyInviteLink('${inviteLink}')">Copy</button>
+                            <input id="roomInviteLink" aria-label="Room invitation link" type="text" value="${inviteLink}" readonly>
+                            <button class="ghost" onclick="copyInviteLink('${inviteLink}')">Copy room link</button>
                         </div>
-                    </details>
+                        <p>Friends can sign in or create an account, then choose a race to join this game.</p>
+                    </section>
 
                     <div class="waiting-footer">
-                        <a class="resume-link" href="/game.html">Open game view</a>
+                        <span>${isCurrentGameCreator ? 'You are the host. Add AI to open seats, or invite friends.' : 'The host manages AI seats and starts the game.'}</span>
                         <button class="danger-link" onclick="leaveGame()">Leave game</button>
                     </div>
                 </div>
@@ -1256,7 +1258,7 @@ function startAiSandbox() {
         return;
     }
     for (let i = 0; i < toAdd; i++) {
-        websocket.send('//addai:aggressive:balanced');
+        websocket.send(`//addai:${aiChoice.difficulty}:${aiChoice.strategy}`);
     }
     showToast(`Preparing ${toAdd} AI commander${toAdd === 1 ? '' : 's'} before launch...`, 'info');
 }
@@ -1270,12 +1272,15 @@ async function copyInviteLink(link) {
             tempInput.value = link;
             document.body.appendChild(tempInput);
             tempInput.select();
-            document.execCommand('copy');
+            const copied = document.execCommand('copy');
             tempInput.remove();
+            if (!copied) throw new Error('Clipboard copy was unavailable');
         }
         showToast('Invite link copied!', 'success');
     } catch (err) {
         console.error('Copy failed:', err);
+        const inviteInput = document.getElementById('roomInviteLink');
+        if (inviteInput) { inviteInput.focus(); inviteInput.select(); }
         showToast('Unable to copy link. Copy manually instead.', 'warn');
     }
 }

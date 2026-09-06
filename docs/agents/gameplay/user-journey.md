@@ -11,7 +11,7 @@ This is both a flow map and a review checklist. A feature is not healthy merely 
 1. `/landing.html` introduces the game; `/login.html` offers registered login, registration, and guest play.
 2. Auth endpoints return `userId`, `username`, `tempKey`, and guest metadata. The browser stores cookies plus local guest-upgrade state.
 3. Login/register/guest controls lock while their request is in flight. Validation and network failures appear beside the initiating form; transport errors must never be console-only.
-4. Protected lobby/game pages redirect to login when cookies are absent.
+4. Protected lobby/game pages redirect to login when cookies are absent. A validated `/lobby.html?game=N` invitation preserves its room number through login, registration, or guest sign-in; arbitrary redirect URLs are never accepted.
 5. The lobby opens one WebSocket, authenticates with `//auth:<userId>:<tempKey>`, and only enables mutations after authenticated state arrives. Reconnect scheduling is single-owner so stale socket close events cannot create parallel connections.
 6. Terminal WebSocket auth failures clear stale cookies and return to login instead of reconnecting forever.
 7. `users.currentgame` determines recovery: the player sees either a waiting room, an active-game resume card, or the public game list.
@@ -25,6 +25,10 @@ The public list communicates occupancy, mode, access requirements, and joinabili
 Creating a room creates its database row/tables but does not bypass joining: the host chooses a race and enters through the normal `//joingame` path. This keeps unlock and capacity checks consistent for host and guests.
 
 Pending human/AI joins reserve seats before their `playersN` rows become visible. Start is rejected while a lobby mutation remains in flight. A one-click **Fill with AI & Start** sends the required additions and waits for the player-list target; it does not guess readiness with a fixed delay.
+
+Waiting rooms show the room invitation URL directly with **Copy room link**. Status labels are plain text; the game-view link is only offered once launch begins or the match is active. The host can add individual AI seats or fill available seats using the currently selected difficulty and strategy. When the host leaves, ownership is transferred before sending fresh `currentgame::` snapshots to remaining participants, so the new host receives start/AI controls immediately.
+
+The in-game Sector Survey begins with a compact decision summary: available slots, richness and Terraforming eligibility when surveyed; sensor-only contacts explain what a probe would reveal without inventing hidden values. Build/Fleet controls name exact resource shortfalls in readable inline notes. Completed orders are briefly grouped into one confirmation, and fleet/probe losses are classified before routine movement so they appear in battle reports.
 
 Review moments: empty/encoded room names, full room, simultaneous last-seat joins, locked race, registered/level gate, creator/non-creator controls, AI failure, invite URL, creator departure, and refresh before start.
 

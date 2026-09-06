@@ -101,6 +101,8 @@ const EVENT_KINDS = {
 /** Work out what an unstructured server line is about, for icon/colour and filtering. */
 function classifyEventMessage(text) {
     const line = String(text || '');
+    // Losses often contain "fleet" or "probe"; classify them before routine movement.
+    if (/destroyed|annihilat|lost (?:our |the |entire |\d+)|did not|defeat|crushed/i.test(line)) return { kind: 'battle', type: 'battles' };
     if (/^Error:/i.test(line)) return { kind: 'problem', type: 'system' };
     if (/^Success:\s*Researched/i.test(line)) return { kind: 'research', type: 'econ' };
     if (/^Success:\s*Built\s+(?:Scout|Frigate|Destroyer|Cruiser|Battleship|Intruder|Dreadnought|Carrier|Colony)/i.test(line)) {
@@ -124,6 +126,25 @@ function classifyEventMessage(text) {
     // because the map legend and older strings still use them.
     if (/asteroid|belt|black hole|navigated|shoal|mouth/i.test(line)) return { kind: 'movement', type: 'orders' };
     return { kind: 'info', type: 'system' };
+}
+
+let orderReceiptTimer = null;
+let orderReceipts = [];
+function reportOrderOutcome(message, kind) {
+    const text = String(message);
+    if (kind === 'problem' || kind === 'battle') {
+        window.NotificationSystem?.notify('Order report', text, 'warning', 6500);
+        return;
+    }
+    if (!/^Success:.*(?:Built|Upgraded|Researched|Colony confirmed|Fleet arrived)/i.test(text)) return;
+    orderReceipts.push(text.replace(/^Success:\s*/i, ''));
+    if (orderReceiptTimer) return;
+    orderReceiptTimer = setTimeout(() => {
+        const lines = orderReceipts.splice(0);
+        orderReceiptTimer = null;
+        const detail = lines.slice(0,2).join(' · ') + (lines.length > 2 ? ` · ${lines.length-2} more updates in Recent events` : '');
+        window.NotificationSystem?.notify(lines.length > 1 ? `${lines.length} orders completed` : 'Order completed', detail, 'success', 4500);
+    }, 350);
 }
 
 /** True for lines that are player chat rather than a game event. */
@@ -1343,6 +1364,7 @@ function handleWebSocketMessage(message) {
         } else {
             const { kind, type } = classifyEventMessage(message);
             pushEventFeed(String(message), type, kind);
+            reportOrderOutcome(message, kind);
         }
     }
 }

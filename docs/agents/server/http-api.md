@@ -1,5 +1,7 @@
 # HTTP API
 
+Room invitations: unauthenticated `/lobby.html?game=N` requests redirect to `/login.html?game=N` for a positive room number of up to ten digits. Invalid room tokens use ordinary `/login.html`. Successful login, registration and guest sign-in carry the validated number back to the lobby's existing join/race-selection flow.
+
 Primary source: `server/index.js` routes to handlers in `server/server.js`.
 
 ## Public And Runtime Endpoints

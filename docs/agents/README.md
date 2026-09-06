@@ -18,6 +18,7 @@ Primary live runtime files:
 ## Index
 
 - [Accessibility and Rendering Review](reviews/accessibility-rendering-2026-09.md)
+- [Opening, Waiting Room and Rendering Review](reviews/opening-and-lobby-2026-09.md)
 - [Active Hardening And Production Roadmap](reviews/hardening-roadmap.md)
 - [Code Map](maps/code-map.md)
 - [HTTP API](server/http-api.md)

@@ -1,8 +1,9 @@
 const {test,expect}=require('@playwright/test');
 const fs=require('fs');
 const h=require('./support/ui-game-harness');
-test.skip(!process.env.PLAY_REVIEW,'Opt-in exploratory campaigns; uses ordinary player resources and UI orders.');
-for(const [difficulty,strategy] of [['medium','balanced'],['aggressive','aggressive']]) {
+const opening=Boolean(process.env.OPENING_REVIEW);
+test.skip(!process.env.PLAY_REVIEW&&!opening,'Opt-in exploratory campaigns; uses ordinary player resources and UI orders.');
+for(const [difficulty,strategy] of (opening ? [['chill','balanced'],['medium','balanced'],['aggressive','aggressive']] : [['medium','balanced'],['aggressive','aggressive']])) {
  test(`ordinary campaign against ${difficulty} ${strategy} AI`,async({page},info)=>{
   test.setTimeout(600000);page.setDefaultTimeout(6000);
   const username=h.uniqueId('campaign');await h.registerUser(page,{username,email:username+'@example.com',password:'Secure123!'});
@@ -12,9 +13,10 @@ for(const [difficulty,strategy] of [['medium','balanced'],['aggressive','aggress
   await h.startGame(page,[page]);
   await page.locator('#tour-skip').waitFor({state:'visible',timeout:15000});await h.dismissFirstRunGuidance(page);
   const home=await h.focusHomeworld(page);const log=[];const visited=new Set([home]);const colonies=new Set();let targetIndex=0;
-  async function snapshot(){return page.evaluate(()=>({empire:window.GAME_STATE.empire,resources:window.GAME_STATE.player.resources,known:window.GAME_STATE.mapSectors,home:window.GAME_STATE.selectedSectorData,turn:typeof currentTurnNumber!=='undefined'?currentTurnNumber:null}));}
+  async function snapshot(){return page.evaluate(()=>({empire:window.GAME_STATE.empire,resources:window.GAME_STATE.player.resources,known:window.GAME_STATE.mapSectors,home:window.GAME_STATE.selectedSectorData,turn:typeof currentTurnNumber!=='undefined'?currentTurnNumber:null,blocked:Array.from(document.querySelectorAll('#build [disabled],.ship-button[disabled]')).map(b=>({label:b.textContent,reason:b.title})),messages:document.querySelector('#chatFeed')?.textContent,render:window.Galaxy3D?.debugRenderPath()}));}
   async function move(id,ship){
    await h.selectSector(page,id);
+   await page.waitForTimeout(300); // allow the sector response and optional scan prompt to arrive
    if(await page.locator('#probeSuggestionMove').isVisible()) await page.locator('#probeSuggestionMove').click();
    else await page.locator('#sectorMoveShips').click();
    await expect(page.locator('#multiMove')).toBeVisible();
@@ -24,11 +26,11 @@ for(const [difficulty,strategy] of [['medium','balanced'],['aggressive','aggress
    await expect(page.locator('.confirm-modal-overlay')).toBeVisible();await page.locator('.confirm-modal .btn-confirm').click();
    await expect(page.locator('#multiMove')).toBeHidden();await page.waitForTimeout(180);return true;
   }
-  for(let turn=0;turn<90;turn++) {
+  for(let turn=0;turn<(opening?12:90);turn++) {
    if(await h.isGameOverVisible(page)) break;
    if(await page.locator('#battleTheater.on').isVisible()){await h.closeBattleOverlay(page);}
    // Make orders in batches while saving for expansion; then observe the endgame.
-   if(turn>=24 || turn%3!==0){await h.endTurnAll([page]);continue;}
+   if(!opening&&(turn>=24 || turn%3!==0)){await h.endTurnAll([page]);continue;}
    await h.focusHomeworld(page);await page.click('#buildtab');
    for(const type of [2,0,1]) {const b=page.locator(`[data-building-id="${type}"]`);if(await b.isEnabled()){await b.click();await page.waitForTimeout(80);}}
    await page.click('#techtab');
@@ -48,11 +50,11 @@ for(const [difficulty,strategy] of [['medium','balanced'],['aggressive','aggress
     const next=Object.values((await snapshot()).known).find(s=>!visited.has(Number(s.id))&&s.status==='neutral'&&![1,2,3,4].includes(Number(s.type)));
     if(next&&await move(Number(next.id),'Scout'))visited.add(Number(next.id));
    }
-   if(turn%3===0){const now=await snapshot();log.push(now);fs.writeFileSync(info.outputPath('campaign.json'),JSON.stringify(log,null,2));console.log('CAMPAIGN',difficulty,strategy,'turn',turn,JSON.stringify(now.empire));}
+   if(opening||turn%3===0){const now=await snapshot();log.push(now);fs.writeFileSync(info.outputPath('campaign.json'),JSON.stringify(log,null,2));console.log('CAMPAIGN',difficulty,strategy,'turn',turn,JSON.stringify(now.empire));if(opening&&[0,5,11].includes(turn))await page.screenshot({path:info.outputPath(`opening-${turn}.png`)});}
    await h.endTurnAll([page]);
   }
   log.push({result:await page.locator('#gameOverModal').textContent().catch(()=>''),summary:await h.readEmpireSummary(page)});
   fs.writeFileSync(info.outputPath('campaign.json'),JSON.stringify(log,null,2));await page.screenshot({path:info.outputPath('campaign-end.png')});
-  expect(await h.isGameOverVisible(page)).toBeTruthy();
+  if(!opening)expect(await h.isGameOverVisible(page)).toBeTruthy();
  });
 }

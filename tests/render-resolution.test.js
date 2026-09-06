@@ -47,3 +47,28 @@ test('finished battles release their frame callback and idle animation does not 
  vm.runInContext(source.slice(start,end)+'}',ctx);
  ctx.animate();assert.equal(scheduled,0);assert.equal(ctx.animHandle,null);
 });
+
+test('small map planets use fewer vertices while inspection restores full geometry',()=>{
+ const source=read('public/js/galaxy3d.js');const low={},full={};
+ const ctx=vm.createContext({inspection:null,SHELL_DETAIL_PX:120,state:{detail:0,sharedGeo:{worldSphereLow:low,worldSphere:full}}});
+ vm.runInContext(source.slice(source.indexOf('    function applyDetail('),source.indexOf('    function refreshDetail(')),ctx);
+ const surface={},clouds={},atmosphere={};const entry={id:7,content:{userData:{world:{userData:{radius:.4,surface,clouds,atmosphere}}}}};
+ ctx.applyDetail(entry,40);assert.equal(surface.geometry,low);assert.equal(clouds.geometry,low);
+ ctx.inspection={id:7};ctx.applyDetail(entry,40);assert.equal(surface.geometry,full);
+ ctx.inspection=null;ctx.applyDetail(entry,180);assert.equal(surface.geometry,full);
+ ctx.applyDetail(entry,40);assert.equal(surface.geometry,low,'return to map restores cheaper mesh');
+});
+
+test('slow first battle sheds post-processing immediately before reducing resolution',()=>{
+ const source=read('public/js/battle3d.js');let disposed=0,resized=0;
+ const ctx=vm.createContext({current:{startedAt:0,durationSec:30},frameSamples:[],POST_SAMPLE:24,POST_BUDGET_MS:160,RES_BUDGET_MS:120,RES_STEP:.82,resScale:1,composer:{},postAllowed:true,heavyAllowed:true,window:{},console:{info(){}},median:a=>a.slice().sort((a,b)=>a-b)[a.length>>1],resLocked:()=>false,applyResolution(){resized++;},ensureComposer(){disposed++;ctx.composer=null;}});
+ const start=source.indexOf('    function governFrame(');
+ vm.runInContext(source.slice(start,source.indexOf('    // Backdrop world',start)),ctx);
+ for(let i=0;i<4;i++)ctx.governFrame(.3,1+i*.3);
+ assert.equal(disposed,1);assert.equal(ctx.postAllowed,false);assert.equal(resized,0);
+ for(let i=0;i<4;i++)ctx.governFrame(.2,3+i*.2);
+ assert.equal(resized,1);assert.equal(ctx.resScale,.82);
+ ctx.frameSamples=[];ctx.composer={};ctx.window.__battle3dNoPost=false;ctx.resLocked=()=>true;
+ for(let i=0;i<4;i++)ctx.governFrame(.5,4+i*.5);
+ assert.equal(disposed,1,'explicit art-quality override remains available');
+});

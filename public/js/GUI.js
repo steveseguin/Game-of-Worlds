@@ -121,8 +121,32 @@ const GameUI = (function() {
     }
 
     // Update sector display
+    function renderSectorDecision(sectorData, known = true) {
+        const box = document.getElementById('sectorDecision');
+        if (!box) return;
+        const type = Number(sectorData.type);
+        const planet = type >= 6 && type <= 10;
+        const heading = `Sector ${sectorData.id} · ${sectorTypeLabel(type)}`;
+        let detail = '';
+        if (planet && known) {
+            const used = (sectorData.buildings || []).reduce((sum, b) => sum + (Number(b.count) || 1), 0);
+            const limit = sectorData.buildingSlotLimit ?? ({6:2,7:3,8:4,9:5,10:6}[type]);
+            const have = Number(window.TechSystem?.aggregateEffects?.(window.GAME_STATE?.player?.techLevels || {})?.terraform || 0);
+            const need = Number(sectorData.terraformLevel) || 0;
+            detail = `${Math.max(0,limit-used)} of ${limit} slots free · Metal ${sectorData.metalBonus}% · Crystal ${sectorData.crystalBonus}%. `;
+            const mine = Number(sectorData.owner) === Number(window.GAME_STATE?.player?.id || (document.cookie.match(/(?:^|; )userId=([^;]+)/)||[])[1]);
+            detail += mine ? 'Your world: build a mixed economy.' : sectorData.owner ? 'Rival world: conquest requires a combat fleet.' : need > have ? `Needs Terraforming ${need}; you have ${have}.` : 'Terraforming ready. Bring a Colony Ship, then Colonize.';
+        } else if (planet) detail = 'Probe for richness and Terraforming requirements before committing a Colony Ship.';
+        else if (type === 0) detail = 'Transit route. No planet or extraction sites.';
+        else if (type === 2) detail = 'Black hole: entering destroys the entire fleet.';
+        else if (type === 1) detail = 'Asteroid belt: entry risks ships until you control it.';
+        else detail = 'No colonizable planet. Survey hazards before moving ships.';
+        box.textContent = `${heading}. ${detail}`;
+    }
+
     function updateSectorDisplay(sectorData) {
         if (!sectorData) return;
+        renderSectorDecision(sectorData);
 
         const title = document.getElementById('sectorPanelTitle');
         if (title) title.textContent = `Sector ${sectorData.id}`;
@@ -154,21 +178,21 @@ const GameUI = (function() {
         if (sectorData.type > 5) {
             // Set metal bonus
             const metalBonus = document.getElementById('metalbonus');
-            let metalColor = 'yellow';
+            let metalColor = '#ffe1a3';
             if (sectorData.metalBonus < 100) {
-                metalColor = 'red';
+                metalColor = '#ffb4a8';
             } else if (sectorData.metalBonus >= 200) {
-                metalColor = 'green';
+                metalColor = '#a8f0c9';
             }
             metalBonus.innerHTML = `<span style="color:${metalColor}">${sectorData.metalBonus}%</span>`;
 
             // Set crystal bonus
             const crystalBonus = document.getElementById('crystalbonus');
-            let crystalColor = 'yellow';
+            let crystalColor = '#ffe1a3';
             if (sectorData.crystalBonus < 100) {
-                crystalColor = 'red';
+                crystalColor = '#ffb4a8';
             } else if (sectorData.crystalBonus >= 200) {
-                crystalColor = 'green';
+                crystalColor = '#a8f0c9';
             }
             crystalBonus.innerHTML = `<span style="color:${crystalColor}">${sectorData.crystalBonus}%</span>`;
 
@@ -193,7 +217,7 @@ const GameUI = (function() {
                 ? Number(sectorData.buildingSlotLimit)
                 : (slotsByType[sectorData.type] || 0);
             const used = Array.isArray(sectorData.buildings) ? sectorData.buildings.length : 0;
-            slotsEl.textContent = maxSlots > 0 ? `${used}/${maxSlots}` : 'none';
+            slotsEl.textContent = maxSlots > 0 ? `${Math.max(0,maxSlots-used)} free / ${maxSlots} total` : 'none';
         }
 
         // Update sector image (legacy backdrop; only type1-9.jpg exist, homeworld uses planet art)
@@ -246,6 +270,7 @@ const GameUI = (function() {
 
     function updateSectorContact(contact) {
         showSectorSelection(contact.id, { live: true, seen: true, type: contact.type });
+        renderSectorDecision(contact, false);
         const owner = document.getElementById('planetowner');
         if (owner) owner.textContent = ownerLabel(contact.owner);
         setIntelState('Sensor contact', 'sensor', 'Passive sensors identify terrain, control, and presence. Probe or enter the sector for economic, terraform, building, and fleet-composition detail.');
@@ -255,6 +280,8 @@ const GameUI = (function() {
 
     function updateRememberedSectorDisplay(sectorData) {
         updateSectorDisplay(sectorData);
+        const decision = document.getElementById('sectorDecision');
+        if (decision) decision.textContent = `Stored scan (turn ${sectorData.intelMemory?.lastSeenTurn || '?'}). ${decision.textContent} Probe again to confirm current conditions.`;
         const memory = sectorData.intelMemory || {};
         const age = memory.lastSeenTurn ? ` Last scanned on turn ${memory.lastSeenTurn}.` : '';
         setIntelState('Probe memory', 'memory', `These are stored scan results, not live readings.${age} Probe again to refresh ownership, fleets, and construction.`);
@@ -688,6 +715,8 @@ const GameUI = (function() {
 	}
 
 	function showSectorSelection(sectorId, knownState) {
+		const decision = document.getElementById('sectorDecision');
+		if (decision) decision.textContent = `Sector ${sectorId}. ${knownState?.seen ? 'Requesting survey; remembered conditions may have changed.' : 'Uncharted. A probe risks 300 crystals; moving a fleet risks its ships.'}`;
 		const title = document.getElementById('sectorPanelTitle');
 		if (title) title.textContent = `Sector ${sectorId}`;
 		updateLocalOrderContext(sectorId);

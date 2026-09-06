@@ -2516,6 +2516,14 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta
         if (!content) return;
         /** THE CLOUD SHELL IS NOT AN LOD CASUALTY. IT IS THE READ. Full rationale: docs/galaxy3d-design-notes.md#the-cloud-shell-is-not-an-lod-casualty-it-is-the-read */
         const world = content.userData.world;
+        if (world) {
+            const diameter = ppu * (world.userData.radius || 0.4) * 2;
+            const geometry = diameter < 90 && inspection?.id !== entry.id
+                ? state.sharedGeo.worldSphereLow : state.sharedGeo.worldSphere;
+            for (const mesh of [world.userData.surface, world.userData.clouds, world.userData.atmosphere]) {
+                if (mesh && geometry) mesh.geometry = geometry;
+            }
+        }
         if (world && world.userData.clouds) world.userData.clouds.visible = state.detail < 3;
         if (content.userData.belt) {
             const near = ppu >= SHELL_DETAIL_PX;
@@ -5821,6 +5829,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta
         // silhouette. Listed in sharedGeo, which is what disposeContent() checks
         // before freeing a geometry.
         state.sharedGeo.worldSphere = new THREE.SphereGeometry(1, 48, 32);
+        state.sharedGeo.worldSphereLow = new THREE.SphereGeometry(1, 16, 12);
         state.sharedGeo.disc = new THREE.PlaneGeometry(2, 2);
         state.sharedGeo.photonRing = new THREE.RingGeometry(0.92, 1.06, 48);
         state.sharedGeo.decal = buildHexDiscGeometry(1);
@@ -6257,7 +6266,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta
         // their normal size rather than spinning and breathing.
         state.sectors.forEach(entry => {
             const content = entry.content;
-            if (!content) return;
+            if (!content || !entry.group.visible) return;
             content.children.forEach(child => {
                 if (!reduceMotion) {
                     if (child.userData.spin) child.rotation.y += child.userData.spin * dt;
@@ -6808,6 +6817,8 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta
         debugSafeInset: () => ({ ...state.safeInset }),
         /** Which render path this machine ended up on, and why. Full rationale: docs/galaxy3d-design-notes.md#which-render-path-this-machine-ended-up-on-and-why */
         debugRenderPath: () => ({
+            render: state.renderer ? { ...state.renderer.info.render } : null,
+            memory: state.renderer ? { ...state.renderer.info.memory } : null,
             post: state.post,
             software: state.software,
             composer: Boolean(state.composer),

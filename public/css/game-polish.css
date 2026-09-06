@@ -30,3 +30,8 @@
 #planetInspection .inspection-detail {max-height:calc(100dvh - 155px);overflow:auto;box-sizing:border-box;}
 @media(max-width:759px){#planetInspection .inspection-head{max-width:145px;padding:10px;}#planetInspection .inspection-detail{right:0;max-width:none;padding:12px;font-size:14px;max-height:calc(100dvh - 220px);}#planetInspection h2{font-size:18px;}}
 #inspectPlanetBtn {position:sticky;top:32px;z-index:4;scroll-margin-top:44px;}
+.sector-decision {padding:10px 12px;background:#172536;color:#f0f4fa;font:600 14px/1.5 "Segoe UI",sans-serif;border-bottom:1px solid #43546b;}
+.game-page #sectordisplay :is(td,th),.game-page #sectordisplay :is(td,th):first-child {font:600 13px/1.4 "Segoe UI",sans-serif;letter-spacing:0;text-transform:none;color:#dce5f0;padding:5px 7px;}
+.game-page .build-grid .req-note,.game-page .ship-grid .req-note {font:600 13px/1.4 "Segoe UI",sans-serif;letter-spacing:0;text-transform:none;color:#dce5f0;opacity:1;}
+.game-page .building-button:disabled,.game-page .defense-button:disabled,.game-page .ship-button:disabled {opacity:1;filter:none;color:#c9d4e3;}
+.game-page .build-grid,.game-page .ship-grid {grid-template-columns:repeat(2,minmax(0,1fr));}
