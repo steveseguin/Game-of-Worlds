@@ -24,11 +24,16 @@ test('galaxy post-processing follows adaptive resolution instead of retaining st
  const ctx=context();let ratio=1.5;
  const renderer={getPixelRatio:()=>ratio,setSize(){}};
  const composer=new ctx.EffectComposer(renderer,new Target(1200,900));
- Object.assign(ctx,{state:{renderer,composer,container:{getBoundingClientRect:()=>({width:800,height:600})},camera:{updateProjectionMatrix(){}},fxaaPass:{material:{uniforms:{resolution:{value:new Vector2()}}}}},updateFrameOffset(){}});
+ let width=800;
+ Object.assign(ctx,{inspection:null,state:{renderer,composer,container:{getBoundingClientRect:()=>({width,height:600})},camera:{updateProjectionMatrix(){}},fxaaPass:{material:{uniforms:{resolution:{value:new Vector2()}}}}},updateFrameOffset(){}});
  const source=read('public/js/galaxy3d.js');vm.runInContext(source.slice(source.indexOf('    function resize()'),source.indexOf('    function fitCamera()')),ctx);
  ctx.resize();assert.equal(composer.renderTarget1.width,1200);
  ratio=0.75;ctx.resize();assert.equal(composer.renderTarget1.width,600);assert.equal(composer.renderTarget1.height,450);
  assert.equal(ctx.state.fxaaPass.material.uniforms.resolution.value.x,1/600);
+ ctx.inspection={baseDistance:2.5};ctx.state.zoom=2;
+ width=390;ctx.resize();assert.equal(ctx.state.zoom,2*3.7/2.5);
+ ctx.resize();assert.equal(ctx.state.zoom,2*3.7/2.5,'repeated resize must not compound zoom');
+ width=800;ctx.resize();assert.ok(Math.abs(ctx.state.zoom-2)<1e-12,'desktop resize preserves relative zoom');
 });
 
 test('finished battles release their frame callback and idle animation does not reschedule',()=>{
