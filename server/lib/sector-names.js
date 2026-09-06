@@ -1,5 +1,7 @@
 /**
  * sector-names.js - Naming swept shoals after whoever first survived them.
+ * Shoal rules below remain permanent and curated. Planet catalog names and
+ * owner-editable planet names have separate helpers at the end of this module.
  *
  * Canon, from lore/07-glossary.md and lore/18-naming-the-dark.md:
  *
@@ -128,7 +130,28 @@ function sectorLabel(sectorId, storedName) {
     return Number(sectorId).toString(16).toUpperCase();
 }
 
+const PLANET_NAMES = ['Aster', 'Meridian', 'Vesper', 'Caldera', 'Iona', 'Halcyon', 'Neris', 'Orison', 'Cinder', 'Elysia', 'Talos', 'Auriga', 'Lumen', 'Sereia', 'Oriel', 'Caelum'];
+
+function planetDefaultName(gameId, sectorId) {
+    return `${PLANET_NAMES[seedFrom(gameId, sectorId) % PLANET_NAMES.length]} ${sectorId}`;
+}
+
+function nameForSector(gameId, sector) {
+    if (typeof sector.sectorname === 'string' && sector.sectorname.trim()) return sector.sectorname.trim();
+    const type = Number(sector.type ?? sector.sectortype);
+    return type >= 6 && type <= 10 ? planetDefaultName(gameId, sector.sectorid) : null;
+}
+
+function normalizePlanetName(value) {
+    if (typeof value !== 'string' || value.length > MAX_LENGTH || /[\p{C}]/u.test(value)) return null;
+    const name = value.trim().replace(/ +/g, ' ');
+    return /^[\p{L}\p{N}][\p{L}\p{N} .'’\-]{0,47}$/u.test(name) ? name : null;
+}
+
 module.exports = {
+    planetDefaultName,
+    nameForSector,
+    normalizePlanetName,
     FEATURES,
     NAMES,
     MAX_LENGTH,

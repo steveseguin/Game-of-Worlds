@@ -3888,7 +3888,7 @@ function finishProbeReveal(gameId, playerId, targetSector, sectorRow, connection
 
             const advantage = intel.advantage;
             const probeData = {
-                sector: withSectorRules(sectorRow),
+                sector: withSectorRules(sectorRow, gameId),
                 ships,
                 buildings: [],
                 intel: { advantage }
@@ -5043,6 +5043,41 @@ function updateSector(data, connection) {
  * The name already exists when this arrives - the sweep wrote a default - so every failure mode
  * here leaves a correctly named sector behind. Nothing is riding on this succeeding.
  */
+async function renamePlanet(data, connection) {
+    const parts = String(data || '').split(':');
+    const sectorId = parseSectorToken(parts[1]);
+    const gameId = Number(connection.gameid);
+    const playerId = Number(connection.name);
+    const reply = payload => connection.sendUTF(`renameplanet::${JSON.stringify({ sectorId, ...payload })}`);
+    let name;
+    try { name = sectorNames.normalizePlanetName(decodeURIComponent(parts[2] || '')); } catch { name = null; }
+    if (!isPositiveSafeInteger(gameId) || !isPositiveSafeInteger(playerId) || !isPositiveSafeInteger(sectorId) || parts.length !== 3 || !name) {
+        reply({ ok: false, error: 'Use 1–48 letters, numbers, spaces, apostrophes, periods or hyphens.' });
+        return;
+    }
+    try {
+        const rows = await queryDb(`SELECT * FROM map${gameId} WHERE sectorid = ?`, [sectorId]);
+        const sector = rows?.[0];
+        const type = Number(sector?.type);
+        if (!sector || Number(sector.owner) !== playerId || type < 6 || type > 10) {
+            reply({ ok: false, error: 'You can only rename planets you currently own.' });
+            return;
+        }
+        if (sectorNames.nameForSector(gameId, sector) !== name) {
+            const result = await queryDb(`UPDATE map${gameId} SET sectorname = ? WHERE sectorid = ? AND owner = ? AND type = ?`, [name, sectorId, playerId, type]);
+            if (!result?.affectedRows) {
+                reply({ ok: false, error: 'Ownership changed. Refresh the survey and try again.' });
+                return;
+            }
+        }
+        reply({ ok: true, name });
+        updateSector2(gameId, sectorId);
+        gameState.clients.forEach(client => { if (Number(client.gameid) === gameId) sendVisibleMapState(gameId, client); });
+    } catch {
+        reply({ ok: false, error: 'The name could not be saved. Please try again.' });
+    }
+}
+
 function nameSector(data, connection) {
     const parts = String(data || '').split(':');
     const sectorId = parseSectorToken(parts[1]);
@@ -5321,6 +5356,7 @@ function sendRememberedSectorIntel(gameId, playerId, sectorId, connection, done 
             if (!err && rows && rows[0] && Number(rows[0].intel_level) >= INTEL_LEVEL_PROBE && rows[0].intel_json) {
                 try {
                     const payload = JSON.parse(rows[0].intel_json);
+                    if (payload.sector) payload.sector = withSectorRules(payload.sector, gameId);
                     payload.intelMemory = {
                         source: rows[0].intel_source || 'probe',
                         lastSeenTurn: Number(rows[0].last_seen_turn) || null,
@@ -5336,16 +5372,17 @@ function sendRememberedSectorIntel(gameId, playerId, sectorId, connection, done 
     );
 }
 
-function withSectorRules(sector) {
+function withSectorRules(sector, gameId) {
     const row = sector && typeof sector === 'object' ? sector : {};
     const sectorType = Number(row.type ?? row.sectortype) || 0;
-    return { ...row, buildingSlotLimit: BUILDING_SLOTS_BY_TYPE[sectorType] || 0 };
+    return { ...row, sectorname: sectorNames.nameForSector(gameId, row), buildingSlotLimit: BUILDING_SLOTS_BY_TYPE[sectorType] || 0 };
 }
 
-function buildSectorContact(sector, ships) {
+function buildSectorContact(sector, ships, gameId) {
     const rows = Array.isArray(ships) ? ships : [];
     return {
         sector: {
+            sectorname: sectorNames.nameForSector(gameId, sector),
             sectorid: Number(sector.sectorid),
             type: Number(sector.type ?? sector.sectortype) || 0,
             owner: sector.owner === null || sector.owner === undefined ? null : Number(sector.owner)
@@ -5372,13 +5409,13 @@ function sendSectorDetailToPlayer(gameId, sectorId, connection) {
             || (ships || []).some(row => Number(row.owner) === playerId);
         if (directlyPresent) {
             connection.sendUTF(`sector::${sectorId}::${JSON.stringify({
-                sector: withSectorRules(sector),
+                sector: withSectorRules(sector, gameId),
                 ships,
                 buildings
             })}`);
             return;
         }
-        connection.sendUTF(`sectorcontact::${sectorId}::${JSON.stringify(buildSectorContact(sector, ships))}`);
+        connection.sendUTF(`sectorcontact::${sectorId}::${JSON.stringify(buildSectorContact(sector, ships, gameId))}`);
     }).catch(() => connection.sendUTF('Error: Sector detail is temporarily unavailable'));
 }
 
@@ -5408,12 +5445,12 @@ function updateSector2(gameId, sectorId) {
                             if (err) buildings = [];
 
                             const sectorData = {
-                                sector: withSectorRules(sector[0]),
+                                sector: withSectorRules(sector[0], gameId),
                                 ships: ships,
                                 buildings: buildings
                             };
                             const message = `sector::${sectorId}::${JSON.stringify(sectorData)}`;
-                            const contactMessage = `sectorcontact::${sectorId}::${JSON.stringify(buildSectorContact(sector[0], ships))}`;
+                            const contactMessage = `sectorcontact::${sectorId}::${JSON.stringify(buildSectorContact(sector[0], ships, gameId))}`;
                             const directPlayers = new Set(
                                 [Number(sector[0].owner), ...(ships || []).map(row => Number(row.owner))]
                                     .filter(id => Number.isSafeInteger(id) && id > 0)
@@ -5851,6 +5888,11 @@ function sendVisibleMapState(gameId, connection) {
         });
 
         const entries = [];
+        if (connection.observedNamesGame !== gameId) {
+            connection.observedSectorNames = new Map();
+            connection.observedNamesGame = gameId;
+        }
+        const observedNames = connection.observedSectorNames;
         const newlySeen = [];
         const probeLosses = getProbeLosses(gameId, playerId);
         sectors.forEach(sector => {
@@ -5871,9 +5913,11 @@ function sendVisibleMapState(gameId, connection) {
             if (!isLive) {
                 // Dim memory: terrain only, no fleets, no ownership.
                 const memoryFlags = lostProbe ? MAP_FLAG_PROBE_LOSS : 0;
-                const chartName = typeof sector.sectorname === 'string' && sector.sectorname.trim()
-                    ? encodeURIComponent(sector.sectorname.trim())
-                    : '';
+                // Mutable planet names must not reveal changes beyond sensor range.
+                const memoryName = sectorType >= 6 && sectorType <= 10
+                    ? observedNames.get(sectorId) || sectorNames.planetDefaultName(gameId, sectorId)
+                    : sector.sectorname;
+                const chartName = encodeURIComponent(memoryName || '');
                 const namedBy = Number(sector.namedby) || 0;
                 const namedTurn = Number(sector.namedturn) || 0;
                 entries.push(`${sectorId}:${sectorMemoryStatus(sectorType)}:0:${sectorType}:0:${memoryFlags}:${chartName}:${namedBy}:${namedTurn}`);
@@ -5893,9 +5937,9 @@ function sendVisibleMapState(gameId, connection) {
             if (theirs > 0) flags |= MAP_FLAG_ENEMY_FLEET;
             if (lostProbe) flags |= MAP_FLAG_PROBE_LOSS;
             const fleetShown = mine > 0 ? mine : theirs;
-            const chartName = typeof sector.sectorname === 'string' && sector.sectorname.trim()
-                ? encodeURIComponent(sector.sectorname.trim())
-                : '';
+            const visibleName = sectorNames.nameForSector(gameId, sector);
+            observedNames.set(sectorId, visibleName);
+            const chartName = encodeURIComponent(visibleName || '');
             const namedBy = Number(sector.namedby) || 0;
             const namedTurn = Number(sector.namedturn) || 0;
             entries.push(`${sectorId}:${status}:${fleetShown}:${sectorType}:1:${flags}:${chartName}:${namedBy}:${namedTurn}`);
@@ -7908,6 +7952,7 @@ module.exports = {
     moveFleet,
     updateSector,
     nameSector,
+    renamePlanet,
     deliverStandingAdvisory,
     requestMoveOptions,
     surroundShips,

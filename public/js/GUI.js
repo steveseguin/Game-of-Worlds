@@ -147,6 +147,7 @@ const GameUI = (function() {
     function updateSectorDisplay(sectorData) {
         if (!sectorData) return;
         renderSectorDecision(sectorData);
+        window.SectorPreview?.show(sectorData);
 
         const title = document.getElementById('sectorPanelTitle');
         if (title) title.textContent = `Sector ${sectorData.id}`;
@@ -271,6 +272,7 @@ const GameUI = (function() {
     function updateSectorContact(contact) {
         showSectorSelection(contact.id, { live: true, seen: true, type: contact.type });
         renderSectorDecision(contact, false);
+        window.SectorPreview?.show({ ...contact, sensorContactOnly: true });
         const owner = document.getElementById('planetowner');
         if (owner) owner.textContent = ownerLabel(contact.owner);
         setIntelState('Sensor contact', 'sensor', 'Passive sensors identify terrain, control, and presence. Probe or enter the sector for economic, terraform, building, and fleet-composition detail.');
@@ -715,6 +717,7 @@ const GameUI = (function() {
 	}
 
 	function showSectorSelection(sectorId, knownState) {
+        window.SectorPreview?.show({ id: sectorId, type: knownState?.seen ? knownState.type : null, chartName: knownState?.chartName, sensorContactOnly: true, unexplored: !knownState?.seen, intelMemory: knownState?.seen && !knownState.live ? {} : null });
 		const decision = document.getElementById('sectorDecision');
 		if (decision) decision.textContent = `Sector ${sectorId}. ${knownState?.seen ? 'Requesting survey; remembered conditions may have changed.' : 'Uncharted. A probe risks 300 crystals; moving a fleet risks its ships.'}`;
 		const title = document.getElementById('sectorPanelTitle');

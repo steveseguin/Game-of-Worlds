@@ -34,8 +34,7 @@ function createTableBody() {
 /**
  * Every map UPDATE that writes a sector name, with its full statement text.
  *
- * There are exactly two, and they are allowed to exist for opposite reasons, so this returns
- * both and the tests below check each against its own rule:
+ * There are three writers, each checked against its own rule:
  *
  *   - the SWEEP writes the default name and must use COALESCE, because a name is permanent and
  *     survives conquest;
@@ -44,19 +43,22 @@ function createTableBody() {
  *     instead, so only the empire the chart credits can do it, and by namechosen so the
  *     one permitted choice cannot be edited later.
  *
- * A third writer would be a bug: it would mean some code path can rename a sector without
- * satisfying either rule. Hence the count assertion.
+ *   - PLANET RENAME changes an owned planet, guarded by owner and planet type. Its
+ *     handler tests exercise authorization, validation and hidden-observer privacy.
+ * An unexpected writer must be reviewed against these separate rules.
  */
 function nameWrites() {
     const all = [...serverSrc.matchAll(
         /UPDATE map\$\{gameId\}\s*\n?\s*SET([\s\S]*?)WHERE sectorid = \?([^,;`]*)/g)];
     const writes = all.filter(m => /sectorname/i.test(m[1]));
-    assert.equal(writes.length, 2,
-        `expected exactly two map UPDATEs that write sectorname - the sweep and the picker - `
+    assert.equal(writes.length, 3,
+        `expected three map UPDATEs that write sectorname - sweep, picker and planet rename - `
         + `found ${writes.length} (of ${all.length} map updates)`);
 
     const sweep = writes.find(m => /COALESCE/i.test(m[1]));
-    const picker = writes.find(m => !/COALESCE/i.test(m[1]));
+    const picker = writes.find(m => /namechosen/i.test(m[1]));
+    const planet = writes.find(m => /AND owner = \? AND type = \?/.test(m[2]));
+    assert.ok(planet, 'planet renaming must be fenced by current owner and planet type');
     assert.ok(sweep, 'neither sectorname write uses COALESCE, so the sweep can rename on recapture');
     assert.ok(picker, 'both sectorname writes use COALESCE, so the player picker can never apply');
     return { sweep, picker };
@@ -212,7 +214,7 @@ test('visible map snapshots carry and decode permanent chart identity', () => {
     const sender = serverSrc.match(
         /function sendVisibleMapState\(gameId, connection\) \{([\s\S]*?)\n\}/);
     assert.ok(sender, 'could not find sendVisibleMapState in server.js');
-    assert.match(sender[1], /encodeURIComponent\(sector\.sectorname\.trim\(\)\)/,
+    assert.match(sender[1], /encodeURIComponent\(visibleName \|\| ''\)/,
         'mapstate must encode chart names so separators cannot corrupt the wire payload');
     assert.match(sender[1], /sector\.namedby/,
         'mapstate must carry who named a charted sector');

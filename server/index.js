@@ -1080,6 +1080,9 @@ function handleCommand(data, connection) {
         case "namesector":
             serverLogic.nameSector(data, connection);
             break;
+        case "renameplanet":
+            serverLogic.renamePlanet(data, connection);
+            break;
         case "moveoptions":
             serverLogic.requestMoveOptions(data, connection);
             break;

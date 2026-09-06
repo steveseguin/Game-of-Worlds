@@ -5097,9 +5097,50 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta
     }
 
     let inspection = null;
+    let previewCache = null;
+    function sectorPreview(sectorId) {
+        const entry = state.sectors.get(Number(sectorId));
+        if (!state.ready || state.contextLost || !entry?.content || inspection) return null;
+        if (previewCache?.content === entry.content) return previewCache.url;
+        // A small still of the existing tile. Restore every changed render property even
+        // if a driver rejects readback; the tactical map must continue unchanged.
+        const renderer = state.renderer;
+        const target = new THREE.WebGLRenderTarget(320, 180);
+        target.texture.colorSpace = THREE.SRGBColorSpace;
+        const previousTarget = renderer.getRenderTarget();
+        const visibility = new Map();
+        const camera = new THREE.PerspectiveCamera(38, 320 / 180, 0.1, 100);
+        const center = entry.group.position.clone();
+        center.y = 0.35;
+        camera.position.copy(center).add(new THREE.Vector3(0, 1.2, 2.8));
+        camera.lookAt(center);
+        try {
+            state.scene.children.forEach(child => {
+                visibility.set(child, child.visible);
+                child.visible = child === entry.group || Boolean(child.isLight);
+            });
+            renderer.setRenderTarget(target);
+            renderer.render(state.scene, camera);
+            const pixels = new Uint8Array(320 * 180 * 4);
+            renderer.readRenderTargetPixels(target, 0, 0, 320, 180, pixels);
+            const canvas = document.createElement('canvas');
+            canvas.width = 320; canvas.height = 180;
+            const context = canvas.getContext('2d');
+            const frame = context.createImageData(320, 180);
+            for (let y = 0; y < 180; y++) frame.data.set(pixels.subarray((179-y)*1280, (180-y)*1280), y*1280);
+            context.putImageData(frame, 0, 0);
+            previewCache = { content: entry.content, url: canvas.toDataURL('image/png') };
+            return previewCache.url;
+        } catch { return null; }
+        finally {
+            renderer.setRenderTarget(previousTarget);
+            visibility.forEach((visible, child) => { child.visible = visible; });
+            target.dispose();
+        }
+    }
     function inspectPlanet(data) {
         const entry = state.sectors.get(Number(data?.id));
-        if (!state.ready || !entry || worldClassOf(entry) === null) return false;
+        if (!state.ready || !entry) return false;
         if (inspection) exitPlanetInspection();
         inspection = { id: entry.id, zoom: state.zoom, target: state.camTarget.clone(), offset: state.camOffset.clone(),
             orbit: new THREE.Group(), phase: 0, visibility: new Map(), baseDistance: window.innerWidth < 760 ? 3.7 : 2.5 };
@@ -6216,8 +6257,11 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta
                 obj.visible=false;
             };
             if (selected) {
-                selected.group.children.forEach(child=>{if(child!==selected.content) hide(child);});
-                selected.content?.children.forEach(child=>{if(child!==selected.content.userData.world) hide(child);});
+                const planet = worldClassOf(selected) !== null;
+                selected.group.children.forEach(child=>{
+                    if(child!==selected.content && (planet || (child!==selected.tile && child!==selected.proxy))) hide(child);
+                });
+                if (planet) selected.content?.children.forEach(child=>{if(child!==selected.content.userData.world) hide(child);});
             }
             if (!reduceMotion) inspection.phase += dt * 0.12;
             for (const body of inspection.bodies) {
@@ -6807,6 +6851,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta
         setSelected,
         focusSector,
         inspectPlanet,
+        sectorPreview,
         exitPlanetInspection,
         adjustPlanetInspection,
         frameSectors,

@@ -129,7 +129,7 @@ test('the payload strategy recovers every sector, including unnamed ones', () =>
 test('a chart name can never introduce a delimiter of its own', () => {
     // The whole scheme rests on the name being URI-encoded server-side. A raw name would be able to
     // carry a ':' or a ',' and corrupt field alignment for every sector after it.
-    assert.match(serverSrc, /encodeURIComponent\(sector\.sectorname\.trim\(\)\)/,
+    assert.match(serverSrc, /encodeURIComponent\(visibleName \|\| ''\)/,
         'mapstate no longer URI-encodes the chart name; a name containing a comma or colon would '
         + 'shift every field after it');
 

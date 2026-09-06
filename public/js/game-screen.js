@@ -373,7 +373,7 @@
         }
         const sectorTop = Math.max(topReserved, statusColumnBottom);
         if (sectorDisplay) {
-            const sectorMaxWidth = veryNarrow ? Math.max(132, viewportWidth * 0.48) : 300;
+            const sectorMaxWidth = veryNarrow ? (hideMinimap ? viewportWidth - 20 : Math.max(190, viewportWidth * 0.48)) : 300;
             const sectorMinWidth = Math.min(veryNarrow ? 150 : 190, sectorMaxWidth);
             const sectorWidth = veryNarrow ? sectorMaxWidth : clamp(240 * scale, sectorMinWidth, sectorMaxWidth);
             // Below a usable height this panel cannot be shown without printing over
@@ -667,7 +667,14 @@
         const button = document.getElementById(buttonId);
         if (!button) return;
         let collapsed = false;
-        try { collapsed = localStorage.getItem(storageKey) === 'hidden'; } catch (_) {}
+        let automatic = true;
+        try {
+            const preference = localStorage.getItem(storageKey);
+            automatic = preference === null;
+            collapsed = preference === 'hidden';
+        } catch (_) {}
+        const narrow = window.matchMedia('(max-width: 560px)');
+        if (automatic && bodyClass === 'minimap-collapsed') collapsed = narrow.matches;
         const apply = () => {
             document.body.classList.toggle(bodyClass, collapsed);
             button.textContent = collapsed ? showLabel : hideLabel;
@@ -678,9 +685,13 @@
             applyResponsiveLayout();
         };
         button.addEventListener('click', () => {
+            automatic = false;
             collapsed = !collapsed;
             try { localStorage.setItem(storageKey, collapsed ? 'hidden' : 'shown'); } catch (_) {}
             apply();
+        });
+        narrow.addEventListener('change', () => {
+            if (automatic && bodyClass === 'minimap-collapsed') { collapsed = narrow.matches; apply(); }
         });
         apply();
     }

@@ -3,7 +3,7 @@ const CLIENT_COMMANDS = Object.freeze([
     'changerace', 'surrender', 'colonize', 'buytech', 'techstate',
     'victoryprogress', 'probe', 'buyship', 'buybuilding', 'move', 'sector', 'moveoptions',
     'mmove', 'sendmmf', 'update', 'joingame', 'getunlockedraces',
-    'standingorders', 'applyorders', 'namesector'
+    'standingorders', 'applyorders', 'namesector', 'renameplanet'
 ]);
 
 const FROZEN_GAMEPLAY_COMMANDS = Object.freeze([
@@ -26,7 +26,7 @@ const GAME_MESSAGE_PREFIXES = Object.freeze([
     // Offered to the one player who just swept a shoal, so they choose what goes on the
     // chart. Curated candidates only - see server/lib/sector-names.js for why the server
     // never accepts free text for a name that every player will see forever.
-    'namechoice::',
+    'namechoice::', 'renameplanet::',
     // The cluster reading, broadcast once at game start. Its own prefix rather than systemalert:: so
     // the feed icon is chosen by the SENDER instead of inferred from the prose - three of its four
     // lines mention mouths, shoals or a fleet and were being iconed as fleet movements.

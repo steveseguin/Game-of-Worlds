@@ -170,7 +170,7 @@
         #galaxy3d canvas { cursor: grab; }
     </style>
     <link rel="stylesheet" href="/css/controls.css?v=20260905b">
-    <link rel="stylesheet" href="/css/game-polish.css?v=20260906b">
+    <link rel="stylesheet" href="/css/game-polish.css?v=20260906c">
 <link rel="icon" href="/favicon.ico?v=20260905" sizes="any">
     <link rel="icon" type="image/svg+xml" href="/images/brand/game-of-worlds-mark.svg?v=20260905">
     <link rel="apple-touch-icon" href="/images/brand/apple-touch-icon.png?v=20260905">
@@ -384,8 +384,17 @@
         <!-- Instrument title bar. Sticky, because the panel scrolls inside a height the
              layout hands it and a survey readout with no header is unreadable. -->
         <div class="gp-titlebar">Sector Survey</div>
+        <section id="sectorPreview" aria-label="Selected destination">
+            <img id="sectorPreviewImage" alt="" width="320" height="180" hidden>
+            <div class="sector-preview-label"><span id="sectorPreviewKind">Select a tile</span><div class="sector-preview-title"><strong id="sectorPreviewName">Your destination</strong><button id="renamePlanetBtn" type="button" hidden>Rename</button></div></div>
+            <div class="sector-preview-actions">
+                <button id="inspectPlanetBtn" type="button" disabled>Inspect tile</button>
+                <button id="sectorMoveShips" class="primary" type="button" disabled aria-describedby="sectorPreviewName">Move ships here</button>
+            </div>
+        </section>
+        <span id="sectorPreviewNote" class="sr-only" role="status">Choose a sector on the map.</span>
         <div id="sectorDecision" class="sector-decision" aria-live="polite">Select a sector to plan your next move.</div>
-        <button id="inspectPlanetBtn" type="button" hidden>Inspect planet</button>
+
         <div class="gp-body">
         <!-- Two instrument columns above 900px (style.css .survey-cols): orders and state
              on the left, the numeric survey and hull tables on the right. The panel is
@@ -402,9 +411,7 @@
             <span id="sectorIntelState" class="sector-intel-state unknown">No intel</span>
         </div>
         <div id="sectorIntelSummary" class="sector-intel-summary">Choose a tile to inspect its known details and available orders.</div>
-        <div class="sector-context-actions">
-            <button id="sectorMoveShips" class="ghost" type="button" disabled>Move Ships Here</button>
-        </div>
+
         <div id="sectorActionPanel" class="sector-action-panel" aria-live="polite"></div>
         <!-- A KEY/VALUE READOUT IS A TABLE WITH ROW HEADERS, NOT A GRID OF CELLS.
              Both tables in this panel shipped with every cell as <td>, which means the
@@ -1123,9 +1130,10 @@
     </script>
     <script defer src="js/ui.js?v=20260728-mapa11y-r4"></script>
     <script defer src="js/minimap.js?v=20260614b"></script>
-    <script defer src="js/GUI.js?v=20260906b"></script>
+    <script defer src="js/GUI.js?v=20260906c"></script>
     <script defer src="js/build.js?v=20260906b"></script>
-    <script defer src="js/planet-inspection.js?v=20260905"></script>
+    <script defer src="js/sector-preview.js?v=20260906c"></script>
+    <script defer src="js/planet-inspection.js?v=20260906c"></script>
     <script defer src="js/battle.js?v=20260614d"></script>
     <script defer src="js/chat.js?v=20260905c"></script>
     <script defer src="js/controlpad.js?v=20260712d"></script>
@@ -1139,16 +1147,16 @@
     <script defer src="js/combat-analytics.js?v=20260726a"></script>
     <script defer src="/config.js?v=20260614b"></script>
     <!-- shop-enhanced.js is NOT here any more; see the lazy-load block below. -->
-    <script defer src="js/game-screen.js?v=20260906"></script>
+    <script defer src="js/game-screen.js?v=20260906c"></script>
     <script defer src="js/onboarding.js?v=20260728a"></script>
-    <script defer src="js/connect.js?v=20260906b"></script>
+    <script defer src="js/connect.js?v=20260906c"></script>
     <script defer src="js/tour.js?v=20260906"></script>
     <script defer src="js/game.js?v=20260905b"></script>
     <script defer src="js/codex.js?v=20260728r"></script>
     <script defer src="js/name-picker.js?v=20260726b"></script>
     <script defer src="js/loader.js?v=20251105"></script>
     <!-- Last, because that is where they executed before (see note 2 above). -->
-    <script type="module" src="js/galaxy3d.js?v=20260906b"></script>
+    <script type="module" src="js/galaxy3d.js?v=20260906c"></script>
     <!-- battle3d.js is NOT here any more; see the lazy-load block below. -->
 
     <!-- ================================================================
@@ -1373,7 +1381,7 @@
          */
         (function() {
             const COMMS_BAND = 92;   // px the chat transcript always gets
-            const SURVEY_FLOOR = 140; // never starve the survey to feed the band
+            const SURVEY_FLOOR = 190; // keep the destination and both actions above the fold
 
             function fitLeftColumn() {
                 const survey = document.getElementById('sectordisplay');
@@ -1392,7 +1400,7 @@
                     survey.style.height = '';
                     const natural = Math.ceil(survey.scrollHeight) + 2;   // +2 for the plate border
                     const ceiling = Math.floor(available - COMMS_BAND - 10);
-                    const height = Math.max(SURVEY_FLOOR, Math.min(natural, ceiling));
+                    const height = Math.min(Math.max(0, available - 10), Math.max(SURVEY_FLOOR, Math.min(natural, ceiling)));
                     survey.style.height = height > 80 ? height + 'px' : '';
                     band = Math.max(0, available - height - 10);
                 } else {

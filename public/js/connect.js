@@ -1038,6 +1038,10 @@ function handleWebSocketMessage(message) {
     }
     // Only the player who just swept a shoal gets this, and only for a turn. The sector is
     // already named by the time it arrives, so a dropped or ignored prompt costs nothing.
+    if (message.indexOf("renameplanet::") === 0) {
+        try { window.SectorPreview?.renamed(JSON.parse(message.slice("renameplanet::".length))); } catch {}
+        return;
+    }
     if (message.indexOf("namechoice::") === 0) {
         try {
             window.NamePicker?.offer(JSON.parse(message.slice("namechoice::".length)));
@@ -1489,6 +1493,7 @@ function updateSectorInfo(message) {
         // Parse sector data
         const sectorData = {
             id: sectorId,
+            chartName,
             owner: ownerId,
             ownerid: ownerId,
             type: sectorType,
@@ -1515,6 +1520,7 @@ function updateSectorInfo(message) {
         GAME_STATE.mapSectors[sectorId] = {
             ...(GAME_STATE.mapSectors[sectorId] || {}),
             id: sectorId,
+            chartName,
             status: isMyHomeworld ? 'homeworld' : undefined,
             type: sectorType,
             live: true,
@@ -1570,6 +1576,7 @@ function updateSectorInfo(message) {
             window.MiniMap.updateSector(sectorId, status, fleetSize, null, {
                 type: sectorType,
                 live: true,
+                chartName,
                 owner: ownerId,
                 buildings: sectorData.buildings
             });
@@ -1634,6 +1641,7 @@ function updateSectorContact(message) {
         GAME_STATE.mapSectors[sectorId] = {
             ...(GAME_STATE.mapSectors[sectorId] || {}),
             id: sectorId,
+            chartName: sector.sectorname || null,
             type: Number(sector.type),
             owner: sector.owner,
             live: true,
@@ -1648,6 +1656,7 @@ function updateSectorContact(message) {
         // of falling back to "select a sector".
         GAME_STATE.selectedSectorData = {
             id: sectorId,
+            chartName: sector.sectorname || null,
             type: Number(sector.type),
             owner: sector.owner,
             ownerid: sector.owner,
@@ -1660,6 +1669,7 @@ function updateSectorContact(message) {
         window.BuildSystem?.refresh?.();
         window.GameUI?.updateSectorContact?.({
             id: sectorId,
+            chartName: sector.sectorname || null,
             type: Number(sector.type),
             owner: sector.owner,
             fleetSize: Number(data.fleetSize) || 0,
@@ -1679,6 +1689,7 @@ function updateRememberedSectorIntel(message) {
         const rawSector = data.sector || {};
         const sectorData = {
             id: sectorId,
+            chartName: rawSector.sectorname || null,
             owner: rawSector.owner ?? null,
             ownerid: rawSector.owner ?? null,
             type: Number(rawSector.type ?? rawSector.sectortype ?? 0),

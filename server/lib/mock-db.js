@@ -1158,6 +1158,7 @@ class MockDatabase {
                     let whereParamIndex = 0;
                     let sectorId = null;
                     let ownerFilter = null;
+                    let typeFilter = null;
                     conditions.forEach(condition => {
                         if (/sectorid = \?/i.test(condition)) {
                             sectorId = Number(whereParams[whereParamIndex++]);
@@ -1165,12 +1166,15 @@ class MockDatabase {
                         }
                         if (/owner = \?/i.test(condition)) {
                             ownerFilter = Number(whereParams[whereParamIndex++]);
+                            return;
                         }
+                        if (/^type = \?/i.test(condition)) typeFilter = Number(whereParams[whereParamIndex++]);
                     });
                     let targets = sectorId !== null && sectorId !== undefined ? [sectorId] : Array.from(map.keys());
                     if (ownerFilter !== null && ownerFilter !== undefined) {
                         targets = targets.filter(id => Number((map.get(id) || {}).owner) === ownerFilter);
                     }
+                    if (typeFilter !== null) targets = targets.filter(id => Number((map.get(id) || {}).type) === typeFilter);
                     if (/owner IS NULL/i.test(normalized)) {
                         targets = targets.filter(id => {
                             const owner = (map.get(id) || {}).owner;

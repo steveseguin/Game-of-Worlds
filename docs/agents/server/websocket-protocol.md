@@ -78,6 +78,7 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//standingorders:get` | `handleStandingOrders` | Reads automation settings. |
 | `//standingorders:<json>` | `handleStandingOrders` | Updates automation settings. |
 | `//applyorders` | `handleApplyStandingOrders` | Runs standing orders immediately. |
+| `//renameplanet:<sectorHex>:<URI-encoded name>` | `renamePlanet` | Rename an owned planet (types 6–10). Server validates 1–48 characters and checks ownership atomically. Defaults are deterministic per game/sector, stored overrides survive reconnects and conquest. |
 | `//namesector:<sectorHex>:<index>` | `nameSector` | Makes the one permanent chart-name choice for a shoal this player swept, from the curated candidate list. Accepts an index only, never text. Rejected unless `namedby` is this player, the sweep was this turn or last turn, and no choice was already made. |
 | `//surrender` | `handleSurrender` | Ends/removes player and may end game. |
 
@@ -123,6 +124,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `standingorders::state::<json>` / `standingorders::applied::<json>` / `standingorders::error::<msg>` / `standingorders::noop` | game | Standing order state/results/errors. |
 | `systemalert::<msg>` | game | Important narrative/system update. |
 | `advisory::<msg>` | game | One line of the cluster Standing Advisory. It is composed at game start, stored on the active game, and delivered once per player during that game page's first authenticated `//update`; sending it beside `startgame::` would lose it during navigation. Every figure is counted off the generated map and the phrasing is deterministic per game id (`server/lib/standing-advisory.js`). Carries its own prefix so the feed icon is set by the sender rather than inferred from prose. |
+| `renameplanet::<json>` | game | Rename acknowledgement `{sectorId, ok, name, error}`; name on success, error on failure. |
 | `namechoice::<json>` | game | Sent only to the player who just swept a shoal: `{sector, chosen, candidates, turn, cost, memorial}`. `cost` is the number of hulls lost crossing, and the prompt leads with it. `memorial` is true when NOTHING survived: the sector is named but not owned, the prompt reads completely differently, and the name is still permanent and still inherited by whoever takes the ground later. They reply with `//namesector`. Candidates come from `server/lib/sector-names.js` and the server accepts only an index into them, so no player-supplied text ever reaches another player's map. |
 | `maxbuild::`, `ownsector:`, `fleet:`, `tech:`, `ub:`, `info:` | game | Legacy/current compatibility messages still parsed by `public/js/connect.js`. |
 
@@ -141,3 +143,5 @@ Ship, building and technology IDs must be whole decimal tokens. An explicitly su
 Race changes require a valid whole decimal race ID and a waiting game. The handler holds the existing lobby-mutation lock through validation and persistence, so a start cannot overtake a pending race change. Updates during initialization, active play or terminal game states are rejected.
 
 Movement field counts are exact: `//move` contains source, destination, types and counts; `//sendmmf` contains a destination followed by complete source/type/ordinal triplets. Same-source/destination orders are rejected. `fleetmove::` arrival counts reflect hulls surviving transit, and destinations are not disclosed for groups destroyed before arrival.
+
+Planet names use the existing `sectorname` column. Live survey/contact/map messages include the current name; dated probe reports retain the recorded name. Outside sensor range, map labels retain names observed on this connection or the default catalog name after reconnecting; hidden rename events are not broadcast. Shoal names retain their separate permanent, curated naming rules.
