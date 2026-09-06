@@ -10,9 +10,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Game of Worlds — Command Lobby</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
     <link rel="stylesheet" href="css/style.css?v=20260905b">
@@ -538,6 +535,7 @@
         *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
     }
     </style>
+    <link rel="stylesheet" href="css/lobby-polish.css?v=20260905a">
 </head>
 <body class="lobby-page">
     <header class="hud-bar">
@@ -563,9 +561,9 @@
         </div>
         <section class="hero">
             <div>
-                <p class="hero-eyebrow">// Fleet Command Center</p>
-                <h1>Game Lobby</h1>
-                <p>Spin up a match, pick your race, and rally human or AI commanders to the front.</p>
+                <p class="hero-eyebrow">COMMAND LOBBY</p>
+                <h1>Your next campaign.</h1>
+                <p>Choose a game or create your own. Your faction and crew come next.</p>
                 <div class="cta-row">
                     <!-- Default to the secure wording so the markup reads true on
                          production without JS; lobby.js downgrades both if the page
@@ -578,13 +576,30 @@
         </section>
 
         <div class="panel-grid" id="lobbyPanelGrid">
+        <div class="card game-browser" data-code="ROST-12">
+            <h2>Find a game</h2><p class="browser-intro">Join a campaign, or start one with friends and AI opponents.</p>
+            <table id="gameList" class="game-list">
+                <tr>
+                    <th>Game ID</th>
+                    <th>Name</th>
+                    <th>Players</th>
+                    <th>Mode</th>
+                    <th>Access</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+                <tr>
+                    <td colspan="7">Loading games...</td>
+                </tr>
+            </table>
+        </div>
             <div class="card" id="createGameCard" data-code="PNL-01">
                 <h2>Create a New Game</h2>
                 <div class="form-row" style="margin-bottom:12px;">
-                    <input type="text" id="gameName" placeholder="Game name" aria-label="Game name">
+                    <label class="field-label" for="gameName">Game name</label><input type="text" id="gameName" placeholder="Game name" aria-label="Game name">
                 </div>
                 <div class="form-row" style="margin-bottom:14px;">
-                    <select id="maxPlayers" aria-label="Maximum players">
+                    <label class="field-label" for="maxPlayers">Player seats</label><select id="maxPlayers" aria-label="Maximum players">
                         <option value="2">2 Players</option>
                         <option value="3">3 Players</option>
                         <option value="4" selected>4 Players</option>
@@ -600,7 +615,7 @@
                     </select>
                 </div>
                 <div class="form-row" style="margin-bottom:14px;">
-                    <select id="gameMode" aria-label="Game mode">
+                    <label class="field-label" for="gameMode">Turn pace</label><select id="gameMode" aria-label="Game mode">
                         <option value="quick" selected>Quick — fast-paced turns</option>
                         <option value="epic">Epic — 1 turn per day</option>
                         <option value="test" id="testGameModeOption" hidden>Test - accelerated</option>
@@ -628,35 +643,6 @@
                 </div>
             </div>
 
-            <div class="card" data-code="VIS-03">
-                <h2>Tactical Display</h2>
-                <div class="viewscreen">
-                    <img src="images/type8.gif" alt="" aria-hidden="true">
-                    <span class="vs-grid"></span>
-                    <span class="vs-label">SECTOR 0 · STANDBY</span>
-                </div>
-                <p class="vs-caption">
-                    After creating or joining a game, choose your race in the popup. Creators can add AI opponents and copy an invite link from the waiting view.
-                </p>
-            </div>
-        </div>
-
-        <div class="card" data-code="ROST-12" style="margin-top:18px;">
-            <h2>Available Games</h2>
-            <table id="gameList" class="game-list">
-                <tr>
-                    <th>Game ID</th>
-                    <th>Name</th>
-                    <th>Players</th>
-                    <th>Mode</th>
-                    <th>Access</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                </tr>
-                <tr>
-                    <td colspan="7">Loading games...</td>
-                </tr>
-            </table>
         </div>
     </main>
 

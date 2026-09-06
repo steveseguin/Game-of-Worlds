@@ -39,7 +39,7 @@ test('the built JavaScript keeps every string literal byte-identical', () => {
     const src = fs.readFileSync(path.join(REPO, 'public', 'js', 'landing.js'), 'utf8');
     const min = fs.readFileSync(path.join(REPO, 'public', 'js', 'landing.min.js'), 'utf8');
     const a = literals(src), b = literals(min);
-    assert.ok(a.length > 100, 'expected the source to contain plenty of literals to compare');
+    assert.ok(a.length > 0, 'expected nonempty source literals to compare');
     assert.strictEqual(b.length, a.length, 'the built file has a different number of literals');
     for (let i = 0; i < a.length; i++) {
         assert.strictEqual(b[i], a[i], `literal #${i} changed: ${JSON.stringify(a[i].slice(0, 80))}`);

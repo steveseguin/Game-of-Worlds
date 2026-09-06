@@ -13,27 +13,8 @@
     <meta property="og:description" content="Probe the dark. Seize the hazards. Command real fleets across a living galaxy of twelve factions.">
     <meta property="og:image" content="images/title2.png">
 
-    <!-- The three faces are served from THIS origin (see the @font-face block at the
-         head of landing.css). With fonts.googleapis.com blocked the whole document —
-         wordmark included — used to render in Segoe UI, and the render-blocking CDN
-         stylesheet plus display=swap reflowed the 98px hero title on every cold load.
-         Russo One is preloaded because the wordmark is the one element on this page
-         that must not arrive twice. -->
-    <link rel="preload" href="images/ui/font-russo-one-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="images/ui/font-rajdhani-600-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <!-- THE .min PAIR IS WHAT SHIPS, AND THE COMMENTED SOURCE IS WHAT WE EDIT.
-         css/landing.css and js/landing.js are 137 KB and 237 KB, and 55-60% of each
-         is comment — the record of what was measured, what was tried and what broke.
-         That documentation is why this surface is maintainable and it belongs in the
-         repository; it does not belong in a visitor's download, least of all on a
-         phone, and this server sends these files uncompressed. `node
-         tools/build-landing.js` strips comments and whitespace (and nothing else —
-         no renaming, no reordering) to produce the two files loaded here: 374 KB of
-         source becomes 148 KB on the wire, with every string literal in the output
-         proven byte-identical to the source.
-         EDIT THE SOURCE, THEN RUN THE BUILD. tests/landing-build.test.js fails if
-         these two files are stale, so a forgotten rebuild cannot ship silently. -->
-    <link rel="stylesheet" href="css/landing.min.css?v=1095175f">
+    <!-- Edit the landing CSS/JS sources, then run node tools/build-landing.js. -->
+    <link rel="stylesheet" href="css/landing.min.css?v=454b800c">
 </head>
 <body>
     <!-- THE BLACK POINT THE CREST PNGs DO NOT HAVE.
@@ -124,7 +105,7 @@
         </nav>
 
         <a class="btn btn--key" href="/login.html">
-            <span class="btn__full">ENTER COMMAND</span>
+            <span class="btn__full">PLAY NOW</span>
             <span class="btn__short">PLAY</span>
             <span class="btn__chev" aria-hidden="true">▸</span>
         </a>
@@ -146,27 +127,20 @@
     <main id="main" tabindex="-1">
     <!-- ======================= HERO ======================= -->
     <section class="hero" id="top">
-        <canvas class="hero__canvas" id="hero-canvas" aria-hidden="true"></canvas>
+        <img class="hero__art" src="images/ui/landing-world-v2.webp" alt="" width="1536" height="1024" fetchpriority="high" decoding="async">
         <div class="hero__fallback" aria-hidden="true"></div>
         <div class="hero__grid" aria-hidden="true"></div>
 
         <div class="hero__inner">
             <div class="hero__copy">
-                <p class="kicker"><span class="kicker__tick"></span>INCOMING TRANSMISSION // SECTOR 0</p>
-                <!-- The heading text stays in the document — it is the page's h1 and
-                     the thing search and assistive tech read. landing.js casts it as a
-                     beveled logotype into the canvas and only then turns the live text
-                     transparent, so a failed bake leaves the CSS treatment standing. -->
-                <h1 class="hero__title">GAME&nbsp;OF<br><span>WORLDS</span><canvas class="hero__title__bake" aria-hidden="true"></canvas></h1>
-                <p class="hero__lede">
-                    Twelve factions. One contested galaxy. Probe the dark, seize the
-                    hazards that kill lesser fleets, and rewrite who rules the stars.
-                </p>
+                <p class="kicker"><span class="kicker__tick"></span>MULTIPLAYER SPACE STRATEGY</p>
+                <h1 class="hero__title">GAME&nbsp;OF<br><span>WORLDS</span></h1>
+                <p class="hero__lede">Build an empire. Take calculated risks. Outthink your rivals in a galaxy where every move matters.</p>
 
                 <div class="hero__actions">
                     <a class="btn btn--primary" href="/login.html">
-                        DEPLOY FLEET
-                        <span class="btn__sub">PLAY FREE</span>
+                        PLAY FREE
+                        <span class="btn__sub">IN YOUR BROWSER</span>
                     </a>
                 </div>
 
@@ -282,9 +256,7 @@
                 <article class="pillar pillar--danger">
                     <span class="pillar__code">DOC-01</span>
                     <div class="pillar__art">
-                        <canvas class="pillar__bake" data-thumb="hole" width="688" height="276"
-                                style="--plate-lift: 0.86; --plate-sat: 0.66"
-                                role="img" aria-label="A black hole: a lensed accretion disc arching over the shadow, with a photon ring hard against it."></canvas>
+                        <div class="pillar__hole" aria-hidden="true"></div>
                         <span class="pillar__tag">HAZARD</span>
                     </div>
                     <h3>Explore at your peril</h3>
@@ -416,7 +388,7 @@
                     <p class="kicker"><span class="kicker__tick"></span>THEATRE OF WAR</p>
                     <h2 id="theatre-h">The bridge is yours.<br>Give the order.</h2>
                     <p>Capital ships hang over a burning frontier. Every turn, somewhere in the grid, a fleet commits and a world changes hands. Step onto the bridge and make the next move count.</p>
-                    <a class="btn btn--primary" href="/login.html">TAKE THE BRIDGE <span class="btn__sub">PLAY FREE</span></a>
+                    <a class="btn btn--primary" href="/login.html">TAKE THE BRIDGE <span class="btn__sub">IN YOUR BROWSER</span></a>
                 </div>
                 <div class="theatre__readout" aria-hidden="true">
                     <span class="readout__code">TAC-07 // LIVE FEED</span>
@@ -733,7 +705,7 @@
                         <h2 id="enlist-h">The galaxy won’t conquer itself.</h2>
                         <p class="enlist__lede">Free to play in your browser. No download, no wait — pick a faction and take your first sector in under a minute.</p>
                     </div>
-                    <a class="btn btn--primary btn--xl" href="/login.html">START YOUR CONQUEST <span class="btn__sub">PLAY FREE</span></a>
+                    <a class="btn btn--primary btn--xl" href="/login.html">START YOUR CONQUEST <span class="btn__sub">IN YOUR BROWSER</span></a>
                 </div>
 
                 <!-- The instrument that used to be 400x350 of blank steel. Every row
@@ -786,6 +758,6 @@
     </footer>
     <div class="page-tape" aria-hidden="true"></div>
 
-    <script type="module" src="js/landing.min.js?v=ee935c3d"></script>
+    <script type="module" src="js/landing.min.js?v=3362d55c"></script>
 </body>
 </html>

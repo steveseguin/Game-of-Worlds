@@ -3138,3 +3138,75 @@ main:focus:not(:focus-visible) { outline: none; }
     .js .reveal, .js .reveal.in { opacity: 1 !important; transform: none !important; animation: none !important; }
     .pillar:hover, .race:hover, .log__row:hover { transform: none; }
 }
+/* A quieter command interface: artwork carries the atmosphere, controls stay clear. */
+:root { --font-ui: "Segoe UI", system-ui, sans-serif; --font-display: "Segoe UI", system-ui, sans-serif; --text: #edf0f4; --muted: #b5becb; }
+body { background: #080c12; color: #edf0f4; }
+.scanlines, .vignette, .hull, .hud-vent, .hud-status, .hud-veil, .hero__fallback, .hero__grid, .ticker, .hero__stats, .hero__brief, .brand__sub, .module__vent, .enlist__vent { display: none !important; }
+.hud-bar { background: #0b1018; border: 0; border-bottom: 1px solid #28313b; box-shadow: none; padding: 16px max(24px, calc((100vw - 1200px)/2)); gap: 28px; min-height: 76px; }
+.hud-bar::before, .hud-bar::after, .hero::before, .hero::after, .btn::before, .btn::after, .chip::before, .chip::after { display: none; }
+.brand__name { font-family: var(--font-ui); font-size: 16px; font-weight: 750; letter-spacing: .04em; text-shadow: none; color: #edf0f4; }
+.hud-links { margin-left: auto; }
+.hud-links a { color: #c6ced9; font-family: var(--font-ui); font-size: 14px; letter-spacing: 0; text-transform: none; }
+.btn { background: #dcb77a; color: #17140e; border: 1px solid #dcb77a; border-radius: 5px; box-shadow: none; text-shadow: none; font-family: var(--font-ui); letter-spacing: .04em; }
+.btn:hover { background: #edcc96; color: #17140e; transform: none; box-shadow: none; }
+.hero { min-height: 740px; height: auto; max-height: none; background: #080c12; overflow: hidden; border-bottom: 1px solid #242d38; }
+.hero__art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; pointer-events: none; }
+.hero__inner { width: min(1200px, calc(100% - 64px)); min-height: 740px; margin: 0 auto; padding: 84px 0 64px; align-items: center; }
+.hero__copy { width: 520px; max-width: 100%; padding: 0; }
+.kicker { color: #dcb77a; font-family: var(--font-ui); font-size: 12px; letter-spacing: .16em; margin-bottom: 24px; text-shadow: none; }
+.kicker__tick { display: none; }
+.hero__title { font-family: var(--font-display); font-size: clamp(52px, 6vw, 84px); font-weight: 750; line-height: 1; letter-spacing: -.055em; color: #f0f2f5; background: none; -webkit-text-fill-color: currentColor; -webkit-text-stroke: 0; filter: none; text-shadow: none; margin: 0 0 26px; }
+.hero__title span { color: #dcb77a; background: none; -webkit-text-fill-color: currentColor; -webkit-text-stroke: 0; text-shadow: none; filter: none; }
+.hero__lede { font-family: var(--font-ui); font-size: 18px; line-height: 1.65; color: #c5ccd7; max-width: 440px; text-shadow: none; }
+.hero__actions { margin-top: 28px; }
+.btn--primary { padding: 17px 30px; font-size: 16px; min-width: 220px; }
+.btn__sub { color: #352a19; font-size: 10px; letter-spacing: .1em; }
+.hero__stack { margin-top: 32px; width: 440px; max-width: 100%; }
+.mode-chips { display: flex; gap: 24px; background: none; border: 0; box-shadow: none; }
+.chip { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; background: none; padding: 0; border: 0; box-shadow: none; }
+.chip b { font-family: var(--font-ui); font-size: 12px; color: #e4e9ef; letter-spacing: .07em; text-shadow: none; }
+.chip i { font-family: var(--font-ui); font-size: 12px; color: #b5becb; letter-spacing: 0; text-transform: none; }
+.module, .enlist { background: #0c121b; border: 1px solid #29323e; box-shadow: none; border-radius: 8px; }
+.module::before, .module::after, .enlist::before, .enlist::after, .pillar::before, .pillar::after, .race::before, .race::after { display: none; }
+.module__head { background: none; box-shadow: none; border-bottom: 1px solid #29323e; }
+.pillar, .race, .log__row { background: #111923; border: 1px solid #303b48; border-radius: 5px; box-shadow: none; text-shadow: none; }
+.pillar:hover, .race:hover, .log__row:hover { transform: none; background: #151f2b; }
+.pillar p, .race p, .module p { color: #c3cbd6; }
+.reveal, .js .reveal { opacity: 1 !important; transform: none !important; animation: none !important; }
+.led, .log__led { animation: none; }
+.pillar__hole { width: 100%; height: 100%; background: radial-gradient(ellipse at center, #010205 0 24%, #d8aa63 26%, #856445 28%, #192432 39%, #090d15 62%); }
+a:focus-visible, button:focus-visible { outline: 3px solid #a9d8ff; outline-offset: 5px; }
+@media (max-width: 700px) {
+ .hud-bar { padding: 14px 18px; gap: 14px; }
+ .brand__sigil { display: none; }
+ .brand__name { font-size: 13px; }
+ .hud-links { display: none; }
+ .hud-bar .btn { margin-left: auto; }
+ .hero { min-height: 820px; }
+ .hero__art { height: 370px; object-position: 75% center; }
+ .hero__inner { width: calc(100% - 40px); min-height: 820px; padding: 315px 0 42px; }
+ .hero__copy { background: linear-gradient(180deg, transparent, #080c12 55px); }
+ .hero__title { font-size: 60px; }
+ .hero__lede { font-size: 16px; }
+ .kicker { font-size: 10px; margin-bottom: 20px; }
+ .btn--primary { width: auto; }
+ .mode-chips { flex-wrap: wrap; gap: 20px; }
+}
+.hero__title::before, .hero__title::after, .module__bar::before, .module__bar::after { display: none; }
+.hud-links, .hud-links a { background: none; border: 0; box-shadow: none; }
+.hud-links a { padding: 10px; }
+.module { padding: 56px 32px; margin-top: 32px; }
+.module__bar { background: none; border: 0; box-shadow: none; padding: 0; margin-bottom: 20px; color: #dcb77a; }
+.module__id { display: none; }
+.module__head { border: 0; }
+.module__title, .theatre__copy h2, .enlist__inner h2 { text-shadow: none; letter-spacing: -.025em; }
+.hero__lede { font-weight: 400; }
+.btn__sub { font-family: var(--font-ui); }
+@media (max-width: 700px) { .module { padding: 32px 20px; } }
+.hud-foot__row { min-width: 0; }
+.hud-foot__brand { white-space: normal; }
+.hud-foot__sub { display: block; margin: 8px 0 0; }
+@media (max-width: 700px) { .hud-foot__row { grid-template-columns: minmax(0, 1fr); } .hud-foot__brand, .hud-foot__credit { max-width: 100%; overflow-wrap: anywhere; } }
+.hud-foot__brand { flex-wrap: wrap; gap: 10px; }
+.module__code { display: none; }
+.module__id { display: inline; color: #dcb77a; font-family: var(--font-ui); font-size: 12px; letter-spacing: .12em; }

@@ -33,3 +33,9 @@ References: https://threejs.org/docs/pages/EffectComposer.html and https://www.w
 - Battle teardown cancels its animation callback. An idle renderer no longer schedules another frame; the next battle restarts animation through the existing entry point.
 
 Coverage includes keyboard history controls, preserved drafts, screen-reader semantics, selectable text, overlay contrast and idle animation cleanup.
+
+### Landing and lobby polish (September 2026)
+
+The landing hero uses a high-priority, dimensioned 93 KB WebP instead of procedural Three.js rendering and texture workers. Landing JavaScript now only measures the header and supplies text equivalents for faction meters. Typography renders directly from CSS; decorative ticker motion and metal framing are suppressed. Edit landing source files and run `node tools/build-landing.js` to refresh the shipped assets.
+
+The lobby puts the game browser before the labeled create form, removes the decorative tactical preview, and uses `public/css/lobby-polish.css` for the quieter palette and responsive layout. Waiting-room controls retain the existing lobby hooks. `tests/e2e/entry-design.spec.js` checks artwork readiness, absence of renderer requests, keyboard order, game creation, mobile overflow, and WCAG AA axe checks for all three entry surfaces.
