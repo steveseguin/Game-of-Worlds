@@ -12,9 +12,10 @@
  * - None, but is used by connect.js and game.js
  */
 const ChatSystem = (function() {
+    let initialized = false;
+    const HISTORY_LIMIT = 200;
     let chatHistory = [];
     let chatHistoryTime = [];
-    let timeSinceCounter = null;
     let chatID = 1;
     let chatfadetimer = null;
     let chatfadebegin = null;
@@ -23,12 +24,13 @@ const ChatSystem = (function() {
     
     function initialize() {
         ensureChatFeed();
+        if (initialized) return;
+        initialized = true;
         // Set up chat form event handler
         document.getElementById('chatForm')?.addEventListener('submit', sendChat);
         document.getElementById('chatHistoryUp')?.addEventListener('click', showChatHistory);
         document.getElementById('chatHistoryDown')?.addEventListener('click', function() {
-            chatID = 0;
-            showChatHistory();
+            showLatestChat(true);
         });
     }
     
@@ -41,11 +43,21 @@ const ChatSystem = (function() {
                 chatInput.value = "";
                 return;
             }
+            try {
+                if (typeof websocket === 'undefined' || !websocket || websocket.readyState !== WebSocket.OPEN) {
+                    throw new Error('Chat connection unavailable');
+                }
+                websocket.send(text);
+            } catch (error) {
+                const status = document.getElementById('chatSendStatus');
+                if (status) status.textContent = 'Chat was not sent. Your draft is saved; retry when connected.';
+                window.NotificationSystem?.notify?.('Chat not sent', 'Your draft is saved. Retry when connected.', 'warning', 6000);
+                return;
+            }
+            const status = document.getElementById('chatSendStatus');
+            if (status) status.textContent = '';
             pendingOwnMessages.push({ text, time: Date.now() });
             displayMessage(`You: ${text}`, { own: true });
-            if (typeof websocket !== 'undefined' && websocket && websocket.readyState === WebSocket.OPEN) {
-                websocket.send(text);
-            }
             chatInput.value = "";
         }
     }
@@ -90,36 +102,47 @@ const ChatSystem = (function() {
         const logElement = document.getElementById("log");
         chatHistory.push(logElement ? logElement.textContent : '');
         
-        clearInterval(timeSinceCounter);
-        timeSinceCounter = setInterval(updateTimeLog, 1000);
-        chatID = 1;
+        if (chatHistory.length > HISTORY_LIMIT) {
+            chatHistory.shift();
+            chatHistoryTime.shift();
+        }
+        // Update historical timestamps on demand, not in the hidden legacy panel every second.
+        if (document.getElementById('chatHistoryReadout')?.hidden === false) {
+            chatID = Math.min(chatID + 1, chatHistory.length);
+        } else {
+            showLatestChat();
+        }
     }
     
     function showChatHistory() {
-        chatID++;
-        if (chatID > chatHistoryTime.length) {
-            chatID = chatHistoryTime.length;
+        if (!chatHistory.length) return;
+        chatID = Math.min(chatID + 1, chatHistory.length);
+        const index = chatHistory.length - chatID;
+        const readout = document.getElementById('chatHistoryReadout');
+        const messages = document.getElementById('chatMessages');
+        if (readout && messages) {
+            messages.hidden = true;
+            readout.hidden = false;
+            const age = Math.max(0, Math.round((Date.now() - chatHistoryTime[index]) / 1000));
+            readout.textContent = `${chatHistory[index]} (${age} seconds ago)`;
         }
-        
-        const d = new Date();
-        const logElement = document.getElementById("log");
-        const timeSince = document.getElementById('timeSince');
-
-        if (logElement && chatHistory.length >= chatID) {
-            logElement.textContent = chatHistory[chatHistory.length - chatID];
-        }
-        
-        if (timeSince && chatHistoryTime.length >= chatID) {
-            timeSince.textContent = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
-        }
-
-        startChatFade();
+        updateTimeLog();
     }
-    
+
+    function showLatestChat(scrollToLatest = false) {
+        chatID = 1;
+        const readout = document.getElementById('chatHistoryReadout');
+        const messages = document.getElementById('chatMessages');
+        if (readout) readout.hidden = true;
+        if (messages) messages.hidden = false;
+        const feed = document.getElementById('chatFeed');
+        if (scrollToLatest && feed) feed.scrollTop = feed.scrollHeight;
+    }
+
     function updateTimeLog() {
         const d = new Date();
         const timeSince = document.getElementById('timeSince');
-        if (timeSince && chatHistoryTime.length >= chatID) {
+        if (timeSince && chatID > 0 && chatHistoryTime.length >= chatID) {
             timeSince.textContent = Math.round((d.getTime() - chatHistoryTime[chatHistoryTime.length - chatID]) / 1000) + " seconds ago";
         }
     }
@@ -129,7 +152,7 @@ const ChatSystem = (function() {
         clearTimeout(chatfadebegin);
         
         const updates = document.getElementById("empireupdates");
-        if (!updates) return;
+        if (!updates || !updates.getClientRects().length) return;
         
         setAlpha(updates, 100);
         chatfadevalue = 100;
@@ -167,8 +190,13 @@ const ChatSystem = (function() {
         feed.style.zIndex = '151';
         feed.style.padding = '4px';
         feed.style.boxSizing = 'border-box';
-        feed.style.pointerEvents = 'none';
-        feed.innerHTML = '<div id="chatMessages" style="display:flex;flex-direction:column;gap:4px;"></div>';
+        feed.style.pointerEvents = 'auto';
+        feed.tabIndex = 0;
+        feed.setAttribute('role', 'region');
+        feed.setAttribute('aria-label', 'Chat messages');
+        feed.innerHTML = '<div id="chatMessages" role="log" aria-live="polite" aria-relevant="additions"></div>'
+            + '<div id="chatHistoryReadout" class="chat-message" role="status" hidden></div>'
+            + '<div id="chatSendStatus" role="status"></div>';
         chatContainer.parentNode.insertBefore(feed, chatContainer);
     }
 
@@ -176,6 +204,8 @@ const ChatSystem = (function() {
         const messages = document.getElementById('chatMessages');
         if (!messages) return;
 
+        const feed = document.getElementById('chatFeed');
+        const followLatest = feed && !messages.hidden && feed.scrollHeight - feed.scrollTop - feed.clientHeight < 24;
         const row = document.createElement('div');
         row.className = `chat-message${own ? ' chat-message-own' : ''}`;
         row.textContent = message;
@@ -185,7 +215,7 @@ const ChatSystem = (function() {
             messages.removeChild(messages.firstChild);
         }
 
-        messages.scrollTop = messages.scrollHeight;
+        if (followLatest) feed.scrollTop = feed.scrollHeight;
     }
 
     function shouldSuppressOwnEcho(message) {

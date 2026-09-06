@@ -12,7 +12,7 @@
     <link rel="modulepreload" href="js/vendor/three.core.min.js">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" href="images/minilogo.png">
-    <link rel="stylesheet" href="css/style.css?v=20260905a">
+    <link rel="stylesheet" href="css/style.css?v=20260905b">
     <style>
         /* Layout-critical rules only. Every material/typographic decision for the in-game
            HUD lives in css/style.css under `.game-page` — one console language shared with
@@ -1029,8 +1029,10 @@
 
     <aside id="hudComms" aria-label="Comms">
     <!-- Chat Input -->
-    <div id="chatFeed" style="position:fixed;bottom:368px;width:500px;max-width:100%;max-height:140px;z-index:151;padding:8px 10px;box-sizing:border-box;pointer-events:none;">
-        <div id="chatMessages"></div>
+    <div id="chatFeed" tabindex="0" role="region" aria-label="Chat messages" style="position:fixed;bottom:368px;width:500px;max-width:100%;max-height:140px;z-index:151;padding:8px 10px;box-sizing:border-box;pointer-events:auto;">
+        <div id="chatMessages" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <div id="chatHistoryReadout" class="chat-message" role="status" hidden></div>
+        <div id="chatSendStatus" role="status"></div>
     </div>
     <!-- Footer rail. The two history keys were labelled with a literal caret and a
          literal capital V set in the body sans — not chevrons, just the characters that
@@ -1115,7 +1117,7 @@
     <script defer src="js/GUI.js?v=20260725o"></script>
     <script defer src="js/build.js?v=20260725f"></script>
     <script defer src="js/battle.js?v=20260614d"></script>
-    <script defer src="js/chat.js?v=20260430a"></script>
+    <script defer src="js/chat.js?v=20260905b"></script>
     <script defer src="js/controlpad.js?v=20260712d"></script>
     <script defer src="js/epic-music.js?v=20260725c"></script>
     <script defer src="js/sound.js?v=20260712b"></script>
@@ -1131,7 +1133,7 @@
     <script defer src="js/onboarding.js?v=20260728a"></script>
     <script defer src="js/connect.js?v=20260905a"></script>
     <script defer src="js/tour.js?v=20260728a"></script>
-    <script defer src="js/game.js?v=20260726a"></script>
+    <script defer src="js/game.js?v=20260905b"></script>
     <script defer src="js/codex.js?v=20260728r"></script>
     <script defer src="js/name-picker.js?v=20260726b"></script>
     <script defer src="js/loader.js?v=20251105"></script>
@@ -1206,7 +1208,7 @@
 
             function loadBattle3D() {
                 if (!battlePromise) {
-                    battlePromise = import('./js/battle3d.js?v=20260905a')
+                    battlePromise = import('./js/battle3d.js?v=20260905b')
                         .catch(error => {
                             console.error('Battle theater failed to load; using the 2D fallback.', error);
                             battlePromise = null;

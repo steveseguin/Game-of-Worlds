@@ -5525,3 +5525,18 @@ button:focus:not(:focus-visible) { outline: none; }
     /* Match game-screen's short-landscape height; the old 260px floor hid the header. */
     .game-page #controlPadGUI { min-height: 140px !important; }
 }
+
+/* Chat remains readable and scrollable when the history is longer than its bay. */
+.game-page #chatMessages:not([hidden]) { display: flex; flex-direction: column; gap: 4px; }
+.game-page #chatFeed { pointer-events: auto; }
+.game-page #chatFeed:focus-visible { outline: 2px solid #ffdc96; outline-offset: -2px; }
+.game-page #chatSendStatus:not(:empty) {
+    color: #ffdc96; background: #151b26; padding: 8px; font-size: 13px;
+}
+.game-page .chat-message { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; line-height: 1.5; }
+
+.game-page canvas, .game-page button { user-select: none; }
+.game-page #chatFeed, .game-page .tab-panel { user-select: text; }
+
+.game-page #chatMessages { max-height: none; overflow: visible; }
+.game-page #chatMessages[hidden] { display: none; }

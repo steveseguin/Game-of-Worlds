@@ -76,10 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-    
-    // Disable selection on game elements
-    disableSelection(document.body);
-    
+
     console.log('Game of Worlds initialized');
 });
 
@@ -191,23 +188,6 @@ function adjustViewport() {
     document.body.style.zoom = '';
     document.body.style.width = '';
     document.body.style.height = '';
-}
-
-function disableSelection(element) {
-    if (!element) return;
-    
-    element.onselectstart = function() { return false; };
-    if (element.style) {
-        element.style.userSelect = "none";
-        element.style.webkitUserSelect = "none";
-        element.style.MozUserSelect = "none";
-        element.style.msUserSelect = "none";
-    }
-    
-    const children = element.getElementsByTagName('*');
-    for (let i = 0; i < children.length; i++) {
-        disableSelection(children[i]);
-    }
 }
 
 function getSanitizedUserId() {

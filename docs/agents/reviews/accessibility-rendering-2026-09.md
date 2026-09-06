@@ -21,3 +21,15 @@ The rendering regression uses the shipped EffectComposer implementation to check
 Local network timings are not production Core Web Vitals. GPU-specific quality and driver behavior still warrant checks on representative hardware.
 
 References: https://threejs.org/docs/pages/EffectComposer.html and https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html.
+
+## Follow-up: chat, overlays and idle rendering
+
+- Analytics and all five codex sections were audited with axe; no A/AA violations were reported in those tested states.
+- Removed the nested chat clipping limit so the focusable outer panel can scroll; Latest reaches the newest message.
+- Previous/Latest chat now operate on visible history instead of the hidden legacy log. The feed is a named, focusable region, new messages use a polite live log, and history is capped at 200 entries. Incoming messages do not replace the historical message being read.
+- Disconnected or failed socket sends preserve the draft and report that it was not sent. They no longer display a false local sent message. Successful socket submission is not a server delivery acknowledgement.
+- Removed the recursive whole-page selection blocker, which traversed all descendants repeatedly and prevented selecting input and gameplay text. CSS limits selection suppression to canvases and buttons.
+- Chat text uses a larger system face on the console background. Hidden legacy chat no longer starts periodic age updates or fade animation.
+- Battle teardown cancels its animation callback. An idle renderer no longer schedules another frame; the next battle restarts animation through the existing entry point.
+
+Coverage includes keyboard history controls, preserved drafts, screen-reader semantics, selectable text, overlay contrast and idle animation cleanup.

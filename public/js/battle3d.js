@@ -4925,8 +4925,10 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
     // Frame
     // ----------------------------------------------------------------------
     function animate() {
+        animHandle = null;
+        if (!current) return;
         animHandle = requestAnimationFrame(animate);
-        if (!current || document.hidden) {
+        if (document.hidden) {
             lastFrameSec = nowSec();
             return;
         }
@@ -5655,6 +5657,8 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
      * one turn and the second must not pay for the first's furniture again.
      */
     function teardownBattle() {
+        if (animHandle !== null) cancelAnimationFrame(animHandle);
+        animHandle = null;
         if (!scene || !current) return;
         flushVfx();
         if (stage) {

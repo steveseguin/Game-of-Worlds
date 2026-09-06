@@ -30,3 +30,15 @@ test('galaxy post-processing follows adaptive resolution instead of retaining st
  ratio=0.75;ctx.resize();assert.equal(composer.renderTarget1.width,600);assert.equal(composer.renderTarget1.height,450);
  assert.equal(ctx.state.fxaaPass.material.uniforms.resolution.value.x,1/600);
 });
+
+test('finished battles release their frame callback and idle animation does not reschedule',()=>{
+ const source=read('public/js/battle3d.js');
+ let scheduled=0;const cancelled=[];
+ const ctx=vm.createContext({animHandle:42,current:null,scene:null,requestAnimationFrame(){scheduled++;return 99;},cancelAnimationFrame(id){cancelled.push(id);}});
+ vm.runInContext(source.slice(source.indexOf('    function teardownBattle()'),source.indexOf('    function finishBattle(')),ctx);
+ ctx.teardownBattle();assert.deepEqual(cancelled,[42]);assert.equal(ctx.animHandle,null);
+ const start=source.indexOf('    function animate()');
+ const end=source.indexOf('        const now = nowSec();',start);
+ vm.runInContext(source.slice(start,end)+'}',ctx);
+ ctx.animate();assert.equal(scheduled,0);assert.equal(ctx.animHandle,null);
+});
