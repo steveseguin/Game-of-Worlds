@@ -61,7 +61,7 @@ test('production passes ids, which is the form that used to fail', () => {
     // above would need rewriting, so make the assumption visible.
     assert.match(serverSrc, /applyShipModifiers\(raceId, ship\.id, ship\)/,
         'the access summary should still pass a numeric ship id');
-    assert.match(serverSrc, /const shipType = parseInt\(parts\[1\]\)/,
+    assert.match(serverSrc, /const shipType = .*Number\(parts\[1\]\)/,
         'buyShip should still parse the hull as a number');
 });
 

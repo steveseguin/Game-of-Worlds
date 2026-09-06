@@ -40,7 +40,7 @@ function parseCookies(cookieHeader) {
 
 function readJsonBody(request, limitBytes = JSON_BODY_LIMIT_BYTES) {
     return new Promise((resolve, reject) => {
-        let body = '';
+        const chunks = [];
         let size = 0;
         let done = false;
 
@@ -56,21 +56,26 @@ function readJsonBody(request, limitBytes = JSON_BODY_LIMIT_BYTES) {
 
         request.on('data', chunk => {
             if (done) return;
-            const text = chunk.toString();
-            size += Buffer.byteLength(text, 'utf8');
+            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            size += buffer.length;
             if (size > limitBytes) {
                 const err = new Error(`JSON body exceeds ${limitBytes} bytes`);
                 err.code = 'PAYLOAD_TOO_LARGE';
                 finish(err);
                 return;
             }
-            body += text;
+            chunks.push(buffer);
         });
 
         request.on('end', () => {
             if (done) return;
             try {
-                finish(null, body ? JSON.parse(body) : {});
+                const body = Buffer.concat(chunks).toString('utf8');
+                const payload = body ? JSON.parse(body) : {};
+                if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+                    throw new Error('Expected a JSON object');
+                }
+                finish(null, payload);
             } catch (err) {
                 err.code = 'INVALID_JSON';
                 finish(err);
@@ -83,7 +88,7 @@ function readJsonBody(request, limitBytes = JSON_BODY_LIMIT_BYTES) {
 
 function readRawBody(request, limitBytes = WEBHOOK_BODY_LIMIT_BYTES) {
     return new Promise((resolve, reject) => {
-        let body = '';
+        const chunks = [];
         let size = 0;
         let done = false;
 
@@ -106,10 +111,10 @@ function readRawBody(request, limitBytes = WEBHOOK_BODY_LIMIT_BYTES) {
                 finish(err);
                 return;
             }
-            body += chunk.toString('utf8');
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         });
 
-        request.on('end', () => finish(null, body));
+        request.on('end', () => finish(null, Buffer.concat(chunks)));
         request.on('error', finish);
     });
 }
@@ -332,10 +337,12 @@ class PaymentEndpoints {
             }
             console.error('Webhook error:', error);
 
-            // Still return 200 to prevent retries for signature failures
-            sendJson(response, 200, {
+            // Acknowledge only processed events. Transient delivery failures must
+            // remain retryable; invalid signatures are rejected as client errors.
+            const invalidSignature = error.message === 'Invalid webhook signature';
+            sendJson(response, invalidSignature ? 400 : 500, {
                 received: false,
-                error: error.message
+                error: invalidSignature ? 'Invalid webhook signature' : 'Webhook processing failed'
             });
         }
     }

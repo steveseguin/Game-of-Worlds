@@ -121,3 +121,25 @@ test.describe('AI strategy basics', () => {
     assert.ok(aiShips.length > 0, 'AI should build ships when resourced');
   });
 });
+
+
+test('AI researches another technology instead of repeatedly attempting a race-capped branch', async () => {
+  const db = createMockDatabase();
+  serverLogic.setDatabase(db);
+  resetGameState();
+  const tech = require('../server/lib/tech');
+  const id = 81;
+  await query(db, `INSERT INTO players${id} (userid, race_id, metal, crystal, research, is_ai, ai_difficulty, ai_strategy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [7, 3, 0, 0, 5000, 1, 'medium', 'aggressive']);
+  const initial = tech.serializeTechLevels({ [tech.TECHNOLOGIES.MILITARY_SHIPYARDS.id]: 1 });
+  await query(db, `UPDATE players${id} SET homeworld = ?, currentsector = ?, tech = ? WHERE userid = ?`, [1, 1, initial, 7]);
+  await query(db, `UPDATE map${id} SET owner = ?, type = 10 WHERE sectorid = ?`, [7, 1]);
+  try {
+    await serverLogic.triggerAiTurn(id);
+    const rows = await query(db, `SELECT research, tech FROM players${id} WHERE userid = ?`, [7]);
+    assert.ok(rows[0].research < 5000, 'a Swarm AI at its Shipyards cap must spend on an available branch');
+    const levels = tech.parseTechLevels(rows[0].tech);
+    assert.equal(tech.getLevel(levels, tech.TECHNOLOGIES.MILITARY_SHIPYARDS.id), 1);
+    assert.ok(tech.getLevel(levels, tech.TECHNOLOGIES.LASER_WEAPONS.id) > 0);
+  } finally { resetGameState(); }
+});

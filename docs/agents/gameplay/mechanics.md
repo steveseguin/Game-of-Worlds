@@ -178,3 +178,7 @@ All end paths should stop timers and clear reconnect state enough that players c
 ## Standing-order construction
 
 Standing orders use the same purchase handlers as manual orders, explicitly targeting the homeworld. Automated rebuilds obey ownership and building slots; scouts obey race access and costs, research, local Spaceport tier and per-turn production capacity. Guarded spending and purchase rollback apply to both. Overlapping standing-order runs for one player/game are ignored until the active run finishes, preventing duplicate automatic purchases.
+
+## Failure handling and AI research
+
+Income calculations propagate authoritative technology, sector and building read failures instead of recording a reduced payment as complete; the turn retry can credit the correct income. Only a missing legacy bonus column permits the flat-yield fallback. Battles stop before simulation if sector ownership, turrets or combatant profiles cannot be loaded. Fleet lookup failures skip elimination rather than declaring a fleetless empire. Colony settlement verifies the selected ship still has the same owner, sector and type before consuming it; a moved ship is preserved and the claim rolls back. AI research selection skips technologies already at the race-specific cap and selects an available branch.

@@ -69,7 +69,7 @@ The public site also presents a curated, browser-friendly bonus-material collect
 ## Quick Start
 
 ### Prerequisites
-- Node.js (v18 or higher)
+- Node.js (v20 or higher for development)
 - MySQL (v5.7 or higher), unless you use `USE_MOCK_DB=true`
 - npm or yarn
 

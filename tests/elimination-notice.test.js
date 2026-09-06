@@ -79,3 +79,27 @@ test('a player stripped of every world and ship is told their empire has fallen'
         delete serverLogic.gameState.activeGames[gameId];
     }
 });
+
+
+test('a fleet lookup outage cannot eliminate a player or clear their current game', async () => {
+    const id = 72;
+    const client = makeClient(7, id);
+    serverLogic.gameState.clients.push(client);
+    serverLogic.gameState.activeGames[id] = {};
+    serverLogic.setDatabase({ isMock: true, query(sql, params, callback) {
+        if (typeof params === 'function') callback = params;
+        if (sql.startsWith('SELECT userid')) return callback(null, [{ userid: 7, is_ai: 0 }]);
+        if (sql.startsWith('SELECT * FROM map')) return callback(null, [{ sectorid: 1, owner: 8, type: 10 }]);
+        if (sql.includes('FROM ships')) return callback(new Error('fleet lookup unavailable'));
+        assert.fail(`unexpected write: ${sql}`);
+    } });
+    try {
+        await assert.rejects(serverLogic.notifyEliminatedPlayers(id), /fleet lookup unavailable/);
+        assert.equal(client.gameid, id);
+        assert.deepEqual(client.messages, []);
+        assert.equal(serverLogic.gameState.activeGames[id].eliminatedPlayers.has(7), false);
+    } finally {
+        serverLogic.gameState.clients.splice(serverLogic.gameState.clients.indexOf(client), 1);
+        delete serverLogic.gameState.activeGames[id];
+    }
+});

@@ -349,7 +349,7 @@ function sendJson(response, statusCode, payload) {
 }
 
 function readJsonBody(request, callback, limitBytes = JSON_BODY_LIMIT_BYTES) {
-    let body = '';
+    const chunks = [];
     let size = 0;
     let done = false;
 
@@ -361,25 +361,32 @@ function readJsonBody(request, callback, limitBytes = JSON_BODY_LIMIT_BYTES) {
 
     request.on('data', chunk => {
         if (done) return;
-        const text = chunk.toString();
-        size += Buffer.byteLength(text, 'utf8');
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += buffer.length;
         if (size > limitBytes) {
             const err = new Error(`JSON body exceeds ${limitBytes} bytes`);
             err.code = 'PAYLOAD_TOO_LARGE';
             finish(err);
             return;
         }
-        body += text;
+        chunks.push(buffer);
     });
 
     request.on('end', () => {
         if (done) return;
+        let payload;
         try {
-            finish(null, body ? JSON.parse(body) : {});
+            const body = Buffer.concat(chunks).toString('utf8');
+            payload = body ? JSON.parse(body) : {};
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+                throw new Error('Expected a JSON object');
+            }
         } catch (err) {
             err.code = 'INVALID_JSON';
             finish(err);
+            return;
         }
+        finish(null, payload);
     });
 
     request.on('error', err => finish(err));
@@ -2104,7 +2111,7 @@ async function computeTurnIncome(gameId, playerId) {
     const techRows = await queryDb(
         `SELECT tech FROM ${tables.players} WHERE userid = ? LIMIT 1`,
         [playerId]
-    ).catch(() => []);
+    );
     const techFx = techSystem.aggregateEffects(
         techSystem.parseTechLevels(techRows && techRows[0] ? techRows[0].tech : '')
     );
@@ -2116,17 +2123,20 @@ async function computeTurnIncome(gameId, playerId) {
             [playerId]
         );
     } catch (err) {
+        // Only a missing legacy bonus column permits flat yields. An outage
+        // must leave income unpaid so the turn retry can credit the full amount.
+        if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
         // Older games lack bonus columns; fall back to flat yields.
         sectors = await queryDb(
             `SELECT sectorid, type FROM ${tables.map} WHERE owner = ?`,
             [playerId]
-        ).catch(() => []);
+        );
     }
 
     const buildingRows = await queryDb(
         `SELECT sectorid, type, COUNT(*) as count FROM ${tables.buildings} WHERE owner = ? GROUP BY sectorid, type`,
         [playerId]
-    ).catch(() => []);
+    );
     const buildingsBySector = new Map();
     (buildingRows || []).forEach(row => {
         const sectorId = Number(row.sectorid);
@@ -2359,7 +2369,6 @@ async function notifyEliminatedPlayers(gameId) {
         queryDb(`SELECT userid, is_ai FROM ${tables.players}`),
         queryDb(`SELECT * FROM ${tables.map}`),
         queryDb(`SELECT sectorid, owner, type, COUNT(*) as count FROM ${tables.ships} GROUP BY sectorid, owner, type`)
-            .catch(() => [])
     ]);
     if (!Array.isArray(players) || players.length === 0 || !Array.isArray(sectors) || sectors.length === 0) {
         return;
@@ -3076,7 +3085,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
         const sectorRows = await queryDb(
             `SELECT owner, type FROM ${tables.map} WHERE sectorid = ?`,
             [sectorId]
-        ).catch(() => []);
+        );
         const sectorOwner = sectorRows && sectorRows[0] ? Number(sectorRows[0].owner) : 0;
         // Planet type backdrops the defender's side in the theater (6-10 = planets).
         const planetType = sectorRows && sectorRows[0] ? Number(sectorRows[0].type) || 0 : 0;
@@ -3093,7 +3102,7 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
                 ? queryDb(
                     `SELECT id FROM ${tables.buildings} WHERE sectorid = ? AND type = 4 AND owner = ?`,
                     [sectorId, defenderId]
-                ).catch(() => [])
+                )
                 : Promise.resolve([])
         ]);
 
@@ -3296,13 +3305,13 @@ async function replaceShipsWithQuery(runQuery, table, sectorId, playerId, ships)
 
 function getPlayerBattleProfile(gameId, playerId) {
     const table = gameTables(gameId).players;
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
         db.query(
             `SELECT race_id, tech FROM ${table} WHERE userid = ?`,
             [playerId],
             (err, rows) => {
                 if (err || !rows || rows.length === 0) {
-                    resolve({ race_id: 1, tech: '' });
+                    reject(err || new Error(`Missing battle profile for player ${playerId}`));
                     return;
                 }
                 resolve({
@@ -3414,6 +3423,11 @@ function colonizePlanet(connection, data) {
     // by clients colonizing a selected sector). Falls back to currentsector.
     const tokenPart = typeof data === 'string' ? data.split(":")[1] : undefined;
     const explicitSector = tokenPart !== undefined ? parseSectorToken(tokenPart) : NaN;
+    if ((tokenPart !== undefined && !isPositiveSafeInteger(explicitSector))
+        || (typeof data === 'string' && data.split(':').length > 2)) {
+        connection.sendUTF('Error: Invalid colony sector');
+        return;
+    }
 
     db.query(
         `SELECT currentsector, tech FROM players${gameId} WHERE userid = ?`,
@@ -3493,8 +3507,8 @@ function colonizePlanet(connection, data) {
                                     // The colony ship becomes the colony before the
                                     // refreshed summary is sent to the client.
                                     db.query(
-                                        `DELETE FROM ships${gameId} WHERE id = ?`,
-                                        [ships[0].id],
+                                        `DELETE FROM ships${gameId} WHERE id = ? AND owner = ? AND sectorid = ? AND type = ?`,
+                                        [ships[0].id, playerId, sectorId, COLONY_SHIP_ID],
                                         (deleteErr, deleteResult) => {
                                             if (deleteErr || !deleteResult || Number(deleteResult.affectedRows) !== 1) {
                                                 db.query(
@@ -3644,12 +3658,12 @@ function handleVictoryProgressRequest(connection) {
 
 function buyTech(data, connection) {
     const parts = data.split(":");
-    const techId = parseInt(parts[1]);
+    const techId = /^\d+$/.test(parts[1] || '') ? Number(parts[1]) : NaN;
     const playerId = connection.name;
     const gameId = connection.gameid;
 
     const tech = techSystem.getTechnology(techId);
-    if (!tech) {
+    if (!tech || parts.length !== 2) {
         connection.sendUTF("Error: Invalid technology");
         return;
     }
@@ -3937,8 +3951,12 @@ function finishProbeReveal(gameId, playerId, targetSector, sectorRow, connection
 
 function buyShip(data, connection) {
     const parts = data.split(":");
-    const shipType = parseInt(parts[1]);
-    const requestedSector = parts[2] ? parseSectorToken(parts[2]) : null;
+    const shipType = /^\d+$/.test(parts[1] || '') ? Number(parts[1]) : NaN;
+    const requestedSector = parts.length > 2 ? parseSectorToken(parts[2]) : null;
+    if (parts.length > 3 || (parts.length > 2 && !isPositiveSafeInteger(requestedSector))) {
+        connection.sendUTF('Error: Invalid build sector');
+        return;
+    }
     const playerId = connection.name;
     const gameId = connection.gameid;
     
@@ -4107,8 +4125,12 @@ async function persistShipPurchase({ gameId, playerId, shipType, buildSector, sh
 
 function buyBuilding(data, connection) {
     const parts = data.split(":");
-    const buildingType = parseInt(parts[1]);
-    const requestedSector = parts[2] ? parseSectorToken(parts[2]) : null;
+    const buildingType = /^\d+$/.test(parts[1] || '') ? Number(parts[1]) : NaN;
+    const requestedSector = parts.length > 2 ? parseSectorToken(parts[2]) : null;
+    if (parts.length > 3 || (parts.length > 2 && !isPositiveSafeInteger(requestedSector))) {
+        connection.sendUTF('Error: Invalid build sector');
+        return;
+    }
     const playerId = connection.name;
     const gameId = connection.gameid;
     
@@ -7053,17 +7075,20 @@ function getStandingOrders(gameId, playerId) {
 }
 
 function setStandingOrders(gameId, playerId, incoming = {}) {
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)
+        || ['autoRebuild', 'autoScout'].some(key =>
+            Object.hasOwn(incoming, key) && typeof incoming[key] !== 'boolean')
+        || (Object.hasOwn(incoming, 'targetScouts')
+            && (!Number.isInteger(incoming.targetScouts) || incoming.targetScouts < 0 || incoming.targetScouts > 6))) {
+        throw new Error('Invalid standing orders');
+    }
     const state = ensureActiveGameState(gameId);
     const current = getStandingOrders(gameId, playerId);
     state.standingOrders[playerId] = {
         ...current,
-        autoRebuild: Boolean(incoming.autoRebuild),
-        autoScout: Boolean(incoming.autoScout),
-        targetScouts: Number.isFinite(incoming.targetScouts)
-            ? Math.max(0, Math.min(6, incoming.targetScouts))
-            : (current.targetScouts || 2),
-        // Marks these as chosen rather than inherited. A human is only automated after
-        // saying so; see applyStandingOrdersForPlayer.
+        autoRebuild: incoming.autoRebuild ?? current.autoRebuild,
+        autoScout: incoming.autoScout ?? current.autoScout,
+        targetScouts: incoming.targetScouts ?? current.targetScouts,
         configured: true
     };
     return state.standingOrders[playerId];
@@ -7708,9 +7733,12 @@ async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
         }
     }
 
+    const canResearchForRace = tech => tech
+        && techSystem.getLevel(levels, tech.id) < raceSystem.getTechLevelCap(player.race_id, tech)
+        && techSystem.canResearch(tech.key, levels, research).ok;
     let pick = null;
     for (const key of priorities) {
-        if (techSystem.canResearch(key, levels, research).ok) {
+        if (canResearchForRace(techSystem.TECHNOLOGIES[key])) {
             pick = techSystem.TECHNOLOGIES[key];
             break;
         }
@@ -7722,7 +7750,7 @@ async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
     }
     if (!pick) {
         pick = Object.values(techSystem.TECHNOLOGIES)
-            .filter(tech => techSystem.canResearch(tech.key, levels, research).ok)
+            .filter(canResearchForRace)
             .sort((a, b) => techSystem.nextLevelCost(a.key, techSystem.getLevel(levels, a.id)) -
                             techSystem.nextLevelCost(b.key, techSystem.getLevel(levels, b.id)))[0] || null;
     }

@@ -104,3 +104,9 @@ All payment endpoints except `/api/payment/webhook` require the caller's `userId
 - All static serving is rooted under `public/` and checks for path traversal before reading files.
 - `GET` and `HEAD` static requests share the same file-serving path; `HEAD` returns headers only.
 - Non-API static/generated browser routes allow only `GET` and `HEAD`; other methods return `405` with `Allow: GET, HEAD`.
+
+## Request parsing integrity
+
+Auth and payment JSON bodies must be objects; null, arrays and scalar JSON receive HTTP 400. Request bytes are collected before UTF-8 decoding so multibyte passwords and metadata survive packet boundaries. Stripe webhook verification receives the original byte buffer. Existing body-size limits remain enforced.
+
+Webhook processing returns HTTP 200 only after processing completes, HTTP 400 for invalid signatures, and HTTP 500 for processing failures so delivery can retry.

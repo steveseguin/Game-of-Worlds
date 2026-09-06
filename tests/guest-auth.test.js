@@ -270,3 +270,46 @@ test.describe('guest authentication and lobby access', () => {
         assert.match(error, /requires level 5/i);
     });
 });
+
+
+test('auth endpoints reject non-object JSON immediately without database access', () => {
+    serverLogic.setDatabase({ isMock: true, query() { assert.fail('invalid JSON shape queried database'); } });
+    for (const handler of [serverLogic.handleLogin, serverLogic.handleGuestLogin, serverLogic.handleRegister]) {
+        for (const body of ['null', '[]', 'true', '42', '"text"']) {
+            const request = new EventEmitter();
+            let status;
+            let ended = false;
+            handler(request, {
+                writeHead(code) { status = code; },
+                end() { ended = true; }
+            });
+            request.emit('data', Buffer.from(body));
+            request.emit('end');
+            assert.equal(ended, true, `${handler.name} must answer ${body}`);
+            assert.equal(status, 400);
+        }
+    }
+});
+
+test('auth JSON preserves Unicode when a UTF-8 character crosses request chunks', async () => {
+    resetGameState();
+    serverLogic.setDatabase(createMockDatabase());
+    const password = 'hello123\u00e9';
+    const body = Buffer.from(JSON.stringify({ username: 'splitutf8', password, email: 'split@example.com' }));
+    const split = body.indexOf(Buffer.from('\u00e9')) + 1;
+    const request = new EventEmitter();
+    let status;
+    const registered = new Promise(resolve => {
+        serverLogic.handleRegister(request, {
+            writeHead(code) { status = code; },
+            end(body) { resolve(JSON.parse(body)); }
+        });
+    });
+    request.emit('data', body.subarray(0, split));
+    request.emit('data', body.subarray(split));
+    request.emit('end');
+    await registered;
+    assert.equal(status, 200);
+    const login = await executeJsonHandler(serverLogic.handleLogin, { username: 'splitutf8', password });
+    assert.equal(login.statusCode, 200, 'the password must survive transport chunk boundaries unchanged');
+});

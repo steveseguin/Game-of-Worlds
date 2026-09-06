@@ -64,6 +64,14 @@ This file records review findings that matter for future work. Keep entries conc
 | Unsupported treaty activation | The dormant diplomacy module accepted treaty types whose resource, research, vision, and defense effects were placeholders. | Only enforceable non-aggression proposals can succeed; unsupported stored treaties cannot activate, and attack checks use the requested live turn. |
 | Fake permanent upgrade | The disabled crystal catalog defined an extra fleet slot whose grant function returned success without storing anything. | Removed the nonexistent item/grant path and made all gameplay crystal concepts visibly unavailable and non-clickable. |
 | Standing-order construction bypass | Automated purchases wrote balances and inserts directly, bypassing building slots, race-adjusted prices, Spaceport capacity and refund handling; overlapping runs could duplicate purchases. | Reused authoritative purchase handlers with an explicit homeworld target and a per-player/game in-flight guard; added regressions for slots, capacity, prices and overlap. |
+| Explicit order parsing | Invalid explicit sectors fell back to the cursor; partial decimal IDs could spend on unintended actions. | Reject malformed and extra order fields before database access. |
+| Auth/payment body integrity | JSON null could leave auth requests unanswered; split UTF-8 chunks corrupted passwords and webhook signature input. | Validate object-shaped JSON and collect bytes before decoding; webhooks retain exact original buffers. |
+| Standing-order settings | String toggles enabled automation; partial patches cleared omitted toggles and reset a zero target. | Validate field types/ranges and retain omitted settings. |
+| Colony movement race | Settlement deleted a previously selected colony ship even if it had moved. | Guard deletion by owner, sector and hull type, with claim rollback on mismatch. |
+| Authoritative read failures | Income, battle and elimination paths treated failed reads as empty state, causing underpayment, weakened defenses or false elimination. | Propagate failures before authoritative changes; keep legacy income fallback limited to missing columns. |
+| AI research caps | Research selection repeatedly chose a race-capped technology and stalled. | Filter priority and fallback choices by race caps. |
+| Dependency advisories | Locked mysql2, qs and brace-expansion versions had published advisories. | Update within existing version ranges and verify npm audit is clean. |
+| Webhook failure acknowledgement | Processing failures returned HTTP 200, preventing delivery retries after transient database errors. | Return 500 for processing failures and 400 for invalid signatures; acknowledge successful processing only. |
 
 ## Active Risks To Revisit
 

@@ -4,7 +4,7 @@ Use `stable` as the starting branch for contribution work unless Steve says othe
 
 ## Local Setup
 
-Requirements: Node.js 18+ and npm. macOS contributors can install Node from `nodejs.org` or with Homebrew (`brew install node`).
+Requirements: Node.js 20+ and npm (Node 22 is used in CI). macOS contributors can install Node from `nodejs.org` or with Homebrew (`brew install node`).
 
 ```bash
 git checkout stable

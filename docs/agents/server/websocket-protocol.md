@@ -133,3 +133,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 - Sector ids are one-based. `0` is invalid and must be rejected before resource writes such as probe cost deduction.
 - Movement commands should fail closed with `Error: Invalid fleet order`, `Error: No ships selected`, or a specific resource/fleet error before moving ships. Single-source movement must verify the full requested fleet exists before any ship update.
 - Client parsing is split between lobby and game scripts, so new server messages may need two client handlers.
+
+## Strict order fields
+
+Ship, building and technology IDs must be whole decimal tokens. An explicitly supplied construction or colonization sector must be a valid positive hexadecimal ID; only an omitted target uses the legacy current-sector cursor. Extra order fields are rejected. Standing-order updates accept Boolean toggles and integer scout targets from 0 to 6; omitted settings retain their saved values. Invalid updates leave the previous settings intact.

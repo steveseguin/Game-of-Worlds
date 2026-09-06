@@ -436,3 +436,37 @@ test('failed ship insertion refunds the guarded resource spend', async () => {
     assert.equal(refundCompleted, true);
     assert.ok(connection.sent.includes('Error: Failed to create ship; no resources or capacity were consumed'));
 });
+
+
+test('a colony ship moved during colonization is preserved and the claim is rolled back', async () => {
+    const { MockDatabase } = require('../server/lib/mock-db');
+    const db = new MockDatabase();
+    const query = (sql, params = []) => new Promise((resolve, reject) => db.query(sql, params,
+        (err, rows) => err ? reject(err) : resolve(rows)));
+    await query('INSERT INTO players1 (userid, race_id, metal, crystal, research) VALUES (?, ?, ?, ?, ?)', [7, 1, 0, 0, 0]);
+    await query('UPDATE players1 SET currentsector = ? WHERE userid = ?', [5, 7]);
+    await query('UPDATE map1 SET type = 6, owner = NULL, terraformlvl = 0 WHERE sectorid = ?', [5]);
+    await query('INSERT INTO ships1 (owner, type, sectorid) VALUES (?, ?, ?)', [7, combat.SHIP_TYPES.COLONY_SHIP.id, 5]);
+    const originalQuery = db.query.bind(db);
+    let moved = false;
+    db.query = (sql, params, callback) => {
+        if (sql.startsWith('UPDATE map1 SET owner = ? WHERE sectorid = ? AND owner IS NULL')) {
+            // The move lands after the initial ship lookup but before settlement.
+            moved = true;
+            db._ships.get(1)[0].sectorid = 6;
+        }
+        originalQuery(sql, params, callback);
+    };
+    server.setDatabase(db);
+    const c = makeConnection();
+    await new Promise(resolve => {
+        c.sendUTF = message => { c.sent.push(String(message)); resolve(); };
+        server.colonizePlanet(c, '//colonize:5');
+    });
+    assert.equal(moved, true);
+    assert.match(c.sent[0], /colonization rolled back/);
+    const sector = await query('SELECT type, owner, terraformlvl FROM map1 WHERE sectorid = ?', [5]);
+    assert.equal(sector[0].owner, null);
+    assert.equal(db._ships.get(1).length, 1);
+    assert.equal(db._ships.get(1)[0].sectorid, 6);
+});

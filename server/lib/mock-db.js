@@ -1527,7 +1527,10 @@ class MockDatabase {
                         }
                     } else if (/WHERE id = \?/i.test(normalized)) {
                         const id = Number(params[0]);
-                        const idx = ships.findIndex(s => s.id === id);
+                        const guarded = /AND owner = \? AND sectorid = \? AND type = \?/i.test(normalized);
+                        const idx = ships.findIndex(s => s.id === id && (!guarded || (
+                            s.owner === Number(params[1]) && s.sectorid === Number(params[2]) && s.type === Number(params[3])
+                        )));
                         if (idx >= 0) {
                             ships.splice(idx, 1);
                             removed = 1;
