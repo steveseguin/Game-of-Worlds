@@ -56,6 +56,7 @@ On process start:
 
 ## Consistency Checks
 
+- Ordinary building purchases commit the guarded resource debit and building insert in one transaction on a single MySQL connection. Failure rolls both back before releasing the per-player construction guard; lightweight adapters without transactions retain a checked compensating refund.
 - `users.currentgame` should agree with rows in `players<gameId>`.
 - Connected sockets should have `connection.gameid` set only for the active/waiting game they are in.
 - `clientMap[userId]` is a latest-socket pointer; an old socket closing must not clear a newer reconnect's entry.

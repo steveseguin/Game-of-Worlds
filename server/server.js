@@ -4225,49 +4225,13 @@ function buyBuilding(data, connection) {
                                 return;
                             }
                             
-                            // Buy the building
-                            db.query(
-                                `UPDATE players${gameId}
-                                 SET metal = metal - ?, crystal = crystal - ?
-                                 WHERE userid = ? AND metal >= ? AND crystal >= ?`,
-                                [building.metal, building.crystal, playerId, building.metal, building.crystal],
-                                (err, spendResult) => {
-                                    if (err || !spendResult || Number(spendResult.affectedRows) !== 1) {
-                                        fail(err
-                                            ? "Error: Failed to deduct resources"
-                                            : "Error: Resources changed; refresh and try again");
-                                        return;
-                                    }
-                                    
-                                    // Create the building
-                                    db.query(
-                                        `INSERT INTO buildings${gameId} (sectorid, type, owner) VALUES (?, ?, ?)`,
-                                        [buildSector, buildingType, playerId],
-                                        (err) => {
-                                            if (err) {
-                                                db.query(
-                                                    `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
-                                                    [building.metal, building.crystal, playerId],
-                                                    () => {
-                                                        fail("Error: Failed to create building; resources refunded");
-                                                        updateResources(connection);
-                                                    }
-                                                );
-                                                return;
-                                            }
-                                            
-                                            pendingBuildingPurchases.delete(purchaseKey);
-                                            connection.sendUTF(`Success: Built ${building.name} in sector ${buildSector}`);
-                                            updateResources(connection);
-                                            updateSector2(gameId, buildSector);
-                                            // Extractors, refineries and academies all raise the
-                                            // per-turn rate. Without this the income panel ignored
-                                            // the building you just paid for until the turn rolled.
-                                            sendEmpireSummary(connection);
-                                        }
-                                    );
-                                }
-                            );
+                            persistBuildingPurchase({
+                                gameId, playerId, buildSector, buildingType, building,
+                                purchaseKey, connection, fail
+                            }).catch(error => {
+                                console.error(`Unhandled building purchase failure in game ${gameId}:`, error);
+                                fail('Error: Construction is temporarily unavailable; try again');
+                            });
                         }
                     );
 
@@ -4320,6 +4284,65 @@ function buyBuilding(data, connection) {
             );
         }
     );
+}
+
+// Keep the charge and new building on one connection: a process interruption or
+// failed INSERT must not leave a paid-for building missing from the empire.
+async function persistBuildingPurchase({ gameId, playerId, buildSector, buildingType, building, purchaseKey, connection, fail }) {
+    let session = null;
+    let spent = false;
+    try {
+        session = await openTransactionSession();
+        const tables = gameTables(gameId);
+        const spendResult = await session.query(
+            `UPDATE ${tables.players} SET metal = metal - ?, crystal = crystal - ?
+             WHERE userid = ? AND metal >= ? AND crystal >= ?`,
+            [building.metal, building.crystal, playerId, building.metal, building.crystal]
+        );
+        if (!spendResult || Number(spendResult.affectedRows) !== 1) {
+            throw Object.assign(new Error('Resources changed'), {
+                userMessage: 'Error: Resources changed; refresh and try again'
+            });
+        }
+        spent = true;
+        await session.query(
+            `INSERT INTO ${tables.buildings} (sectorid, type, owner) VALUES (?, ?, ?)`,
+            [buildSector, buildingType, playerId]
+        );
+        await session.commit();
+    } catch (error) {
+        let restored = true;
+        if (session) {
+            try { await session.rollback(); } catch (rollbackError) {
+                restored = false;
+                console.error(`Building purchase rollback failed in game ${gameId}:`, rollbackError);
+            }
+        }
+        // Lightweight test/legacy adapters cannot roll back, so retain their
+        // compensating refund and do not claim it succeeded without checking.
+        if (session && !session.transactional && spent) {
+            try {
+                const refund = await session.query(
+                    `UPDATE players${gameId} SET metal = metal + ?, crystal = crystal + ? WHERE userid = ?`,
+                    [building.metal, building.crystal, playerId]
+                );
+                restored = Number(refund && refund.affectedRows) === 1;
+            } catch (_refundError) { restored = false; }
+        }
+        fail(!restored
+            ? 'Error: Construction failed; resource recovery could not be confirmed'
+            : error.userMessage || 'Error: Failed to create building; no resources were consumed');
+        return;
+    } finally {
+        if (session) session.release();
+    }
+
+    // Publish only after commit; refresh failures must not refund a built facility.
+    pendingBuildingPurchases.delete(purchaseKey);
+    connection.sendUTF(`Success: Built ${building.name} in sector ${buildSector}`);
+    updateResources(connection);
+    updateSector2(gameId, buildSector);
+    sendEmpireSummary(connection);
 }
 
 async function persistSpaceportUpgrade({ gameId, playerId, buildSector, buildingId, currentLevel, nextLevel, tier, purchaseKey, connection, fail }) {
