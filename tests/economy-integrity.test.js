@@ -118,7 +118,7 @@ test('ship purchase reports transaction connection failures without an unhandled
     assert.deepEqual(connection.sent, ['Error: Failed to create ship; no resources or capacity were consumed']);
 });
 
-test('building purchase does not insert after a concurrent balance change', () => {
+test('building purchase does not insert after a concurrent balance change', async () => {
     const queries = setScriptedDb((sql, params, callback) => {
         if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) {
             callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '' }]);
@@ -141,6 +141,7 @@ test('building purchase does not insert after a concurrent balance change', () =
     const connection = makeConnection();
 
     server.buyBuilding('//buybuilding:0', connection);
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.deepEqual(connection.sent, ['Error: Resources changed; refresh and try again']);
     assert.equal(queries.some(query => /^INSERT INTO buildings1/.test(query.sql)), false);
@@ -172,7 +173,7 @@ test('ship purchase validates the explicit selected sector instead of the legacy
     assert.equal(queries.some(query => query.params?.includes(15)), true);
 });
 
-test('building purchase validates the explicit selected sector instead of the legacy cursor', () => {
+test('building purchase validates the explicit selected sector instead of the legacy cursor', async () => {
     const queries = setScriptedDb((sql, params, callback) => {
         if (/^SELECT metal, crystal, currentsector, tech FROM players1/.test(sql)) {
             callback(null, [{ metal: 9999, crystal: 9999, currentsector: 4, tech: '' }]);
@@ -197,6 +198,7 @@ test('building purchase validates the explicit selected sector instead of the le
     const connection = makeConnection();
 
     server.buyBuilding('//buybuilding:0:f', connection);
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.deepEqual(connection.sent, ['Error: Resources changed; refresh and try again']);
     assert.equal(queries.some(query => query.params?.includes(15)), true);

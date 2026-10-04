@@ -6,6 +6,7 @@ This file records review findings that matter for future work. Keep entries conc
 
 | Area | Issue | Change |
 | --- | --- | --- |
+| Building purchase partial persistence | Resource debits and new building inserts used separate autocommit writes. Failed insertion plus a failed refund permanently lost resources while reporting a refund; interruption between writes had the same loss risk. | Commit both writes through the existing single-connection transaction helper. Test insert/commit/startup failures, stale balances, guard recovery, successful commits, and checked fallback refunds. |
 | Auth body parsing | `/login` and `/register` read unbounded JSON bodies while `/guest-login` had a limit. | Added shared 16 KB JSON body parser and 413 responses for auth endpoints. |
 | Security helpers | `validateInteger()` accepted partial strings like `12abc`. | Switched to strict whole-integer parsing and safe-integer checks. |
 | Token checks | Session signature compare used normal string equality; CSRF verification could throw on length mismatch. | Added length-safe `crypto.timingSafeEqual()` wrapper. |
