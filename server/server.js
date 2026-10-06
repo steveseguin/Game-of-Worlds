@@ -899,6 +899,26 @@ function createGameTables(gameId, callback) {
     runNext();
 }
 
+// Column definitions are internal SQL; table names come from gameTables().
+function ensureRequiredColumns(table, columns, callback, allowDuplicate = true) {
+    let index = 0;
+    const next = () => {
+        if (index >= columns.length) return callback(null);
+        const column = columns[index++];
+        db.query(`SHOW COLUMNS FROM ${table} LIKE '${column.name}'`, (showErr, rows) => {
+            if (showErr) return callback(showErr);
+            if (rows && rows.length > 0) return next();
+            db.query(column.sql, alterErr => {
+                if (alterErr && !(allowDuplicate && alterErr.code === 'ER_DUP_FIELDNAME')) {
+                    return callback(alterErr);
+                }
+                next();
+            });
+        });
+    };
+    next();
+}
+
 function ensurePlayerTableColumns(gameId, callback) {
     let playersTable;
     try {
@@ -916,36 +936,10 @@ function ensurePlayerTableColumns(gameId, callback) {
         { name: 'last_income_turn', sql: `ALTER TABLE ${playersTable} ADD COLUMN last_income_turn INT DEFAULT 0` }
     ];
 
-    let idx = 0;
-    const ensureNext = () => {
-        if (idx >= requiredColumns.length) {
-            ensureBuildingTableColumns(gameId, callback);
-            return;
-        }
-
-        const column = requiredColumns[idx++];
-        db.query(`SHOW COLUMNS FROM ${playersTable} LIKE '${column.name}'`, (showErr, rows) => {
-            if (showErr) {
-                callback(showErr);
-                return;
-            }
-
-            if (rows && rows.length > 0) {
-                ensureNext();
-                return;
-            }
-
-            db.query(column.sql, alterErr => {
-                if (alterErr) {
-                    callback(alterErr);
-                    return;
-                }
-                ensureNext();
-            });
-        });
-    };
-
-    ensureNext();
+    ensureRequiredColumns(playersTable, requiredColumns, error => {
+        if (error) return callback(error);
+        ensureBuildingTableColumns(gameId, callback);
+    }, false);
 }
 
 function ensureBuildingTableColumns(gameId, callback) {
@@ -965,20 +959,10 @@ function ensureBuildingTableColumns(gameId, callback) {
         { name: 'production_turn', sql: `ALTER TABLE ${table} ADD COLUMN production_turn INT NOT NULL DEFAULT 0` },
         { name: 'production_used', sql: `ALTER TABLE ${table} ADD COLUMN production_used INT NOT NULL DEFAULT 0` }
     ];
-    let index = 0;
-    const next = () => {
-        if (index >= columns.length) return ensureExploredSectorColumns(gameId, callback);
-        const column = columns[index++];
-        db.query(`SHOW COLUMNS FROM ${table} LIKE '${column.name}'`, (showErr, rows) => {
-            if (showErr) return callback(showErr);
-            if (Array.isArray(rows) && rows.length) return next();
-            db.query(column.sql, alterErr => {
-                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') return callback(alterErr);
-                next();
-            });
-        });
-    };
-    next();
+    ensureRequiredColumns(table, columns, error => {
+        if (error) return callback(error);
+        ensureExploredSectorColumns(gameId, callback);
+    });
 }
 
 function ensureExploredSectorColumns(gameId, callback) {
@@ -999,20 +983,10 @@ function ensureExploredSectorColumns(gameId, callback) {
         { name: 'intel_json', sql: `ALTER TABLE ${table} ADD COLUMN intel_json LONGTEXT DEFAULT NULL` },
         { name: 'last_seen_turn', sql: `ALTER TABLE ${table} ADD COLUMN last_seen_turn INT DEFAULT 0` }
     ];
-    let index = 0;
-    const next = () => {
-        if (index >= columns.length) return ensureMapTableColumns(gameId, callback);
-        const column = columns[index++];
-        db.query(`SHOW COLUMNS FROM ${table} LIKE '${column.name}'`, (showErr, rows) => {
-            if (showErr) return callback(showErr);
-            if (Array.isArray(rows) && rows.length) return next();
-            db.query(column.sql, alterErr => {
-                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') return callback(alterErr);
-                next();
-            });
-        });
-    };
-    next();
+    ensureRequiredColumns(table, columns, error => {
+        if (error) return callback(error);
+        ensureMapTableColumns(gameId, callback);
+    });
 }
 
 /**
@@ -1038,20 +1012,7 @@ function ensureMapTableColumns(gameId, callback) {
         { name: 'namedturn', sql: `ALTER TABLE ${table} ADD COLUMN namedturn INT DEFAULT NULL` },
         { name: 'namechosen', sql: `ALTER TABLE ${table} ADD COLUMN namechosen TINYINT DEFAULT 0` }
     ];
-    let index = 0;
-    const next = () => {
-        if (index >= columns.length) return callback(null);
-        const column = columns[index++];
-        db.query(`SHOW COLUMNS FROM ${table} LIKE '${column.name}'`, (showErr, rows) => {
-            if (showErr) return callback(showErr);
-            if (Array.isArray(rows) && rows.length) return next();
-            db.query(column.sql, alterErr => {
-                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') return callback(alterErr);
-                next();
-            });
-        });
-    };
-    next();
+    ensureRequiredColumns(table, columns, callback);
 }
 
 function clearBattlePauseRuntime(gameId) {
@@ -6932,80 +6893,45 @@ function handlePlayerDisconnect(connection) {
     }
 }
 
-// Payment handler functions - delegate to enhanced endpoints
-async function handleCreatePaymentIntent(request, response) {
+// Keep endpoint lookup at request time so database reconnects use the current instance.
+async function delegatePayment(method, request, response, ...args) {
     if (!paymentEndpoints) {
-        response.writeHead(503, {'Content-Type': 'application/json'});
-        response.end(JSON.stringify({error: 'Payment system not available'}));
+        sendJson(response, 503, { error: 'Payment system not available' });
         return;
     }
-    return paymentEndpoints.handleCreateIntent(request, response);
+    return paymentEndpoints[method](request, response, ...args);
+}
+
+async function handleCreatePaymentIntent(request, response) {
+    return delegatePayment('handleCreateIntent', request, response);
 }
 
 async function handleCreateSubscription(request, response) {
-    if (!paymentEndpoints) {
-        response.writeHead(503, {'Content-Type': 'application/json'});
-        response.end(JSON.stringify({error: 'Payment system not available'}));
-        return;
-    }
-    return paymentEndpoints.handleCreateSubscription(request, response);
+    return delegatePayment('handleCreateSubscription', request, response);
 }
 
 async function handlePaymentWebhook(request, response) {
-    if (!paymentEndpoints) {
-        response.writeHead(503, {'Content-Type': 'application/json'});
-        response.end(JSON.stringify({error: 'Payment system not available'}));
-        return;
-    }
-    return paymentEndpoints.handleWebhook(request, response);
+    return delegatePayment('handleWebhook', request, response);
 }
 
 async function handleConfirmTestPayment(request, response) {
-    if (!paymentEndpoints) {
-        response.writeHead(503, {'Content-Type': 'application/json'});
-        response.end(JSON.stringify({error: 'Payment system not available'}));
-        return;
-    }
-    return paymentEndpoints.handleConfirmTestPayment(request, response);
+    return delegatePayment('handleConfirmTestPayment', request, response);
 }
 
 async function handleSpendCrystals(request, response) {
-    if (!paymentEndpoints) {
-        response.writeHead(503, {'Content-Type': 'application/json'});
-        response.end(JSON.stringify({error: 'Payment system not available'}));
-        return;
-    }
-    return paymentEndpoints.handleSpendCrystals(request, response);
+    return delegatePayment('handleSpendCrystals', request, response);
 }
 
-// Handle get balance request
 async function handleGetBalance(request, response, userId) {
-    if (!paymentEndpoints) {
-        response.writeHead(503, {'Content-Type': 'application/json'});
-        response.end(JSON.stringify({error: 'Payment system not available'}));
-        return;
-    }
-    return paymentEndpoints.handleGetBalance(request, response, userId);
+    return delegatePayment('handleGetBalance', request, response, userId);
 }
 
-// Handle get owned items
 async function handleGetOwnedItems(request, response, userId) {
-    if (!paymentEndpoints) {
-        response.writeHead(503, {'Content-Type': 'application/json'});
-        response.end(JSON.stringify({error: 'Payment system not available'}));
-        return;
-    }
-    return paymentEndpoints.handleGetOwnedItems(request, response, userId);
+    return delegatePayment('handleGetOwnedItems', request, response, userId);
 }
 
-// Handle get purchase history
 async function handleGetPurchaseHistory(request, response, userId) {
-    if (!paymentEndpoints) {
-        response.writeHead(503, {'Content-Type': 'application/json'});
-        response.end(JSON.stringify({error: 'Payment system not available'}));
-        return;
-    }
-    return paymentEndpoints.handleGetPurchaseHistory(request, response, userId);
+    return delegatePayment('handleGetPurchaseHistory', request, response, userId);
 }
 
 function handleGetCurrentGame(request, response, userId) {

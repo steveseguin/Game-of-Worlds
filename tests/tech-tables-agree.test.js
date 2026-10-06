@@ -1,32 +1,22 @@
-// The technology table exists TWICE: server/lib/tech.js decides what a research order
-// actually costs, and public/js/tech.js computes the number printed on the tech card.
-// Nothing links them. If either drifts, the client advertises one price and the server
-// charges another, and the only symptom is a player being told "Needs N research" for a
-// tech whose card says it costs something else.
-//
-// This project has already paid for a duplicated table once: media.js and sound.js each
-// carry their own sound registry, and "correcting" one from memory of the other broke a
-// working call. This test is the guard that was missing there.
+// Exercise the shared rules as a browser script as well as a CommonJS import.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const vm = require('node:vm');
 
 const serverTech = require('../server/lib/tech');
 
-function loadClientTechnologies() {
+function loadClientTech() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'tech.js'), 'utf8');
-    const match = src.match(/const TECHNOLOGIES\s*=\s*(\{[\s\S]*?\n\});/);
-    assert.ok(match, 'could not find TECHNOLOGIES in public/js/tech.js — has it been restructured?');
-    // The table is a plain object literal; evaluating it in isolation avoids having to
-    // load a browser module under node.
-    // eslint-disable-next-line no-eval
-    return eval('(' + match[1] + ')');
+    const context = { window: {} };
+    vm.runInNewContext(src, context, { filename: 'tech.js' });
+    return context.window.TechSystem;
 }
 
 test('the client prices research exactly the way the server charges for it', () => {
-    const client = loadClientTechnologies();
+    const client = loadClientTech().TECHNOLOGIES;
     const server = serverTech.TECHNOLOGIES;
 
     const names = new Set([...Object.keys(server), ...Object.keys(client)]);
@@ -53,17 +43,17 @@ test('the client prices research exactly the way the server charges for it', () 
 });
 
 test('every level of every tech is priced identically on both sides', () => {
-    const client = loadClientTechnologies();
+    const client = loadClientTech();
     // Walk the actual cost curve rather than trusting the inputs: a change to the
     // rounding or the exponent would leave baseCost and costMultiplier equal while the
     // prices diverge.
     Object.keys(serverTech.TECHNOLOGIES).forEach(key => {
         const def = serverTech.TECHNOLOGIES[key];
-        const mirror = client[key];
+        const mirror = client.TECHNOLOGIES[key];
         if (!mirror) return; // reported by the test above
         for (let level = 0; level < def.maxLevel; level++) {
             const serverCost = serverTech.nextLevelCost(def.id, level);
-            const clientCost = Math.round(mirror.baseCost * Math.pow(mirror.costMultiplier, level));
+            const clientCost = client.nextLevelCost(def.id, level);
             assert.equal(clientCost, serverCost,
                 `${key} Lv${level + 1}: card would show ${clientCost}, server charges ${serverCost}`);
         }

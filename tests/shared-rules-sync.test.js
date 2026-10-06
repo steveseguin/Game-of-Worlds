@@ -4,13 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const repoRoot = path.join(__dirname, '..');
 
-test('client and server technology definitions remain byte-for-byte synchronized', () => {
-    const serverTech = fs.readFileSync(path.join(__dirname, '..', 'server', 'lib', 'tech.js'), 'utf8')
-        .replace(/\r\n/g, '\n');
-    const clientTech = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'tech.js'), 'utf8')
-        .replace(/\r\n/g, '\n');
-    assert.equal(clientTech, serverTech,
-        'server/lib/tech.js and public/js/tech.js must be updated together');
+test('client and server import the same technology rules', () => {
+    assert.strictEqual(require('../server/lib/tech'), require('../public/js/tech'),
+        'server/lib/tech.js must re-export the shared browser-compatible module');
 });
 
 test('production game HTML does not load the stale client combat simulator', () => {

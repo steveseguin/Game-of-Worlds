@@ -20,8 +20,7 @@
  *   terraform               - colonize planets with terraform requirement <= level
  *   spy / counterspy        - intel ladder (see who is winning the shadow war)
  *
- * IMPORTANT: server/lib/tech.js and public/js/tech.js are the same file.
- * Edit both together (tools/deploy.js ships both).
+ * Shared by the browser and server/lib/tech.js. Edit technology rules here.
  */
 const exportsTarget = typeof module !== 'undefined' && module.exports
     ? module.exports

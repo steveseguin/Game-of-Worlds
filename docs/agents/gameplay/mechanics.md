@@ -152,9 +152,9 @@ The Analytics tab is scoped to the authenticated player's own aggregate combat r
 
 ## Technology
 
-Tech lives in both server and client definitions. Server is authoritative for cost/prerequisite/race-cap enforcement; client renders and previews.
+The server and client share technology definitions. The server enforces costs, prerequisites, and race caps; the client renders and previews.
 
-Do not update `server/lib/tech.js` without checking `public/js/tech.js` and related E2E coverage.
+Edit technology rules in `public/js/tech.js`; `server/lib/tech.js` re-exports that module for the game engine.
 
 ## Victory And End States
 

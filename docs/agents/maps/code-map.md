@@ -39,7 +39,7 @@ flowchart LR
 | --- | --- |
 | `server/lib/races.js` | Race definitions, unlock checks, race bonuses, ship access gates. |
 | `server/lib/combat.js` | Ship definitions, battle simulation, battle timeline formatting. |
-| `server/lib/tech.js` and `public/js/tech.js` | Mirrored tech-tree definitions and parsing. Keep changes synchronized. |
+| `server/lib/tech.js` and `public/js/tech.js` | Shared tech-tree definitions and parsing in `public/js/tech.js`; the server module re-exports them. |
 | `server/lib/map.js` | Galaxy map generation and sector/resource shape. |
 | `server/lib/victory.js` | Victory conditions and completed-game persistence. |
 | `server/lib/ai.js` plus AI block in `server/server.js` | AI profiles, strategic behavior, expansion, research, harassment. |
