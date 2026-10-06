@@ -56,6 +56,8 @@ Current sequence:
 9. Clear the persisted phase marker.
 10. Broadcast `newturn::<turn>` and publish the next `turnclock::` deadline.
 
+A running turn owns the active runtime object it began with. If surrender, abandonment, or runtime replacement ends that ownership while a database callback is pending, the old turn stops at its next checked boundary instead of recreating runtime, announcing a new turn, or recording a second winner. The guard also covers the AI and standing-order roster reads that can initialize runtime. This is an in-process lifecycle fence: it does not cancel or roll back SQL already submitted, and it does not revalidate membership changes inside an otherwise continuing game.
+
 On a phase failure, no `newturn::` is emitted. Runtime retains the failed phase, clients remain frozen, and the server retries from that phase. Startup reconstructs the same retry from `games.turn_phase`; guarded income prevents duplicate payouts, while the automation reservation prevents duplicate AI/standing-order spending. A crash after automation reservation may skip unfinished automation for that player for one turn. AI mutations and standing orders are awaited before income begins.
 
 ## Battle Resolution

@@ -1182,8 +1182,12 @@ function connectedHumanIdsForGame(gameId) {
     return ids;
 }
 
-function shouldProcessTurn(gameId, callback) {
+function shouldProcessTurn(gameId, callback, isCurrentTurn = () => true) {
     getGamePlayers(gameId, (err, rows) => {
+        if (!isCurrentTurn()) {
+            callback(false);
+            return;
+        }
         if (err) {
             console.warn(`Turn ${gameId} paused because player state could not be loaded:`, err.message || err);
             callback(false);
@@ -2177,8 +2181,8 @@ function isTurnProcessing(gameId) {
     );
 }
 
-function shouldProcessTurnAsync(gameId) {
-    return new Promise(resolve => shouldProcessTurn(gameId, resolve));
+function shouldProcessTurnAsync(gameId, isCurrentTurn) {
+    return new Promise(resolve => shouldProcessTurn(gameId, resolve, isCurrentTurn));
 }
 
 async function processTurn(gameId) {
@@ -2199,19 +2203,33 @@ async function processTurn(gameId) {
         clearTimeout(turnRetryTimers.get(numericGameId));
         turnRetryTimers.delete(numericGameId);
     }
+    // Surrender/abandonment can finish while a database callback is pending.
+    // The old turn must not recreate runtime or record a second game result.
+    const turnState = gameState.activeGames[numericGameId];
+    const isCurrentTurn = () => Boolean(turnState
+        && gameState.activeGames[numericGameId] === turnState
+        && !['completed', 'abandoned'].includes(turnState.status));
+    if (!isCurrentTurn()) return false;
+    const cancelledTurn = new Error('Game runtime ended during turn resolution');
+    const assertCurrentTurn = () => {
+        if (!isCurrentTurn()) throw cancelledTurn;
+    };
     processingTurns.add(numericGameId);
     try {
-        const shouldContinue = await shouldProcessTurnAsync(numericGameId);
+        const shouldContinue = await shouldProcessTurnAsync(numericGameId, isCurrentTurn);
         if (!shouldContinue) {
             return false;
         }
-        const failedResolution = gameState.activeGames[numericGameId]?.turnResolution;
+        assertCurrentTurn();
+        const failedResolution = turnState.turnResolution;
         await processTurnUnchecked(
             numericGameId,
-            failedResolution?.phase === 'failed' ? failedResolution : null
+            failedResolution?.phase === 'failed' ? failedResolution : null,
+            assertCurrentTurn
         );
         return true;
     } catch (error) {
+        if (error === cancelledTurn || !isCurrentTurn()) return false;
         const state = gameState.activeGames[numericGameId];
         if (state && state.turnResolution) {
             state.turnResolution = {
@@ -2239,14 +2257,16 @@ async function processTurn(gameId) {
     }
 }
 
-async function setTurnResolutionPhase(gameId, turn, phase, persist = true) {
+async function setTurnResolutionPhase(gameId, turn, phase, assertCurrentTurn, persist = true) {
+    assertCurrentTurn();
     if (persist) {
         await queryDb(
             'UPDATE games SET turn_phase = ?, turn_phase_turn = ? WHERE id = ?',
             [phase, turn, gameId]
         );
     }
-    const state = ensureActiveGameState(gameId);
+    assertCurrentTurn();
+    const state = gameState.activeGames[gameId];
     state.turnResolution = {
         ...(state.turnResolution || {}),
         turn,
@@ -2336,9 +2356,10 @@ async function processTurnIncome(gameId, modeMultiplier, turn) {
     return { players: (players || []).length, failures };
 }
 
-async function processTurnAutomation(gameId, turn) {
+async function processTurnAutomation(gameId, turn, assertCurrentTurn) {
     const { players } = gameTables(gameId);
     const rows = await queryDb(`SELECT userid, last_automation_turn FROM ${players}`);
+    assertCurrentTurn();
     const eligible = new Set();
     await Promise.all((rows || []).map(async player => {
         if (Number(player.last_automation_turn || 0) >= Number(turn)) return;
@@ -2351,8 +2372,10 @@ async function processTurnAutomation(gameId, turn) {
         }
         eligible.add(Number(player.userid));
     }));
-    await triggerAiTurn(gameId, eligible);
-    await applyStandingOrdersForGame(gameId, eligible);
+    assertCurrentTurn();
+    await triggerAiTurn(gameId, eligible, assertCurrentTurn);
+    assertCurrentTurn();
+    await applyStandingOrdersForGame(gameId, eligible, assertCurrentTurn);
 }
 
 /**
@@ -2432,7 +2455,8 @@ function endGameForTurn(gameId, winner) {
     });
 }
 
-async function processTurnUnchecked(gameId, failedResolution = null) {
+async function processTurnUnchecked(gameId, failedResolution, assertCurrentTurn) {
+    assertCurrentTurn();
     const resuming = Boolean(failedResolution);
     const previousTurn = parseTurnNumber(gameState.turns[gameId], 1);
     const nextTurn = resuming ? parseTurnNumber(failedResolution.turn, previousTurn) : previousTurn + 1;
@@ -2442,9 +2466,10 @@ async function processTurnUnchecked(gameId, failedResolution = null) {
             'UPDATE games SET turn = ?, turn_phase = ?, turn_phase_turn = ? WHERE id = ?',
             [nextTurn, 'automation', nextTurn, gameId]
         );
+        assertCurrentTurn();
         gameState.turns[gameId] = nextTurn;
     }
-    await setTurnResolutionPhase(gameId, nextTurn, resumePhase, resuming);
+    await setTurnResolutionPhase(gameId, nextTurn, resumePhase, assertCurrentTurn, resuming);
     broadcastToGame(gameId, formatTurnPhase('resolving', nextTurn, resumePhase));
 
     // New turn: clear "done early" flags.
@@ -2457,7 +2482,7 @@ async function processTurnUnchecked(gameId, failedResolution = null) {
     const phaseOrder = ['automation', 'income', 'battles', 'victory'];
     const resumeIndex = Math.max(0, phaseOrder.indexOf(resumePhase));
     if (resumeIndex <= phaseOrder.indexOf('automation')) {
-        await processTurnAutomation(gameId, nextTurn);
+        await processTurnAutomation(gameId, nextTurn, assertCurrentTurn);
     }
 
     const activeState = gameState.activeGames[gameId] || {};
@@ -2465,24 +2490,27 @@ async function processTurnUnchecked(gameId, failedResolution = null) {
     const modeMultiplier = resourceMultiplierFor(gameId);
 
     if (resumeIndex <= phaseOrder.indexOf('income')) {
-        await setTurnResolutionPhase(gameId, nextTurn, 'income');
+        await setTurnResolutionPhase(gameId, nextTurn, 'income', assertCurrentTurn);
         await processTurnIncome(gameId, modeMultiplier, nextTurn);
     }
 
     if (resumeIndex <= phaseOrder.indexOf('battles')) {
-        await setTurnResolutionPhase(gameId, nextTurn, 'battles');
+        await setTurnResolutionPhase(gameId, nextTurn, 'battles', assertCurrentTurn);
         await processBattles(gameId);
     }
 
-    await setTurnResolutionPhase(gameId, nextTurn, 'victory');
+    await setTurnResolutionPhase(gameId, nextTurn, 'victory', assertCurrentTurn);
     await notifyEliminatedPlayers(gameId).catch(error =>
         console.warn(`Elimination sweep failed for game ${gameId}:`, error.message || error));
+    assertCurrentTurn();
     const winner = await checkVictoryForTurn(gameId);
+    assertCurrentTurn();
     if (winner) {
         await queryDb(
             'UPDATE games SET turn_phase = ?, turn_phase_turn = ? WHERE id = ?',
             [null, null, gameId]
         );
+        assertCurrentTurn();
         broadcastToGame(gameId, `gameover::${winner.playerId}::${winner.condition}`);
         await endGameForTurn(gameId, winner);
         return;
@@ -2496,6 +2524,7 @@ async function processTurnUnchecked(gameId, failedResolution = null) {
         'UPDATE games SET turn_phase = ?, turn_phase_turn = ? WHERE id = ?',
         [null, null, gameId]
     );
+    assertCurrentTurn();
     delete activeAfterResolution.turnResolution;
     broadcastToGame(gameId, `newturn::${nextTurn}`);
     const modeDuration = TURN_SPEEDS_MS[normalizeMode(activeState.mode)] || TURN_SPEEDS_MS.quick;
@@ -7290,9 +7319,10 @@ function hydrateStandingOrdersDefaults(gameId, mode) {
     });
 }
 
-async function applyStandingOrdersForGame(gameId, eligiblePlayerIds = null) {
+async function applyStandingOrdersForGame(gameId, eligiblePlayerIds, assertCurrentTurn) {
     const { players } = gameTables(gameId);
     const rows = await queryDb(`SELECT userid FROM ${players}`);
+    assertCurrentTurn();
     const eligibleRows = eligiblePlayerIds instanceof Set
         ? (rows || []).filter(row => eligiblePlayerIds.has(Number(row.userid)))
         : (rows || []);
@@ -7542,11 +7572,12 @@ function hydrateAiPlayers(gameId) {
     );
 }
 
-async function triggerAiTurn(gameId, eligiblePlayerIds = null) {
+async function triggerAiTurn(gameId, eligiblePlayerIds = null, assertCurrentTurn = () => {}) {
     const { players } = gameTables(gameId);
     const rows = await queryDb(
         `SELECT userid, is_ai, ai_difficulty, ai_strategy FROM ${players} WHERE is_ai = 1`
     );
+    assertCurrentTurn();
     const eligibleRows = (rows || []).filter(row =>
         Number(row.is_ai) === 1
         && (!(eligiblePlayerIds instanceof Set) || eligiblePlayerIds.has(Number(row.userid)))
