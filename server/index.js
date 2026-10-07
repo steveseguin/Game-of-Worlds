@@ -419,7 +419,16 @@ function createOfflineDb() {
 let db = createOfflineDb();
 let activePool = null;
 let reconnectTimer = null;
+let waitingRoomCleanupTimer = null;
 serverLogic.setDatabase(db);
+
+function cleanupWaitingRooms() {
+    serverLogic.cleanupWaitingGames()
+        .then(count => {
+            if (count) console.log(`Removed ${count} expired or empty waiting room${count === 1 ? '' : 's'}`);
+        })
+        .catch(error => console.warn('Unable to clean waiting rooms:', error.message));
+}
 
 function scheduleReconnect() {
     if (reconnectTimer) {
@@ -460,6 +469,11 @@ function setActiveDatabase(pool) {
     pool.isOffline = false;
     db = pool;
     serverLogic.setDatabase(pool);
+    cleanupWaitingRooms();
+    if (!waitingRoomCleanupTimer) {
+        waitingRoomCleanupTimer = setInterval(cleanupWaitingRooms, 60000);
+        waitingRoomCleanupTimer.unref();
+    }
 }
 
 function setOfflineDatabase() {
@@ -1220,6 +1234,8 @@ function shutdown(signal) {
         return;
     }
     shuttingDown = true;
+    clearInterval(waitingRoomCleanupTimer);
+    waitingRoomCleanupTimer = null;
     console.log(`${new Date()} Received ${signal}; shutting down server`);
 
     if (reconnectTimer) {

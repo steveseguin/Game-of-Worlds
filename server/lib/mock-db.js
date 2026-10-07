@@ -309,6 +309,14 @@ class MockDatabase {
                 return this._async(callback, null, { insertId: id });
             }
 
+            if (/^SELECT id FROM games WHERE started = 0 AND created <= \?/i.test(normalized)) {
+                const cutoff = new Date(params[0]).getTime();
+                const games = Array.from(this._games.values())
+                    .filter(game => Number(game.started) === 0 && game.created != null && new Date(game.created).getTime() <= cutoff)
+                    .map(game => ({ id: game.id }));
+                return this._async(callback, null, games);
+            }
+
             if (/^SELECT id, name, maxplayers, started, status(, mode)?(, registered_only, min_level)? FROM games WHERE started = 0 ORDER BY created DESC LIMIT \?/i.test(normalized)) {
                 const limit = Number(params[0]) || this._games.size;
                 const games = Array.from(this._games.values())
@@ -493,6 +501,9 @@ class MockDatabase {
 
             if (/^DELETE FROM games WHERE id = \?/i.test(normalized)) {
                 const gameId = Number(params[0]);
+                if (/AND started = 0/i.test(normalized) && Number(this._games.get(gameId)?.started) !== 0) {
+                    return this._async(callback, null, { affectedRows: 0 });
+                }
                 const existed = this._games.delete(gameId);
                 this._playerTables.delete(gameId);
                 this._maps.delete(gameId);

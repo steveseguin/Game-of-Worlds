@@ -25,7 +25,7 @@ const clientSrc = fs.readFileSync(path.join(root, 'public', 'js', 'connect.js'),
 // in-game session, and lobby.js owns these. Listed explicitly so a NEW unregistered game
 // prefix still fails instead of hiding behind a loose rule.
 const LOBBY_PREFIXES = new Set([
-    'addai::', 'changerace::', 'creategame::', 'gamelist::', 'joingame::', 'races::'
+    'addai::', 'changerace::', 'creategame::', 'gamelist::', 'joingame::', 'races::', 'roomexpired::'
 ]);
 
 /**

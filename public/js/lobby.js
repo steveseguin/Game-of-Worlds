@@ -297,6 +297,11 @@ function handleMessage(message) {
         return;
     }
 
+    if (message === 'roomexpired::') {
+        showToast('This room expired because it did not start within 24 hours. Create or join another game.', 'info');
+        return;
+    }
+
     if (message.startsWith('gamelist::')) {
         setLobbyConnectionState('ready');
         updateGameList(message.substring('gamelist::'.length));

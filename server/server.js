@@ -59,6 +59,8 @@ let turnSchemaReady = Promise.resolve();
 // so concurrent callbacks cannot all claim the final lobby seat or race game start.
 const lobbySeatReservations = new Map();
 const lobbyMutationCounts = new Map();
+const deletingWaitingGames = new Set();
+let waitingRoomSweepRunning = false;
 const pendingBuildingPurchases = new Set();
 const pendingStandingOrders = new Set();
 const initializingGames = new Set();
@@ -73,6 +75,8 @@ const VALID_LOBBY_PLAYER_COUNTS = new Set([2, 3, 4, 6, 8, 12, 25, 50, 100, 250, 
 const DEFAULT_MAX_PLAYERS = 4;
 const MAX_LOBBY_PLAYERS = 1000;
 const GAME_LIST_LIMIT = 25;
+const WAITING_ROOM_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const EMPTY_ROOM_GRACE_MS = 5 * 60 * 1000;
 const DEFAULT_CREATOR_RACE_ID = 1;
 const MIN_PLAYERS_TO_START = 1;
 const TURN_SPEEDS_MS = {
@@ -1018,18 +1022,82 @@ function dropGameTables(gameId, callback) {
             return;
         }
         const tableName = tables[GAME_TABLE_SUFFIXES[index++]];
-        db.query(`DROP TABLE IF EXISTS ${tableName}`, () => next());
+        db.query(`DROP TABLE IF EXISTS ${tableName}`, error => {
+            if (error) console.warn(`Unable to drop ${tableName}:`, error.message);
+            next();
+        });
     };
     next();
 }
 
-function deleteWaitingGame(gameId, callback) {
-    stopGameRuntime(gameId);
-    dropGameTables(gameId, () => {
-        db.query('DELETE FROM games WHERE id = ?', [gameId], () => {
-            if (callback) callback();
-        });
-    });
+async function deleteWaitingGame(gameId, now = Date.now(), allowExpired = false) {
+    const id = Number(gameId);
+    const tables = gameTables(id);
+    if (deletingWaitingGames.has(id) || initializingGames.has(id)
+        || lobbyMutationCounts.has(id) || lobbySeatReservations.has(id)) return false;
+
+    // Hold joins, race changes and starts while checking membership and deleting.
+    deletingWaitingGames.add(id);
+    let session;
+    try {
+        session = await openTransactionSession();
+        const rows = await session.query('SELECT * FROM games WHERE id = ? FOR UPDATE', [id]);
+        const game = rows[0];
+        if (!game || Number(game.started) !== 0
+            || ['in-progress', 'completed', 'abandoned'].includes(String(game.status || '').toLowerCase())) return false;
+        const expired = allowExpired && game.created != null
+            && new Date(game.created).getTime() <= now - WAITING_ROOM_LIFETIME_MS;
+        const players = await session.query(`SELECT COUNT(*) AS count FROM ${tables.players}`);
+        if (!players.length || (!expired && Number(players[0].count) !== 0)) return false;
+
+        const result = await session.query('DELETE FROM games WHERE id = ? AND started = 0', [id]);
+        if (Number(result.affectedRows) !== 1) return false;
+        await session.query('UPDATE users SET currentgame = NULL WHERE currentgame = ?', [id]);
+        await session.commit();
+        stopGameRuntime(id);
+        for (const client of gameState.clients) {
+            if (Number(client.gameid) !== id) continue;
+            client.gameid = null;
+            client.raceid = null;
+            try {
+                client.sendUTF('lobby::');
+                if (expired) client.sendUTF('roomexpired::');
+            } catch (error) {
+                console.warn(`Unable to notify a player of room ${id} cleanup:`, error.message);
+            }
+        }
+        await new Promise(resolve => dropGameTables(id, resolve));
+        return true;
+    } finally {
+        try {
+            if (session) {
+                try { await session.rollback(); } finally { session.release(); }
+            }
+        } finally {
+            deletingWaitingGames.delete(id);
+        }
+    }
+}
+
+async function cleanupWaitingGames(now = Date.now()) {
+    if (!db || db.isOffline || waitingRoomSweepRunning) return 0;
+    waitingRoomSweepRunning = true;
+    let removed = 0;
+    try {
+        // A new room is briefly empty while its creator chooses a race and joins.
+        const games = await queryDb('SELECT id FROM games WHERE started = 0 AND created <= ?',
+            [new Date(now - EMPTY_ROOM_GRACE_MS)]);
+        for (const game of games) {
+            try {
+                if (await deleteWaitingGame(game.id, now, true)) removed++;
+            } catch (error) {
+                console.warn(`Unable to clean waiting room ${game.id}:`, error.message);
+            }
+        }
+        return removed;
+    } finally {
+        waitingRoomSweepRunning = false;
+    }
 }
 
 function abandonGame(gameId, reason = 'Abandoned', callback) {
@@ -1500,13 +1568,16 @@ function handleCreateGame(data, connection) {
         }
 
         const gameId = result.insertId;
+        const finishCreate = beginLobbyMutation(gameId);
         createGameTables(gameId, tableErr => {
             if (tableErr) {
+                finishCreate();
                 connection.sendUTF('creategame::error::Unable to initialize game data.');
                 return;
             }
 
             ensurePlayerTableColumns(gameId, ensureErr => {
+                finishCreate();
                 if (ensureErr) {
                     connection.sendUTF('creategame::error::Unable to prepare player table.');
                     return;
@@ -1651,8 +1722,14 @@ function handleGameStart(connection) {
     }
     
     const gameId = connection.gameid;
+    if (deletingWaitingGames.has(Number(gameId))) {
+        connection.sendUTF('Error: This waiting room is closing. Please choose another room.');
+        return;
+    }
+    const finishStartLookup = beginLobbyMutation(gameId);
 
     db.query('SELECT id, creator, maxplayers, started, turn, mode, status, mapwidth, mapheight FROM games WHERE id = ? LIMIT 1', [gameId], (err, results) => {
+        finishStartLookup();
         if (err || results.length === 0) {
             connection.sendUTF("Error: Game not found");
             return;
@@ -1754,6 +1831,10 @@ const openInitializationSession = openTransactionSession;
 
 async function initializeGame(gameId, connection, game = {}) {
     const numericGameId = Number(gameId);
+    if (deletingWaitingGames.has(numericGameId)) {
+        connection.sendUTF('Error: This waiting room is closing. Please choose another room.');
+        return;
+    }
     if (initializingGames.has(numericGameId)) {
         connection.sendUTF("Error: Game initialization is already in progress");
         return;
@@ -5594,6 +5675,11 @@ function handleJoinGame(data, connection) {
         return;
     }
 
+    if (deletingWaitingGames.has(gameId)) {
+        connection.sendUTF('joingame::error::This waiting room is closing. Please choose another room.');
+        return;
+    }
+
     if (connection.gameid && Number(connection.gameid) !== gameId) {
         connection.sendUTF('joingame::error::Leave your current game before joining another one.');
         sendCurrentGameSnapshot(connection, () => {});
@@ -5912,6 +5998,10 @@ function handleChangeRace(data, connection) {
         connection.sendUTF('changerace::error::Invalid race.');
         return;
     }
+    if (deletingWaitingGames.has(gameId)) {
+        connection.sendUTF('changerace::error::This waiting room is closing.');
+        return;
+    }
     if (initializingGames.has(gameId)) {
         connection.sendUTF('changerace::error::The game is starting; race changes are closed.');
         return;
@@ -5948,6 +6038,10 @@ function handleLeaveGame(connection) {
     const gameId = Number(connection.gameid);
     const playerId = Number(connection.name);
 
+    if (deletingWaitingGames.has(gameId)) {
+        connection.sendUTF('Error: This waiting room is closing. Please wait a moment.');
+        return;
+    }
     db.query('SELECT creator, maxplayers, started FROM games WHERE id = ? LIMIT 1', [gameId], (gameErr, games) => {
         if (gameErr) {
             connection.sendUTF('Error: Unable to leave game right now; please try again');
@@ -5988,7 +6082,9 @@ function handleLeaveGame(connection) {
                                 return;
                             }
                         } else if (remaining.length === 0) {
-                            deleteWaitingGame(gameId);
+                            deleteWaitingGame(gameId).catch(error => {
+                                console.warn(`Unable to delete empty room ${gameId}:`, error.message);
+                            });
                             return;
                         }
 
@@ -6092,6 +6188,10 @@ function handleAddAi(data, connection) {
     const gameId = Number(connection.gameid);
     const creatorId = Number(connection.name);
     const parts = data.split(':');
+    if (deletingWaitingGames.has(gameId)) {
+        connection.sendUTF('addai::error::This waiting room is closing.');
+        return;
+    }
     const aiDifficulty = normalizeAiDifficulty(parts[1]);
     const aiStrategy = normalizeAiStrategy(parts[2]);
     const finishLobbyMutation = beginLobbyMutation(gameId);
@@ -7462,6 +7562,7 @@ async function aiResearchAndDefend(gameId, playerId, strategy = 'balanced') {
 // Export functions for use by index.js
 module.exports = {
     setDatabase,
+    cleanupWaitingGames,
     handleLogin,
     handleGuestLogin,
     handleRegister,

@@ -135,3 +135,49 @@ test('game start waits for an in-flight race change to settle', () => {
     releaseRaceLookup(new Error('test cleanup'));
     assert.match(c.sent[1], /Unable to load game/);
 });
+
+for (const failure of ['membership update', 'commit']) {
+    test(`waiting-room deletion rolls back a failed ${failure} and releases its lock`, async () => {
+        const c = connection();
+        server.gameState.clients.push(c);
+        let rolledBack = 0;
+        let released = 0;
+        let fail = true;
+        const drops = [];
+        const sql = (statement, params, callback) => {
+            if (statement.startsWith('SELECT * FROM games')) return callback(null, [{ id: 91, started: 0, created: new Date(0) }]);
+            if (statement.startsWith('SELECT COUNT')) return callback(null, [{ count: 1 }]);
+            if (statement.startsWith('DELETE FROM games')) return callback(null, { affectedRows: 1 });
+            if (statement.startsWith('UPDATE users')) return callback(fail && failure === 'membership update' ? new Error('outage') : null, {});
+            assert.fail(`unexpected transaction SQL: ${statement}`);
+        };
+        server.setDatabase({ isMock: true,
+            query(statement, params, callback) {
+                if (typeof params === 'function') callback = params;
+                if (statement.startsWith('SELECT id FROM games')) return callback(null, [{ id: 91 }]);
+                if (statement.startsWith('DROP TABLE')) { drops.push(statement); return callback(null); }
+                assert.fail(`unexpected pool SQL: ${statement}`);
+            },
+            getConnection(callback) {
+                callback(null, { query: sql, beginTransaction: cb => cb(null),
+                    commit: cb => cb(fail && failure === 'commit' ? new Error('outage') : null),
+                    rollback: cb => { rolledBack++; cb(null); }, release() { released++; } });
+            }
+        });
+        try {
+            assert.equal(await server.cleanupWaitingGames(), 0);
+            assert.equal(rolledBack, 1);
+            assert.equal(released, 1);
+            assert.equal(c.gameid, 91);
+            assert.deepEqual(c.sent, []);
+            assert.deepEqual(drops, []);
+            fail = false;
+            assert.equal(await server.cleanupWaitingGames(), 1);
+            assert.equal(c.gameid, null);
+            assert.equal(released, 2);
+            assert.equal(drops.length, 8);
+        } finally {
+            server.gameState.clients.splice(server.gameState.clients.indexOf(c), 1);
+        }
+    });
+}

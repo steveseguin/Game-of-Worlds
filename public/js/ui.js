@@ -776,7 +776,7 @@ window.GalaxyMap = (function() {
             case SECTOR_STATUS.COLONIZED:
                 return 'yours';
             case SECTOR_STATUS.HOMEWORLD:
-                if (isSelfOwner(sector.owner)) return 'yours';
+                if (isMine(sector)) return 'yours';
                 if (name) return `held by ${name}`;
                 return sector.owner ? 'enemy held' : 'unclaimed';
             case SECTOR_STATUS.ENEMY:
@@ -972,6 +972,7 @@ window.GalaxyMap = (function() {
      *                                 shows on the same screen
      */
     function sectorOutput(sector) {
+        const buildingsKnown = sector.buildings != null;
         const counts = normalizeBuildingCounts(sector.buildings);
         const yields = estimateProduction(counts);
         const built = [];
@@ -988,7 +989,7 @@ window.GalaxyMap = (function() {
         let spokenYield = '';
         if (!colonisable) {
             text = '';
-        } else if (hasBuildings || mine) {
+        } else if (hasBuildings || (mine && buildingsKnown)) {
             text = `M ${yields.metal} · C ${yields.crystal} · R ${yields.research}`;
             spokenYield = `Estimated yield ${yields.metal} metal, ${yields.crystal} crystal, `
                 + `${yields.research} research per turn.`;
@@ -998,7 +999,7 @@ window.GalaxyMap = (function() {
         }
         const spokenParts = [];
         if (hasBuildings) spokenParts.push(`Buildings: ${built.join(', ')}.`);
-        else if (colonisable && mine) spokenParts.push('Nothing built here yet.');
+        else if (colonisable && mine && buildingsKnown) spokenParts.push('Nothing built here yet.');
         if (spokenYield) spokenParts.push(spokenYield);
         return {
             yields,
@@ -1007,7 +1008,7 @@ window.GalaxyMap = (function() {
             // says nothing about buildings there rather than reporting "None"
             // as if it were an observation.
             showBuilt: colonisable,
-            buildingsText: hasBuildings ? built.join(', ') : (mine ? 'None' : 'Unknown'),
+            buildingsText: hasBuildings ? built.join(', ') : (mine && buildingsKnown ? 'None' : 'Unknown'),
             showYield: Boolean(text),
             yieldsText: text,
             spoken: spokenParts.join(' ')
@@ -1263,7 +1264,6 @@ window.GalaxyMap = (function() {
 
         if (state.initialized) {
             if (state.width === nextWidth && state.height === nextHeight && state.containerElement === nextContainer) {
-                resetSectorStatuses();
                 return true;
             }
             state.sectors = {};
@@ -1333,11 +1333,12 @@ window.GalaxyMap = (function() {
         return true;
     }
 
-    function resetSectorStatuses() {
+    function retainSectors(sectorIds) {
         Object.values(state.sectors).forEach(sector => {
+            if (sectorIds.has(sector.id) || sector.intel === 'fog') return;
             sector.status = SECTOR_STATUS.UNKNOWN;
             sector.owner = null;
-            sector.buildings = [];
+            sector.buildings = null;
             sector.path.setAttribute("fill", UNKNOWN_FILL);
             sector.path.setAttribute("data-original-fill", UNKNOWN_FILL);
             sector.path.setAttribute("data-intel", "fog");
@@ -1633,7 +1634,7 @@ window.GalaxyMap = (function() {
             gridX,
             gridY,
             owner: null,
-            buildings: [],
+            buildings: null,
             type: null,
             live: false,
             flags: 0,
@@ -2247,6 +2248,7 @@ window.GalaxyMap = (function() {
             g3dCall('focusSector', Number(sectorId));
         },
         updateSectorStatus,
+        retainSectors,
         SECTOR_STATUS,
         highlightSector: function(sectorId) {
             g3dCall('highlightSector', sectorId);

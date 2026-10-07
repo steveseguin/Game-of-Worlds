@@ -23,6 +23,12 @@ test('offline leave preserves the room and does not navigate or send',()=>{
  const f=fixture();f.run('currentGameId=42;websocket.readyState=3;leaveGame()');
  assert.equal(f.run('currentGameId'),42);assert.equal(f.ctx.window.location.href,undefined);assert.deepEqual(f.sent,[]);
 });
+
+test('expired rooms clear membership and explain how to keep playing',()=>{
+ const f=fixture();f.run("currentGameId=42;handleMessage('lobby::');handleMessage('roomexpired::')");
+ assert.equal(f.run('currentGameId'),null);
+ assert.match(f.toasts[0],/did not start within 24 hours/);
+});
 test('clearing a room discards its roster and pending automated start',()=>{
  const f=fixture();f.run('currentPlayerDetails=[{name:"old"}];sandboxAutoStartTarget=4;clearCurrentGameTracking()');
  assert.equal(f.run('currentPlayerDetails.length'),0);assert.equal(f.run('sandboxAutoStartTarget'),null);

@@ -78,6 +78,10 @@ Pending human joins and AI additions reserve lobby seats before their `playersN`
 
 Waiting games are disposable. If the last seated player leaves before start, the server drops per-game tables and deletes the `games` row.
 
+On database connection and once per minute, `cleanupWaitingGames()` also removes rooms that have not started within 24 hours of creation. Empty waiting rooms receive a five-minute grace period for the creator to select a race and join. Empty means no seated players, not no connected sockets. Started, completed and abandoned matches are excluded.
+
+Cleanup waits for pending creation, joins, race changes and starts. It rechecks the game and player count, then transactionally removes the waiting-room row and clears `users.currentgame` before dropping its per-game tables. Connected members return to the lobby; expired-room members also receive `roomexpired::`. A failed lookup leaves the room intact for a later sweep.
+
 ## Active Leave And Surrender
 
 Active `//leavegame` and active `//surrender` are intentionally different:

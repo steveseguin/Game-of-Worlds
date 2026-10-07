@@ -229,6 +229,108 @@ test('last player leaving a waiting room deletes the empty game', async () => {
     }
 });
 
+test('waiting rooms expire at 24 hours and release every seated player', async () => {
+    const db = createMockDatabase(); server.setDatabase(db); resetGameState();
+    try {
+        const host = createConnection(await createGuest('expireHost'));
+        const guest = createConnection(await createGuest('expireGuest'));
+        attach(host); attach(guest);
+        const gameId = await createJoinedGame(host);
+        await joinGame(guest, gameId);
+        const created = db.games.find(game => game.id === gameId).created;
+        assert.equal(await server.cleanupWaitingGames(created + 24 * 3600000 - 1), 0);
+        assert.equal(await server.cleanupWaitingGames(created + 24 * 3600000), 1);
+        assert.ok(!db.games.some(game => game.id === gameId));
+        for (const player of [host, guest]) {
+            assert.equal(player.gameid, null);
+            assert.equal(player.raceid, null);
+            assert.equal(db.users.find(user => user.id === Number(player.name)).currentgame, null);
+            assert.ok(player.messages.includes('roomexpired::'));
+            assert.ok(player.messages.includes('lobby::'));
+        }
+        assert.equal(server.gameState.activeGames[gameId], undefined);
+        assert.equal(await server.cleanupWaitingGames(created + 25 * 3600000), 0);
+    } finally { resetGameState(); }
+});
+
+test('empty room sweep allows five minutes for the creator to choose a race', async () => {
+    const db = createMockDatabase(); server.setDatabase(db); resetGameState();
+    try {
+        const host = createConnection(await createGuest('emptyHost')); attach(host);
+        server.handleCreateGame('//creategame:Empty:2:quick', host);
+        const gameId = Number((await waitFor(host, m => m.startsWith('creategame::success::'))).split('::')[2]);
+        const created = db.games.find(game => game.id === gameId).created;
+        assert.equal(await server.cleanupWaitingGames(created + 5 * 60000 - 1), 0);
+        assert.equal(await server.cleanupWaitingGames(created + 5 * 60000), 1);
+        assert.ok(!db.games.some(game => game.id === gameId));
+    } finally { resetGameState(); }
+});
+
+test('waiting-room cleanup preserves disconnected seats and started matches', async () => {
+    const db = createMockDatabase(); server.setDatabase(db); resetGameState();
+    try {
+        const host = createConnection(await createGuest('keepHost')); attach(host);
+        const gameId = await createJoinedGame(host);
+        const created = db.games.find(game => game.id === gameId).created;
+        server.gameState.clients.length = 0;
+        assert.equal(await server.cleanupWaitingGames(created + 3600000), 0);
+        attach(host);
+        await startGame(host);
+        server.gameState.clients.length = 0;
+        assert.equal(await server.cleanupWaitingGames(created + 48 * 3600000), 0);
+        assert.equal(db.games.find(game => game.id === gameId).started, 1);
+        assert.ok(server.gameState.gameTimer[gameId]);
+    } finally { resetGameState(); }
+});
+
+test('cleanup rechecks started state after selecting an expired candidate', async () => {
+    const db = createMockDatabase(); server.setDatabase(db); resetGameState();
+    try {
+        const host = createConnection(await createGuest('raceHost')); attach(host);
+        const gameId = await createJoinedGame(host);
+        const game = db._games.get(gameId);
+        const query = db.query.bind(db);
+        db.query = (sql, params, callback) => {
+            if (sql.startsWith('SELECT id FROM games WHERE started = 0')) {
+                return query(sql, params, (error, rows) => {
+                    game.started = 1;
+                    callback(error, rows);
+                });
+            }
+            query(sql, params, callback);
+        };
+        assert.equal(await server.cleanupWaitingGames(game.created + 48 * 3600000), 0);
+        assert.equal(db._games.get(gameId).started, 1);
+        assert.equal(host.gameid, gameId);
+    } finally { resetGameState(); }
+});
+
+test('room cleanup waits for pending joins and fails closed on a player lookup error', async () => {
+    const db = createMockDatabase(); server.setDatabase(db); resetGameState();
+    try {
+        const host = createConnection(await createGuest('lookupHost')); attach(host);
+        const gameId = await createJoinedGame(host);
+        const created = db._games.get(gameId).created;
+        const query = db.query.bind(db);
+        let releaseRaceChange;
+        db.query = (sql, params, callback) => {
+            if (sql.startsWith('SELECT started, status')) { releaseRaceChange = callback; return; }
+            if (sql.startsWith('SELECT COUNT(*) AS count FROM players')) {
+                return db._async(callback, new Error('temporary lookup failure'));
+            }
+            query(sql, params, callback);
+        };
+        server.handleChangeRace('//changerace:1', host);
+        assert.equal(await server.cleanupWaitingGames(created + 48 * 3600000), 0);
+        releaseRaceChange(new Error('temporary lookup failure'));
+        assert.equal(await server.cleanupWaitingGames(created + 48 * 3600000), 0);
+        assert.ok(db._games.has(gameId));
+        assert.equal(host.gameid, gameId);
+        db.query = query;
+        assert.equal(await server.cleanupWaitingGames(created + 48 * 3600000), 1, 'failed sweep releases its locks for retry');
+    } finally { resetGameState(); }
+});
+
 test('last human leaving an active solo game abandons it and stops the timer', async () => {
     const db = createMockDatabase();
     server.setDatabase(db);

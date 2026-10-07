@@ -23,6 +23,8 @@
         el('sectorMoveShips').setAttribute('aria-label', `Move ships to ${name}, sector ${data.id}`);
         const playerId = Number(window.GAME_STATE?.player?.id || (document.cookie.match(/(?:^|; )userId=([^;]+)/)||[])[1]);
         el('renamePlanetBtn').hidden = !(known && data.type >= 6 && data.type <= 10 && Number(data.owner) === playerId && playerId > 0 && !data.intelMemory && !data.sensorContactOnly);
+        el('sectorProbeBtn').hidden = !(data.unexplored || data.intelMemory || data.sensorContactOnly);
+        el('sectorProbeBtn').setAttribute('aria-label', `Probe sector ${data.id} for 300 crystal`);
         if (Number(old?.id) !== Number(data.id) || old?.type !== data.type || Boolean(old?.unexplored) !== Boolean(data.unexplored)) {
             const version = ++revision;
             clearTimeout(timer);
@@ -43,6 +45,9 @@
             timer = setTimeout(capture, 250);
         }
     }
+    el('sectorProbeBtn').addEventListener('click', () => {
+        if (current) window.offerSectorProbe?.(Number(current.id));
+    });
     el('renamePlanetBtn').addEventListener('click', () => {
         pendingId = current.id;
         el('planetNameInput').value = current.chartName || '';

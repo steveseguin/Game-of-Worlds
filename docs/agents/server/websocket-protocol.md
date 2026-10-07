@@ -65,7 +65,7 @@ The dispatch switch lives in `server/index.js` `handleCommand()`, then calls fun
 | `//update` | inline in `handleCommand` | Sends resources, tech, empire, victory, visible sectors. |
 | `//sector:<sectorHex>` | `updateSector` | Requests sector detail if visible; may return `probeonly`. |
 | `//moveoptions:<sectorHex>` | `requestMoveOptions` | Requests available ships and direct-route preflight for this destination. Returns `mmoptionsv2::` even when none are eligible. |
-| `//probe:<sectorHex>` | `probeSector` | Costs 300 crystal, reveals or destroys probe on hazards/counter-intel. |
+| `//probe:<sectorHex>` | `probeSector` | Costs 300 crystal, reveals or destroys probe on hazards/counter-intel. The sector header offers a Probe control for sensor contacts, unexplored sectors and stored scans; confirmation is required before spending crystal. |
 | `//colonize[:sectorHex]` | `colonizePlanet` | Uses colony ship, validates terraform requirement. |
 | `//buyship:<shipId>[:sectorHex]` | `buyShip` | Builds in the explicit selected sector (legacy clients fall back to `currentsector`); requires resources, a local spaceport, race doctrine, and empire-wide shipyard research. |
 | `//buybuilding:<buildingId>[:sectorHex]` | `buyBuilding` | Builds in the explicit selected sector (legacy clients fall back to `currentsector`); requires ownership, resources, local slots, and tech for some buildings. |
@@ -91,6 +91,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `$^$<count>` | lobby/game | Connected socket count. |
 | `countdown::<seconds|cancel>` | lobby/game | Start-game countdown or cancellation. |
 | `lobby::` | lobby/game | Enter lobby mode. |
+| `roomexpired::` | lobby | Explain that an unstarted room expired after 24 hours; follows `lobby::`. |
 | `gamelist::...` | lobby | Waiting-game list. |
 | `currentgame::<json|null>` | lobby/game | Current game snapshot. |
 | `creategame::success::<gameId>` / `creategame::error::<msg>` | lobby | Create result. |
@@ -109,7 +110,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `techstate::<json>` | game | Tech tree, race access, race-adjusted ship costs, and shipyard requirements. |
 | `empire::<json>` | game | Owned sectors/buildings/fleets summary. |
 | `victoryprogress::<json>` | game | Victory progress. |
-| `mapconfig::<width>::<height>` | game | Map dimensions. |
+| `mapconfig::<width>::<height>` | game | Map dimensions. Repeated dimensions leave the existing chart intact; `mapstate` controls visibility and clears omitted sectors. |
 | `mapstate::<csv>` | game | Visible map snapshot. Each entry is `id:status:fleet:type:vis:flags:chartName:namedBy:namedTurn`; `vis` 1=live/0=memory; `flags` bitmask HOMEWORLD=1, TURRET=2, COLONY_SHIP=4, WARPGATE=8, ENEMY_FLEET=16, PROBE_LOSS=32. `chartName` is URI-encoded; the three chart fields are empty/zero for unnamed sectors. |
 | `sector::<sectorId>::<json>` | game | Full authoritative detail for a sector the player owns, occupies, or has just successfully probed. |
 | `sectorcontact::<sectorId>::<json>` | game | Passive one-tile sensor contact: terrain, controller, and total presence only. |

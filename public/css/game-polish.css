@@ -45,6 +45,8 @@
 .game-page .sector-preview-actions #sectorMoveShips {color:#101820;background:#efd29b;border-color:#efd29b;}
 .sector-preview-title {display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .sector-preview-title strong {min-width:0;}
+.game-page #sectorProbeBtn {flex-shrink:0;min-height:44px;padding:4px 8px;text-transform:none;line-height:1.3;}
+.game-page #sectorProbeBtn small {font-size:12px;}
 @media(max-width:560px){.game-page #sectordisplay {max-width:calc(100vw - 20px);}.sector-preview-label {padding:8px 10px 6px;}.sector-preview-label strong {font-size:21px;}}
 .game-page #renamePlanetBtn {background:transparent;min-height:40px;padding:6px 10px;}
 @media(pointer:coarse){.game-page #renamePlanetBtn {min-height:44px;}}

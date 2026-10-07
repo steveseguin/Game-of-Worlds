@@ -554,6 +554,18 @@ function renderProbeSuggestionCard(title, body, onProbe, onMove) {
     card.querySelector('#probeSuggestionSend').focus();
 }
 
+function offerSectorProbe(numericSectorId) {
+    if (!Number.isSafeInteger(numericSectorId) || numericSectorId <= 0) return;
+    const sectorId = numericSectorId.toString(16);
+    const knownState = GAME_STATE.mapSectors[numericSectorId];
+    const staleMemory = knownState && knownState.seen && !knownState.live;
+    const title = staleMemory ? `Refresh scan: Sector ${numericSectorId}` : `Scan Sector ${numericSectorId}`;
+    const body = 'A probe costs 300 crystal and can be lost to hazards or counter-intelligence. A successful scan reveals resources and Terraforming requirements; defenses depend on your intelligence advantage. You can also risk exploring with a fleet.';
+    renderProbeSuggestionCard(title, body,
+        () => sendGameCommand('//probe:' + sectorId),
+        () => requestMoveOptions(sectorId));
+}
+
 // Render probe intel (spy ladder results) into the sector panel + a notification.
 function renderSectorIntel(sectorId, intel) {
     const lines = [];
@@ -1186,21 +1198,7 @@ function handleWebSocketMessage(message) {
     else if (message.indexOf("probeonly:") === 0) {
         const sectorId = message.split(":")[1];
         const numericSectorId = parseInt(sectorId, 16);
-        const knownState = GAME_STATE.mapSectors[numericSectorId];
-        const sectorLabel = Number.isFinite(numericSectorId)
-            ? String(numericSectorId)
-            : sectorId;
-        const staleMemory = knownState && knownState.seen && !knownState.live;
-        const title = staleMemory ? `Stale intel: Sector ${sectorLabel}` : `Unknown Sector ${sectorLabel}`;
-        const body = staleMemory
-            ? 'You only have old memory here. Send a probe to refresh live intel, or move ships there from the fleet menu if you want to risk exploration.'
-            : 'Long-range sensors cannot see in. Launch a probe to scan it? (300 Crystal; probes can be lost to hazards or counter-intelligence.)';
-        const sendProbe = () => sendGameCommand("//probe:" + sectorId);
-        const moveShips = () => requestMoveOptions(sectorId);
-        renderProbeSuggestionCard(title, body, sendProbe, moveShips);
-        if (typeof window.NotificationSystem?.notify === 'function') {
-            window.NotificationSystem.notify(title, 'Probe scan is optional; fleet movement remains available if ships are nearby.', 'info', 5000);
-        }
+        offerSectorProbe(numericSectorId);
         return;
     }
     // Route-aware fleet options. Known hazards are disclosed; unmapped route
@@ -1345,6 +1343,7 @@ function handleWebSocketMessage(message) {
     // shared). Without a branch here these fall through to the chat feed and print raw
     // protocol strings like "gamelist::66,Test,0,4,waiting,quick..." into the game log.
     else if (message.indexOf("gamelist::") === 0
+        || message === "roomexpired::"
         || message.indexOf("races::") === 0
         || message.indexOf("addai::") === 0
         || message.indexOf("joingame::") === 0
@@ -1843,6 +1842,7 @@ function updateMapState(message) {
     };
 
     const sectorData = payload ? payload.split(',') : [];
+    window.GalaxyMap?.retainSectors?.(new Set(sectorData.map(data => parseInt(data, 10))));
     sectorData.forEach(data => {
         const [
             sectorId,
@@ -1886,6 +1886,12 @@ function updateMapState(message) {
             namedTurn,
             indicator: mapFlagsToIndicator(flags, status)
         };
+        // Keep surveyed construction on our own worlds across map snapshots.
+        // Passive contacts and terrain memories do not disclose live interiors.
+        if (!live || !(status === 'owned' || status === 'colonized' || (flags & 1))) {
+            details.owner = null;
+            details.buildings = null;
+        }
         const parsedType = parseInt(sectorType, 10);
         if (Number.isFinite(parsedType)) {
             details.type = parsedType;

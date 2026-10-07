@@ -5,7 +5,8 @@ const {
     createGame,
     startGame,
     dismissFirstRunGuidance,
-    readTestTerrain
+    readTestTerrain,
+    readResources
 } = require('./support/ui-game-harness');
 
 test.describe('Authoritative gameplay controls', () => {
@@ -128,6 +129,7 @@ test.describe('Authoritative gameplay controls', () => {
         await startGame(page, [page]);
         await dismissFirstRunGuidance(page);
 
+        const terrain = await readTestTerrain(page, gameId);
         const sensorSector = await page.evaluate(() => Number(Object.values(window.GAME_STATE.mapSectors)
             .find(sector => sector.live && sector.status === 'neutral')?.id || 0));
         expect(sensorSector).toBeGreaterThan(0);
@@ -137,8 +139,30 @@ test.describe('Authoritative gameplay controls', () => {
         await expect(page.locator('#sectorBuildings')).toContainText('Outside sensor resolution');
         await expect(page.locator('#sectorPanelTitle')).toContainText(/Sector\s+\d+/);
         await expect(page.locator('#buildSectorContext')).toContainText(/Construction destination: Sector \d+/);
+        const beforeProbe = await readResources(page);
+        await page.locator('#sectorProbeBtn').click();
+        await expect(page.locator('#probeSuggestionCard')).toBeVisible();
+        await expect(page.locator('#probeSuggestionCard')).toContainText('300 crystal');
+        await page.locator('#probeSuggestionDismiss').click();
+        await expect(page.locator('#probeSuggestionCard')).not.toBeVisible();
+        await expect(page.locator('#sectorProbeBtn')).toBeFocused();
+        expect((await readResources(page)).crystal).toBe(beforeProbe.crystal);
 
-        const terrain = await readTestTerrain(page, gameId);
+        const home = await page.evaluate(() => window.GAME_STATE.player.homeworld);
+        const homeTile = page.locator(`#tileholder${home}`);
+        await expect(homeTile).toHaveAttribute('aria-label', /yours.*Buildings:/);
+        // The routine map configuration push must preserve surveyed homeworld details.
+        const chartWrites = await page.evaluate(({ width, height }) => {
+            const observer = new MutationObserver(() => {});
+            observer.observe(document.querySelector('#minimapid'), { subtree: true, childList: true, attributes: true });
+            window.handleWebSocketMessage(`mapconfig::${width}::${height}`);
+            const count = observer.takeRecords().length;
+            observer.disconnect();
+            return count;
+        }, { width: terrain.width, height: terrain.height });
+        expect(chartWrites).toBe(0);
+        await expect(homeTile).toHaveAttribute('aria-label', /yours.*Buildings:/);
+
         const fogIds = await page.locator('[id^="tile"][data-intel="fog"]').evaluateAll(nodes => nodes.map(node => Number(node.id.replace('tile', ''))));
         const probeTarget = terrain.sectors.find(sector => fogIds.includes(Number(sector.sectorid)) && Number(sector.type) >= 6)?.sectorid;
         expect(Number(probeTarget)).toBeGreaterThan(0);
@@ -184,5 +208,19 @@ test.describe('Authoritative gameplay controls', () => {
         await expect(page.locator('#sectorIntelState')).toHaveText('Probe memory', { timeout: 15000 });
         await expect(page.locator('#sectorIntelSummary')).toContainText(/stored scan results/i);
         await expect(page.locator('#metalbonus')).not.toHaveText('Unknown');
+        await expect(page.locator('#sectorProbeBtn')).toBeVisible();
+        await page.locator('#probeSuggestionDismiss').click();
+        await page.locator('#sectorProbeBtn').click();
+        await expect(page.locator('#probeSuggestionCard')).toBeVisible();
+        const beforeRefresh = await readResources(page);
+        await page.locator('#probeSuggestionSend').click();
+        await expect(page.locator('#sectorIntelState')).toHaveText('Probe scan');
+        await expect.poll(async () => (await readResources(page)).crystal).toBe(beforeRefresh.crystal - 300);
+
+        // A later snapshot can revoke live intel or omit a sector completely.
+        await page.evaluate(({ home }) => window.handleWebSocketMessage(`mapstate::${home}:neutral:0:10:0:0::0:0`), { home });
+        await expect(homeTile).not.toHaveAttribute('aria-label', /yours|Buildings:|Nothing built/);
+        await page.evaluate(() => window.handleWebSocketMessage('mapstate::'));
+        await expect(homeTile).toHaveAttribute('data-intel', 'fog');
     });
 });
