@@ -4,21 +4,7 @@
  * clicks and explains why an action is unavailable.
  */
 const BuildSystem = (() => {
-    const BUILDING_COSTS = {
-        0: { metal: 50, crystal: 20 },
-        1: { metal: 40, crystal: 30 },
-        2: { metal: 60, crystal: 40 },
-        3: { metal: 100, crystal: 50 },
-        4: { metal: 80, crystal: 60 },
-        5: { metal: 200, crystal: 150 }
-    };
-    const BUILDING_SLOTS = { 1: 1, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6 };
-    const SPACEPORT_TIERS = {
-        1: { capacity: 12 },
-        2: { capacity: 20, research: 1, metal: 350, crystal: 100 },
-        3: { capacity: 32, research: 2, metal: 800, crystal: 250 },
-        4: { capacity: 48, research: 3, metal: 1600, crystal: 500 }
-    };
+    const { BUILDING_COSTS, BUILDING_SLOTS_BY_TYPE: BUILDING_SLOTS, SPACEPORT_TIERS } = window.ConstructionRules;
     const FALLBACK_SHIP_COSTS = {
         1: { metal: 430, crystal: 0, shipyard: 0, production: 3 },
         2: { metal: 780, crystal: 0, shipyard: 1, production: 5 },

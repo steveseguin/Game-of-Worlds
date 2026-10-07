@@ -92,30 +92,28 @@ test('building costs quoted as piece titles are the real ones', () => {
         'Orbital Turret': [80, 60],
         'Warp Gate': [200, 150]
     };
-    const block = serverSrc.match(/const BUILDING_COSTS = \{[\s\S]*?\n\};/);
-    assert.ok(block, 'could not find BUILDING_COSTS');
+    const { BUILDING_COSTS } = require('../public/js/construction-rules');
     for (const [name, [metal, crystal]] of Object.entries(expected)) {
-        const row = new RegExp(`name: "${name}", metal: (\\d+), crystal: (\\d+)`);
-        const m = block[0].match(row);
-        assert.ok(m, `${name} is no longer in BUILDING_COSTS under that name`);
-        assert.equal(Number(m[1]), metal, `${name} metal cost changed`);
-        assert.equal(Number(m[2]), crystal, `${name} crystal cost changed`);
+        const building = Object.values(BUILDING_COSTS).find(item => item.name === name);
+        assert.ok(building, `${name} is no longer in BUILDING_COSTS under that name`);
+        assert.equal(building.metal, metal, `${name} metal cost changed`);
+        assert.equal(building.crystal, crystal, `${name} crystal cost changed`);
     }
 });
 
 test('spaceport capacities and the cumulative tier-four cost are what the lore says', () => {
-    const block = serverSrc.match(/const SPACEPORT_TIERS = Object\.freeze\(\{[\s\S]*?\n\}\);/);
-    assert.ok(block, 'could not find SPACEPORT_TIERS');
-    const caps = [...block[0].matchAll(/capacity: (\d+)/g)].map(m => Number(m[1]));
+    const { BUILDING_COSTS, SPACEPORT_TIERS } = require('../public/js/construction-rules');
+    const tiers = Object.values(SPACEPORT_TIERS);
+    const caps = tiers.map(tier => tier.capacity);
     assert.deepEqual(caps, [12, 20, 32, 48],
         'lore/24-anthology/05-buildings.md quotes 12 at tier one and 48 at tier four');
 
     // The error this test was written for: the upgrade steps are cumulative, and the lore now
     // quotes the total rather than the last step.
-    const metal = [...block[0].matchAll(/metal: (\d+)/g)].map(m => Number(m[1]));
-    const crystal = [...block[0].matchAll(/crystal: (\d+)/g)].map(m => Number(m[1]));
-    const base = 100; // Spaceport in BUILDING_COSTS
-    const baseCrystal = 50;
+    const metal = tiers.map(tier => tier.metal || 0);
+    const crystal = tiers.map(tier => tier.crystal || 0);
+    const base = BUILDING_COSTS[3].metal;
+    const baseCrystal = BUILDING_COSTS[3].crystal;
     const totalMetal = base + metal.reduce((a, b) => a + b, 0);
     const totalCrystal = baseCrystal + crystal.reduce((a, b) => a + b, 0);
     assert.equal(totalMetal, 2850, 'the cumulative metal to reach tier four changed');

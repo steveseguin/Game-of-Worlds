@@ -207,8 +207,8 @@ const GameUI = (function() {
             document.getElementById('terraformlvl').textContent = 'Cannot be colonized';
         }
 
-        // Building slots: mirrors BUILDING_SLOTS_BY_TYPE on the server.
-        const slotsByType = { 1: 1, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6 };
+        // Use the same fallback slot limits as the game engine.
+        const slotsByType = window.ConstructionRules.BUILDING_SLOTS_BY_TYPE;
         const slotsEl = document.getElementById('sectorslots');
         if (slotsEl) {
             const hasAuthoritativeLimit = sectorData.buildingSlotLimit !== null

@@ -1,11 +1,4 @@
-// Two more numbers the client keeps its own copy of.
-//
-// The repo already guards the three big tables - technology (byte-for-byte),
-// building costs, and ship prices including the build panel's fallback table. These two
-// were missed, and they are the same hazard: change the server and the client keeps
-// quoting the old figure, with no test and no error to say so.
-//
-// Both agree today. That is what makes now the cheap time to pin them.
+// Guard player-facing probe prices and shared construction slot limits.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -47,21 +40,10 @@ test('the probe price the client quotes is the one the server charges', () => {
         + wrong.join('\n  '));
 });
 
-test('the build-slot limits the client falls back on match the server', () => {
-    // The client prefers sectorData.buildingSlotLimit when the server sends one and uses
-    // its own copy otherwise, so drift shows up only on the sectors that take the
-    // fallback - the worst kind of inconsistency to reproduce.
+test('build-slot fallbacks use the same rules as server integrity checks', () => {
+    const rules = require('../public/js/construction-rules');
     const invariants = require('../server/lib/game-invariants');
-    const authoritative = invariants.BUILDING_SLOTS_BY_TYPE;
-
-    const block = read('public/js/GUI.js').match(/slotsByType\s*=\s*\{([^}]*)\}/);
-    assert.ok(block, 'GUI.js no longer has a slotsByType fallback - delete this test if it is gone for good');
-
-    const client = {};
-    for (const m of block[1].matchAll(/(\d+)\s*:\s*(\d+)/g)) client[m[1]] = Number(m[2]);
-
-    assert.deepEqual(client, { ...authoritative },
-        'public/js/GUI.js slotsByType has drifted from BUILDING_SLOTS_BY_TYPE in '
-        + 'server/lib/game-invariants.js; the sector panel would report a slot count the '
-        + 'server does not enforce');
+    assert.strictEqual(invariants.BUILDING_SLOTS_BY_TYPE, rules.BUILDING_SLOTS_BY_TYPE);
+    assert.match(read('public/js/GUI.js'), /slotsByType = window\.ConstructionRules\.BUILDING_SLOTS_BY_TYPE/);
+    assert.match(read('public/js/build.js'), /BUILDING_SLOTS_BY_TYPE: BUILDING_SLOTS/);
 });

@@ -39,6 +39,8 @@ flowchart LR
 | --- | --- |
 | `server/lib/races.js` | Race definitions, unlock checks, race bonuses, ship access gates. |
 | `server/lib/combat.js` | Ship definitions, battle simulation, battle timeline formatting. |
+| `server/lib/combat-telemetry.js` | Bounded combat statistics, player-scoped analytics snapshots, and fleet telemetry summaries. |
+| `public/js/construction-rules.js` | Shared building costs, sector slot limits, and Spaceport tiers for the server and browser. |
 | `server/lib/tech.js` and `public/js/tech.js` | Shared tech-tree definitions and parsing in `public/js/tech.js`; the server module re-exports them. |
 | `server/lib/map.js` | Galaxy map generation and sector/resource shape. |
 | `server/lib/victory.js` | Victory conditions and completed-game persistence. |

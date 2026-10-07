@@ -19,14 +19,7 @@ const DEFAULT_GAME_MODE = 'quick';
 const EPIC_RESOURCE_MULTIPLIER = Number(process.env.EPIC_RESOURCE_MULTIPLIER) || 12;
 const EPIC_AUTO_BUILD_ENABLED = String(process.env.EPIC_AUTO_BUILD || 'true').toLowerCase() !== 'false';
 
-const BUILDING_COSTS = {
-    0: { name: "Metal Extractor", metal: 50, crystal: 20 },
-    1: { name: "Crystal Refinery", metal: 40, crystal: 30 },
-    2: { name: "Research Academy", metal: 60, crystal: 40 },
-    3: { name: "Spaceport", metal: 100, crystal: 50 },
-    4: { name: "Orbital Turret", metal: 80, crystal: 60 },
-    5: { name: "Warp Gate", metal: 200, crystal: 150 }
-};
+const { BUILDING_COSTS } = require('../../../public/js/construction-rules');
 
 const DEFAULT_STANDING_ORDERS = {
     autoRebuild: false,

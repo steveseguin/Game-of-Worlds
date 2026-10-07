@@ -4,7 +4,7 @@
  * introducing a second mutation path beside the game engine.
  */
 
-const BUILDING_SLOTS_BY_TYPE = Object.freeze({ 1: 1, 6: 2, 7: 3, 8: 4, 9: 5, 10: 6 });
+const { BUILDING_SLOTS_BY_TYPE } = require('../../public/js/construction-rules');
 const { gameTables, requireGameId } = require('./game-tables');
 
 function numericId(value) {

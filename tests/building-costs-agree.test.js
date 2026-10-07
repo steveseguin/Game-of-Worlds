@@ -1,46 +1,21 @@
-// A building's price is written down in three places:
-//
-//   server/server.js  BUILDING_COSTS   — authoritative; this is what the player is charged
-//   public/js/build.js BUILDING_COSTS  — affordability checks and the cost chips it re-renders
-//   public/game.html                   — the cost spans in the initial markup
-//
-// Nothing links them. Change the price on the server and the button keeps advertising the
-// old one, the client keeps enabling or greying it on the old one, and the player is
-// charged something they were never shown.
-//
-// They all agree today. This test exists because "fix one copy and miss its twin" has
-// already produced two defects in this codebase: the music urgency window was corrected in
-// the unit test but not the e2e spec, and the landing page's Quick-match length was
-// corrected on the chip but not in the paragraph four lines below it. Duplicated facts are
-// where the fixes go wrong, so the duplication gets a guard rather than a promise.
+// Shared construction rules must load in the browser and agree with displayed prices.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 
 function serverCosts() {
-    const src = fs.readFileSync(path.join(root, 'server', 'server.js'), 'utf8');
-    const block = src.match(/const BUILDING_COSTS = \{([\s\S]*?)\n\};/);
-    assert.ok(block, 'could not find BUILDING_COSTS in server.js');
-    const costs = {};
-    for (const m of block[1].matchAll(/(\d+):\s*\{[^}]*metal:\s*(\d+),\s*crystal:\s*(\d+)/g)) {
-        costs[Number(m[1])] = { metal: Number(m[2]), crystal: Number(m[3]) };
-    }
-    return costs;
+    return require('../server/lib/config/constants').BUILDING_COSTS;
 }
 
 function clientCosts() {
-    const src = fs.readFileSync(path.join(root, 'public', 'js', 'build.js'), 'utf8');
-    const block = src.match(/const BUILDING_COSTS = \{([\s\S]*?)\n\s*\};/);
-    assert.ok(block, 'could not find BUILDING_COSTS in build.js');
-    const costs = {};
-    for (const m of block[1].matchAll(/(\d+):\s*\{\s*metal:\s*(\d+),\s*crystal:\s*(\d+)/g)) {
-        costs[Number(m[1])] = { metal: Number(m[2]), crystal: Number(m[3]) };
-    }
-    return costs;
+    const context = { window: {} };
+    vm.runInNewContext(fs.readFileSync(path.join(root, 'public/js/construction-rules.js'), 'utf8'), context);
+    return context.window.ConstructionRules.BUILDING_COSTS;
 }
 
 /** The cost spans baked into the build buttons, keyed by data-building-id. */
@@ -54,6 +29,16 @@ function markupCosts() {
     return costs;
 }
 
+test('construction rules load before the game UI and build panel', () => {
+    const html = fs.readFileSync(path.join(root, 'public/game.html'), 'utf8');
+    const scripts = [...html.matchAll(/<script\s+defer\s+src="js\/([^"?]+)(?:\?[^" ]*)?"/g)].map(match => match[1]);
+    const rulesIndex = scripts.indexOf('construction-rules.js');
+    assert.ok(rulesIndex >= 0, 'construction rules must be loaded as a deferred script');
+    for (const consumer of ['GUI.js', 'build.js']) {
+        assert.ok(scripts.indexOf(consumer) > rulesIndex, `${consumer} must load after construction rules`);
+    }
+});
+
 test('the client prices buildings exactly the way the server charges for them', () => {
     const server = serverCosts();
     const client = clientCosts();
@@ -65,16 +50,16 @@ test('the client prices buildings exactly the way the server charges for them', 
         const a = server[id];
         const b = client[id];
         if (!b) {
-            mismatches.push(`building ${id}: missing from build.js`);
+            mismatches.push(`building ${id}: missing from browser construction rules`);
             return;
         }
         if (a.metal !== b.metal || a.crystal !== b.crystal) {
-            mismatches.push(`building ${id}: server ${a.metal}/${a.crystal} vs build.js ${b.metal}/${b.crystal}`);
+            mismatches.push(`building ${id}: server ${a.metal}/${a.crystal} vs browser ${b.metal}/${b.crystal}`);
         }
     });
 
     assert.deepEqual(mismatches, [],
-        `build.js disagrees with the server about what a building costs:\n  ${mismatches.join('\n  ')}`);
+        `browser construction rules disagree with the server about what a building costs:\n  ${mismatches.join('\n  ')}`);
 });
 
 test('the build buttons advertise the price the server will actually charge', () => {

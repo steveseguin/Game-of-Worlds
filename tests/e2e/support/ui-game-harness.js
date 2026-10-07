@@ -247,9 +247,12 @@ async function readFocusedSectorId(page) {
 }
 
 async function focusHomeworld(page) {
-    await page.click('#homeworldBtn');
-    await expect(page.locator('#sectorid')).toContainText(/Sector\s+\d+/i, { timeout: 15000 });
-    return readFocusedSectorId(page);
+    const button = page.locator('#homeworldBtn');
+    await expect(button).toHaveAttribute('title', /Focus homeworld sector \d+/, { timeout: 15000 });
+    const home = (await button.getAttribute('title')).match(/sector (\d+)/)[1];
+    await button.click();
+    await expect(page.locator('#sectorid')).toContainText(new RegExp(`Sector\\s+${home}\\b`), { timeout: 15000 });
+    return Number(home);
 }
 
 async function readResources(page) {
@@ -397,8 +400,9 @@ async function buildShip(page, shipId) {
     const button = page.locator(`.ship-button[data-ship-id="${shipId}"]`);
     await expect(button).toBeVisible({ timeout: 10000 });
     await expect(button).toBeEnabled({ timeout: 10000 });
+    const before = (await readEmpireSummary(page)).fleet;
     await button.click();
-    await page.waitForTimeout(500);
+    await expect.poll(async () => (await readEmpireSummary(page)).fleet, { timeout: 10000 }).toBe(before + 1);
 }
 
 async function researchTech(page, nameOrRegex) {
@@ -664,7 +668,7 @@ function pickColonizationTargets(homeSector, otherHomeSector, terrain, count = 2
         })
         .map(sector => {
             const id = Number(sector.sectorid);
-            const path = buildSafePath(home, id, terrain);
+            const path = buildSafePath(home, id, terrain, new Set([otherHome]));
             return path ? { id, path, sector, distance: path.length } : null;
         })
         .filter(Boolean)
@@ -680,14 +684,6 @@ function pickColonizationTargets(homeSector, otherHomeSector, terrain, count = 2
 function splitRendezvousPaths(hostHome, joinerHome, terrain, extraBlocked = new Set()) {
     let fullPath = buildSafePath(hostHome, joinerHome, terrain, extraBlocked) ||
         buildSafePath(hostHome, joinerHome, terrain);
-    if (fullPath && fullPath.length === 2) {
-        return {
-            rendezvous: Number(hostHome),
-            hostPath: [],
-            joinerPath: [Number(hostHome)],
-            fullPath
-        };
-    }
     if (fullPath && fullPath.length > 2) {
         const midIndex = Math.max(1, Math.min(fullPath.length - 2, Math.floor(fullPath.length / 2)));
         return {
@@ -711,10 +707,10 @@ function splitRendezvousPaths(hostHome, joinerHome, terrain, extraBlocked = new 
             !extraBlocked.has(sector.id) &&
             !blockedTypes.has(sector.type))
         .map(sector => {
-            const hostPath = buildSafePath(host, sector.id, terrain, extraBlocked) ||
-                buildSafePath(host, sector.id, terrain);
-            const joinerPath = buildSafePath(joiner, sector.id, terrain, extraBlocked) ||
-                buildSafePath(joiner, sector.id, terrain);
+            const hostPath = buildSafePath(host, sector.id, terrain, new Set([...extraBlocked, joiner])) ||
+                buildSafePath(host, sector.id, terrain, new Set([joiner]));
+            const joinerPath = buildSafePath(joiner, sector.id, terrain, new Set([...extraBlocked, host])) ||
+                buildSafePath(joiner, sector.id, terrain, new Set([host]));
             if (!hostPath || !joinerPath) return null;
             return {
                 rendezvous: sector.id,
@@ -741,7 +737,7 @@ async function waitForBattleOverlay(page, timeout = 15000) {
 async function waitForBattleResolution(page, timeout = 15000) {
     await expect.poll(async () => {
         const overlayVisible = await page.locator('#battleGround, #battleTheater.on').isVisible().catch(() => false);
-        const battleReport = await page.locator('#chatMessages').getByText(/Battle report:\s+(?:Victory|Defeat)\s+in sector/i).count().catch(() => 0);
+        const battleReport = await page.locator('#event-feed-list').getByText(/Battle report:\s+(?:Victory|Defeat)\s+in sector/i).count().catch(() => 0);
         return overlayVisible || battleReport > 0;
     }, {
         timeout,
