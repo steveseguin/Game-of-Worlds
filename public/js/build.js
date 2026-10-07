@@ -17,6 +17,11 @@ const BuildSystem = (() => {
         9: { metal: 3000, crystal: 80, shipyard: 3, production: 16 }
     };
     let initialized = false;
+    let requirementId = 0;
+
+    function setText(node, text) {
+        if (node && node.textContent !== text) node.textContent = text;
+    }
 
     function initialize() {
         if (initialized) return;
@@ -88,6 +93,25 @@ const BuildSystem = (() => {
         const help = button.dataset.help || '';
         const title = reason ? `${reason}. ${help}`.trim() : help;
         if (button.title !== title) button.title = title;
+        if (!button.matches('[data-building-id], .ship-button[data-ship-id]')) return;
+        let note = button.querySelector('.req-note');
+        if (enabled || !reason) {
+            if (note) {
+                const descriptions = (button.getAttribute('aria-describedby') || '').split(/\s+/).filter(id => id && id !== note.id);
+                if (descriptions.length) button.setAttribute('aria-describedby', descriptions.join(' '));
+                else button.removeAttribute('aria-describedby');
+                note.remove();
+            }
+            return;
+        }
+        if (!note) {
+            note = document.createElement('small');
+            note.className = 'req-note';
+            note.id = `reqNote${++requirementId}`;
+            button.appendChild(note);
+            button.setAttribute('aria-describedby', [button.getAttribute('aria-describedby'), note.id].filter(Boolean).join(' '));
+        }
+        setText(note, reason);
     }
 
     function resourceShortfall(resources, cost) {
@@ -116,13 +140,13 @@ const BuildSystem = (() => {
             const glyph = item.querySelector('.req-mark');
             // Written from here rather than via CSS ::before, which needed a font-size
             // hack that collapsed the mark's box and printed it over the label.
-            if (glyph) glyph.textContent = state === true ? '✓' : state === false ? '✗' : '•';
+            setText(glyph, state === true ? '✓' : state === false ? '✗' : '•');
             const label = item.querySelector('.req-text');
-            if (label && text) label.textContent = text;
+            if (text) setText(label, text);
         };
 
         if (!sector) {
-            if (context) context.textContent = 'Select a sector to check whether you can settle it.';
+            setText(context, 'Select a sector to check whether you can settle it.');
             ['planet', 'ship', 'terraform', 'unclaimed'].forEach(name => mark(name, null));
             setAvailability(button, false, 'Select a sector first');
             return;
@@ -147,11 +171,9 @@ const BuildSystem = (() => {
         // Terraform requirement is only legible once we have live intel on the sector.
         const terraformKnown = isPlanet && !sector.sensorContactOnly && sector.terraformLevel != null;
 
-        if (context) {
-            context.textContent = hasPlanet
-                ? `Sector ${sector.id}: ${unclaimed ? 'unclaimed world' : (owner === myId ? 'already yours' : 'held by a rival')}.`
-                : `Sector ${sector.id} has no planet to settle.`;
-        }
+        setText(context, hasPlanet
+            ? `Sector ${sector.id}: ${unclaimed ? 'unclaimed world' : (owner === myId ? 'already yours' : 'held by a rival')}.`
+            : `Sector ${sector.id} has no planet to settle.`);
 
         mark('planet', hasPlanet, hasPlanet
             ? 'The sector contains a planet'
@@ -204,21 +226,22 @@ const BuildSystem = (() => {
         const productionRemaining = portTier ? Math.max(0, portTier.capacity - productionUsed) : 0;
         const capacity = document.getElementById('planetCapacityStatus');
         if (capacity) {
-            capacity.hidden = !owned || !slotLimit;
+            const hidden = !owned || !slotLimit;
+            if (capacity.hidden !== hidden) capacity.hidden = hidden;
             const remaining = Math.max(0, slotLimit - usedSlots);
-            capacity.querySelector('strong').textContent = `${remaining} of ${slotLimit} building slots free`;
+            setText(capacity.querySelector('strong'), `${remaining} of ${slotLimit} building slots free`);
             const meter = capacity.querySelector('meter');
-            meter.max = slotLimit || 1;
-            meter.value = usedSlots;
-            meter.textContent = `${usedSlots} occupied`;
-            capacity.querySelector('small').textContent = remaining === 0
+            if (meter.max !== (slotLimit || 1)) meter.max = slotLimit || 1;
+            if (meter.value !== usedSlots) meter.value = usedSlots;
+            setText(meter, `${usedSlots} occupied`);
+            setText(capacity.querySelector('small'), remaining === 0
                 ? 'Planet full. Spaceport upgrades use no extra slot.'
-                : 'Each extractor, lab, defense, Spaceport or Warp Gate uses one slot. Plan a mixed economy.';
+                : '1 slot per building; upgrades use none.');
         }
         const portStatus = document.getElementById('spaceportProductionStatus');
-        if (portStatus) portStatus.textContent = portTier
+        setText(portStatus, portTier
             ? `Spaceport ${spaceportLevel}: ${productionRemaining}/${portTier.capacity} production available this turn`
-            : 'Build a Spaceport to produce ships locally.';
+            : 'Build a Spaceport to produce ships locally.');
 
         for (let type = 0; type <= 5; type += 1) {
             const button = document.querySelector(`[data-building-id="${type}"]`);
@@ -226,7 +249,7 @@ const BuildSystem = (() => {
             // A bare trailing number read as either "level 1" or "building #1". Say
             // which: these are counts, so use a multiplier, and hide it at zero rather
             // than labelling every unbuilt structure with a "0".
-            if (count) count.textContent = counts[type] > 0 ? `×${counts[type]}` : '';
+            setText(count, type !== 3 && counts[type] > 0 ? `×${counts[type]}` : '');
             let reason = '';
             if (battleFrozen) reason = 'Orders are frozen during battle playback';
             else if (!sector) reason = 'Select one of your sectors first';
@@ -242,12 +265,13 @@ const BuildSystem = (() => {
             setAvailability(button, !reason, reason);
             if (type === 3 && button) {
                 const costLabel = button.querySelector('small');
+                const tier = String(Math.min(4, spaceportLevel + 1));
+                if (button.dataset.tier !== tier) button.dataset.tier = tier;
                 // The spaceport is the one structure with tiers rather than a count, so
                 // it says "Lv N" where the others say "×N".
                 if (spaceportLevel > 0 && spaceportLevel < 4) {
                     const next = SPACEPORT_TIERS[spaceportLevel + 1];
-                    button.childNodes[0].textContent = `🚀 Upgrade Spaceport to Lv ${spaceportLevel + 1} `;
-                    if (count) count.textContent = '';
+                    setText(button.childNodes[0], `Upgrade Spaceport to Lv ${spaceportLevel + 1} `);
                     renderCost(costLabel, {
                         metal: next.metal,
                         crystal: next.crystal,
@@ -255,15 +279,13 @@ const BuildSystem = (() => {
                         suffix: `${next.capacity} prod/turn`
                     });
                 } else if (spaceportLevel >= 4) {
-                    button.childNodes[0].textContent = '🚀 Spaceport Lv 4 ';
-                    if (count) count.textContent = '';
+                    setText(button.childNodes[0], 'Spaceport Lv 4 ');
                     if (costLabel) {
-                        costLabel.textContent = 'Maximum tier · 48 prod/turn';
+                        setText(costLabel, 'Maximum tier · 48 prod/turn');
                         delete costLabel.dataset.costKey;
                     }
                 } else {
-                    button.childNodes[0].textContent = '🚀 Spaceport ';
-                    if (count) count.textContent = '';
+                    setText(button.childNodes[0], 'Spaceport ');
                     renderCost(costLabel, { metal: 100, crystal: 50, suffix: '12 prod/turn' });
                 }
             }

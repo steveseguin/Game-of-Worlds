@@ -3,11 +3,11 @@
 .game-page #turnRedFlashWhenLow {font:800 26px/1.1 "Segoe UI",sans-serif; font-variant-numeric:tabular-nums; letter-spacing:0; color:#ffe1a3; text-shadow:none;}
 .game-page .turn-row {gap:6px;padding:3px 6px;}
 .game-page #nextTurnBtn {padding:8px;}
-#planetCapacityStatus {position:sticky;top:0;z-index:3;background:#172536;color:#f5f7fa;padding:10px;border:1px solid #8294a9;margin:0 0 10px;font:14px/1.4 "Segoe UI",sans-serif;}
+#planetCapacityStatus {background:#172536;color:#f5f7fa;padding:4px 8px;border:1px solid #8294a9;margin:0 0 6px;font:13px/1.4 "Segoe UI",sans-serif;}
 #planetCapacityStatus[hidden] {display:none;}
 #planetCapacityStatus strong,#planetCapacityStatus small {display:block;}
 #planetCapacityStatus small {font-size:12px;color:#d4deeb;}
-#planetCapacityStatus meter {display:block;width:100%;height:16px;accent-color:#e5bf7e;}
+#planetCapacityStatus meter {display:block;width:100%;height:8px;accent-color:#e5bf7e;}
 .game-page #probeSuggestionCard {position:fixed!important;inset:0!important;margin:auto!important;transform:none!important;width:min(460px,calc(100vw - 32px))!important;max-width:none!important;max-height:calc(100dvh - 32px)!important;height:fit-content!important;box-sizing:border-box;background:#142233;color:#f5f7fa;border:1px solid #9aacc1;border-radius:8px;padding:26px!important;box-shadow:0 20px 80px #0009;font:16px/1.5 "Segoe UI",sans-serif;}
 #probeSuggestionCard::backdrop {background:#030911b8;}
 #probeSuggestionCard h3 {font-size:23px;line-height:1.2;color:#fff;margin:8px 32px 12px 0;}

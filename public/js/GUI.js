@@ -709,7 +709,7 @@ const GameUI = (function() {
 	function updateLocalOrderContext(sectorId) {
 		const label = sectorId ? `Sector ${sectorId}` : 'no sector selected';
 		const build = document.getElementById('buildSectorContext');
-		if (build) build.textContent = `Construction destination: ${label}. Buildings, defenses, spaceports, and ships are local to this sector.`;
+		if (build) build.textContent = `Construction destination: ${label}.`;
 		const fleet = document.getElementById('fleetSectorContext');
 		if (fleet) fleet.textContent = `Your fleet currently in ${label}`;
 		const move = document.getElementById('sectorMoveShips');

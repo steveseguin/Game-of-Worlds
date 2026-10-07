@@ -12,7 +12,9 @@ async function check(page){
 test('lobby actions and nested faction captions keep heavy lettering',async({page},info)=>{
  const u=uniqueId('heavy');await registerUser(page,{username:u,email:u+'@example.com',password:'Secure123!'});
  await check(page);await page.screenshot({path:info.outputPath('lobby-heavy.png'),fullPage:true});
+ await page.setViewportSize({width:844,height:390});
  await createGame(page,uniqueId('heavy'),{maxPlayers:'2',mode:'test'});
+ await page.setViewportSize({width:1280,height:720});
  await check(page);await page.screenshot({path:info.outputPath('waiting-heavy.png')});
  await page.getByRole('button',{name:'Choose / Change'}).click();await expect(page.locator('#confirmRaceBtn')).toBeVisible();
  await check(page);await page.screenshot({path:info.outputPath('faction-heavy.png')});

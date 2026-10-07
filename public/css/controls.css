@@ -47,19 +47,17 @@
 }
 @layer readable-controls {
  :is(button,[role="button"],.btn, .button, .play, .archive-bar__github) :is(p,div,h3,h4,label) { color: inherit !important; font-weight: 650 !important; text-shadow: none !important; }
- .game-page .pad-tabs button { font-size: 13px !important; padding-left: 6px !important; padding-right: 6px !important; text-transform: none !important; }
+ .game-page .pad-tabs button { flex: 1 1 auto !important; font-size: 13px !important; padding-left: 1px !important; padding-right: 1px !important; letter-spacing: 0 !important; text-transform: none !important; }
  #audioBtn { font-size: 0 !important; }
  .race-card.active { border-color: #f0c681 !important; outline: 2px solid #f0c681 !important; }
 }
 @layer readable-controls {
- @media (max-width: 560px) {
-  .game-page { --pad-tabs-h: 76px !important; }
-  .game-page .pad-tabs { display: grid !important; grid-template-columns: repeat(3,minmax(0,1fr)) !important; grid-template-rows: repeat(2,32px) !important; }
-  .game-page .pad-tabs button { font-size: 14px !important; }
-  .game-page #chatContainer { flex-wrap: wrap !important; align-content: center !important; }
-  .game-page #chatForm { flex: 1 0 100% !important; height: 30px !important; margin-right: 0 !important; }
-  .game-page #chatContainer .gp-key--text { width: 108px !important; text-transform: none !important; }
+ @media (pointer: coarse) {
+  .game-page { --pad-tabs-h: 54px !important; }
  }
+ .game-page #chatContainer.chat-stacked { flex-wrap: wrap !important; align-content: center !important; }
+ .game-page #chatContainer.chat-stacked #chatForm { flex: 1 0 100% !important; height: 30px !important; margin-right: 0 !important; }
+
  a:focus-visible { outline: 3px solid #b9e1ff !important; outline-offset: 3px !important; }
 }
 .game-page #chat { box-sizing: border-box; }

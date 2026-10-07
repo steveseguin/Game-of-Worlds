@@ -45,13 +45,15 @@
         document.body.style.width = '';
         document.body.style.height = '';
 
-        const chatHeight = veryNarrow ? 78 : clamp(40 * scale, 34, 46);
         const controlMaxWidth = Math.max(220, viewportWidth - 12);
         const controlMinWidth = Math.min(280, controlMaxWidth);
         let controlWidth = clamp(Math.min(500 * scale, controlMaxWidth), controlMinWidth, controlMaxWidth);
         if (stackBottomPanels) {
             controlWidth = controlMaxWidth;
         }
+
+        const stackChat = veryNarrow || controlWidth < 420;
+        const chatHeight = stackChat ? 78 : clamp(40 * scale, 34, 46);
 
         const controlMaxHeight = shortLandscape ? Math.max(140, viewportHeight * 0.34) : compact ? Math.max(170, viewportHeight * (veryNarrow ? 0.32 : 0.4)) : 380;
         const controlMinHeight = Math.min(veryNarrow ? 176 : 210, controlMaxHeight);
@@ -104,6 +106,7 @@
         const mapLegend = document.getElementById('mapLegend');
 
         if (chatContainer) {
+            chatContainer.classList.toggle('chat-stacked', stackChat);
             setImportant(chatContainer, 'width', px(controlWidth));
             setImportant(chatContainer, 'height', px(chatHeight));
             setImportant(chatContainer, 'padding', `${px(Math.max(4, 5 * scale))} ${px(Math.max(8, 10 * scale))}`);
