@@ -59,6 +59,7 @@ let battleFrozen = false;
 let turnResolutionFrozen = false;
 let battleFreezeTimer = null;
 let currentTurnNumber = null;
+let lastTurnReadyTally = null;
 let currentGameModeLabel = 'Quick Match';
 let lastTurnDigest = [];
 let eventPanel;
@@ -1256,9 +1257,11 @@ function handleWebSocketMessage(message) {
         const [, ready, total] = message.split("::");
         const readyCount = Number(ready) || 0;
         const totalCount = Number(total) || 0;
-        if (totalCount > 1) {
+        const tally = `${currentTurnNumber}:${readyCount}:${totalCount}`;
+        if (totalCount > 1 && tally !== lastTurnReadyTally) {
             pushEventFeed(`${readyCount}/${totalCount} commanders have ended their turn.`, 'orders', 'info');
         }
+        lastTurnReadyTally = tally;
     }
     else if (message.indexOf("turnphase::") === 0) {
         const [, state] = message.split("::");
