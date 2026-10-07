@@ -603,6 +603,12 @@
         setTitle('Galaxy Map');
     }
 
+    function refreshSelectionTitle() {
+        // Follow selection after a battle restores the sector heading, while
+        // leaving active battle notices and the default map heading alone.
+        if (/^Sector \d+$/.test(currentTitle)) restoreTitle();
+    }
+
     function updateAudioButton(muted) {
         const btn = document.getElementById('audioBtn');
         if (!btn) return;
@@ -652,6 +658,7 @@
         applyResponsiveLayout,
         setTitle,
         restoreTitle,
+        refreshSelectionTitle,
         setAudioMuted,
         toggleAudioMuted
     };

@@ -172,6 +172,17 @@ test.describe('Authoritative gameplay controls', () => {
         await page.locator('#homeworldBtn').click();
         await expect(page.locator('#fleetTotal')).toContainText(/\d+ ships? here/i);
         await expect(page.locator('#fleetEmptyState')).toBeHidden();
+        // A restored battle heading must follow later sector selections.
+        await page.evaluate(() => window.GameScreen.restoreTitle());
+        await expect(page.locator('#viewTitle')).toHaveText(`Sector ${home}`);
+        await page.locator(`#tileholder${sensorSector}`).click();
+        await expect(page.locator('#viewTitle')).toHaveText(`Sector ${sensorSector}`);
+        await page.evaluate(() => window.GameScreen.setTitle('Battle in Sector 1'));
+        await page.locator('#homeworldBtn').click();
+        await expect(page.locator('#viewTitle')).toHaveText('Battle in Sector 1');
+        await page.evaluate(() => window.GameScreen.restoreTitle());
+        await expect(page.locator('#viewTitle')).toHaveText(`Sector ${home}`);
+        await expect(page.locator('#fleetTotal')).toContainText(/\d+ ships? here/i);
         // Isolated chart fixtures: enemy presence does not make our count theirs.
         await page.evaluate(({ home }) => window.handleWebSocketMessage(`mapstate::${home}:homeworld:2:10:1:81::0:0`), { home });
         await expect(homeTile).toHaveAttribute('aria-label', /2 of your ships.*enemy fleet/);

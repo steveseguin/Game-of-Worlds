@@ -2750,6 +2750,7 @@ function changeSector(sectorId) {
         // through GalaxyMap.selectSector, and a stale cache made Colonize target the
         // wrong sector. markSelected only records state — it never re-requests.
         window.GalaxyMap?.markSelected?.(numericSectorId);
+        window.GameScreen?.refreshSelectionTitle?.();
         window.GameUI?.showSectorSelection?.(numericSectorId, GAME_STATE.mapSectors[numericSectorId] || null);
         window.BuildSystem?.refresh?.();
     }
