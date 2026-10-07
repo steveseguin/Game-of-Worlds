@@ -6,8 +6,10 @@ test.describe('player field manual', () => {
 
         await expect(page).toHaveTitle(/Player Field Manual/);
         await expect(page.getByRole('heading', { name: /Player Field Manual/, level: 1 })).toBeVisible();
-        await expect(page.locator('main section')).toHaveCount(10);
-        await expect(page.locator('.toc nav a')).toHaveCount(10);
+        const chapters = ['start', 'rooms', 'turns', 'intel', 'economy', 'fleets', 'research', 'combat', 'strategy', 'victory', 'reference'];
+        expect(await page.locator('main section').evaluateAll(sections => sections.map(section => section.id))).toEqual(chapters);
+        expect(await page.locator('.toc nav a').evaluateAll(links => links.map(link => link.getAttribute('href'))))
+            .toEqual(chapters.map(id => `#${id}`));
         await expect(page.getByRole('link', { name: /Lore & art/i }).first()).toHaveAttribute('href', '/lore/');
         await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://gameofworlds.com/docs/');
         await expect(page.locator('meta[property="og:image"]')).toHaveAttribute('content', '/docs/images/field-manual-social.png');
@@ -22,6 +24,7 @@ test.describe('player field manual', () => {
         await page.waitForFunction(() =>
             [...document.images].every(image => image.complete && image.naturalWidth > 40)
         );
+        await page.locator('.toc').screenshot({ path: 'test-results/manual-index-desktop.png' });
 
         await page.goto('/');
         const guideLink = page.locator('footer').getByRole('link', { name: 'Player Guide' });
@@ -39,6 +42,7 @@ test.describe('player field manual', () => {
         await toggle.click();
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
         await expect(page.locator('#manual-navigation')).toBeVisible();
+        await page.locator('.toc').screenshot({ path: 'test-results/manual-index-mobile.png' });
         await page.locator('#manual-navigation a[href="#intel"]').click();
         await expect(page.locator('#intel')).toBeInViewport();
         await expect(toggle).toHaveAttribute('aria-expanded', 'false');

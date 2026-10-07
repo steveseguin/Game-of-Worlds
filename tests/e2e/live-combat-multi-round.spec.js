@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { extractLobbyGameId } = require('./support/ui-game-harness');
 
 function uniqueId(prefix) {
     const randomPart = Math.random().toString(36).slice(2, 8);
@@ -113,22 +114,6 @@ async function waitForMatchLobby(page, timeout = 25000) {
     }
 
     throw new Error('Timed out waiting for lobby match state');
-}
-
-async function extractLobbyGameId(page) {
-    const heading = page.locator('h3', { hasText: 'Waiting in Game' }).first();
-    if (await heading.count() === 0) {
-        return null;
-    }
-
-    const text = await heading.textContent();
-    const match = (text || '').match(/Waiting in Game\s+(\d+)/i);
-    if (!match) {
-        return null;
-    }
-
-    const gameId = Number.parseInt(match[1], 10);
-    return Number.isFinite(gameId) ? gameId : null;
 }
 
 async function installBattleCounter(page) {

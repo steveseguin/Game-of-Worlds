@@ -47,6 +47,7 @@
 .sector-preview-title strong {min-width:0;}
 @media(max-width:560px){.game-page #sectordisplay {max-width:calc(100vw - 20px);}.sector-preview-label {padding:8px 10px 6px;}.sector-preview-label strong {font-size:21px;}}
 .game-page #renamePlanetBtn {background:transparent;min-height:40px;padding:6px 10px;}
+@media(pointer:coarse){.game-page #renamePlanetBtn {min-height:44px;}}
 #planetNameDialog {box-sizing:border-box;width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:24px;color:#f5f7fa;background:#142233;border:1px solid #92a6be;border-radius:6px;font:16px/1.5 "Segoe UI",sans-serif;}
 #planetNameDialog::backdrop {background:#030911bd;}
 #planetNameDialog h2 {font-size:24px;margin:0 0 18px;color:#fff;}

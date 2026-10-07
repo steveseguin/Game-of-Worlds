@@ -15,7 +15,15 @@ const VERBOSE = process.argv.includes('--verbose');
 process.env.TECH_CACHE_TTL_MS = '25'; // sim mutates tech rows directly; keep spy-vision cache cold
 const serverLogic = require('../server/server');
 const combatSystem = require('../server/lib/combat');
+const mapSystem = require('../server/lib/map');
 const { MockDatabase } = require('../server/lib/mock-db');
+
+// This scenario needs black holes, asteroid belts, and terraform-gated worlds.
+// Keep its terrain reproducible without changing randomness in the game engine.
+const generateMap = mapSystem.generateMap;
+mapSystem.generateMap = (width, height, players) => generateMap(
+    width, height, players, mapSystem.createSeededRandom('full-game-sim')
+);
 
 const issues = [];
 let checks = 0;

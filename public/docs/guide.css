@@ -22,10 +22,9 @@ body:before{position:fixed;inset:0;z-index:-1;background:linear-gradient(90deg,r
 .toc-title>strong{margin:.2rem 0 0}
 .toc-title small{display:block;color:#647d90;font:500 .64rem 'Share Tech Mono';letter-spacing:.1em;text-transform:uppercase}
 .toc-toggle{display:none}
-.toc nav{margin-top:1.2rem;border-top:1px solid #162333}
+.toc nav{margin-top:1.2rem;border-top:1px solid #162333;counter-reset:chapter -1}
 .toc nav a{display:grid;grid-template-columns:1.6rem 1fr;padding:.4rem .25rem;border-bottom:1px solid #162333}
-.toc nav a:before{color:#486174;font:500 .62rem 'Share Tech Mono'}
-.toc nav a:nth-child(1):before{content:"00"}.toc nav a:nth-child(2):before{content:"01"}.toc nav a:nth-child(3):before{content:"02"}.toc nav a:nth-child(4):before{content:"03"}.toc nav a:nth-child(5):before{content:"04"}.toc nav a:nth-child(6):before{content:"05"}.toc nav a:nth-child(7):before{content:"06"}.toc nav a:nth-child(8):before{content:"07"}.toc nav a:nth-child(9):before{content:"08"}.toc nav a:nth-child(10):before{content:"09"}
+.toc nav a:before{counter-increment:chapter;content:counter(chapter,decimal-leading-zero);color:#486174;font:500 .62rem 'Share Tech Mono'}
 .toc nav a:hover,.toc nav a:focus-visible,.toc nav a.is-active{padding-left:.5rem;color:var(--cyan);border-color:var(--cyan-dim)}
 .toc-extra{margin-top:1.5rem;padding:.9rem;border:1px solid var(--line);background:linear-gradient(145deg,#101a28cc,#07111bcc)}
 .toc-extra p{margin:0 0 .45rem;color:var(--muted);font-size:.7rem;line-height:1.5}
