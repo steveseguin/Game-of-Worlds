@@ -130,6 +130,9 @@ test.describe('Authoritative gameplay controls', () => {
         await dismissFirstRunGuidance(page);
 
         const terrain = await readTestTerrain(page, gameId);
+        await page.locator('#homeworldBtn').click();
+        await page.locator('#fleettab').click();
+        await expect(page.locator('#fleetTotal')).toContainText(/\d+ ships? here/i);
         const sensorSector = await page.evaluate(() => Number(Object.values(window.GAME_STATE.mapSectors)
             .find(sector => sector.live && sector.status === 'neutral')?.id || 0));
         expect(sensorSector).toBeGreaterThan(0);
@@ -137,6 +140,9 @@ test.describe('Authoritative gameplay controls', () => {
         await expect(page.locator('#sectorIntelState')).toHaveText('Sensor contact', { timeout: 10000 });
         await expect(page.locator('#metalbonus')).toHaveText('Unknown');
         await expect(page.locator('#sectorBuildings')).toContainText('Outside sensor resolution');
+        await expect(page.locator('#fleetTotal')).toBeEmpty();
+        await expect(page.locator('#fleetEmptyState')).toHaveText('No ships of yours are in this sector.');
+        await expect(page.locator('.fleet-roster > div:visible')).toHaveCount(0);
         await expect(page.locator('#sectorPanelTitle')).toContainText(/Sector\s+\d+/);
         await expect(page.locator('#buildSectorContext')).toContainText(/Construction destination: Sector \d+/);
         const beforeProbe = await readResources(page);
@@ -163,6 +169,9 @@ test.describe('Authoritative gameplay controls', () => {
         expect(chartWrites).toBe(0);
         await expect(homeTile).toHaveAttribute('aria-label', /yours.*Buildings:/);
 
+        await page.locator('#homeworldBtn').click();
+        await expect(page.locator('#fleetTotal')).toContainText(/\d+ ships? here/i);
+        await expect(page.locator('#fleetEmptyState')).toBeHidden();
         const fogIds = await page.locator('[id^="tile"][data-intel="fog"]').evaluateAll(nodes => nodes.map(node => Number(node.id.replace('tile', ''))));
         const probeTarget = terrain.sectors.find(sector => fogIds.includes(Number(sector.sectorid)) && Number(sector.type) >= 6)?.sectorid;
         expect(Number(probeTarget)).toBeGreaterThan(0);
@@ -171,6 +180,8 @@ test.describe('Authoritative gameplay controls', () => {
         await fogTile.click();
         await expect(page.locator('#sectorIntelState')).toHaveText('Unknown', { timeout: 10000 });
         await expect(page.locator('#planetowner')).toHaveText('Unknown');
+        await expect(page.locator('#fleetTotal')).toBeEmpty();
+        await expect(page.locator('#fleetEmptyState')).toHaveText('Fleet composition unknown.');
         await expect(page.locator('#probeSuggestionCard')).toBeVisible();
         await expect(page.locator('dialog#probeSuggestionCard')).toHaveAttribute('open', '');
 

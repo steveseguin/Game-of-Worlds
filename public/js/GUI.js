@@ -278,6 +278,7 @@ const GameUI = (function() {
         setIntelState('Sensor contact', 'sensor', 'Passive sensors identify terrain, control, and presence. Probe or enter the sector for economic, terraform, building, and fleet-composition detail.');
         renderBuildingInventory(null, 'Outside sensor resolution');
         renderFleetSummary(null, contact.fleetPresent ? `${contact.fleetSize} ship${contact.fleetSize === 1 ? '' : 's'} detected; composition unknown` : 'No ships detected');
+        if (!contact.fleetPresent) updateFleetDisplay([]);
     }
 
     function updateRememberedSectorDisplay(sectorData) {
@@ -410,7 +411,7 @@ const GameUI = (function() {
      * nothing, the bare column headings read as a panel that failed to load, so replace
      * them with a plain line. Idempotent: safe to call on every sector change.
      */
-    function setShipTableEmptyState() {
+    function setShipTableEmptyState(message = 'No ships in this sector.') {
         const table = document.getElementById('sectorShipTable');
         if (!table) return;
         const rows = Array.from(table.querySelectorAll('tr'));
@@ -427,18 +428,19 @@ const GameUI = (function() {
             empty.style.padding = '2px 0';
             table.parentNode.insertBefore(empty, table.nextSibling);
         }
-        empty.textContent = anyVisible ? '' : 'No ships in this sector.';
+        empty.textContent = anyVisible ? '' : message;
         empty.style.display = anyVisible ? 'none' : 'block';
     }
 
     function updateFleetDisplay(ships) {
+        const known = Array.isArray(ships);
         const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
         const playerId = (() => {
             const match = document.cookie.match(/(?:^|;\s*)userId=([^;]+)/);
             return match ? Number(decodeURIComponent(match[1])) : null;
         })();
 
-        if (Array.isArray(ships)) {
+        if (known) {
             ships.forEach(ship => {
                 const owner = Number(ship.owner);
                 const type = Number(ship.type);
@@ -467,11 +469,11 @@ const GameUI = (function() {
             const cell = document.getElementById(`f${type}`);
             if (!cell) continue;
             const present = Number(counts[type] || 0);
-            cell.textContent = String(present);
+            cell.textContent = known ? String(present) : 'Unknown';
             const row = cell.closest('tr');
             if (row) row.style.display = present > 0 ? '' : 'none';
         }
-        setShipTableEmptyState();
+        setShipTableEmptyState(known ? 'No ships in this sector.' : 'Fleet composition unknown.');
 
         const fields = {
             'fleet-scouts': counts[3],
@@ -499,6 +501,7 @@ const GameUI = (function() {
         });
         const empty = document.getElementById('fleetEmptyState');
         if (empty) {
+            empty.textContent = known ? 'No ships of yours are in this sector.' : 'Fleet composition unknown.';
             empty.style.display = present > 0 ? 'none' : 'block';
         }
         const total = document.getElementById('fleetTotal');
@@ -746,10 +749,7 @@ const GameUI = (function() {
 			const el = document.getElementById(id);
 			if (el) el.textContent = value;
 		});
-		for (let i = 1; i <= 9; i++) {
-			const ship = document.getElementById(`f${i}`);
-			if (ship) ship.textContent = unknown;
-		}
+		updateFleetDisplay(null);
 		renderBuildingInventory(null, unknown);
 		renderFleetSummary(null, unknown);
 	}
