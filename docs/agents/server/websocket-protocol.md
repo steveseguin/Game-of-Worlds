@@ -111,7 +111,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `empire::<json>` | game | Owned sectors/buildings/fleets summary. |
 | `victoryprogress::<json>` | game | Victory progress. |
 | `mapconfig::<width>::<height>` | game | Map dimensions. Repeated dimensions leave the existing chart intact; `mapstate` controls visibility and clears omitted sectors. |
-| `mapstate::<csv>` | game | Visible map snapshot. Each entry is `id:status:fleet:type:vis:flags:chartName:namedBy:namedTurn`; `vis` 1=live/0=memory; `flags` bitmask HOMEWORLD=1, TURRET=2, COLONY_SHIP=4, WARPGATE=8, ENEMY_FLEET=16, PROBE_LOSS=32. `chartName` is URI-encoded; the three chart fields are empty/zero for unnamed sectors. |
+| `mapstate::<csv>` | game | Visible map snapshot. Each entry is `id:status:fleet:type:vis:flags:chartName:namedBy:namedTurn`; `vis` 1=live/0=memory; `flags` bitmask HOMEWORLD=1, TURRET=2, COLONY_SHIP=4, WARPGATE=8, ENEMY_FLEET=16, PROBE_LOSS=32, OWN_FLEET=64. The fleet count is your ships when OWN_FLEET is set, otherwise visible enemy ships; ENEMY_FLEET independently marks enemy presence, including shared sectors. `chartName` is URI-encoded; the three chart fields are empty/zero for unnamed sectors. |
 | `sector::<sectorId>::<json>` | game | Full authoritative detail for a sector the player owns, occupies, or has just successfully probed. |
 | `sectorcontact::<sectorId>::<json>` | game | Passive one-tile sensor contact: terrain, controller, and total presence only. |
 | `sectorintel::<sectorId>::<json>` | game | Persisted, dated probe memory returned outside current live coverage. |

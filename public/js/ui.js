@@ -1825,7 +1825,7 @@ window.GalaxyMap = (function() {
         // Update fleet size
         if (details.fleetSize !== undefined) {
             sector.fleetLabel = (known && details.fleetSize > 0)
-                ? `${(sector.flags & 16) ? 'E' : 'F'}:${details.fleetSize}`
+                ? `${(sector.flags & 16) && !(sector.flags & 64) ? 'E' : 'F'}:${details.fleetSize}`
                 : '';
         }
 

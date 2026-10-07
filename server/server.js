@@ -5472,6 +5472,7 @@ const MAP_FLAG_COLONY_SHIP = 4;
 const MAP_FLAG_WARPGATE = 8;
 const MAP_FLAG_ENEMY_FLEET = 16;
 const MAP_FLAG_PROBE_LOSS = 32;
+const MAP_FLAG_OWN_FLEET = 64;
 
 function sendVisibleMapState(gameId, connection) {
     const playerId = Number(connection.name);
@@ -5589,6 +5590,7 @@ function sendVisibleMapState(gameId, connection) {
             if (myColonyShips.has(sectorId)) flags |= MAP_FLAG_COLONY_SHIP;
             if (warpgateSectors.has(sectorId)) flags |= MAP_FLAG_WARPGATE;
             if (theirs > 0) flags |= MAP_FLAG_ENEMY_FLEET;
+            if (mine > 0) flags |= MAP_FLAG_OWN_FLEET;
             if (lostProbe) flags |= MAP_FLAG_PROBE_LOSS;
             const fleetShown = mine > 0 ? mine : theirs;
             const visibleName = sectorNames.nameForSector(gameId, sector);

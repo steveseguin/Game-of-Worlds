@@ -25,6 +25,47 @@ const root = path.join(__dirname, '..');
 const clientSrc = fs.readFileSync(path.join(root, 'public', 'js', 'connect.js'), 'utf8');
 const serverSrc = fs.readFileSync(path.join(root, 'server', 'server.js'), 'utf8');
 
+test('shared sectors identify whose fleet is counted without exposing distant fleets', async () => {
+    const server = require('../server/server');
+    const { MockDatabase } = require('../server/lib/mock-db');
+    const db = new MockDatabase();
+    server.setDatabase(db);
+    const query = (sql, params = []) => new Promise((resolve, reject) => db.query(sql, params, (err, rows) => err ? reject(err) : resolve(rows)));
+    const gameid = 98;
+    server.gameState.activeGames[gameid] = { mapSize: { width: 14, height: 8 } };
+    try {
+        for (const [owner, sector] of [[7, 1], [8, 3], [9, 2], [10, 112]]) {
+            await query('UPDATE map98 SET owner = ?, type = ? WHERE sectorid = ?', [owner, 10, sector]);
+        }
+        for (const owner of [7, 7, 8]) await query('INSERT INTO ships98 (owner, type, sectorid) VALUES (?, ?, ?)', [owner, 3, 1]);
+        await query('INSERT IGNORE INTO explored_sectors98 (playerid, sectorid) VALUES (?, ?)', [10, 1]);
+        const snapshots = [];
+        for (const name of [7, 8, 9, 10]) {
+            const messages = [];
+            server.updateAllSectors(gameid, { name, gameid, sendUTF: message => messages.push(message) });
+            for (let i = 0; i < 100 && !messages.some(m => m.startsWith('mapstate::')); i++) await new Promise(resolve => setTimeout(resolve, 5));
+            const snapshot = messages.find(m => m.startsWith('mapstate::'));
+            assert.ok(snapshot, `player ${name} received a map snapshot`);
+            const sector = snapshot.slice('mapstate::'.length).split(',').find(row => row.startsWith('1:'));
+            assert.ok(sector, `player ${name} can see sector 1`);
+            snapshots.push(sector.split(':'));
+        }
+        assert.equal(Number(snapshots[0][2]), 2);
+        assert.equal(Number(snapshots[1][2]), 1);
+        for (const row of snapshots.slice(0, 2)) {
+            assert.equal(Number(row[5]) & 64, 64, 'count belongs to the viewer');
+            assert.equal(Number(row[5]) & 16, 16, 'enemy presence remains visible');
+        }
+        assert.equal(Number(snapshots[2][2]), 3, 'observer sees all three enemy ships');
+        assert.equal(Number(snapshots[2][5]) & 64, 0);
+        assert.equal(Number(snapshots[2][5]) & 16, 16);
+        assert.equal(Number(snapshots[3][2]), 0, 'memory does not expose live fleets');
+        assert.equal(Number(snapshots[3][5]) & 80, 0);
+    } finally {
+        delete server.gameState.activeGames[gameid];
+    }
+});
+
 /** The body of the client's mapstate parser. */
 function parserBody() {
     const m = clientSrc.match(/function updateMapState\(message\) \{([\s\S]*?)\n\}/);

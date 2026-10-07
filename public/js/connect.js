@@ -1570,6 +1570,9 @@ function updateSectorInfo(message) {
                 }
             });
         }
+        // Focused sector replies count our ships; keep their badge friendly even
+        // when an enemy-presence marker is already on this sector.
+        const fleetFlags = ((Number(GAME_STATE.mapSectors[sectorId]?.flags) || 0) & ~64) | (fleetSize > 0 ? 64 : 0);
 
         if (window.MiniMap && window.MiniMap.updateSector) {
             window.MiniMap.updateSector(sectorId, status, fleetSize, null, {
@@ -1577,6 +1580,7 @@ function updateSectorInfo(message) {
                 live: true,
                 chartName,
                 owner: ownerId,
+                flags: fleetFlags,
                 buildings: sectorData.buildings
             });
         }
@@ -1597,6 +1601,7 @@ function updateSectorInfo(message) {
                 {
                     owner: ownerId,
                     fleetSize,
+                    flags: fleetFlags,
                     type: sectorType,
                     live: true,
                     chartName,

@@ -172,6 +172,13 @@ test.describe('Authoritative gameplay controls', () => {
         await page.locator('#homeworldBtn').click();
         await expect(page.locator('#fleetTotal')).toContainText(/\d+ ships? here/i);
         await expect(page.locator('#fleetEmptyState')).toBeHidden();
+        // Isolated chart fixtures: enemy presence does not make our count theirs.
+        await page.evaluate(({ home }) => window.handleWebSocketMessage(`mapstate::${home}:homeworld:2:10:1:81::0:0`), { home });
+        await expect(homeTile).toHaveAttribute('aria-label', /2 of your ships.*enemy fleet/);
+        await page.evaluate(({ home }) => window.handleWebSocketMessage(`mapstate::${home}:homeworld:3:10:1:17::0:0`), { home });
+        await expect(homeTile).toHaveAttribute('aria-label', /3 enemy ships/);
+        await page.locator('#homeworldBtn').click();
+        await expect(homeTile).toHaveAttribute('aria-label', /2 of your ships/);
         const fogIds = await page.locator('[id^="tile"][data-intel="fog"]').evaluateAll(nodes => nodes.map(node => Number(node.id.replace('tile', ''))));
         const probeTarget = terrain.sectors.find(sector => fogIds.includes(Number(sector.sectorid)) && Number(sector.type) >= 6)?.sectorid;
         expect(Number(probeTarget)).toBeGreaterThan(0);

@@ -4031,7 +4031,7 @@ const PLANET_TEXTURE_URL = new URL('./planet-texture.js?v=20260906', import.meta
             entry.badge = null;
         }
         if (entry.fleetSize > 0) {
-            const enemyFleet = (entry.flags & 16) !== 0;
+            const enemyFleet = (entry.flags & 16) !== 0 && (entry.flags & 64) === 0;
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
                 map: makeBadgeTexture(entry.fleetSize, enemyFleet),
                 transparent: true,
