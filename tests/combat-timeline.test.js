@@ -151,3 +151,29 @@ test('broadcastBattlePause emits battlepause::<freeze>::<playback> to everyone',
         delete gs.gameTimer[gameId];
     }
 });
+
+test('hauler battle timeline carries ten hull classes and preserves cargo on surviving ships', async () => {
+    const { createMockDatabase } = require('../server/lib/mock-db');
+    const db = createMockDatabase();
+    db._ships.set(1, [
+        { id: 1, owner: 7, type: 10, sectorid: 2, cargo_metal: 60, cargo_crystal: 40, last_mining_turn: 8 },
+        { id: 2, owner: 7, type: 10, sectorid: 2, cargo_metal: 30, cargo_crystal: 70, last_mining_turn: 8 }
+    ]);
+    server.setDatabase(db);
+    db._playerTables.set(1, new Map([[7, { userid: 7, race_id: 1, tech: '' }], [8, { userid: 8, race_id: 1, tech: '' }]]));
+    db._maps.set(1, new Map([[2, { sectorid: 2, type: 9, owner: null }]]));
+    db._ships.get(1).push({ id: 3, owner: 7, type: 1, sectorid: 2 }, { id: 4, owner: 8, type: 3, sectorid: 2 });
+    await server.resolveBattle(1, 2, 7, 8);
+    clearTimeout(server.gameState.battlePause[1]?.timer);
+    delete server.gameState.battlePause[1];
+    const survivors = db._ships.get(1).filter(ship => ship.type === 10);
+    assert.equal(survivors.length, 2);
+    assert.deepEqual([survivors[0].cargo_metal, survivors[0].cargo_crystal, survivors[0].last_mining_turn], [60, 40, 8]);
+    const log = combat.conductBattle({ ship1: 3, ship10: 1 }, { ship10: 1 }, 0, 0, 0, 0, 0, 0, 0, 0);
+    const message = combat.formatBattleMessage(log);
+    assert.ok(message.startsWith('battle:v2:'));
+    const fields = message.split(':').slice(2).map(Number);
+    assert.equal(fields.length % 22, 0);
+    assert.equal(fields[9], 1); assert.equal(fields[19], 1);
+    assert.equal(fields.at(-3), log.final.defenders[10] || 0);
+});

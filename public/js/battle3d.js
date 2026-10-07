@@ -90,9 +90,10 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
         6: { name: 'Colony Ship', code: 'CO', scale: 1.65, hull: 0xc9b48a, family: 'colony',  guns: 0, armed: false, role: 'rear',   weapon: null },
         7: { name: 'Dreadnought', code: 'DN', scale: 2.00, hull: 0x6f7aa0, family: 'capital', guns: 4, armed: true,  role: 'heavy',  weapon: 'beam' },
         8: { name: 'Intruder',    code: 'IN', scale: 1.05, hull: 0x8c93b8, family: 'dart',    guns: 2, armed: true,  role: 'screen', weapon: 'bolt' },
+        10: { name: 'Mining Hauler', code: 'MH', scale: 0.78, hull: 0xc5a05c, family: 'colony', guns: 0, armed: false, role: 'rear', weapon: null },
         9: { name: 'Carrier',     code: 'CV', scale: 2.10, hull: 0x76849c, family: 'carrier', guns: 2, armed: true,  role: 'heavy',  weapon: 'bolt' }
     };
-    const SHIP_TYPES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const SHIP_TYPES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     const VISIBLE_CAP = 6;      // hulls drawn per type per side; the HUD count carries the rest
     const HULL_BUDGET = 52;     // total hulls on screen before the per-type cap tightens
     const MAX_HULKS = 16;       // wrecks kept on the battlefield before the oldest is retired
@@ -212,15 +213,17 @@ import { ShaderPass } from './vendor/addons/postprocessing/ShaderPass.js';
     // ----------------------------------------------------------------------
     function parseTimeline(message) {
         const parts = String(message).split(':'); // parts[0] === 'battle'
-        const fields = parts.slice(1).map(n => parseInt(n, 10) || 0);
+        const hullCount = parts[1] === 'v2' ? 10 : 9;
+        const blockSize = hullCount * 2 + 2;
+        const fields = parts.slice(parts[1] === 'v2' ? 2 : 1).map(n => parseInt(n, 10) || 0);
         const blocks = [];
-        for (let i = 0; i + 20 <= fields.length; i += 20) {
-            const block = fields.slice(i, i + 20);
+        for (let i = 0; i + blockSize <= fields.length; i += blockSize) {
+            const block = fields.slice(i, i + blockSize);
             blocks.push({
-                attackers: block.slice(0, 9),
-                defenders: block.slice(9, 18),
-                ground: block[18] || 0,
-                orbital: block[19] || 0
+                attackers: block.slice(0, hullCount),
+                defenders: block.slice(hullCount, hullCount * 2),
+                ground: block[hullCount * 2] || 0,
+                orbital: block[hullCount * 2 + 1] || 0
             });
         }
         if (blocks.length === 0) return null;

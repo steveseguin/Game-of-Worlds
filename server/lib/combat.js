@@ -108,6 +108,10 @@ const SHIP_TYPES = {
         buildSlots: 7,
         movementCost: 240
     },
+    MINING_HAULER: {
+        id: 10, name: "Mining Hauler", attack: 0, hull: 1, shields: 0, movement: 1,
+        cost: { metal: 300, crystal: 0 }, buildSlots: 3, movementCost: 100
+    },
     CARRIER: {
         id: 9,
         name: "Carrier",
@@ -188,7 +192,8 @@ const COMBAT_TARGET_PRIORITY = Object.freeze([
     SHIP_TYPES.BATTLESHIP.id,
     SHIP_TYPES.DREADNOUGHT.id,
     SHIP_TYPES.SCOUT.id,
-    SHIP_TYPES.COLONY_SHIP.id
+    SHIP_TYPES.COLONY_SHIP.id,
+    SHIP_TYPES.MINING_HAULER.id
 ]);
 
 const SHIP_CLASSES = Object.freeze({
@@ -202,6 +207,7 @@ const SHIP_CLASS_BY_TYPE = Object.freeze({
     [SHIP_TYPES.DESTROYER.id]: SHIP_CLASSES.LIGHT,
     [SHIP_TYPES.SCOUT.id]: SHIP_CLASSES.LIGHT,
     [SHIP_TYPES.COLONY_SHIP.id]: SHIP_CLASSES.LIGHT,
+    [SHIP_TYPES.MINING_HAULER.id]: SHIP_CLASSES.LIGHT,
     [SHIP_TYPES.CRUISER.id]: SHIP_CLASSES.MEDIUM,
     [SHIP_TYPES.INTRUDER.id]: SHIP_CLASSES.HEAVY,
     [SHIP_TYPES.BATTLESHIP.id]: SHIP_CLASSES.HEAVY,
@@ -209,7 +215,7 @@ const SHIP_CLASS_BY_TYPE = Object.freeze({
     [SHIP_TYPES.CARRIER.id]: SHIP_CLASSES.HEAVY
 });
 
-const SHIP_TYPE_IDS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+const SHIP_TYPE_IDS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
 const DAMAGE_MATRIX = Object.freeze({
     [SHIP_CLASSES.LIGHT]: Object.freeze({
@@ -239,7 +245,8 @@ const TARGET_PRIORITY_BY_CLASS = Object.freeze({
         SHIP_TYPES.DESTROYER.id,
         SHIP_TYPES.FRIGATE.id,
         SHIP_TYPES.SCOUT.id,
-        SHIP_TYPES.COLONY_SHIP.id
+        SHIP_TYPES.COLONY_SHIP.id,
+        SHIP_TYPES.MINING_HAULER.id
     ]),
     [SHIP_CLASSES.MEDIUM]: Object.freeze([
         SHIP_TYPES.CRUISER.id,
@@ -250,7 +257,8 @@ const TARGET_PRIORITY_BY_CLASS = Object.freeze({
         SHIP_TYPES.CARRIER.id,
         SHIP_TYPES.DREADNOUGHT.id,
         SHIP_TYPES.SCOUT.id,
-        SHIP_TYPES.COLONY_SHIP.id
+        SHIP_TYPES.COLONY_SHIP.id,
+        SHIP_TYPES.MINING_HAULER.id
     ]),
     [SHIP_CLASSES.HEAVY]: Object.freeze([
         SHIP_TYPES.CRUISER.id,
@@ -261,7 +269,8 @@ const TARGET_PRIORITY_BY_CLASS = Object.freeze({
         SHIP_TYPES.CARRIER.id,
         SHIP_TYPES.BATTLESHIP.id,
         SHIP_TYPES.DREADNOUGHT.id,
-        SHIP_TYPES.COLONY_SHIP.id
+        SHIP_TYPES.COLONY_SHIP.id,
+        SHIP_TYPES.MINING_HAULER.id
     ])
 });
 
@@ -275,7 +284,8 @@ const TARGET_PRIORITY_BY_TYPE = Object.freeze({
         SHIP_TYPES.DESTROYER.id,
         SHIP_TYPES.FRIGATE.id,
         SHIP_TYPES.SCOUT.id,
-        SHIP_TYPES.COLONY_SHIP.id
+        SHIP_TYPES.COLONY_SHIP.id,
+        SHIP_TYPES.MINING_HAULER.id
     ]),
     [SHIP_TYPES.INTRUDER.id]: Object.freeze([
         SHIP_TYPES.CRUISER.id,
@@ -286,7 +296,8 @@ const TARGET_PRIORITY_BY_TYPE = Object.freeze({
         SHIP_TYPES.CARRIER.id,
         SHIP_TYPES.DREADNOUGHT.id,
         SHIP_TYPES.SCOUT.id,
-        SHIP_TYPES.COLONY_SHIP.id
+        SHIP_TYPES.COLONY_SHIP.id,
+        SHIP_TYPES.MINING_HAULER.id
     ])
 });
 
@@ -583,7 +594,7 @@ function applyQueuedDamage(targetShips, pendingDamage, contributionByTarget, tel
                                 return;
                             }
 
-                            if (attackerTypeId >= 1 && attackerTypeId <= 9) {
+                            if (attackerTypeId >= 1 && attackerTypeId <= 10) {
                                 telemetry.killCreditsByType[attackerTypeId] = (telemetry.killCreditsByType[attackerTypeId] || 0) + fraction;
                             } else if (attackerTypeId === 0) {
                                 telemetry.orbitalTurretKillCredits += fraction;
@@ -836,10 +847,12 @@ function conductBattle(attackerFleet, defenderFleet, attackerTech, defenderTech)
 // reproduces the legacy initial->final "pop".
 function formatBattleMessage(battleLog) {
     const fields = [];
+    const hasHaulers = [...battleLog.initial.attackers, ...battleLog.initial.defenders].some(ship => Number(ship.type) === 10);
+    const hullCount = hasHaulers ? 10 : 9;
 
     const pushBlock = (attackerCounts, defenderCounts, ground, orbital) => {
-        for (let i = 1; i <= 9; i++) fields.push((attackerCounts && attackerCounts[i]) || 0);
-        for (let i = 1; i <= 9; i++) fields.push((defenderCounts && defenderCounts[i]) || 0);
+        for (let i = 1; i <= hullCount; i++) fields.push((attackerCounts && attackerCounts[i]) || 0);
+        for (let i = 1; i <= hullCount; i++) fields.push((defenderCounts && defenderCounts[i]) || 0);
         fields.push(Number(ground) || 0);
         fields.push(Number(orbital) || 0);
     };
@@ -870,7 +883,7 @@ function formatBattleMessage(battleLog) {
         );
     }
 
-    return 'battle:' + fields.join(':');
+    return (hasHaulers ? 'battle:v2:' : 'battle:') + fields.join(':');
 }
 
 /**

@@ -149,7 +149,7 @@ function sendaamm() {
         const parts = value.split(':');
         const shipType = parseInt(parts[1]);
         
-        if (shipType !== 3 && shipType !== 6) { // Skip scouts and colony ships
+        if (shipType !== 3 && shipType !== 6 && shipType !== 10) { // Skip scouts and colony ships
             message += ":" + value;
             totalShips++;
         }

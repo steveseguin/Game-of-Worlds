@@ -100,6 +100,7 @@ const DEFAULT_STANDING_ORDERS = {
     autoRebuild: false,
     autoScout: false
 };
+const mining = require('./lib/mining');
 const SCOUT_SHIP_ID = combatSystem.SHIP_TYPES?.SCOUT?.id || 3;
 const COLONY_SHIP_ID = combatSystem.SHIP_TYPES?.COLONY_SHIP?.id || 6;
 
@@ -661,7 +662,7 @@ function restoreStartedGameRuntime(game, options = {}) {
     }
 
     const persistedPhase = String(game.turn_phase || '').toLowerCase();
-    if (!state.turnResolution && ['automation', 'income', 'battles', 'victory'].includes(persistedPhase)) {
+    if (!state.turnResolution && ['automation', 'income', 'battles', 'mining', 'victory'].includes(persistedPhase)) {
         state.turnResolution = {
             turn: parseTurnNumber(game.turn_phase_turn || game.turn, gameState.turns[gameId]),
             phase: 'failed',
@@ -817,7 +818,10 @@ function createGameTables(gameId, callback) {
             id INT AUTO_INCREMENT PRIMARY KEY,
             owner INT NOT NULL,
             type INT NOT NULL,
-            sectorid INT NOT NULL
+            sectorid INT NOT NULL,
+            cargo_metal INT NOT NULL DEFAULT 0,
+            cargo_crystal INT NOT NULL DEFAULT 0,
+            last_mining_turn INT NOT NULL DEFAULT 0
         )`,
         `CREATE TABLE IF NOT EXISTS ${tables.buildings} (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -905,8 +909,20 @@ function ensurePlayerTableColumns(gameId, callback) {
 
     ensureRequiredColumns(playersTable, requiredColumns, error => {
         if (error) return callback(error);
-        ensureBuildingTableColumns(gameId, callback);
+        ensureMiningColumns(gameId, error => {
+            if (error) return callback(error);
+            ensureBuildingTableColumns(gameId, callback);
+        });
     }, false);
+}
+
+function ensureMiningColumns(gameId, callback) {
+    if (db.isMock) return callback(null);
+    const table = gameTables(gameId).ships;
+    const columns = ['cargo_metal', 'cargo_crystal', 'last_mining_turn'].map(name => ({
+        name, sql: `ALTER TABLE ${table} ADD COLUMN ${name} INT NOT NULL DEFAULT 0`
+    }));
+    ensureRequiredColumns(table, columns, callback);
 }
 
 function ensureBuildingTableColumns(gameId, callback) {
@@ -2459,7 +2475,7 @@ async function processTurnUnchecked(gameId, failedResolution = null) {
 
     // Preserve the established phase order, but do not let later phases or the
     // final new-turn signal outrun authoritative writes from earlier phases.
-    const phaseOrder = ['automation', 'income', 'battles', 'victory'];
+    const phaseOrder = ['automation', 'income', 'battles', 'mining', 'victory'];
     const resumeIndex = Math.max(0, phaseOrder.indexOf(resumePhase));
     if (resumeIndex <= phaseOrder.indexOf('automation')) {
         await processTurnAutomation(gameId, nextTurn);
@@ -2479,6 +2495,13 @@ async function processTurnUnchecked(gameId, failedResolution = null) {
         await processBattles(gameId);
     }
 
+    if (resumeIndex <= phaseOrder.indexOf('mining')) {
+        await setTurnResolutionPhase(gameId, nextTurn, 'mining');
+        await mining.processMiningTurn(queryDb, gameId, nextTurn, (owner, message) => notifyPlayer(owner, message));
+        gameState.clients.forEach(client => {
+            if (Number(client.gameid) === Number(gameId)) updateResources(client);
+        });
+    }
     await setTurnResolutionPhase(gameId, nextTurn, 'victory');
     await notifyEliminatedPlayers(gameId).catch(error =>
         console.warn(`Elimination sweep failed for game ${gameId}:`, error.message || error));
@@ -2530,7 +2553,7 @@ function normalizeShipRows(rows) {
             type: Number(row.type),
             count: Number(row.count)
         }))
-        .filter(row => Number.isFinite(row.type) && row.type >= 1 && row.type <= 9 && Number.isFinite(row.count) && row.count > 0);
+        .filter(row => Number.isFinite(row.type) && row.type >= 1 && row.type <= 10 && Number.isFinite(row.count) && row.count > 0);
 }
 
 function sumShipRows(rows) {
@@ -2540,7 +2563,7 @@ function sumShipRows(rows) {
 function sumFleetCounts(countMap) {
     if (!countMap || typeof countMap !== 'object') return 0;
     let total = 0;
-    for (let i = 1; i <= 9; i++) {
+    for (const i of SHIP_TYPE_IDS) {
         total += Number(countMap[i]) || 0;
     }
     return total;
@@ -2553,7 +2576,7 @@ function getShipCount(rows, typeId) {
 
 function buildFleetFromRows(rows) {
     const fleet = {};
-    for (let i = 1; i <= 9; i++) {
+    for (const i of SHIP_TYPE_IDS) {
         fleet[`ship${i}`] = 0;
     }
 
@@ -2982,14 +3005,21 @@ async function resolveBattle(gameId, sectorId, player1, player2) {
 }
 
 async function replaceShipsWithQuery(runQuery, table, sectorId, playerId, ships) {
+    const haulerCount = getShipCount(ships, mining.HAULER_TYPE);
+    const haulers = haulerCount > 0 ? await runQuery(
+        `SELECT * FROM ${table} WHERE owner = ? AND sectorid = ? AND type = ? ORDER BY id`,
+        [playerId, sectorId, mining.HAULER_TYPE]) : [];
     await runQuery(`DELETE FROM ${table} WHERE sectorid = ? AND owner = ?`, [sectorId, playerId]);
     const survivors = normalizeShipRows(ships);
     for (const ship of survivors) {
         for (let i = 0; i < Math.floor(ship.count); i++) {
-            await runQuery(
-                `INSERT INTO ${table} (owner, type, sectorid) VALUES (?, ?, ?)`,
-                [playerId, ship.type, sectorId]
-            );
+            if (ship.type === mining.HAULER_TYPE && haulers[i]) {
+                const hull = haulers[i];
+                await runQuery(`INSERT INTO ${table} (owner, type, sectorid, cargo_metal, cargo_crystal, last_mining_turn) VALUES (?, ?, ?, ?, ?, ?)`,
+                    [playerId, ship.type, sectorId, hull.cargo_metal || 0, hull.cargo_crystal || 0, hull.last_mining_turn || 0]);
+            } else {
+                await runQuery(`INSERT INTO ${table} (owner, type, sectorid) VALUES (?, ?, ?)`, [playerId, ship.type, sectorId]);
+            }
         }
     }
 }
@@ -3036,7 +3066,7 @@ function finalFleetToRows(finalFleet) {
         return rows;
     }
 
-    for (let i = 1; i <= 9; i++) {
+    for (const i of SHIP_TYPE_IDS) {
         const count = Number(finalFleet[i]) || 0;
         if (count > 0) {
             rows.push({ type: i, count });
@@ -5172,8 +5202,8 @@ function sendMultiMoveOptions(connection, gameId, targetSector) {
                     const sectorId = Number(row.sectorid);
                     const type = Number(row.type);
                     const count = Number(row.count) || 0;
-                    if (sectorId === Number(targetSector) || count <= 0 || type < 1 || type > 9) return;
-                    if (!bySector.has(sectorId)) bySector.set(sectorId, new Array(9).fill(0));
+                    if (sectorId === Number(targetSector) || count <= 0 || !SHIP_TYPE_IDS.includes(type)) return;
+                    if (!bySector.has(sectorId)) bySector.set(sectorId, new Array(SHIP_TYPE_IDS.length).fill(0));
                     bySector.get(sectorId)[type - 1] += count;
                 });
                 const explored = new Set((exploredRows || []).map(row => Number(row.sectorid)));
@@ -5423,7 +5453,32 @@ function preMoveFleet(data, connection) {
     });
 }
 
+async function sendMiningState(connection) {
+    const gameId = Number(connection.gameid);
+    const playerId = Number(connection.name);
+    if (!isPositiveSafeInteger(gameId) || !isPositiveSafeInteger(playerId)) return;
+    try {
+        const tables = gameTables(gameId);
+        const ships = await queryDb(`SELECT * FROM ${tables.ships} WHERE owner = ? AND type = ?`, [playerId, mining.HAULER_TYPE]);
+        const [sectors, rivals] = ships.length ? await Promise.all([
+            queryDb(`SELECT * FROM ${tables.map}`),
+            queryDb(`SELECT sectorid, owner FROM ${tables.ships} WHERE owner != ?`, [playerId])
+        ]) : [[], []];
+        const bySector = new Map(sectors.map(sector => [Number(sector.sectorid), sector]));
+        const contested = new Set(rivals.map(ship => Number(ship.sectorid)));
+        const rows = ships.map(ship => ({
+            id: ship.id, sector: ship.sectorid,
+            metal: Number(ship.cargo_metal) || 0, crystal: Number(ship.cargo_crystal) || 0,
+            status: mining.cargoAction(ship, bySector.get(Number(ship.sectorid)), contested.has(Number(ship.sectorid)))
+        }));
+        connection.sendUTF(`mining::${JSON.stringify({ capacity: mining.CARGO_CAPACITY, ships: rows })}`);
+    } catch (error) {
+        console.warn('Mining manifest unavailable:', error.message);
+    }
+}
+
 function updateResources(connection) {
+    sendMiningState(connection);
     const playerId = connection.name;
     const gameId = connection.gameid;
     

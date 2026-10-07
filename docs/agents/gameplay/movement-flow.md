@@ -77,3 +77,5 @@ Route and arrival resolution is shared by both movement paths:
 ## Departure and transit integrity
 
 Both movement protocols reject same-sector moves and malformed field counts before accessing player resources. Route lookups must contain every crossed sector; incomplete data rolls back the move and refunds crystal. Single-source bulk departures use a MySQL transaction so partially matched ship updates roll back before a refund. Lightweight test adapters compensate partial updates. Destination exploration and movement messages occur only after transit leaves survivors. Multi-source movement messages omit destroyed source groups and count only surviving hulls. The mock database supports parameterized ship-deletion ID lists and their ownership guard.
+
+Mining Haulers (type 10) use the same movement orders, fuel costs and route hazards. The Fleet manifest's **Plot return** opens the ordinary planner with that source's haulers selected; it does not bypass route confirmation. Moving does not transfer cargo to the treasury: loading/unloading resolves after combat at turn end.

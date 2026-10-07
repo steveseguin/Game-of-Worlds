@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <link rel="modulepreload" href="js/vendor/three.module.min.js">
     <link rel="modulepreload" href="js/vendor/three.core.min.js">
-    <link rel="stylesheet" href="css/style.css?v=20261006c">
+    <link rel="stylesheet" href="css/style.css?v=20261007m">
     <style>
         /* Layout-critical rules only. Every material/typographic decision for the in-game
            HUD lives in css/style.css under `.game-page` — one console language shared with
@@ -495,6 +495,10 @@
                 <td><div style="display:inline-block" id="fa9">N/A</div><div style="display:none;" id="fc9"><button>Cancel</button></div><br /></td>
             </tr>
             <tr>
+                <th scope="row">Mining Haulers:</th>
+                <td id="f10">Unknown</td><td id="fa10">N/A</td>
+            </tr>
+            <tr>
                 <th scope="row">Colony Ships:</th>
                 <td><div style="display:inline-block" id="f6">N/A</div></td>
                 <td><div style="display:inline-block" id="fa6">N/A</div><div style="display:none;" id="fc6"><button>Cancel</button></div><br /></td>
@@ -590,9 +594,15 @@
                 <div>Dreadnoughts: <span id="fleet-dreadnoughts">0</span></div>
                 <div>Carriers: <span id="fleet-carriers">0</span></div>
                 <div>Colony Ships: <span id="fleet-colony">0</span></div>
+                <div>Mining Haulers: <span id="fleet-haulers">0</span></div>
             </div>
             <div id="fleetEmptyState" class="pad-empty">No ships of yours are in this sector.</div>
             <div id="fleetTotal" class="fleet-total"></div>
+            <section id="miningConsole" class="mining-console" hidden aria-label="Mining expeditions">
+                <div class="pad-heading">Mining expeditions <span id="miningCargoTotal"></span></div>
+                <p class="pad-note">Unclaimed planet: load at turn end. Owned planet: unload at turn end. 100 cargo per hauler; no Terraforming needed. Unarmed. Cargo is lost with the ship.</p>
+                <div id="miningManifest">Build a Mining Hauler, then move it to an unclaimed planet.</div>
+            </section>
             <div class="pad-heading" data-icon="shipyard">Build Ships at Selected Spaceport</div>
 
             <div id="spaceportProductionStatus" class="local-order-context">Build a Spaceport to produce ships locally.</div>
@@ -602,6 +612,7 @@
                  different shapes with no relationship to the hulls they named. -->
             <div class="ship-grid">
                 <button class="ship-button" data-ship-id="3" title="Scout: unarmed exploration and sensor vessel. Cannot attack.">Scout<br><small>200M</small></button>
+                <button class="ship-button" data-ship-id="10" title="Mining Hauler: unarmed. Holds 100 metal/crystal. Load at an unclaimed planet for one turn, then return to an owned planet to unload at turn end. No Terraforming required.">Mining Hauler<br><small>300M</small></button>
                 <button class="ship-button" data-ship-id="1" title="Frigate: basic frontline combat ship.">Frigate<br><small>430M</small></button>
                 <button class="ship-button" data-ship-id="2" title="Destroyer: heavier line ship; needs Military Shipyards 1.">Destroyer<br><small>780M · Yard 1</small></button>
                 <button class="ship-button" data-ship-id="4" title="Cruiser: durable mid-weight hull; needs Military Shipyards 1.">Cruiser<br><small>980M 120C · Yard 1</small></button>
@@ -930,6 +941,7 @@
                     <li><b>Asteroid belts are the risk you can retire.</b> Crossing one kills about half the hulls that enter it; stopping in one kills about a quarter. Take it and it is safe forever after, and it pays ore — the cheapest permanent thing in the game.</li>
                     <li><b>Black holes are not a risk, they are an ending.</b> No roll, no survivors, no exceptions, whoever owns the sector. Route around them; that is what the map key's black-hole mark is for.</li>
                     <li><b>Colonize.</b> Build a colony ship in the <b>Fleet</b> tab, move it to an unowned planet, then settle it from the <b>Colonize</b> tab — which lists exactly which of the four requirements you are still missing. Settling consumes the ship.</li>
+                    <li><b>Mine remote worlds.</b> Build a Mining Hauler in <b>Fleet</b> and send it to an unclaimed planet. No Terraforming is needed: it loads 100 resources (metal and crystal) at turn end. Return to an owned planet and end the turn to unload. Check the cargo manifest in Fleet; <b>Plot return</b> opens the normal route preview. Haulers are unarmed, rival ships block operations, and destruction loses the cargo.</li>
                     <li><b>Moving a fleet.</b> Click a sector on the map, then press <b>Move Ships Here</b> in the Sector Survey panel on the left. The survey also names the sector's type and, once you have been there, its yields.</li>
                     <li><b>Combat.</b> Fleets in the same sector resolve automatically each turn; build scouts early for vision.</li>
                     <!-- The victory line reads "Victory · Conquest 2% · Survival 0% · …" from
@@ -1118,16 +1130,17 @@
     <script defer src="js/ui.js?v=20261006d"></script>
     <script defer src="js/minimap.js?v=20260614b"></script>
     <script defer src="js/construction-rules.js?v=20261006"></script>
-    <script defer src="js/GUI.js?v=20261006c"></script>
-    <script defer src="js/build.js?v=20261006c"></script>
+    <script defer src="js/GUI.js?v=20261007m"></script>
+    <script defer src="js/mining.js?v=20261007"></script>
+    <script defer src="js/build.js?v=20261007m"></script>
     <script defer src="js/sector-preview.js?v=20261006d"></script>
     <script defer src="js/planet-inspection.js?v=20260906c"></script>
-    <script defer src="js/battle.js?v=20260614d"></script>
+    <script defer src="js/battle.js?v=20261007m"></script>
     <script defer src="js/chat.js?v=20260905c"></script>
     <script defer src="js/controlpad.js?v=20260712d"></script>
     <script defer src="js/epic-music.js?v=20260725c"></script>
     <script defer src="js/sound.js?v=20260712b"></script>
-    <script defer src="js/tech.js?v=20260906"></script>
+    <script defer src="js/tech.js?v=20261007m"></script>
     <script defer src="js/notification-system.js?v=20260728a"></script>
     <script defer src="js/avatar-notifications.js?v=20260728a"></script>
     <script defer src="js/advisor.js?v=20260726b"></script>
@@ -1137,9 +1150,9 @@
     <!-- shop-enhanced.js is NOT here any more; see the lazy-load block below. -->
     <script defer src="js/game-screen.js?v=20261006c"></script>
     <script defer src="js/onboarding.js?v=20260728a"></script>
-    <script defer src="js/connect.js?v=20261006d"></script>
+    <script defer src="js/connect.js?v=20261007m"></script>
     <script defer src="js/tour.js?v=20260906"></script>
-    <script defer src="js/game.js?v=20260905b"></script>
+    <script defer src="js/game.js?v=20261007m"></script>
     <script defer src="js/codex.js?v=20260728r"></script>
     <script defer src="js/name-picker.js?v=20260726b"></script>
     <script defer src="js/loader.js?v=20251105"></script>
@@ -1214,7 +1227,7 @@
 
             function loadBattle3D() {
                 if (!battlePromise) {
-                    battlePromise = import('./js/battle3d.js?v=20260906b')
+                    battlePromise = import('./js/battle3d.js?v=20261007m')
                         .catch(error => {
                             console.error('Battle theater failed to load; using the 2D fallback.', error);
                             battlePromise = null;

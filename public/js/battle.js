@@ -13,6 +13,8 @@
 const BattleSystem = (function() {
     // Array to store animation timers for cleanup
     let battleAnimationTimers = [];
+    let hullCount = 9;
+    let blockSize = 20;
     
     function createBattleVisualization(message, options = {}) {
         console.log("Creating battle visualization", message);
@@ -23,6 +25,9 @@ const BattleSystem = (function() {
         
         // Parse battle data
         const parts = message.split(':');
+        hullCount = parts[1] === 'v2' ? 10 : 9;
+        blockSize = hullCount * 2 + 2;
+        if (parts[1] === 'v2') parts.splice(1, 1);
         if (parts.length < 20) return;
         
         // Remove any existing battle ground
@@ -110,9 +115,9 @@ const BattleSystem = (function() {
         // Initial counts per type (attacker parts 1-9, defender parts 10-18).
         const initialAttackers = [];
         const initialDefenders = [];
-        for (let shipType = 0; shipType < 9; shipType++) {
+        for (let shipType = 0; shipType < hullCount; shipType++) {
             initialAttackers.push(parseInt(parts[shipType + 1]) || 0);
-            initialDefenders.push(parseInt(parts[shipType + 10]) || 0);
+            initialDefenders.push(parseInt(parts[shipType + hullCount + 1]) || 0);
         }
 
         // Deterministic formations: one column per ship type, count labels
@@ -123,10 +128,10 @@ const BattleSystem = (function() {
         updateSideHud(defenderHud, initialDefenders);
         
         // Add ground defenses if present
-        const groundDefense = parseInt(parts[19]) || 0;
+        const groundDefense = parseInt(parts[hullCount * 2 + 1]) || 0;
         if (groundDefense > 0) {
             const groundImg = document.createElement('img');
-            groundImg.id = '1d09';
+            groundImg.id = 'battleGroundDefense';
             groundImg.style.position = 'absolute';
             groundImg.style.left = '0%';
             groundImg.style.top = '10%';
@@ -135,7 +140,7 @@ const BattleSystem = (function() {
             battleDiv.appendChild(groundImg);
             
             const baseImg = document.createElement('img');
-            baseImg.id = '1d010';
+            baseImg.id = 'battleBaseDefense';
             baseImg.style.position = 'absolute';
             baseImg.style.left = '15%';
             baseImg.style.top = '60%';
@@ -145,7 +150,7 @@ const BattleSystem = (function() {
         
         // Animate battle with destruction sequence
         let round = 1;
-        while ((round * 20 + 1) < parts.length && round < 10) {
+        while ((round * blockSize + 1) < parts.length && round < 10) {
             animateBattleRound(parts, round, battleDiv);
             round++;
         }
@@ -153,12 +158,12 @@ const BattleSystem = (function() {
 
         // After the final round, declare the outcome on screen.
         const bannerTimer = setTimeout(() => {
-            const base = totalRounds * 20;
+            const base = totalRounds * blockSize;
             let attackersLeft = 0;
             let defendersLeft = 0;
-            for (let i = 0; i < 9; i++) {
+            for (let i = 0; i < hullCount; i++) {
                 attackersLeft += parseInt(parts[base + i + 1]) || 0;
-                defendersLeft += parseInt(parts[base + i + 10]) || 0;
+                defendersLeft += parseInt(parts[base + i + hullCount + 1]) || 0;
             }
             const banner = document.createElement('div');
             banner.style.cssText = 'position:absolute;top:42%;left:50%;transform:translateX(-50%) scale(0.6);color:#fff;font-weight:900;letter-spacing:6px;font-size:46px;text-transform:uppercase;text-shadow:0 0 24px rgba(255,140,60,0.9);z-index:6;transition:transform 0.4s ease, opacity 0.4s ease;opacity:0;';
@@ -188,7 +193,7 @@ const BattleSystem = (function() {
         battleAnimationTimers.push(closeTimer);
     }
     
-    const SHIP_NAMES = ['Frigate', 'Destroyer', 'Scout', 'Cruiser', 'Battleship', 'Colony', 'Dreadnought', 'Intruder', 'Carrier'];
+    const SHIP_NAMES = ['Frigate', 'Destroyer', 'Scout', 'Cruiser', 'Battleship', 'Colony', 'Dreadnought', 'Intruder', 'Carrier', 'Mining Hauler'];
     const VISIBLE_CAP = 8; // ships drawn per type; the count label carries the rest
 
     function createSideHud(container, side, title, color) {
@@ -240,7 +245,7 @@ const BattleSystem = (function() {
                 if (side === 'attacker') {
                     img.style.transform = 'scaleX(-1)';
                 }
-                img.src = './images/ship' + (type + 1) + '.gif';
+                img.src = type === 9 ? './images/ui/icons-ships-10-mining-hauler.png' : './images/ship' + (type + 1) + '.gif';
                 container.appendChild(img);
             }
 
@@ -254,12 +259,12 @@ const BattleSystem = (function() {
     }
 
     function updateFleetLabels(container, battleData, round) {
-        for (let i = 0; i < 18; i++) {
-            const prefix = i < 9 ? '1a' : '1d';
-            const type = i < 9 ? i : i - 9;
+        for (let i = 0; i < hullCount * 2; i++) {
+            const prefix = i < hullCount ? '1a' : '1d';
+            const type = i < hullCount ? i : i - hullCount;
             const label = container.querySelector(`#fleetlabel_${prefix}_${type}`);
             if (!label) continue;
-            const remaining = parseInt(battleData[i + 1 + round * 20]) || 0;
+            const remaining = parseInt(battleData[i + 1 + round * blockSize]) || 0;
             label.textContent = `${SHIP_NAMES[type]} ×${remaining}`;
             label.style.opacity = remaining > 0 ? '1' : '0.35';
         }
@@ -268,9 +273,9 @@ const BattleSystem = (function() {
     function sideTotals(battleData, round) {
         const attackers = [];
         const defenders = [];
-        for (let i = 0; i < 9; i++) {
-            attackers.push(parseInt(battleData[i + 1 + round * 20]) || 0);
-            defenders.push(parseInt(battleData[i + 10 + round * 20]) || 0);
+        for (let i = 0; i < hullCount; i++) {
+            attackers.push(parseInt(battleData[i + 1 + round * blockSize]) || 0);
+            defenders.push(parseInt(battleData[i + hullCount + 1 + round * blockSize]) || 0);
         }
         return { attackers, defenders };
     }
@@ -339,14 +344,14 @@ const BattleSystem = (function() {
             }
 
             // For each ship type (9 attacker types + 9 defender types)
-            for (let i = 0; i < 18; i++) {
-                const beforeCount = parseInt(battleData[i + 1 + (round - 1) * 20]) || parseInt(battleData[i + 1]) || 0;
-                const afterCount = parseInt(battleData[i + 1 + round * 20]) || 0;
+            for (let i = 0; i < hullCount * 2; i++) {
+                const beforeCount = parseInt(battleData[i + 1 + (round - 1) * blockSize]) || parseInt(battleData[i + 1]) || 0;
+                const afterCount = parseInt(battleData[i + 1 + round * blockSize]) || 0;
 
                 // Animate destruction of lost ships
                 for (let j = afterCount; j < beforeCount; j++) {
-                    const prefix = i < 9 ? '1a' : '1d';
-                    const shipType = i < 9 ? i : i - 9;
+                    const prefix = i < hullCount ? '1a' : '1d';
+                    const shipType = i < hullCount ? i : i - hullCount;
                     const shipId = prefix + j + shipType;
 
                     // Randomly time the explosions within the round

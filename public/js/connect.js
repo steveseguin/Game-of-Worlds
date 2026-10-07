@@ -1009,6 +1009,11 @@ function handleWebSocketMessage(message) {
         window.Onboarding.observe(message);
     }
 
+    if (message.indexOf("mining::") === 0) {
+        try { window.MiningConsole?.update(JSON.parse(message.slice(8))); }
+        catch (error) { console.warn('Invalid mining manifest', error); }
+        return;
+    }
     if (message.indexOf("countdown::") === 0) {
         return handleCountdownMessage(message.split("::")[1]);
     }
@@ -1210,6 +1215,7 @@ function handleWebSocketMessage(message) {
             const numericTarget = Number(plan.target);
             if (GAME_STATE.pendingMoveSector && numericTarget !== GAME_STATE.pendingMoveSector) return;
             window.GameUI?.showFleetMovePlan?.(plan);
+            window.MiningConsole?.selectReturnFleet(plan);
         } catch (error) {
             console.warn('Failed to parse fleet route plan', error);
         }
@@ -2247,7 +2253,7 @@ function formatShipSummary(map) {
     if (!map) return '—';
     const labels = {
         1: 'Frigate', 2: 'Destroyer', 3: 'Scout', 4: 'Cruiser',
-        5: 'Battleship', 6: 'Colony', 7: 'Dread', 8: 'Intruder', 9: 'Carrier'
+        5: 'Battleship', 6: 'Colony', 7: 'Dread', 8: 'Intruder', 9: 'Carrier', 10: 'Hauler'
     };
     return Object.keys(map)
         .filter(k => map[k] > 0)

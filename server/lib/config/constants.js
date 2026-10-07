@@ -54,10 +54,11 @@ const SHIP_TYPE_MODIFIER_KEYS = Object.freeze({
     6: 'colony',
     7: 'dreadnought',
     8: 'intruder',
-    9: 'carrier'
+    9: 'carrier',
+    10: 'hauler'
 });
 
-const SHIP_TYPE_IDS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+const SHIP_TYPE_IDS = Object.freeze([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
 const COMBAT_TELEMETRY_RECENT_BATTLES = 120;
 const COMBAT_TELEMETRY_MAX_GAMES = 64;

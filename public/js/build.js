@@ -14,7 +14,8 @@ const BuildSystem = (() => {
         6: { metal: 500, crystal: 0, shipyard: 0, production: 7 },
         7: { metal: 3200, crystal: 450, shipyard: 3, production: 24 },
         8: { metal: 1950, crystal: 133, shipyard: 2, production: 7 },
-        9: { metal: 3000, crystal: 80, shipyard: 3, production: 16 }
+        9: { metal: 3000, crystal: 80, shipyard: 3, production: 16 },
+        10: { metal: 300, crystal: 0, shipyard: 0, production: 3 }
     };
     let initialized = false;
     let requirementId = 0;

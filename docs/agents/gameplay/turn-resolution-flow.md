@@ -52,9 +52,10 @@ Current sequence:
 5. Apply eligible standing orders under the same at-most-once reservation.
 6. Await income/resource writes per player; each guarded write records `last_income_turn`.
 7. Persist `battles`, then await conflict resolution.
-8. Persist `victory`, then await victory checks and end-game bookkeeping.
-9. Clear the persisted phase marker.
-10. Broadcast `newturn::<turn>` and publish the next `turnclock::` deadline.
+8. Persist `mining`, then load/unload surviving haulers through guarded cargo writes. Unloading credits resources and empties the hold atomically; a per-ship turn marker prevents replay.
+9. Persist `victory`, then await victory checks and end-game bookkeeping.
+10. Clear the persisted phase marker.
+11. Broadcast `newturn::<turn>` and publish the next `turnclock::` deadline.
 
 On a phase failure, no `newturn::` is emitted. Runtime retains the failed phase, clients remain frozen, and the server retries from that phase. Startup reconstructs the same retry from `games.turn_phase`; guarded income prevents duplicate payouts, while the automation reservation prevents duplicate AI/standing-order spending. A crash after automation reservation may skip unfinished automation for that player for one turn. AI mutations and standing orders are awaited before income begins.
 

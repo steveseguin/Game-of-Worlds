@@ -135,7 +135,7 @@ const GameUI = (function() {
             const need = Number(sectorData.terraformLevel) || 0;
             detail = `${Math.max(0,limit-used)} of ${limit} slots free · Metal ${sectorData.metalBonus}% · Crystal ${sectorData.crystalBonus}%. `;
             const mine = Number(sectorData.owner) === Number(window.GAME_STATE?.player?.id || (document.cookie.match(/(?:^|; )userId=([^;]+)/)||[])[1]);
-            detail += mine ? 'Your world: build a mixed economy.' : sectorData.owner ? 'Rival world: conquest requires a combat fleet.' : need > have ? `Needs Terraforming ${need}; you have ${have}.` : 'Terraforming ready. Bring a Colony Ship, then Colonize.';
+            detail += mine ? 'Your world: build a mixed economy.' : sectorData.owner ? 'Rival world: conquest requires a combat fleet.' : need > have ? `Terraforming ${need} to settle; you have ${have}. Haulers can mine now.` : 'Bring a Colony Ship to settle, or a Mining Hauler to collect ore.';
         } else if (planet) detail = 'Probe for richness and Terraforming requirements before committing a Colony Ship.';
         else if (type === 0) detail = 'Transit route. No planet or extraction sites.';
         else if (type === 2) detail = 'Black hole: entering destroys the entire fleet.';
@@ -381,7 +381,7 @@ const GameUI = (function() {
 
         // Update ship counts. Same rule as updateFleetDisplay: a hull with none present
         // and none in production is not worth a row.
-        for (let i = 1; i <= 9; i++) {
+        for (let i = 1; i <= 10; i++) {
             const shipCount = document.getElementById(`f${i}`);
             const here = Number(fleet[`ship${i}`]) || 0;
             const queued = Number(fleet[`building${i}`]) || 0;
@@ -434,7 +434,7 @@ const GameUI = (function() {
 
     function updateFleetDisplay(ships) {
         const known = Array.isArray(ships);
-        const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
+        const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0 };
         const playerId = (() => {
             const match = document.cookie.match(/(?:^|;\s*)userId=([^;]+)/);
             return match ? Number(decodeURIComponent(match[1])) : null;
@@ -465,7 +465,7 @@ const GameUI = (function() {
         // seven of them reading 0 next to an N/A - is noise the player has to read past to
         // find the one line that matters, and it is worst in the early game when almost
         // everything is zero. The row reappears the moment a ship of that type arrives.
-        for (let type = 1; type <= 9; type += 1) {
+        for (let type = 1; type <= 10; type += 1) {
             const cell = document.getElementById(`f${type}`);
             if (!cell) continue;
             const present = Number(counts[type] || 0);
@@ -484,7 +484,8 @@ const GameUI = (function() {
             'fleet-intruders': counts[8],
             'fleet-dreadnoughts': counts[7],
             'fleet-carriers': counts[9],
-            'fleet-colony': counts[6]
+            'fleet-colony': counts[6],
+            'fleet-haulers': counts[10]
         };
 
         // Nine rows of zeroes told the player nothing and buried the one hull they
@@ -537,7 +538,7 @@ const GameUI = (function() {
 	}
 
 	// Show multi-move options dialog
-	function showMultiMoveOptions(targetSector, shipsData) {
+	function showMultiMoveOptions(targetSector, shipsData, hullCount = 9) {
 		const multiMoveDiv = document.getElementById('multiMove');
 		if (!multiMoveDiv) return;
 
@@ -565,7 +566,7 @@ const GameUI = (function() {
 				if (!sectorId) break;
 
 				const shipCounts = [];
-				for (let j = 0; j < 9; j++) {
+				for (let j = 0; j < hullCount; j++) {
 					shipCounts.push(parseInt(sectors[i++]) || 0);
 				}
 
@@ -573,7 +574,7 @@ const GameUI = (function() {
 				const shipNames = [
 					"Frigate", "Destroyer", "Scout", "Cruiser",
 					"Battleship", "Colony Ship", "Dreadnought",
-					"Intruder", "Carrier"
+					"Intruder", "Carrier", "Mining Hauler"
 				];
 
 				// Add options for each ship type (hex token in value, decimal in label)
@@ -663,9 +664,9 @@ const GameUI = (function() {
 		const sources = Array.isArray(plan?.sources) ? plan.sources : [];
 		const flat = [];
 		sources.forEach(source => {
-			flat.push(Number(source.sector).toString(16), ...(source.counts || []).map(count => String(count || 0)));
+			flat.push(Number(source.sector).toString(16), ...Array.from({ length: 10 }, (_, i) => String(source.counts?.[i] || 0)));
 		});
-		showMultiMoveOptions(targetToken, flat.join(':'));
+		showMultiMoveOptions(targetToken, flat.join(':'), 10);
 		const select = document.getElementById('shipsFromNearBy');
 		if (!select) return;
 		const bySource = new Map(sources.map(source => [Number(source.sector), source]));
@@ -694,7 +695,7 @@ const GameUI = (function() {
 		if (mode === 'all') options = Array.from(select.options);
 		if (mode === 'attack') options = Array.from(select.options).filter(option => {
 			const type = Number(option.value.split(':')[1]);
-			return type !== 3 && type !== 6;
+			return type !== 3 && type !== 6 && type !== 10;
 		});
 		return renderMovePreflight(options);
 	}

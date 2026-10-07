@@ -1103,6 +1103,32 @@ class MockDatabase {
                 }
             }
 
+            // Atomic cargo settlement mirrors the joined MySQL writes.
+            const cargoUpdate = normalized.match(/^UPDATE ships(\d+) s JOIN /i);
+            if (cargoUpdate && /s.last_mining_turn = \?/i.test(normalized)) {
+                const gameId = Number(cargoUpdate[1]);
+                const [metal, crystal, turn, id, owner, sectorId, guardTurn] = params.map(Number);
+                const ship = this._ensureShips(gameId).find(row => row.id === id && row.owner === owner && row.type === 10 && row.sectorid === sectorId);
+                const sector = this._ensureMap(gameId).get(sectorId);
+                const unloading = /SET p.metal/i.test(normalized);
+                const player = this._playerTables.get(gameId)?.get(owner);
+                let valid = ship && sector && Number(ship.last_mining_turn || 0) < guardTurn;
+                if (unloading) {
+                    valid = valid && player && Number(sector.owner) === owner && sector.type >= 6 && sector.type <= 10
+                        && Number(ship.cargo_metal || 0) === Number(params[7]) && Number(ship.cargo_crystal || 0) === Number(params[8]);
+                } else {
+                    valid = valid && !Number(sector.owner) && sector.type >= 6 && sector.type <= 9
+                        && !Number(ship.cargo_metal) && !Number(ship.cargo_crystal);
+                }
+                if (valid) {
+                    if (unloading) { player.metal += metal; player.crystal += crystal; }
+                    ship.cargo_metal = unloading ? 0 : metal;
+                    ship.cargo_crystal = unloading ? 0 : crystal;
+                    ship.last_mining_turn = turn;
+                }
+                return this._async(callback, null, { affectedRows: valid ? 1 : 0 });
+            }
+
             // Map operations
             const mapMatch = normalized.match(/`?map(\d+)`?/i);
             if (mapMatch) {
@@ -1372,7 +1398,11 @@ class MockDatabase {
                 if (/^INSERT INTO `?ships\d+`?/i.test(normalized)) {
                     const [owner, type, sectorid] = (params || []).map(Number);
                     const id = this._nextShipId(gameId);
-                    ships.push({ owner, type, sectorid, id });
+                    const cargo = /cargo_metal/i.test(normalized) ? {
+                        cargo_metal: Number(params[3]) || 0, cargo_crystal: Number(params[4]) || 0,
+                        last_mining_turn: Number(params[5]) || 0
+                    } : { cargo_metal: 0, cargo_crystal: 0, last_mining_turn: 0 };
+                    ships.push({ owner, type, sectorid, id, ...cargo });
                     return this._async(callback, null, { insertId: id });
                 }
 

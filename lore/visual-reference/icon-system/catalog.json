@@ -5,9 +5,9 @@
   "counts": {
     "researchLevels": 108,
     "buildingStates": 9,
-    "shipTypes": 9,
+    "shipTypes": 10,
     "actions": 16,
-    "totalIcons": 142
+    "totalIcons": 143
   },
   "technologies": [
     {
@@ -440,6 +440,13 @@
       "alias": "Recovery Harbour",
       "actual": "Ship type 9; Military Shipyards level 3; requires a local Warp Gate",
       "icon": "ships/09-carrier.png"
+    },
+    {
+      "id": 10,
+      "canonical": "Mining Hauler",
+      "alias": "Ore Runner",
+      "actual": "Ship type 10; unarmed; 100 cargo; no shipyard or Terraforming research required",
+      "icon": "ships/10-mining-hauler.png"
     }
   ],
   "actions": [

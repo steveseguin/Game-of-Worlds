@@ -74,10 +74,10 @@ test('getTechLevelCap: every race/tech pair stays within [0, tech.maxLevel]', ()
 
 // --- getRaceShipAccess / canRaceBuildShip ---------------------------------
 
-test('getRaceShipAccess: default is all nine hulls, sorted', () => {
-    assert.deepEqual(races.getRaceShipAccess(TERRAN), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    assert.deepEqual(races.getRaceShipAccess(ANCIENT), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    assert.deepEqual(races.getRaceShipAccess(9999), [1, 2, 3, 4, 5, 6, 7, 8, 9],
+test('getRaceShipAccess: default is all ten hulls, sorted', () => {
+    assert.deepEqual(races.getRaceShipAccess(TERRAN), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(races.getRaceShipAccess(ANCIENT), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(races.getRaceShipAccess(9999), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         'unknown race id => all ships');
 });
 
@@ -156,7 +156,7 @@ test('getRaceAccessSummary: splits locked (0) from limited (>0) branches', () =>
     const terran = races.getRaceAccessSummary(TERRAN);
     assert.deepEqual(terran.lockedBranches, []);
     assert.deepEqual(terran.limitedBranches, []);
-    assert.deepEqual(terran.ships, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert.deepEqual(terran.ships, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 });
 
 // --- server enforcement: buyTech / buyShip --------------------------------

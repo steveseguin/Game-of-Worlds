@@ -308,7 +308,7 @@ const RACE_ACCESS = {
     12: { branchCaps: { ARMOR: 2 }, ships: [1, 2, 3, 4, 5, 6, 8] }                       // Shadow — stealth raiders, no dreadnought/carrier
 };
 
-const ALL_SHIP_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const ALL_SHIP_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const COLONY_SHIP_ID = 6;
 
 function raceAccess(raceId) {
@@ -336,6 +336,7 @@ function getRaceShipAccess(raceId) {
     if (!Array.isArray(access.ships)) return ALL_SHIP_IDS.slice();
     const set = new Set(access.ships);
     set.add(COLONY_SHIP_ID);
+    set.add(10); // Every race can operate civilian mining haulers.
     return ALL_SHIP_IDS.filter(id => set.has(id));
 }
 

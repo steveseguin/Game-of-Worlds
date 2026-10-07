@@ -366,12 +366,15 @@ async function marchShip(page, path, shipTypeText) {
 test.describe('Live two-client combat with multiple rounds', () => {
     test.setTimeout(420000);
 
-    test('players fight two real battle rounds (scouts then colony ships) through UI only', async ({ browser }) => {
+    test('players fight real battles with scouts, colony ships and mining haulers through UI only', async ({ browser }) => {
         const hostContext = await browser.newContext({ viewport: { width: 1680, height: 1000 } });
         const joinerContext = await browser.newContext({ viewport: { width: 1680, height: 1000 } });
         const hostPage = await hostContext.newPage();
         const joinerPage = await joinerContext.newPage();
 
+        const browserErrors = [];
+        hostPage.on('pageerror', error => browserErrors.push(error.message));
+        joinerPage.on('pageerror', error => browserErrors.push(error.message));
         hostPage.on('dialog', dialog => dialog.accept().catch(() => {}));
         joinerPage.on('dialog', dialog => dialog.accept().catch(() => {}));
 
@@ -466,6 +469,21 @@ test.describe('Live two-client combat with multiple rounds', () => {
         expect(joinerBattleCount).toBeGreaterThanOrEqual(2);
 
         expect(lobbyGameId).toBeTruthy();
+        // Type 10 must survive real movement, combat serialization and theater rendering.
+        await waitForBattlePauseClear(hostPage, 'host');
+        await waitForBattlePauseClear(joinerPage, 'joiner');
+        const ui = require('./support/ui-game-harness');
+        await ui.buildShip(hostPage, 10);
+        await ui.buildShip(joinerPage, 10);
+        await marchShip(hostPage, hostPathToMid, 'Mining Hauler');
+        await marchShip(joinerPage, joinerPathToMid, 'Mining Hauler');
+        await advanceTurnBoth(hostPage, joinerPage);
+        await expectBattleTheaterVisible(hostPage);
+        await expectBattleTheaterVisible(joinerPage);
+        await hostPage.screenshot({ path: 'test-results/mining-battle.png' });
+        await clearBattleOverlay(hostPage);
+        await clearBattleOverlay(joinerPage);
+
         const telemetryResponse = await hostPage.request.get(`/api/game/${lobbyGameId}/combat-telemetry`);
         expect(telemetryResponse.status()).toBe(200);
         expect(telemetryResponse.headers()['cache-control']).toContain('no-store');
@@ -497,6 +515,7 @@ test.describe('Live two-client combat with multiple rounds', () => {
         }, { timeout: 10000 }).toBeGreaterThanOrEqual(2);
         await expect(hostPage.locator('#combatAnalyticsRecent')).toContainText('Sector', { timeout: 10000 });
 
+        expect(browserErrors).toEqual([]);
         await hostContext.close();
         await joinerContext.close();
     });

@@ -3,11 +3,11 @@
 Status: **REFERENCE**. The names and icons are ready for UI integration, but this folder
 does not by itself change the shipped labels or controls.
 
-This catalog contains **142 individually usable 256x256 PNG icons**:
+This catalog contains **143 individually usable 256x256 PNG icons**:
 
 - 108 research-level icons;
 - 9 current building-state icons;
-- 9 standard ship-type icons;
+- 10 standard ship-type icons;
 - 16 core gameplay-action icons.
 
 ## Display rule
@@ -313,7 +313,7 @@ movement, not a separate command, so it does not receive a misleading "attack" a
 ## Asset organization
 
 - `catalog.json` is the machine-readable naming and mechanic map.
-- `icons/` contains the 142 individual 256x256 PNGs intended for UI use.
+- `icons/` contains the 143 individual 256x256 PNGs intended for UI use.
 - `atlases/` preserves the generated source sheets and their visual progression.
 - `PROMPTS.md` records the built-in image-generation prompt set.
 - `tools/build-icon-assets.ps1` deterministically rebuilds individual icons and this catalog from

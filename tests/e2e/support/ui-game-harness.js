@@ -526,7 +526,8 @@ async function expectFleetAtSector(page, sectorId, shipTypeText, minimum = 1) {
         'Destroyer': '#fleet-destroyers',
         'Cruiser': '#fleet-cruisers',
         'Battleship': '#fleet-battleships',
-        'Colony Ship': '#fleet-colony'
+        'Colony Ship': '#fleet-colony',
+        'Mining Hauler': '#fleet-haulers'
     };
     const selector = fieldByName[shipTypeText];
     if (!selector) {

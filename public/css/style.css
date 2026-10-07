@@ -5521,3 +5521,15 @@ button:focus:not(:focus-visible) { outline: none; }
 
 .game-page #chatMessages { max-height: none; overflow: visible; }
 .game-page #chatMessages[hidden] { display: none; }
+.game-page .ship-grid [data-ship-id="10"]::before { background-image: url('../images/ui/icons-ships-10-mining-hauler.png'); }
+.game-page .mining-console { margin-top: 12px; padding-top: 8px; border-top: 1px solid #77634c; }
+.game-page #miningCargoTotal { color: #e3c28a; font-size: 11px; letter-spacing: 0; }
+.game-page #miningManifest { font-size: 12px; line-height: 1.45; color: #c9c4b6; }
+.game-page .mining-manifest-row { display: grid; grid-template-columns: 78px 1fr; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid #363b3d; }
+.game-page .mining-locate { padding: 5px 4px; border: 1px solid #756349; border-radius: 2px; background: #252a2c; color: #ead6aa; font: inherit; cursor: pointer; }
+.game-page .mining-locate:hover, .game-page .mining-locate:focus-visible { background: #394044; outline: 1px solid #dcc18a; }
+
+.game-page .mining-return { grid-column: 2; justify-self: start; padding: 4px 10px; }
+
+/* Routine alerts stay behind the fallback theater instead of covering fleet labels. */
+.game-page:has(#battleGround) #notification-container { z-index: 998; }

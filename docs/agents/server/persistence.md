@@ -19,7 +19,7 @@ The server creates per-game tables in `createGameTables(gameId)`.
 | --- | --- | --- |
 | `players<gameId>` | `userid`, `race_id`, `is_ai`, `ai_difficulty`, `ai_strategy`, `metal`, `crystal`, `research`, `tech`, `homeworld`, `currentsector`, `last_automation_turn`, `last_income_turn` | Player economy/position; automation is at-most-once and income retry is idempotent. |
 | `map<gameId>` | `sectorid`, `x`, `y`, `type`, `owner`, `metalbonus`, `crystalbonus`, `terraformlvl`, `artifact` | Galaxy sectors, ownership, terrain, resources. |
-| `ships<gameId>` | `id`, `owner`, `type`, `sectorid` | One row per ship. Counts are derived by grouped queries. |
+| `ships<gameId>` | `id`, `owner`, `type`, `sectorid`, `cargo_metal`, `cargo_crystal`, `last_mining_turn` | One row per ship. Type 10 is a Mining Hauler; its hold survives movement, reconnects and surviving combat. Cargo defaults to zero; existing tables migrate on join/resume. Counts are derived by grouped queries. |
 | `buildings<gameId>` | `id`, `sectorid`, `type`, `owner` | One row per building. Slot limits are enforced in code. |
 | `wonders<gameId>` | `id`, `owner`, `type`, `turn_built` | Victory/achievement structure support. |
 | `explored_sectors<gameId>` | `playerid`, `sectorid`, `discovered_at`, `intel_level`, `intel_source`, `intel_json`, `last_seen_turn` | Fog memory. Successful probes persist a dated detail snapshot; normal exploration can remain terrain-only. Existing per-game tables are migrated on join/reconnect. |

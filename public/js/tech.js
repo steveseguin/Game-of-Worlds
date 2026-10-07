@@ -198,7 +198,8 @@ const SHIPYARD_REQUIREMENTS = {
     6: 0, // Colony Ship
     7: 3, // Dreadnought
     8: 2, // Intruder
-    9: 3  // Carrier
+    9: 3, // Carrier
+    10: 0 // Mining Hauler
 };
 
 const MOVE_DISCOUNT_CAP = 0.6;

@@ -118,6 +118,7 @@ Messages that do not begin with `//` are treated as chat text and broadcast to t
 | `probeonly:<sectorHex>` | game | Sector is not visible; probing is possible. |
 | `mmoptions:<target>:...` | game | Legacy multi-source shape retained for compatibility; new responses use `mmoptionsv2::`. |
 | `mmoptionsv2::<json>` | game | Route-aware fleet options; classifies only known hazards and counts unmapped route sectors. |
+| `mining::<json>` | game | Private owner manifest: `capacity`, `ships[{id,sector,metal,crystal,status}]`; loading/unloading happens at turn end after combat. |
 | `fleetmove::<from>::<to>::<player>::<count>::<warpFlag>` | game | Fleet movement animation/event. |
 | `battlepause::<freezeMs>::<playbackMs>` | game | Turn timer is paused during battle playback. |
 | `battle::...`, `battlereport::...`, `battle_summary::...` | game | Battle playback and telemetry. |
@@ -146,3 +147,5 @@ Race changes require a valid whole decimal race ID and a waiting game. The handl
 Movement field counts are exact: `//move` contains source, destination, types and counts; `//sendmmf` contains a destination followed by complete source/type/ordinal triplets. Same-source/destination orders are rejected. `fleetmove::` arrival counts reflect hulls surviving transit, and destinations are not disclosed for groups destroyed before arrival.
 
 Planet names use the existing `sectorname` column. Live survey/contact/map messages include the current name; dated probe reports retain the recorded name. Outside sensor range, map labels retain names observed on this connection or the default catalog name after reconnecting; hidden rename events are not broadcast. Shoal names retain their separate permanent, curated naming rules.
+
+Battles involving Mining Haulers use inner payload `battle:v2:` followed by 22-field blocks: ten attacker counts, ten defender counts, ground and orbital turrets. Other battles retain the original `battle:` 20-field format. Both browser theaters accept both formats. Route-aware `mmoptionsv2::` source count arrays include type 10; the legacy `mmoptions:` parser retains nine types.

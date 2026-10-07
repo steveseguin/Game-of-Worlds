@@ -30,7 +30,7 @@ const GAME_MESSAGE_PREFIXES = Object.freeze([
     // The cluster reading, broadcast once at game start. Its own prefix rather than systemalert:: so
     // the feed icon is chosen by the SENDER instead of inferred from the prose - three of its four
     // lines mention mouths, shoals or a fleet and were being iconed as fleet movements.
-    'advisory::'
+    'advisory::', 'mining::'
 ]);
 
 function formatTurnPhase(state, turn, phase = '') {

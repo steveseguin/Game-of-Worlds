@@ -1,4 +1,12 @@
 const { test, expect } = require('@playwright/test');
+
+const pageErrors = new WeakMap();
+test.beforeEach(({ page }) => {
+    const errors = [];
+    pageErrors.set(page, errors);
+    page.on('pageerror', error => errors.push(error.message));
+});
+test.afterEach(({ page }) => expect(pageErrors.get(page) || []).toEqual([]));
 const {
     uniqueId,
     registerUser,
@@ -252,4 +260,52 @@ test.describe('Authoritative gameplay controls', () => {
         await page.evaluate(() => window.handleWebSocketMessage('mapstate::'));
         await expect(homeTile).toHaveAttribute('data-intel', 'fog');
     });
+});
+
+test('mining haulers load remotely, reconnect with cargo, and settle exactly once at home', async ({ page }) => {
+    test.setTimeout(180000);
+    const h = require('./support/ui-game-harness');
+    await h.signInGuest(page, uniqueId('hauler'));
+    const gameId = await createGame(page, uniqueId('mining'), { maxPlayers: '2', mode: 'test' });
+    await startGame(page, [page]);
+    await dismissFirstRunGuidance(page);
+    const home = await h.focusHomeworld(page);
+    const terrain = await readTestTerrain(page, gameId);
+    const candidates = terrain.sectors.filter(s => Number(s.type) >= 6 && Number(s.type) <= 9 && !s.owner)
+        .map(s => ({ sector: Number(s.sectorid), path: h.buildSafePath(home, s.sectorid, terrain) }))
+        .filter(s => s.path?.length > 1).sort((a, b) => a.path.length - b.path.length);
+    expect(candidates.length).toBeGreaterThan(0);
+    const target = candidates[0];
+    await h.buildShip(page, 10);
+    await expect(page.locator('#fleet-haulers')).toHaveText('1');
+    for (const sector of target.path.slice(1)) await h.moveSelectedShipTypeToSector(page, sector, 'Mining Hauler');
+    await expect(page.locator('#miningManifest')).toContainText('Loads at turn end');
+    await h.endTurnAll([page]);
+    await expect(page.locator('#miningCargoTotal')).toHaveText('100/100 aboard');
+    await expect(page.locator('#miningManifest')).toContainText('Cargo ready to return');
+    await page.reload();
+    await dismissFirstRunGuidance(page); await page.click('#fleettab');
+    await expect(page.locator('#miningCargoTotal')).toHaveText('100/100 aboard');
+    await page.locator('#miningConsole').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'test-results/mining-loaded.png' });
+    await page.locator('[data-mining-return]').click();
+    await expect(page.locator('#multiMove')).toBeVisible();
+    await expect.poll(() => page.locator('#shipsFromNearBy').evaluate(select =>
+        Array.from(select.selectedOptions).map(option => Number(option.value.split(':')[1])))).toEqual([10]);
+    await page.locator('#closeMultiMove').click();
+    for (const sector of target.path.slice(0, -1).reverse()) await h.moveSelectedShipTypeToSector(page, sector, 'Mining Hauler');
+    await expect(page.locator('#miningManifest')).toContainText('Unloads at turn end');
+    const text = await page.locator('#miningManifest').innerText();
+    const cargo = text.match(/(\d+) metal \/ (\d+) crystal/);
+    expect(cargo).not.toBeNull();
+    const before = await readResources(page);
+    const income = await page.locator('#metalincome').innerText();
+    const metalIncome = Number(income.replace(/[^\d]/g, ''));
+    await h.endTurnAll([page]);
+    await expect(page.locator('#miningCargoTotal')).toHaveText('0/100 aboard');
+    await expect.poll(async () => (await readResources(page)).metal).toBe(before.metal + metalIncome + Number(cargo[1]));
+    await page.screenshot({ path: 'test-results/mining-delivered.png' });
+    const after = await readResources(page);
+    await h.endTurnAll([page]);
+    await expect.poll(async () => (await readResources(page)).metal).toBe(after.metal + metalIncome);
 });

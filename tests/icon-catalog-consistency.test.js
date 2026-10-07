@@ -115,6 +115,6 @@ test('the action catalog is unique and all declared assets exist', () => {
         + catalog.buildings.length
         + catalog.ships.length
         + catalog.actions.length;
-    assert.equal(actualTotal, 142);
+    assert.equal(actualTotal, 143);
     assert.equal(actualTotal, catalog.counts.totalIcons);
 });

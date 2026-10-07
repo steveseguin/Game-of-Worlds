@@ -1,5 +1,13 @@
 const { test, expect } = require('@playwright/test');
 
+const pageErrors = new WeakMap();
+test.beforeEach(({ page }) => {
+    const errors = [];
+    pageErrors.set(page, errors);
+    page.on('pageerror', error => errors.push(error.message));
+});
+test.afterEach(({ page }) => expect(pageErrors.get(page) || []).toEqual([]));
+
 function uniqueId(prefix) {
     const randomPart = Math.random().toString(36).slice(2, 8);
     const timePart = Date.now().toString(36);
@@ -27,8 +35,10 @@ test.describe('Battle visibility UX', () => {
 
         await page.waitForURL('**/lobby.html', { timeout: 20000 });
 
+        await page.evaluate(() => localStorage.setItem('gow-tour-dismissed-v1', '1'));
         await page.goto('/game.html');
         await expect(page.locator('#resourceBar')).toBeVisible({ timeout: 15000 });
+        await require('./support/ui-game-harness').dismissFirstRunGuidance(page);
 
         // Force the 2D fallback overlay so this assertion is deterministic in
         // headless CI. The 3D theater (window.Battle3D) renders to a WebGL canvas
@@ -59,6 +69,21 @@ test.describe('Battle visibility UX', () => {
         await expect(page.locator('#battleGround')).toBeVisible({ timeout: 5000 });
         await page.locator('#stopBattle').click();
         await expect(page.locator('#battleGround')).toHaveCount(0, { timeout: 5000 });
+
+        // The extended timeline must include civilian haulers in the fallback theater.
+        await page.evaluate(() => {
+            const fields = new Array(44).fill(0);
+            fields[0] = 2; fields[9] = 1; fields[19] = 1;
+            fields[22] = 2; fields[31] = 1;
+            window.handleWebSocketMessage(`battle:v2:${fields.join(':')}`);
+        });
+        await expect(page.locator('#battleGround')).toBeVisible();
+        await expect(page.locator('#battleGround')).toContainText('Mining Hauler');
+        await expect(page.locator('#battleGround img[src*="mining-hauler"]')).toHaveCount(2);
+        await page.evaluate(() => window.NotificationSystem.notify('Cargo report', 'A hauler has returned to port.', 'info', 10000));
+        await page.screenshot({ path: 'test-results/mining-battle-clear.png' });
+        await page.locator('#stopBattle').click();
+        await expect(page.locator('#battleGround')).toHaveCount(0);
 
         await page.evaluate(() => {
             window.handleWebSocketMessage(

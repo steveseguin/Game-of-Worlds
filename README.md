@@ -15,6 +15,7 @@ Originally built in 2012 as a PHP-based web game, Game of Worlds has been comple
 - **Multiplayer Battles**: Compete against other players in real-time
 - **Tech Tree**: Research advanced technologies to gain an edge
 - **Resource Management**: Balance metal, crystal, and research production
+- **Mining Expeditions**: Haul ore from unclaimed planets, including worlds beyond your Terraforming level. [How mining works](docs/mining.md)
 - **Premium Content**: Optional balanced race unlocks and cosmetics only; no paid gameplay advantage
 - **Cross-Platform**: Play in any modern web browser
 

@@ -108,7 +108,7 @@ function evaluateGameState(snapshot, runtime = {}) {
         else shipIds.add(shipId);
         if (!owner || !playerIds.has(owner)) addIssue(errors, 'ORPHAN_SHIP_OWNER', 'Ship owner is not a player', { shipId, owner: ship.owner });
         if (!sectorId || !sectorIds.has(sectorId)) addIssue(errors, 'ORPHAN_SHIP_SECTOR', 'Ship sector does not exist', { shipId, sectorId: ship.sectorid });
-        if (!Number.isInteger(type) || type < 1 || type > 9) addIssue(errors, 'INVALID_SHIP_TYPE', 'Ship type is invalid', { shipId, type });
+        if (!Number.isInteger(type) || type < 1 || type > 10) addIssue(errors, 'INVALID_SHIP_TYPE', 'Ship type is invalid', { shipId, type });
     });
 
     const buildingIds = new Set();

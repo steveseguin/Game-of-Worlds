@@ -470,3 +470,84 @@ test('a colony ship moved during colonization is preserved and the claim is roll
     assert.equal(db._ships.get(1).length, 1);
     assert.equal(db._ships.get(1)[0].sectorid, 6);
 });
+
+const mining = require('../server/lib/mining');
+const { createMockDatabase } = require('../server/lib/mock-db');
+function miningFixture() {
+    const db = createMockDatabase();
+    const player = { userid: 7, metal: 20, crystal: 30, research: 5 };
+    db._playerTables.set(1, new Map([[7, player]]));
+    const home = { sectorid: 1, owner: 7, type: 10 };
+    const remote = { sectorid: 2, owner: null, type: 9, terraformlvl: 5, metalbonus: 100, crystalbonus: 100 };
+    db._maps.set(1, new Map([[1, home], [2, remote]]));
+    const hauler = { id: 1, owner: 7, type: 10, sectorid: 2, cargo_metal: 0, cargo_crystal: 0, last_mining_turn: 0 };
+    db._ships.set(1, [hauler]);
+    const query = (sql, params = []) => new Promise((resolve, reject) => db.query(sql, params, (error, rows) => error ? reject(error) : resolve(rows)));
+    return { db, player, home, remote, hauler, query };
+}
+
+test('haulers mine beyond Terraforming, retain a finite hold, and deliver exactly once on a later turn', async () => {
+    const { db, player, hauler, query } = miningFixture();
+    await mining.processMiningTurn(query, 1, 2);
+    assert.deepEqual([hauler.cargo_metal, hauler.cargo_crystal], [60, 40]);
+    assert.deepEqual([player.metal, player.crystal, player.research], [20, 30, 5], 'ore aboard is not spendable');
+    await mining.processMiningTurn(query, 1, 3);
+    assert.equal(hauler.cargo_metal + hauler.cargo_crystal, 100, 'full holds cannot accumulate');
+    hauler.sectorid = 1;
+    await Promise.all([mining.processMiningTurn(query, 1, 4), mining.processMiningTurn(query, 1, 4)]);
+    assert.deepEqual([player.metal, player.crystal, player.research], [80, 70, 5]);
+    assert.equal(hauler.cargo_metal + hauler.cargo_crystal, 0);
+    await mining.processMiningTurn(query, 1, 4);
+    assert.equal(player.metal, 80, 'replayed resolution cannot credit again');
+    hauler.sectorid = 2;
+    await mining.processMiningTurn(query, 1, 4);
+    assert.equal(hauler.cargo_metal, 0, 'cannot unload and reload in one turn');
+    await mining.processMiningTurn(query, 1, 5);
+    db._ships.set(1, []); // Combat/hazards remove the hull and its hold together.
+    await mining.processMiningTurn(query, 1, 6);
+    assert.equal(player.metal, 80, 'destroyed cargo pays nothing');
+});
+
+test('haulers cannot mine hazards, claimed planets, or contested sectors; ownership loss blocks unloading', async () => {
+    for (const type of [0, 1, 2, 3, 4, 5, 10]) {
+        const f = miningFixture(); f.remote.type = type;
+        await mining.processMiningTurn(f.query, 1, 2);
+        assert.equal(f.hauler.cargo_metal, 0, `sector type ${type} is not a mining planet`);
+    }
+    for (const owner of [7, 8]) {
+        const f = miningFixture(); f.remote.owner = owner;
+        await mining.processMiningTurn(f.query, 1, 2);
+        assert.equal(f.hauler.cargo_metal, 0);
+    }
+    const f = miningFixture();
+    f.db._ships.get(1).push({ id: 2, type: 3, owner: 8, sectorid: 2 });
+    await mining.processMiningTurn(f.query, 1, 2);
+    assert.equal(f.hauler.cargo_metal, 0, 'rival presence blocks loading');
+    f.db._ships.get(1).pop();
+    await mining.processMiningTurn(f.query, 1, 3);
+    f.hauler.sectorid = 1; f.home.owner = 8;
+    await mining.processMiningTurn(f.query, 1, 4);
+    assert.equal(f.hauler.cargo_metal, 60, 'cargo stays aboard when destination is lost');
+    assert.equal(f.player.metal, 20);
+});
+
+test('cargo writes survive a failed resolution and retry without duplicate credit', async () => {
+    const f = miningFixture();
+    const failWrite = (sql, params) => /^UPDATE/.test(sql) ? Promise.reject(new Error('storage outage')) : f.query(sql, params);
+    await assert.rejects(mining.processMiningTurn(failWrite, 1, 2), /storage outage/);
+    assert.equal(f.hauler.cargo_metal, 0);
+    await mining.processMiningTurn(f.query, 1, 2);
+    f.hauler.sectorid = 1;
+    await assert.rejects(mining.processMiningTurn(failWrite, 1, 3), /storage outage/);
+    assert.equal(f.player.metal, 20); assert.equal(f.hauler.cargo_metal, 60);
+    await mining.processMiningTurn(f.query, 1, 3);
+    assert.equal(f.player.metal, 80); assert.equal(f.hauler.cargo_metal, 0);
+});
+
+test('richness changes the cargo mix while every race retains access to a bounded unarmed hauler', () => {
+    const races = require('../server/lib/races');
+    for (let race = 1; race <= 12; race++) assert.equal(races.canRaceBuildShip(race, 10), true);
+    assert.equal(combat.SHIP_TYPES.MINING_HAULER.attack, 0);
+    const cargo = mining.cargoFor({ metalbonus: 50, crystalbonus: 200 });
+    assert.equal(cargo.metal + cargo.crystal, 100); assert.ok(cargo.crystal > cargo.metal);
+});
