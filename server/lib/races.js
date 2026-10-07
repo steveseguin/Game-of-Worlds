@@ -345,10 +345,15 @@ function canRaceBuildShip(raceId, shipType) {
     return getRaceShipAccess(raceId).includes(t);
 }
 
+// Keep strict ID matching; callers that accept numeric strings normalize them first.
+function getRaceById(raceId) {
+    return Object.values(RACE_TYPES).find(race => race.id === raceId) || RACE_TYPES.TERRAN;
+}
+
 // Combat multipliers a race grants its ships (from existing bonuses + unitModifiers).
 // The combat layer turns these into bonus "tech points" so they actually apply.
 function raceCombatModifiers(raceId) {
-    const race = Object.values(RACE_TYPES).find(r => r.id === Number(raceId)) || RACE_TYPES.TERRAN;
+    const race = getRaceById(Number(raceId));
     const b = race.bonuses || {};
     const all = (race.unitModifiers && race.unitModifiers.all) || {};
     return {
@@ -568,6 +573,7 @@ function applyShipModifiers(raceId, shipType, baseStats) {
 module.exports = {
     RACE_TYPES,
     RACE_ACCESS,
+    getRaceById,
     isRaceUnlocked,
     getUnlockedRaces,
     applyRaceModifiers,

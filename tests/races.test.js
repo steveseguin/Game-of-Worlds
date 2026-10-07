@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { RACE_TYPES, applyShipModifiers } = require('../server/lib/races');
+const { RACE_TYPES, applyShipModifiers, getRaceById, raceCombatModifiers } = require('../server/lib/races');
 
 test('race definitions include unique ids and expected bonuses', () => {
     const races = Object.values(RACE_TYPES);
@@ -76,4 +76,17 @@ test('applyShipModifiers respects all-unit modifiers', () => {
         bioResult.cost.metal < baseStats.cost.metal,
         'Race shipCost modifier should affect metal cost'
     );
+});
+
+test('shared race lookup preserves strict IDs and the Terran fallback', () => {
+    for (const race of Object.values(RACE_TYPES)) {
+        assert.strictEqual(getRaceById(race.id), race);
+        assert.deepEqual(raceCombatModifiers(String(race.id)), raceCombatModifiers(race.id),
+            'combat callers continue accepting numeric strings');
+    }
+    for (const invalid of [undefined, null, 0, -1, 99, NaN, '2', {}, true]) {
+        assert.strictEqual(getRaceById(invalid), RACE_TYPES.TERRAN);
+    }
+    assert.strictEqual(require('../server/lib/utils').getRaceById, getRaceById,
+        'the existing utility export uses the shared lookup');
 });

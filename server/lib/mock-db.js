@@ -968,9 +968,11 @@ class MockDatabase {
                     return this._async(callback, null, rows);
                 }
 
-                if (/^SELECT \* FROM `?buildings\d+`? WHERE owner = \?/i.test(normalized)) {
+                if (/^SELECT (?:\*|sectorid, type) FROM `?buildings\d+`? WHERE owner = \?/i.test(normalized)) {
                     const owner = Number(params[0]);
-                    return this._async(callback, null, buildings.filter(b => b.owner === owner).map(b => ({ ...b })));
+                    const rows = buildings.filter(b => b.owner === owner).map(b =>
+                        /^SELECT \*/i.test(normalized) ? { ...b } : { sectorid: b.sectorid, type: b.type });
+                    return this._async(callback, null, rows);
                 }
 
                 if (/^SELECT type, COUNT\(\*\) as count FROM `?buildings\d+`? WHERE sectorid = \? AND owner = \? GROUP BY type/i.test(normalized)) {

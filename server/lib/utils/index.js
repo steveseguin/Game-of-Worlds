@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const raceSystem = require('../races');
+const { getRaceById } = require('../races');
 
 // ============================================================================
 // PARSING & CONVERSION UTILITIES
@@ -55,14 +55,6 @@ function normalizeAiStrategy(raw) {
     const AI_STRATEGIES = new Set(['balanced', 'aggressive', 'economic']);
     const value = (raw || '').toLowerCase();
     return AI_STRATEGIES.has(value) ? value : 'balanced';
-}
-
-// ============================================================================
-// RACE UTILITIES
-// ============================================================================
-
-function getRaceById(raceId) {
-    return Object.values(raceSystem.RACE_TYPES).find(race => race.id === raceId) || raceSystem.RACE_TYPES.TERRAN;
 }
 
 // ============================================================================

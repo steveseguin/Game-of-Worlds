@@ -1,6 +1,6 @@
 // Bounded in-memory combat statistics and player-scoped analytics snapshots.
 const combatSystem = require('./combat');
-const raceSystem = require('./races');
+const { getRaceById } = require('./races');
 const { SHIP_TYPE_IDS, COMBAT_TELEMETRY_RECENT_BATTLES, COMBAT_TELEMETRY_MAX_GAMES } = require('./config/constants');
 
 const SHIP_TYPE_NAME_BY_ID = Object.freeze(
@@ -295,7 +295,7 @@ function getCombatTelemetrySnapshot(gameId, viewerId) {
             return {
                 playerId: player.playerId,
                 raceId: player.raceId,
-                raceName: (Object.values(raceSystem.RACE_TYPES).find(race => race.id === player.raceId) || raceSystem.RACE_TYPES.TERRAN).name,
+                raceName: getRaceById(player.raceId).name,
                 battles: player.battles,
                 orbitalTurret: {
                     shots: player.orbitalTurret.shots,

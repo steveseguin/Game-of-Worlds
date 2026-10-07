@@ -18,6 +18,7 @@ const mapSystem = require('./lib/map');
 const combatSystem = require('./lib/combat');
 const techSystem = require('./lib/tech');
 const raceSystem = require('./lib/races');
+const { getRaceById } = raceSystem;
 const securitySystem = require('./lib/security');
 const victorySystem = require('./lib/victory');
 const aiSystem = require('./lib/ai');
@@ -27,7 +28,7 @@ const { PaymentManager } = require('./lib/payments');
 const PaymentEndpoints = require('./lib/payment-endpoints');
 const gameInvariants = require('./lib/game-invariants');
 const { BUILDING_COSTS, SPACEPORT_TIERS } = require('../public/js/construction-rules');
-const { SHIP_TYPE_IDS } = require('./lib/config/constants');
+const { SHIP_TYPE_IDS, SHIP_TYPE_MODIFIER_KEYS } = require('./lib/config/constants');
 const { recordCombatTelemetry, getCombatTelemetrySnapshot, formatShipTelemetryHint } = require('./lib/combat-telemetry');
 const { TABLE_BASES, gameTables, requireGameId } = require('./lib/game-tables');
 const { formatTurnPhase } = require('./lib/websocket-protocol');
@@ -478,17 +479,6 @@ const BATTLE_VISIBILITY_CONFIG = Object.freeze({
     OVERWHELMING_MIN_SHIPS: 8,
     STEALTH_CONCEALMENT_THRESHOLD: 0.45
 });
-const SHIP_TYPE_MODIFIER_KEYS = Object.freeze({
-    1: 'frigate',
-    2: 'destroyer',
-    3: 'scout',
-    4: 'cruiser',
-    5: 'battleship',
-    6: 'colony',
-    7: 'dreadnought',
-    8: 'intruder',
-    9: 'carrier'
-});
 
 function parsePositiveInt(value, fallback) {
     const parsed = Number.parseInt(value, 10);
@@ -729,10 +719,6 @@ function normalizeAiDifficulty(raw) {
 function normalizeAiStrategy(raw) {
     const value = (raw || '').toLowerCase();
     return AI_STRATEGIES.has(value) ? value : 'balanced';
-}
-
-function getRaceById(raceId) {
-    return Object.values(raceSystem.RACE_TYPES).find(race => race.id === raceId) || raceSystem.RACE_TYPES.TERRAN;
 }
 
 function safeDecodeURIComponent(value, fallback = '') {
@@ -2215,7 +2201,7 @@ function resourceMultiplierFor(gameId) {
  * the ledger and the display go through here now so they cannot drift apart again.
  */
 function scaleIncomeForPlayer(rawIncome, raceId, multiplier) {
-    const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === raceId) || raceSystem.RACE_TYPES.TERRAN;
+    const race = getRaceById(raceId);
     return {
         metal: Math.floor((Number(rawIncome.metal) || 0) * race.bonuses.metalProduction * multiplier),
         crystal: Math.floor((Number(rawIncome.crystal) || 0) * race.bonuses.crystalProduction * multiplier),
@@ -3618,7 +3604,7 @@ function buyShip(data, connection) {
             }
 
             // Apply race modifiers to ship cost
-            const race = Object.values(raceSystem.RACE_TYPES).find(r => r.id === player.race_id) || raceSystem.RACE_TYPES.TERRAN;
+            const race = getRaceById(player.race_id);
 
             // Per-race ship access: some races simply can't build certain hulls.
             if (!raceSystem.canRaceBuildShip(player.race_id, shipType)) {
@@ -4009,33 +3995,10 @@ function moveFleetWithCompletion(data, connection, complete) {
 
         // Paired owned gates bypass normal space. Otherwise every longer order
         // follows the direct plotted line and encounters crossed sectors in order.
-        checkWarpGateLink(gameId, playerId, fromSector, toSector, linked => {
-            moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, linked, finish);
+        checkWarpGateSources(gameId, playerId, [fromSector], toSector, warpSources => {
+            moveFleetExecute(gameId, playerId, fromSector, toSector, selection.shipTypes, selection.shipCounts, connection, warpSources.has(fromSector), finish);
         });
     });
-}
-
-function checkWarpGateLink(gameId, playerId, fromSector, toSector, callback) {
-    db.query(
-        `SELECT sectorid, owner FROM map${gameId} WHERE sectorid IN (${Number(fromSector)}, ${Number(toSector)})`,
-        (mapErr, mapRows) => {
-            if (mapErr || !Array.isArray(mapRows) || mapRows.length < 2) return callback(false);
-            const ownsBoth = mapRows.every(row => Number(row.owner) === Number(playerId));
-            if (!ownsBoth) return callback(false);
-
-            db.query(
-                `SELECT sectorid, type FROM buildings${gameId} WHERE owner = ?`,
-                [playerId],
-                (bErr, buildings) => {
-                    if (bErr || !Array.isArray(buildings)) return callback(false);
-                    const gates = new Set(
-                        buildings.filter(b => Number(b.type) === 5).map(b => Number(b.sectorid))
-                    );
-                    callback(gates.has(Number(fromSector)) && gates.has(Number(toSector)));
-                }
-            );
-        }
-    );
 }
 
 function checkWarpGateSources(gameId, playerId, sourceSectors, targetSector, callback) {

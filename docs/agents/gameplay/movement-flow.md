@@ -6,6 +6,8 @@ Primary source: `server/server.js` movement functions:
 - `surroundShips()`, `sendMultiMoveOptions()`, and `preMoveFleet()` for multi-source orders.
 - `applyArrivalEffects()` for hazards, route control, and colonization prompts.
 
+`checkWarpGateSources()` checks owned endpoint sectors and gates for both single-source and multi-source orders.
+
 ## Command Shapes
 
 | Command | Meaning |

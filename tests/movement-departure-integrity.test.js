@@ -163,3 +163,75 @@ for (const unavailable of [false, true]) {
         } finally { delete server.gameState.activeGames[96]; }
     });
 }
+
+// A linked pair bypasses the black hole at sector 2; incomplete or foreign gates do not.
+for (const multi of [false, true]) {
+    for (const scenario of [
+        { name: 'owned gate pair', linked: true },
+        { name: 'missing source gate', omitGate: 1 },
+        { name: 'missing destination gate', omitGate: 5 },
+        { name: 'foreign source sector', foreignSector: 1 },
+        { name: 'foreign destination sector', foreignSector: 5 },
+        { name: 'foreign source gate', foreignGate: 1 },
+        { name: 'foreign destination gate', foreignGate: 5 },
+        { name: 'sector lookup failure', failQuery: 'SELECT sectorid, owner FROM map96' },
+        { name: 'gate lookup failure', failQuery: 'SELECT sectorid, type FROM buildings96' }
+    ]) {
+        test(`${multi ? 'multi' : 'single'} warp travel: ${scenario.name}`, async () => {
+            const db = await seed();
+            const c = connection();
+            for (const sectorId of [1, 5]) {
+                await query(db, 'UPDATE map96 SET type = ?, owner = ? WHERE sectorid = ?',
+                    [0, scenario.foreignSector === sectorId ? 8 : 7, sectorId]);
+                if (scenario.omitGate !== sectorId) {
+                    await query(db, 'INSERT INTO buildings96 (sectorid, type, owner) VALUES (?, ?, ?)',
+                        [sectorId, 5, scenario.foreignGate === sectorId ? 8 : 7]);
+                }
+            }
+            if (scenario.failQuery) {
+                const original = db.query.bind(db);
+                db.query = (sql, params, callback) => {
+                    if (sql.startsWith(scenario.failQuery)) {
+                        const done = typeof params === 'function' ? params : callback;
+                        return setImmediate(() => done(new Error('lookup unavailable')));
+                    }
+                    original(sql, params, callback);
+                };
+            }
+            try {
+                await run(multi, c);
+                const ships = db._ships.get(96);
+                const explored = await query(db, 'SELECT sectorid FROM explored_sectors96 WHERE playerid = ?', [7]);
+                const [player] = await query(db, 'SELECT crystal FROM players96 WHERE userid = ?', [7]);
+                assert.equal(ships.length, scenario.linked ? 1 : 0);
+                if (scenario.linked) assert.equal(ships[0].sectorid, 5);
+                assert.equal(player.crystal, scenario.linked ? 999 : 996);
+                assert.equal(explored.some(row => row.sectorid === 2), !scenario.linked);
+                if (scenario.linked) assert.ok(explored.some(row => row.sectorid === 5));
+            } finally { delete server.gameState.activeGames[96]; }
+        });
+    }
+}
+
+test('a combined fleet order applies warp links separately to each source', async () => {
+    const db = await seed();
+    const c = connection();
+    for (const sectorId of [1, 3, 5]) {
+        await query(db, 'UPDATE map96 SET type = ?, owner = ? WHERE sectorid = ?', [0, 7, sectorId]);
+    }
+    await query(db, 'UPDATE map96 SET type = ?, owner = NULL WHERE sectorid = ?', [2, 4]);
+    await query(db, 'INSERT INTO ships96 (owner, type, sectorid) VALUES (?, ?, ?)', [7, 3, 3]);
+    for (const sectorId of [1, 5]) {
+        await query(db, 'INSERT INTO buildings96 (sectorid, type, owner) VALUES (?, ?, ?)', [sectorId, 5, 7]);
+    }
+    try {
+        server.preMoveFleet('//sendmmf:5:1:3:1:3:3:1', c);
+        for (let i = 0; i < 40; i++) await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(db._ships.get(96).map(ship => ship.sectorid), [5]);
+        const [player] = await query(db, 'SELECT crystal FROM players96 WHERE userid = ?', [7]);
+        assert.equal(player.crystal, 997, 'charge one warp hop plus two normal hops');
+        const explored = await query(db, 'SELECT sectorid FROM explored_sectors96 WHERE playerid = ?', [7]);
+        assert.equal(explored.some(row => row.sectorid === 2), false, 'warp source bypasses the first black hole');
+        assert.ok(explored.some(row => row.sectorid === 4), 'unlinked source encounters its own route hazard');
+    } finally { delete server.gameState.activeGames[96]; }
+});
