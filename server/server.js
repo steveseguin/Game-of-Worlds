@@ -1070,6 +1070,9 @@ async function deleteWaitingGame(gameId, now = Date.now(), allowExpired = false)
         if (Number(result.affectedRows) !== 1) return false;
         await session.query('UPDATE users SET currentgame = NULL WHERE currentgame = ?', [id]);
         await session.commit();
+        const committedSession = session;
+        session = null;
+        committedSession.release();
         stopGameRuntime(id);
         for (const client of gameState.clients) {
             if (Number(client.gameid) !== id) continue;
